@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "apps/**/dist/**",
+    "node_modules/**",
+    "packages/**/dist/**",
+    "packages/db/drizzle/**"
+  ],
+  "jsPlugins": ["oxlint-tailwindcss"],
+  "rules": {
+    "no-console": "off",
+    "react/jsx-no-useless-fragment": "error",
+    "tailwindcss/consistent-variant-order": "warn",
+    "tailwindcss/enforce-canonical": "warn",
+    "tailwindcss/enforce-sort-order": "warn",
+    "tailwindcss/enforce-shorthand": "warn",
+    "tailwindcss/no-conflicting-classes": "error",
+    "tailwindcss/no-deprecated-classes": "error",
+    "tailwindcss/no-duplicate-classes": "error",
+    "tailwindcss/no-unnecessary-whitespace": "error"
+  },
+  "settings": {
+    "tailwindcss": {
+      "entryPoint": [
+        {
+          "files": "apps/web/**",
+          "use": "apps/web/src/styles.css"
+        }
+      ],
+      "timeout": 120000
+    }
+  }
+}
+

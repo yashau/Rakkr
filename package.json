@@ -1,0 +1,27 @@
+{
+  "name": "rakkr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "pnpm build:ts && mise run rust:build",
+    "build:rust": "mise run rust:build",
+    "build:ts": "pnpm -r --if-present build",
+    "check": "mise run check",
+    "check:loc": "node scripts/check-loc.mjs",
+    "check:rust": "mise run rust:check",
+    "check:ts": "pnpm -r --if-present check",
+    "db:generate": "pnpm --filter @rakkr/db db:generate",
+    "dev": "pnpm -r --parallel --filter @rakkr/api --filter @rakkr/web dev",
+    "format": "mise run node:format && mise run rust:fmt",
+    "format:check": "mise run node:format-check && mise run rust:fmt-check",
+    "lint": "mise run node:lint"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.55.0",
+    "oxlint": "^1.70.0",
+    "oxlint-tailwindcss": "^1.3.3",
+    "prettier": "^3.6.2"
+  }
+}

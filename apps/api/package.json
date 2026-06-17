@@ -1,0 +1,26 @@
+{
+  "name": "@rakkr/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "pnpm --filter @rakkr/shared build && tsc -p tsconfig.json",
+    "check": "pnpm --filter @rakkr/shared build && tsc -p tsconfig.json --noEmit",
+    "dev": "pnpm --filter @rakkr/shared build && tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "@rakkr/shared": "workspace:*",
+    "dotenv": "^17.2.3",
+    "hono": "^4.10.7",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

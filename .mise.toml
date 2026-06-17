@@ -1,0 +1,76 @@
+[tools]
+node = "24.15.0"
+pnpm = "11.7.0"
+rust = "1.95.0"
+
+[env]
+_.file = ".env"
+
+[tasks.install]
+description = "Install JavaScript workspace dependencies"
+run = "pnpm install"
+
+[tasks.dev]
+description = "Run the API and web UI"
+run = "pnpm dev"
+
+[tasks.check]
+depends = [
+  "check:loc",
+  "node:check",
+  "node:lint",
+  "node:format-check",
+  "rust:check",
+  "rust:fmt-check",
+  "rust:clippy",
+  "rust:miri",
+]
+description = "Run all repository checks"
+
+[tasks.build]
+description = "Build the workspace"
+run = "pnpm build"
+
+[tasks."check:loc"]
+description = "Enforce the 1000 LOC per file budget"
+run = "node scripts/check-loc.mjs"
+
+[tasks."node:check"]
+description = "Run TypeScript checks"
+run = "pnpm check:ts"
+
+[tasks."node:lint"]
+description = "Run Oxlint with Tailwind CSS rules"
+run = "pnpm exec oxlint . --react-plugin --jsx-a11y-plugin --import-plugin --deny-warnings"
+
+[tasks."node:format"]
+description = "Format Node/TypeScript files with Oxfmt"
+run = "pnpm exec oxfmt --write apps packages \"!packages/db/drizzle/**\""
+
+[tasks."node:format-check"]
+description = "Check Node/TypeScript formatting with Oxfmt"
+run = "pnpm exec oxfmt --check apps packages \"!packages/db/drizzle/**\""
+
+[tasks."rust:build"]
+description = "Build Rust crates"
+run = "cargo build --workspace"
+
+[tasks."rust:check"]
+description = "Run cargo check"
+run = "cargo check --workspace"
+
+[tasks."rust:fmt"]
+description = "Format Rust crates"
+run = "cargo fmt --all"
+
+[tasks."rust:fmt-check"]
+description = "Check Rust formatting"
+run = "cargo fmt --all --check"
+
+[tasks."rust:clippy"]
+description = "Run Clippy with warnings denied"
+run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+
+[tasks."rust:miri"]
+description = "Run Miri tests with a mise-provided nightly Rust toolchain"
+run = "mise x rust@nightly -- rustup +nightly component add miri && mise x rust@nightly -- cargo miri test --workspace"

@@ -1,0 +1,132 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Link,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { CalendarDays, Database, Gauge, Radio, Settings } from "lucide-react";
+import React from "react";
+import ReactDOM from "react-dom/client";
+
+import { Button } from "@/components/ui/button";
+import { DashboardPage } from "@/pages/dashboard";
+import { NodesPage } from "@/pages/nodes";
+import { RecordingsPage } from "@/pages/recordings";
+import { SchedulesPage } from "@/pages/schedules";
+
+import "./styles.css";
+
+const queryClient = new QueryClient();
+
+function RootLayout() {
+  const navItems = [
+    { icon: Gauge, label: "Dashboard", to: "/" },
+    { icon: Radio, label: "Nodes", to: "/nodes" },
+    { icon: CalendarDays, label: "Schedules", to: "/schedules" },
+    { icon: Database, label: "Recordings", to: "/recordings" },
+  ] as const;
+
+  return (
+    <div className="min-h-screen bg-stone-100 text-foreground">
+      <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-border bg-panel px-4 py-5 lg:block">
+        <div className="mb-8 flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+            <Radio className="size-5" />
+          </div>
+          <div>
+            <div className="text-lg font-semibold">Rakkr</div>
+            <div className="text-xs text-muted-foreground">Controller</div>
+          </div>
+        </div>
+
+        <nav className="grid gap-1">
+          {navItems.map((item) => (
+            <Link
+              activeProps={{
+                className: "bg-stone-100 text-zinc-950",
+              }}
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100"
+              key={item.to}
+              to={item.to}
+            >
+              <item.icon className="size-4" />
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </aside>
+
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-10 border-b border-border bg-stone-100/90 px-4 py-3 backdrop-blur md:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-semibold tracking-normal">Operations</h1>
+              <p className="text-sm text-muted-foreground">Council Chamber Rack</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline">
+                <Settings className="size-4" />
+                Settings
+              </Button>
+              <Button>
+                <Radio className="size-4" />
+                Record
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-7xl px-4 py-5 md:px-6">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+}
+
+const rootRoute = createRootRoute({ component: RootLayout });
+
+const indexRoute = createRoute({
+  component: DashboardPage,
+  getParentRoute: () => rootRoute,
+  path: "/",
+});
+
+const nodesRoute = createRoute({
+  component: NodesPage,
+  getParentRoute: () => rootRoute,
+  path: "/nodes",
+});
+
+const schedulesRoute = createRoute({
+  component: SchedulesPage,
+  getParentRoute: () => rootRoute,
+  path: "/schedules",
+});
+
+const recordingsRoute = createRoute({
+  component: RecordingsPage,
+  getParentRoute: () => rootRoute,
+  path: "/recordings",
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, nodesRoute, schedulesRoute, recordingsRoute]);
+
+const router = createRouter({ routeTree });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  </React.StrictMode>,
+);
