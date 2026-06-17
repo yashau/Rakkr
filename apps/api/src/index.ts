@@ -5,47 +5,41 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { streamSSE } from "hono/streaming";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
 
 import {
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
-  rolePermissions,
   type AuditEvent,
   type AuditOutcome,
-  type CurrentUser,
   type MeterFrame,
   type Permission,
   type RecorderNode,
   type RecordingSummary,
-  type Role,
   type ScheduleSummary,
 } from "@rakkr/shared";
 
 import { createAuditStore } from "./audit-store";
+import { AuthError, LocalAuthService, type AuthResult } from "./auth-service";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
 const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 
-const localRole: Role = "admin";
-const localUser: CurrentUser = {
-  email: "admin@rakkr.local",
-  id: "local_admin",
-  name: "Local Admin",
-  permissions: [...rolePermissions[localRole]],
-  provider: "local",
-  roles: [localRole],
-};
-
 type AuditTarget = AuditEvent["target"];
 
 const auditStore = createAuditStore();
+const authService = new LocalAuthService();
+const loginRequestSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
 
-function requestContext(c: Context) {
+function requestContext(c: Context, sessionId?: string) {
   return {
     ipAddress: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip"),
-    sessionId: c.req.header("x-rakkr-session-id") ?? "local-dev",
+    sessionId: sessionId ?? c.req.header("x-rakkr-session-id"),
     userAgent: c.req.header("user-agent"),
   };
 }
@@ -62,17 +56,26 @@ async function recordAuditEvent(
     permission?: Permission;
     reason?: string;
     target: AuditTarget;
+    auth?: AuthResult;
   },
 ) {
+  const actor = input.auth?.user
+    ? {
+        id: input.auth.user.id,
+        name: input.auth.user.name,
+        roles: input.auth.user.roles,
+        type: "user" as const,
+      }
+    : {
+        id: "anonymous",
+        name: "Anonymous",
+        roles: [],
+        type: "user" as const,
+      };
   const event: AuditEvent = {
     action: input.action,
-    actor: {
-      id: localUser.id,
-      name: localUser.name,
-      roles: localUser.roles,
-      type: "user",
-    },
-    actorContext: requestContext(c),
+    actor,
+    actorContext: requestContext(c, input.auth?.sessionId),
     after: input.after,
     before: input.before,
     correlationIds: input.correlationIds,
@@ -100,28 +103,30 @@ function requirePermission(
   target: (c: Context) => AuditTarget = () => ({ type: "controller" }),
 ): MiddlewareHandler {
   return async (c, next) => {
-    const allowed = localUser.permissions.includes(permission);
+    const auth = await authService.authenticate(c.req.header("authorization"));
+    const allowed = auth.user?.permissions.includes(permission) ?? false;
     const auditTarget = target(c);
 
     await recordAuditEvent(c, {
       action,
+      auth,
       details: {
         requiredPermission: permission,
-        roles: localUser.roles,
+        roles: auth.user?.roles ?? [],
       },
       outcome: allowed ? "allowed" : "denied",
       permission,
-      reason: allowed ? undefined : "missing_permission",
+      reason: allowed ? undefined : auth.user ? "missing_permission" : "unauthenticated",
       target: auditTarget,
     });
 
     if (!allowed) {
       return c.json(
         {
-          error: "Forbidden",
+          error: auth.user ? "Forbidden" : "Unauthorized",
           permission,
         },
-        403,
+        auth.user ? 403 : 401,
       );
     }
 
@@ -279,11 +284,93 @@ app.get("/api/v1/status", requirePermission("node:read", "status.read"), (c) =>
   }),
 );
 
-app.get("/api/v1/auth/me", (c) =>
-  c.json({
-    data: localUser,
-  }),
-);
+app.post("/api/v1/auth/login", async (c) => {
+  const body = loginRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+
+  if (!body.success) {
+    await recordAuditEvent(c, {
+      action: "auth.login.failed",
+      details: {
+        reason: "invalid_request",
+      },
+      outcome: "failed",
+      reason: "invalid_request",
+      target: {
+        type: "user",
+      },
+    });
+
+    return c.json({ error: "Invalid login request" }, 400);
+  }
+
+  try {
+    const result = await authService.login(body.data.email, body.data.password);
+
+    await recordAuditEvent(c, {
+      action: "auth.login.succeeded",
+      auth: {
+        sessionId: result.sessionId,
+        user: result.user,
+      },
+      outcome: "succeeded",
+      target: {
+        id: result.user.id,
+        name: result.user.email,
+        type: "user",
+      },
+    });
+
+    return c.json({ data: result });
+  } catch (error) {
+    const reason = error instanceof AuthError ? error.code : "unknown_auth_error";
+
+    await recordAuditEvent(c, {
+      action: "auth.login.failed",
+      details: {
+        email: body.data.email,
+      },
+      outcome: "failed",
+      reason,
+      target: {
+        name: body.data.email,
+        type: "user",
+      },
+    });
+
+    return c.json({ error: "Invalid credentials" }, 401);
+  }
+});
+
+app.post("/api/v1/auth/logout", async (c) => {
+  const auth = await authService.authenticate(c.req.header("authorization"));
+
+  await authService.logout(c.req.header("authorization"));
+
+  await recordAuditEvent(c, {
+    action: "auth.logout.succeeded",
+    auth,
+    outcome: "succeeded",
+    target: {
+      id: auth.user?.id,
+      name: auth.user?.email,
+      type: "user",
+    },
+  });
+
+  return c.body(null, 204);
+});
+
+app.get("/api/v1/auth/me", async (c) => {
+  const auth = await authService.authenticate(c.req.header("authorization"));
+
+  if (!auth.user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  return c.json({
+    data: auth.user,
+  });
+});
 
 app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), async (c) =>
   c.json({ data: await auditStore.list() }),

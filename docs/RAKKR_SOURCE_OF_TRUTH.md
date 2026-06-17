@@ -573,7 +573,7 @@ Display examples:
 
 Initial:
 
-- local auth;
+- local auth with password hashing and session tokens;
 - default-deny RBAC roles and permissions;
 - trusted LAN for reachability only;
 - encrypted transport for all controller/node communication;
@@ -587,6 +587,14 @@ Future:
 - Azure AD OIDC;
 - optional remote node mode using Iroh;
 - stronger node identity and key rotation.
+
+Current scaffold status:
+
+- local admin login uses scrypt password hashing;
+- controller routes require bearer session tokens;
+- login and logout are audited;
+- auth session table exists in the Postgres schema;
+- durable session persistence and user management UI are still pending.
 
 ---
 
@@ -692,7 +700,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [x] ✅ Postgres schema baseline.
 - [x] ✅ Hono API service.
 - [x] ✅ React/TanStack/shadcn UI shell.
-- [ ] ⏳ Local auth.
+- [ ] 🟦 Local auth.
 - [ ] 🟦 Default-deny RBAC permission enforcement.
 - [ ] 🟦 Audit event model and audit log UI.
 - [ ] 🟦 Live listen permission checks and audit trail.
@@ -854,7 +862,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add local auth sessions and password hashing.
+1. Persist auth sessions through Postgres instead of the in-memory runtime store.
 2. Add resource-scoped RBAC checks for rooms, nodes, channels, schedules, and recordings.
 3. Add audit filtering by actor, action, target, outcome, and time range.
 4. Return to the Debian recorder node when the X32 connection is confirmed.

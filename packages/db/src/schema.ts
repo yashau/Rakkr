@@ -100,6 +100,28 @@ export const userRoles = pgTable(
   }),
 );
 
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    ipAddress: varchar("ip_address", { length: 120 }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    tokenHash: text("token_hash").notNull().unique(),
+    userAgent: text("user_agent"),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    expiresAtIdx: index("auth_sessions_expires_at_idx").on(table.expiresAt),
+    tokenHashIdx: index("auth_sessions_token_hash_idx").on(table.tokenHash),
+    userIdx: index("auth_sessions_user_idx").on(table.userId),
+  }),
+);
+
 export const nodes = pgTable(
   "nodes",
   {

@@ -1,5 +1,6 @@
 import type {
   AuditEvent,
+  CurrentUser,
   MeterFrame,
   RecorderNode,
   RecordingProfile,
@@ -9,6 +10,7 @@ import type {
 } from "@rakkr/shared";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
+const authTokenKey = "rakkr.authToken";
 
 export interface ControllerStatus {
   activeRecordings: number;
@@ -22,17 +24,59 @@ export interface ControllerStatus {
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, init);
+  const headers = new Headers(init?.headers);
+  const token = getAuthToken();
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${apiBase}${path}`, {
+    ...init,
+    headers,
+  });
 
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
+}
+
+export function getAuthToken() {
+  return window.localStorage.getItem(authTokenKey);
+}
+
+export function setAuthToken(token: string) {
+  window.localStorage.setItem(authTokenKey, token);
+}
+
+export function clearAuthToken() {
+  window.localStorage.removeItem(authTokenKey);
 }
 
 export const api = {
   auditEvents: () => fetchJson<{ data: AuditEvent[] }>("/api/v1/audit-events"),
+  currentUser: () => fetchJson<{ data: CurrentUser }>("/api/v1/auth/me"),
+  login: (email: string, password: string) =>
+    fetchJson<{ data: { expiresAt: string; token: string; user: CurrentUser } }>(
+      "/api/v1/auth/login",
+      {
+        body: JSON.stringify({ email, password }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    ),
+  logout: () =>
+    fetchJson<void>("/api/v1/auth/logout", {
+      method: "POST",
+    }),
   meterFrame: (nodeId: string) => fetchJson<{ data: MeterFrame }>(`/api/v1/nodes/${nodeId}/meters`),
   nodes: () => fetchJson<{ data: RecorderNode[] }>("/api/v1/nodes"),
   recordings: () => fetchJson<{ data: RecordingSummary[] }>("/api/v1/recordings"),

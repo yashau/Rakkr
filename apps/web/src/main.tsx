@@ -1,4 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createRootRoute,
   createRoute,
@@ -7,11 +13,12 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { CalendarDays, Database, Gauge, Radio, Settings, ShieldCheck } from "lucide-react";
+import { CalendarDays, Database, Gauge, LogOut, Radio, Settings, ShieldCheck } from "lucide-react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { Button } from "@/components/ui/button";
+import { api, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/api";
 import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
 import { NodesPage } from "@/pages/nodes";
@@ -23,6 +30,22 @@ import "./styles.css";
 const queryClient = new QueryClient();
 
 function RootLayout() {
+  const queryClient = useQueryClient();
+  const [authToken, setAuthTokenState] = React.useState(() => getAuthToken());
+  const currentUserQuery = useQuery({
+    enabled: Boolean(authToken),
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+    retry: false,
+  });
+  const logoutMutation = useMutation({
+    mutationFn: api.logout,
+    onSettled: () => {
+      clearAuthToken();
+      setAuthTokenState(null);
+      queryClient.clear();
+    },
+  });
   const navItems = [
     { icon: Gauge, label: "Dashboard", to: "/" },
     { icon: Radio, label: "Nodes", to: "/nodes" },
@@ -30,6 +53,28 @@ function RootLayout() {
     { icon: Database, label: "Recordings", to: "/recordings" },
     { icon: ShieldCheck, label: "Audit", to: "/audit" },
   ] as const;
+
+  if (!authToken || currentUserQuery.isError) {
+    return (
+      <LoginScreen
+        onLogin={(token) => {
+          setAuthToken(token);
+          setAuthTokenState(token);
+          queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+        }}
+      />
+    );
+  }
+
+  if (currentUserQuery.isPending) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-stone-100 text-sm text-muted-foreground">
+        Loading Rakkr
+      </div>
+    );
+  }
+
+  const currentUser = currentUserQuery.data.data;
 
   return (
     <div className="min-h-screen bg-stone-100 text-foreground">
@@ -69,9 +114,21 @@ function RootLayout() {
               <p className="text-sm text-muted-foreground">Council Chamber Rack</p>
             </div>
             <div className="flex items-center gap-2">
+              <div className="hidden text-right text-sm md:block">
+                <div className="font-medium">{currentUser.name}</div>
+                <div className="text-xs text-muted-foreground">{currentUser.roles.join(", ")}</div>
+              </div>
               <Button variant="outline">
                 <Settings className="size-4" />
                 Settings
+              </Button>
+              <Button
+                disabled={logoutMutation.isPending}
+                onClick={() => logoutMutation.mutate()}
+                variant="outline"
+              >
+                <LogOut className="size-4" />
+                Logout
               </Button>
               <Button>
                 <Radio className="size-4" />
@@ -85,6 +142,70 @@ function RootLayout() {
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
+  const [email, setEmail] = React.useState("admin@rakkr.local");
+  const [password, setPassword] = React.useState("");
+  const loginMutation = useMutation({
+    mutationFn: () => api.login(email, password),
+    onSuccess: (response) => onLogin(response.data.token),
+  });
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-stone-100 px-4">
+      <section className="w-full max-w-sm rounded-lg border border-border bg-panel p-5 shadow-sm">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+            <Radio className="size-5" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold">Rakkr</h1>
+            <p className="text-sm text-muted-foreground">Local controller sign in</p>
+          </div>
+        </div>
+
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            loginMutation.mutate();
+          }}
+        >
+          <label className="grid gap-2 text-sm font-medium">
+            Email
+            <input
+              autoComplete="username"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              value={email}
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm font-medium">
+            Password
+            <input
+              autoComplete="current-password"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              value={password}
+            />
+          </label>
+
+          {loginMutation.isError ? (
+            <p className="text-sm text-red-700">Invalid email or password.</p>
+          ) : null}
+
+          <Button disabled={loginMutation.isPending} type="submit">
+            <ShieldCheck className="size-4" />
+            Sign In
+          </Button>
+        </form>
+      </section>
     </div>
   );
 }
