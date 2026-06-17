@@ -33,23 +33,34 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Health monitoring          | First-class watchdog, local event log, central events, Prometheus/Mimir export |
 | Date format rule           | ISO-style year-first display in browser timezone                               |
 
+## Status Legend
+
+| Emoji | Meaning                               |
+| ----- | ------------------------------------- |
+| ✅    | Complete and checked in               |
+| 🟦    | Scaffolded and ready to build on      |
+| 🟨    | Designed or partially implemented     |
+| 🚧    | Current or next active focus          |
+| ⏳    | Not started                           |
+| 🧊    | Deferred intentionally                |
+
 ## Progress Dashboard
 
 | Workstream           | Status      | Notes                                                          |
 | -------------------- | ----------- | -------------------------------------------------------------- |
-| Product discovery    | Complete    | Initial scope, features, and technical direction captured      |
-| Monorepo scaffold    | Complete    | `mise`, `pnpm`, Cargo workspace, Docker Compose, CI            |
-| Controller API       | Scaffolded  | Hono API with status, nodes, schedules, recordings, meters     |
-| Controller UI        | Scaffolded  | TanStack/shadcn operations dashboard on Tailwind 4              |
-| Recorder agent       | Scaffolded  | Rust CLI with inventory and synthetic telemetry scaffold        |
-| Test rig integration | Not started | Debian + X32 Rack available for hardware discovery             |
-| Health watchdog      | Designed    | Core non-AI checks first, AI quality analysis later            |
-| Scheduler            | Designed    | Human-friendly rules, metadata ownership, watchdog integration |
-| Storage upload       | Deferred    | Interface/stubs only in early milestones                       |
-| OIDC                 | Deferred    | Local auth first, Azure AD ready later                         |
-| RBAC                 | Designed    | Permission model must gate every controller and monitor action  |
-| Audit trail          | Designed    | Allowed and denied actions must be recorded with useful context |
-| Observability        | Designed    | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
+| Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
+| Monorepo scaffold    | ✅ Complete  | `mise`, `pnpm`, Cargo workspace, Docker Compose, CI            |
+| Controller API       | 🟦 Scaffold  | Hono API with status, nodes, schedules, recordings, meters     |
+| Controller UI        | 🟦 Scaffold  | TanStack/shadcn operations dashboard on Tailwind 4              |
+| Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory and synthetic telemetry scaffold        |
+| Test rig integration | 🚧 Next      | Debian + X32 Rack available for hardware discovery             |
+| Health watchdog      | 🟨 Designed  | Core non-AI checks first, AI quality analysis later            |
+| Scheduler            | 🟨 Designed  | Human-friendly rules, metadata ownership, watchdog integration |
+| Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
+| OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
+| RBAC                 | 🟨 Designed  | Permission model must gate every controller and monitor action |
+| Audit trail          | 🟨 Designed  | Allowed and denied actions must be recorded with useful context |
+| Observability        | 🟨 Designed  | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
 ## North Star
 
@@ -670,65 +681,65 @@ Audit records must be queryable from the controller UI by actor, action, target,
 
 ## Must Have
 
-- [x] `mise` monorepo scaffold.
-- [x] Docker Compose for local controller stack.
-- [x] Postgres schema baseline.
-- [x] Hono API service.
-- [x] React/TanStack/shadcn UI shell.
-- [ ] Local auth.
-- [ ] Default-deny RBAC permission enforcement.
-- [ ] Audit event model and audit log UI.
-- [ ] Live listen permission checks and audit trail.
-- [ ] Recording control permission checks and audit trail.
-- [ ] Node enrollment model.
-- [x] Rust recorder agent skeleton.
-- [ ] Audio device discovery on Debian/X32 test rig.
-- [ ] Realtime meters.
-- [ ] Recording job model.
-- [ ] Voice MP3 VBR default profile.
-- [ ] Local recording cache.
-- [ ] Recording library metadata.
-- [ ] Scheduler data model.
-- [ ] Human-friendly schedule UI.
-- [ ] Schedule-owned filename/folder/tag templates.
-- [ ] Watchdog event model.
-- [ ] Scheduled low-signal alert rule.
-- [ ] Local node event log.
-- [ ] Central event store.
-- [ ] Prometheus metrics endpoint.
+- [x] ✅ `mise` monorepo scaffold.
+- [x] ✅ Docker Compose for local controller stack.
+- [x] ✅ Postgres schema baseline.
+- [x] ✅ Hono API service.
+- [x] ✅ React/TanStack/shadcn UI shell.
+- [ ] ⏳ Local auth.
+- [ ] 🟨 Default-deny RBAC permission enforcement.
+- [ ] 🟨 Audit event model and audit log UI.
+- [ ] 🟨 Live listen permission checks and audit trail.
+- [ ] 🟨 Recording control permission checks and audit trail.
+- [ ] ⏳ Node enrollment model.
+- [x] ✅ Rust recorder agent skeleton.
+- [ ] 🚧 Audio device discovery on Debian/X32 test rig.
+- [ ] 🟦 Realtime meters.
+- [ ] ⏳ Recording job model.
+- [ ] 🟦 Voice MP3 VBR default profile.
+- [ ] ⏳ Local recording cache.
+- [ ] 🟦 Recording library metadata.
+- [ ] 🟨 Scheduler data model.
+- [ ] ⏳ Human-friendly schedule UI.
+- [ ] 🟨 Schedule-owned filename/folder/tag templates.
+- [ ] 🟨 Watchdog event model.
+- [ ] 🟨 Scheduled low-signal alert rule.
+- [ ] ⏳ Local node event log.
+- [ ] 🟦 Central event store.
+- [ ] 🟦 Prometheus metrics endpoint.
 
 ## Should Have
 
-- [ ] Multiple simultaneous recording jobs per node.
-- [ ] Multiple interfaces per node.
-- [ ] Channel aliases and groups.
-- [ ] Mono-to-stereo-mix channel mode.
-- [ ] Auto file splitting by length.
-- [ ] Playback controls.
-- [ ] Download recordings.
-- [ ] Tags/folders/search filters.
-- [ ] Node health dashboard.
-- [ ] Disk/CPU/audio backend health.
-- [ ] Xrun and device disconnect tracking.
-- [ ] Failed upload retry queue skeleton.
-- [ ] Checksum verification.
-- [ ] Waveform previews.
-- [ ] Template rollout and rollback.
+- [ ] ⏳ Multiple simultaneous recording jobs per node.
+- [ ] 🟦 Multiple interfaces per node.
+- [ ] 🟦 Channel aliases and groups.
+- [ ] 🟦 Mono-to-stereo-mix channel mode.
+- [ ] ⏳ Auto file splitting by length.
+- [ ] ⏳ Playback controls.
+- [ ] ⏳ Download recordings.
+- [ ] 🟦 Tags/folders/search filters.
+- [ ] 🟦 Node health dashboard.
+- [ ] ⏳ Disk/CPU/audio backend health.
+- [ ] ⏳ Xrun and device disconnect tracking.
+- [ ] 🧊 Failed upload retry queue skeleton.
+- [ ] ⏳ Checksum verification.
+- [ ] ⏳ Waveform previews.
+- [ ] ⏳ Template rollout and rollback.
 
 ## Later
 
-- [ ] SMB upload provider.
-- [ ] S3 upload provider.
-- [ ] Azure AD OIDC.
-- [ ] Iroh remote transport.
-- [ ] Live monitor audio enhancement.
-- [ ] Local VAD.
-- [ ] Noise vs speech scoring.
-- [ ] AI voice quality analysis.
-- [ ] Transcription snippets.
-- [ ] Notification integrations.
-- [ ] Public holiday calendars.
-- [ ] Derived MP3/AAC browser playback assets.
+- [ ] 🧊 SMB upload provider.
+- [ ] 🧊 S3 upload provider.
+- [ ] 🧊 Azure AD OIDC.
+- [ ] 🧊 Iroh remote transport.
+- [ ] 🧊 Live monitor audio enhancement.
+- [ ] 🧊 Local VAD.
+- [ ] 🧊 Noise vs speech scoring.
+- [ ] 🧊 AI voice quality analysis.
+- [ ] 🧊 Transcription snippets.
+- [ ] 🧊 Notification integrations.
+- [ ] 🧊 Public holiday calendars.
+- [ ] 🧊 Derived MP3/AAC browser playback assets.
 
 ---
 
