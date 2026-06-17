@@ -100,6 +100,29 @@ export const userRoles = pgTable(
   }),
 );
 
+export const userResourceGrants = pgTable(
+  "user_resource_grants",
+  {
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    grantedByUserId: uuid("granted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    resourceId: varchar("resource_id", { length: 160 }).notNull(),
+    resourceType: varchar("resource_type", { length: 80 }).notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.resourceType, table.resourceId] }),
+    resourceIdx: index("user_resource_grants_resource_idx").on(
+      table.resourceType,
+      table.resourceId,
+    ),
+    userIdx: index("user_resource_grants_user_idx").on(table.userId),
+  }),
+);
+
 export const authSessions = pgTable(
   "auth_sessions",
   {

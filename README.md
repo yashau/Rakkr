@@ -62,6 +62,7 @@ docs/
 mise run dev          # API + web UI
 mise run build        # TypeScript packages/apps + Rust agent
 mise run check        # LOC, TypeScript, Oxlint, Oxfmt, Cargo, Clippy, Miri
+mise run db:generate  # Drizzle migration generation
 mise run node:format  # Oxfmt for Node/TypeScript files
 mise run rust:fmt     # format Rust crates
 ```

@@ -1,7 +1,16 @@
 import { createHash, randomBytes, timingSafeEqual, scrypt as scryptCallback } from "node:crypto";
 
-import { and, authSessions, createDatabase, eq, gt, isNull, users } from "@rakkr/db";
-import { rolePermissions, type CurrentUser, type Role } from "@rakkr/shared";
+import {
+  and,
+  authSessions,
+  createDatabase,
+  eq,
+  gt,
+  isNull,
+  userResourceGrants,
+  users,
+} from "@rakkr/db";
+import { rolePermissions, type CurrentUser, type ResourceGrant, type Role } from "@rakkr/shared";
 
 const passwordHashVersion = "scrypt";
 const passwordKeyLength = 64;
@@ -132,13 +141,15 @@ export class LocalAuthService {
 
   async localAdmin(): Promise<CurrentUser> {
     const role = localRole();
+    const userId = localAdminId();
 
     return {
       email: process.env.RAKKR_LOCAL_ADMIN_EMAIL ?? "admin@rakkr.local",
-      id: localAdminId(),
+      id: userId,
       name: process.env.RAKKR_LOCAL_ADMIN_NAME ?? "Local Admin",
       permissions: [...rolePermissions[role]],
       provider: "local",
+      resourceGrants: await this.resourceGrantsForUser(userId),
       roles: [role],
     };
   }
@@ -177,6 +188,8 @@ export class LocalAuthService {
           },
           target: users.id,
         });
+
+      await this.persistResourceGrants(session.user);
 
       await db.insert(authSessions).values({
         expiresAt: session.expiresAt,
@@ -226,6 +239,7 @@ export class LocalAuthService {
         .where(eq(authSessions.tokenHash, tokenHash));
 
       const role = localRole();
+      const resourceGrants = await this.resourceGrantsForUser(row.userId);
 
       return {
         sessionId: row.sessionId,
@@ -235,6 +249,7 @@ export class LocalAuthService {
           name: row.userName,
           permissions: [...rolePermissions[role]],
           provider: "local",
+          resourceGrants,
           roles: [role],
         },
       };
@@ -259,6 +274,53 @@ export class LocalAuthService {
     } catch (error) {
       this.markDatabaseUnavailable(error);
     }
+  }
+
+  private async persistResourceGrants(user: CurrentUser) {
+    const db = this.availableDatabase();
+
+    if (!db || user.resourceGrants.length === 0) {
+      return;
+    }
+
+    try {
+      await db
+        .insert(userResourceGrants)
+        .values(
+          user.resourceGrants.map((grant) => ({
+            resourceId: grant.resourceId,
+            resourceType: grant.resourceType,
+            userId: user.id,
+          })),
+        )
+        .onConflictDoNothing();
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+    }
+  }
+
+  private async resourceGrantsForUser(userId: string): Promise<ResourceGrant[]> {
+    const db = this.availableDatabase();
+
+    if (db) {
+      try {
+        const rows = await db
+          .select({
+            resourceId: userResourceGrants.resourceId,
+            resourceType: userResourceGrants.resourceType,
+          })
+          .from(userResourceGrants)
+          .where(eq(userResourceGrants.userId, userId));
+
+        if (rows.length > 0) {
+          return rows;
+        }
+      } catch (error) {
+        this.markDatabaseUnavailable(error);
+      }
+    }
+
+    return userId === localAdminId() ? localResourceGrantsFromEnv() : [];
   }
 
   private availableDatabase() {
@@ -360,6 +422,34 @@ function localAdminId() {
   }
 
   return defaultLocalAdminId;
+}
+
+function localResourceGrantsFromEnv(): ResourceGrant[] {
+  const raw = process.env.RAKKR_LOCAL_RESOURCE_GRANTS;
+
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    return Object.entries(parsed).flatMap(([resourceType, values]) => {
+      if (!Array.isArray(values)) {
+        return [];
+      }
+
+      return values
+        .filter((resourceId): resourceId is string => typeof resourceId === "string")
+        .map((resourceId) => ({
+          resourceId,
+          resourceType,
+        }));
+    });
+  } catch (error) {
+    console.warn("invalid RAKKR_LOCAL_RESOURCE_GRANTS JSON; ignoring scoped grants", error);
+    return [];
+  }
 }
 
 function isUuid(value: string) {

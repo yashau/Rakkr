@@ -55,6 +55,10 @@ run = "pnpm exec oxfmt --write apps packages \"!packages/db/drizzle/**\""
 description = "Check Node/TypeScript formatting with Oxfmt"
 run = "pnpm exec oxfmt --check apps packages \"!packages/db/drizzle/**\""
 
+[tasks."db:generate"]
+description = "Generate Drizzle migrations"
+run = "pnpm --filter @rakkr/db db:generate"
+
 [tasks."rust:build"]
 description = "Build Rust crates"
 run = "cargo build --workspace"

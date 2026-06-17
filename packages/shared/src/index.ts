@@ -49,6 +49,10 @@ export type Role = (typeof roles)[number];
 
 export const permissionSchema = z.enum(permissions);
 export const roleSchema = z.enum(roles);
+export const resourceGrantSchema = z.object({
+  resourceId: z.string().min(1),
+  resourceType: z.string().min(1),
+});
 
 export const rolePermissions: Record<Role, readonly Permission[]> = {
   admin: permissions.filter((permission) => permission !== "system:admin"),
@@ -97,6 +101,7 @@ export const currentUserSchema = z.object({
   name: z.string().min(1),
   permissions: z.array(permissionSchema),
   provider: z.enum(["local", "oidc"]),
+  resourceGrants: z.array(resourceGrantSchema),
   roles: z.array(roleSchema),
 });
 
@@ -219,7 +224,9 @@ export const recordingSummarySchema = z.object({
   healthStatus: z.enum(["healthy", "warning", "critical", "unknown"]),
   id: z.string().min(1),
   name: z.string().min(1),
+  nodeId: z.string().min(1).optional(),
   recordedAt: isoDateTimeSchema,
+  scheduleId: z.string().min(1).optional(),
   source: recordingSourceSchema,
   status: recordingStatusSchema,
   tags: z.array(z.string().min(1)),
@@ -275,5 +282,6 @@ export type NodeStatus = z.infer<typeof nodeStatusSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;
 export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;
+export type ResourceGrant = z.infer<typeof resourceGrantSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;

@@ -28,6 +28,11 @@ const port = Number(process.env.PORT ?? 8787);
 const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 
 type AuditTarget = AuditEvent["target"];
+type AppBindings = {
+  Variables: {
+    auth: AuthResult;
+  };
+};
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
@@ -36,7 +41,7 @@ const loginRequestSchema = z.object({
   password: z.string().min(1),
 });
 
-function requestContext(c: Context, sessionId?: string) {
+function requestContext(c: Context<AppBindings>, sessionId?: string) {
   return {
     ipAddress: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip"),
     sessionId: sessionId ?? c.req.header("x-rakkr-session-id"),
@@ -45,7 +50,7 @@ function requestContext(c: Context, sessionId?: string) {
 }
 
 async function recordAuditEvent(
-  c: Context,
+  c: Context<AppBindings>,
   input: {
     action: string;
     after?: Record<string, unknown>;
@@ -100,8 +105,8 @@ async function recordAuditEvent(
 function requirePermission(
   permission: Permission,
   action: string,
-  target: (c: Context) => AuditTarget = () => ({ type: "controller" }),
-): MiddlewareHandler {
+  target: (c: Context<AppBindings>) => AuditTarget = () => ({ type: "controller" }),
+): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     const auth = await authService.authenticate(c.req.header("authorization"));
     const auditTarget = target(c);
@@ -138,6 +143,7 @@ function requirePermission(
       );
     }
 
+    c.set("auth", auth);
     await next();
   };
 }
@@ -171,39 +177,45 @@ function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
     return true;
   }
 
-  const grants = localResourceGrants();
-  const exactGrants = grants.get(target.type) ?? new Set<string>();
-  const wildcardGrants = grants.get("*") ?? new Set<string>();
-
-  return exactGrants.has(target.id) || exactGrants.has("*") || wildcardGrants.has("*");
+  return resourceScopeTargets(target).some((candidate) =>
+    user.resourceGrants.some(
+      (grant) =>
+        (grant.resourceType === candidate.type || grant.resourceType === "*") &&
+        (grant.resourceId === candidate.id || grant.resourceId === "*"),
+    ),
+  );
 }
 
-function localResourceGrants() {
-  const grants = new Map<string, Set<string>>();
-  const raw = process.env.RAKKR_LOCAL_RESOURCE_GRANTS;
+function resourceScopeTargets(target: AuditTarget): AuditTarget[] {
+  const targets = [target];
 
-  if (!raw) {
-    return grants;
-  }
+  if (target.type === "recording" && target.id) {
+    const recording = recordings.find((candidate) => candidate.id === target.id);
 
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-
-    for (const [resourceType, values] of Object.entries(parsed)) {
-      if (!Array.isArray(values)) {
-        continue;
-      }
-
-      grants.set(
-        resourceType,
-        new Set(values.filter((value): value is string => typeof value === "string")),
-      );
+    if (recording?.nodeId) {
+      targets.push({ id: recording.nodeId, type: "node" });
     }
-  } catch (error) {
-    console.warn("invalid RAKKR_LOCAL_RESOURCE_GRANTS JSON; ignoring scoped grants", error);
+
+    if (recording?.scheduleId) {
+      targets.push({ id: recording.scheduleId, type: "schedule" });
+    }
   }
 
-  return grants;
+  if (target.type === "schedule" && target.id) {
+    const schedule = schedules.find((candidate) => candidate.id === target.id);
+
+    if (schedule?.nodeId) {
+      targets.push({ id: schedule.nodeId, type: "node" });
+    }
+  }
+
+  return targets.filter(
+    (candidate, index, allTargets) =>
+      candidate.id &&
+      allTargets.findIndex(
+        (other) => other.type === candidate.type && other.id === candidate.id,
+      ) === index,
+  );
 }
 
 const nodes: RecorderNode[] = [
@@ -258,7 +270,9 @@ const recordings: RecordingSummary[] = [
     healthStatus: "healthy",
     id: "rec_demo_001",
     name: "2026-06-15_0900_Council Meeting_Council Chamber Rack",
+    nodeId: "node_x32_test",
     recordedAt: "2026-06-15T04:00:00.000Z",
+    scheduleId: "sched_council_weekly",
     source: "schedule",
     status: "cached",
     tags: ["council", "voice"],
@@ -316,7 +330,37 @@ function prometheusMetrics() {
   return `${lines.join("\n")}\n`;
 }
 
-const app = new Hono();
+function currentAuth(c: Context<AppBindings>) {
+  return c.get("auth");
+}
+
+function currentUser(c: Context<AppBindings>) {
+  const user = currentAuth(c).user;
+
+  if (!user) {
+    throw new Error("Authenticated route reached without a user");
+  }
+
+  return user;
+}
+
+function scopedNodes(user: NonNullable<AuthResult["user"]>) {
+  return nodes.filter((node) => hasResourceScope(user, { id: node.id, type: "node" }));
+}
+
+function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
+  return schedules.filter((schedule) =>
+    hasResourceScope(user, { id: schedule.id, type: "schedule" }),
+  );
+}
+
+function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
+  return recordings.filter((recording) =>
+    hasResourceScope(user, { id: recording.id, type: "recording" }),
+  );
+}
+
+export const app = new Hono<AppBindings>();
 
 app.use("*", logger());
 app.use(
@@ -343,18 +387,22 @@ app.get("/metrics", requirePermission("metrics:read", "metrics.read"), (c) =>
   }),
 );
 
-app.get("/api/v1/status", requirePermission("node:read", "status.read"), (c) =>
-  c.json({
-    activeRecordings: recordings.filter((recording) => recording.status === "recording").length,
-    cachedRecordings: recordings.filter((recording) => recording.cached).length,
+app.get("/api/v1/status", requirePermission("node:read", "status.read"), (c) => {
+  const visibleNodes = scopedNodes(currentUser(c));
+  const visibleRecordings = scopedRecordings(currentUser(c));
+
+  return c.json({
+    activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
+      .length,
+    cachedRecordings: visibleRecordings.filter((recording) => recording.cached).length,
     criticalAlerts: 0,
-    nodeCount: nodes.length,
-    onlineNodes: nodes.filter((node) => node.status === "online").length,
+    nodeCount: visibleNodes.length,
+    onlineNodes: visibleNodes.filter((node) => node.status === "online").length,
     recordingProfile: defaultVoiceRecordingProfile,
     startedAt: startedAt.toISOString(),
     watchdogPolicy: defaultScheduledVoiceWatchdogPolicy,
-  }),
-);
+  });
+});
 
 app.post("/api/v1/auth/login", async (c) => {
   const body = loginRequestSchema.safeParse(await c.req.json().catch(() => ({})));
@@ -449,7 +497,7 @@ app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.re
 );
 
 app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), (c) =>
-  c.json({ data: nodes }),
+  c.json({ data: scopedNodes(currentUser(c)) }),
 );
 app.get(
   "/api/v1/nodes/:nodeId/meters",
@@ -482,6 +530,7 @@ app.post(
     if (!node) {
       await recordAuditEvent(c, {
         action: "listen.monitor.start.failed",
+        auth: currentAuth(c),
         outcome: "failed",
         permission: "listen:monitor",
         reason: "node_not_found",
@@ -498,6 +547,7 @@ app.post(
 
     await recordAuditEvent(c, {
       action: "listen.monitor.start.succeeded",
+      auth: currentAuth(c),
       correlationIds: {
         listenSessionId: sessionId,
       },
@@ -529,28 +579,39 @@ app.post(
   },
 );
 
-app.get("/api/v1/meter-events", requirePermission("node:read", "meters.stream"), (c) =>
-  streamSSE(c, async (stream) => {
+app.get("/api/v1/meter-events", requirePermission("node:read", "meters.stream"), (c) => {
+  const user = currentUser(c);
+
+  return streamSSE(c, async (stream) => {
     while (true) {
-      await stream.writeSSE({
-        data: JSON.stringify(buildMeterFrame()),
-        event: "meter",
-      });
+      const frame = buildMeterFrame();
+
+      if (hasResourceScope(user, { id: frame.nodeId, type: "node" })) {
+        await stream.writeSSE({
+          data: JSON.stringify(frame),
+          event: "meter",
+        });
+      }
+
       await stream.sleep(1000);
     }
-  }),
-);
+  });
+});
 
 app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), (c) =>
-  c.json({ data: schedules }),
+  c.json({ data: scopedSchedules(currentUser(c)) }),
 );
 app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), (c) =>
-  c.json({ data: recordings }),
+  c.json({ data: scopedRecordings(currentUser(c)) }),
 );
 
 app.post(
   "/api/v1/recordings",
-  requirePermission("recording:create", "recordings.start"),
+  requirePermission("recording:create", "recordings.start", () => ({
+    id: "node_x32_test",
+    name: "Council Chamber Rack",
+    type: "node",
+  })),
   async (c) => {
     const now = new Date();
     const recording: RecordingSummary = {
@@ -560,6 +621,7 @@ app.post(
       healthStatus: "unknown",
       id: `rec_${randomUUID()}`,
       name: `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_Council Chamber Rack`,
+      nodeId: "node_x32_test",
       recordedAt: now.toISOString(),
       source: "ad_hoc",
       status: "recording",
@@ -570,6 +632,7 @@ app.post(
 
     await recordAuditEvent(c, {
       action: "recordings.start.succeeded",
+      auth: currentAuth(c),
       correlationIds: {
         recordingId: recording.id,
       },
@@ -603,6 +666,7 @@ app.post(
     if (!recording) {
       await recordAuditEvent(c, {
         action: "recordings.stop.failed",
+        auth: currentAuth(c),
         outcome: "failed",
         permission: "recording:control",
         reason: "recording_not_found",
@@ -623,6 +687,7 @@ app.post(
 
     await recordAuditEvent(c, {
       action: "recordings.stop.succeeded",
+      auth: currentAuth(c),
       after: {
         status: recording.status,
       },
@@ -643,12 +708,14 @@ app.post(
   },
 );
 
-serve(
-  {
-    fetch: app.fetch,
-    port,
-  },
-  (info) => {
-    console.log(`Rakkr API listening on http://localhost:${info.port}`);
-  },
-);
+if (process.env.RAKKR_API_NO_LISTEN !== "1") {
+  serve(
+    {
+      fetch: app.fetch,
+      port,
+    },
+    (info) => {
+      console.log(`Rakkr API listening on http://localhost:${info.port}`);
+    },
+  );
+}
