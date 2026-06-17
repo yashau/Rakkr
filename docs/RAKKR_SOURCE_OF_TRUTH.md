@@ -25,7 +25,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | ORM                        | Drizzle                                                                        |
 | Access control             | Default-deny RBAC for every user, node, recording, listen, and admin action    |
 | Recorder agent             | Rust                                                                           |
-| Network model              | Trusted LAN first with direct controller/node connection                       |
+| Network model              | Trusted LAN first, with encrypted controller/node transport                    |
 | Future remote connectivity | Iroh preferred over libp2p if NAT traversal is needed later                    |
 | Default recording profile  | Voice, `128kbps MP3 VBR`, configurable                                         |
 | Storage uploads            | Stubbed initially, future SMB/S3 providers                                     |
@@ -162,7 +162,7 @@ flowchart LR
 | Database             | Postgres                        | Strong relational model for schedules, events, recordings, and metadata               |
 | ORM/query layer      | Drizzle                         | SQL-first schema ownership, migrations, and strong TypeScript ergonomics              |
 | Recorder agent       | Rust                            | Good fit for audio IO, long-running agents, reliability, and native Linux integration |
-| Initial transport    | HTTP/WebSocket over trusted LAN | Simple, observable, debuggable                                                        |
+| Initial transport    | Encrypted HTTP/WebSocket over trusted LAN | Simple, observable, debuggable, confidential                                |
 | Future NAT traversal | Iroh                            | Better fit than libp2p for keyed device dialing and direct QUIC connections           |
 | AI quality analysis  | Pluggable future provider       | Keep core recorder independent from AI availability                                   |
 
@@ -170,11 +170,26 @@ flowchart LR
 
 Start with direct LAN connectivity:
 
-- node enrollment over trusted LAN;
+- node enrollment over encrypted trusted LAN;
 - node-originated heartbeat/control channel where practical;
-- controller commands over authenticated HTTP/WebSocket;
-- realtime meter streaming over WebSocket;
-- live monitor stream with modest latency tolerance.
+- controller commands over authenticated, encrypted HTTP/WebSocket;
+- realtime meter streaming over encrypted WebSocket;
+- live monitor stream with modest latency tolerance over encrypted transport.
+
+Trusting the LAN only means Rakkr can assume direct routability during early development. It must not mean plaintext controller/node traffic. All controller-to-node and node-to-controller communication should use transport-layer encryption for confidentiality and integrity.
+
+Required encrypted flows:
+
+- node enrollment and credential bootstrap;
+- heartbeats and node status;
+- recorder commands and command acknowledgements;
+- realtime meter frames;
+- live monitor/listen audio;
+- recording/job metadata;
+- local event log sync;
+- health events and alert updates.
+
+Initial development can use locally trusted certificates or a development CA. Production should support managed controller/node certificates, certificate rotation, and a path toward mutual TLS or equivalent node identity.
 
 Keep the transport boundary abstract:
 
@@ -545,7 +560,8 @@ Initial:
 
 - local auth;
 - default-deny RBAC roles and permissions;
-- trusted LAN;
+- trusted LAN for reachability only;
+- encrypted transport for all controller/node communication;
 - authenticated node enrollment;
 - node tokens/keys;
 - permission-gated controller routes, streams, and commands;
