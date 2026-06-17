@@ -7,8 +7,12 @@ rust = "1.95.0"
 _.file = ".env"
 
 [tasks.install]
-description = "Install JavaScript workspace dependencies"
+description = "Install workspace dependencies with mise-managed pnpm"
 run = "pnpm install"
+
+[tasks."install:ci"]
+description = "Install workspace dependencies in CI with the locked dependency graph"
+run = "pnpm install --frozen-lockfile"
 
 [tasks.dev]
 description = "Run the API and web UI"

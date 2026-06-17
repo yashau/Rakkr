@@ -8,20 +8,22 @@ The project source of truth lives in [docs/RAKKR_SOURCE_OF_TRUTH.md](docs/RAKKR_
 
 | Layer             | Choice                                                          |
 | ----------------- | --------------------------------------------------------------- |
-| Tooling           | `mise`, `pnpm`, Cargo                                           |
+| Tooling           | `mise` as the canonical entrypoint for Node.js, pnpm, and Rust  |
 | Controller API    | Hono on Node.js                                                 |
 | Controller UI     | React, TanStack Router, TanStack Query, shadcn-style components |
 | Database          | Postgres, Drizzle schema package                                |
 | Recorder agent    | Rust                                                            |
-| Initial transport | Trusted LAN HTTP/WebSocket-ready boundary                       |
+| Initial transport | Encrypted HTTP/WebSocket-ready boundary over trusted LAN        |
+
+`mise` owns workspace setup and repository commands. pnpm, Node.js, Rust, Cargo, Clippy, Miri, Oxlint, and Oxfmt are pinned or invoked through mise tasks.
 
 ## Quick Start
 
 ```powershell
 mise install
-pnpm install
+mise run install
 docker compose up -d postgres
-pnpm dev
+mise run dev
 ```
 
 Useful URLs:
@@ -48,10 +50,11 @@ docs/
 ## Development Commands
 
 ```powershell
-pnpm dev       # API + web UI
-pnpm build     # TypeScript packages/apps + Rust agent
-pnpm check     # TypeScript checks + Cargo check
-pnpm format    # Prettier + cargo fmt
+mise run dev          # API + web UI
+mise run build        # TypeScript packages/apps + Rust agent
+mise run check        # LOC, TypeScript, Oxlint, Oxfmt, Cargo, Clippy, Miri
+mise run node:format  # Oxfmt for Node/TypeScript files
+mise run rust:fmt     # format Rust crates
 ```
 
 ## First Hardware Target

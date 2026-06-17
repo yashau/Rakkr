@@ -51,7 +51,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Workstream           | Status      | Notes                                                          |
 | -------------------- | ----------- | -------------------------------------------------------------- |
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
-| Monorepo scaffold    | ✅ Complete  | `mise`, `pnpm`, Cargo workspace, Docker Compose, CI            |
+| Monorepo scaffold    | ✅ Complete  | `mise`-managed Node.js, pnpm, Rust/Cargo, Docker Compose, CI   |
 | Controller API       | 🟦 Scaffold  | Hono API with status, nodes, schedules, recordings, meters     |
 | Controller UI        | 🟦 Scaffold  | TanStack/shadcn operations dashboard on Tailwind 4              |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with generic Linux inventory and telemetry scaffold    |
@@ -164,8 +164,8 @@ flowchart LR
 
 | Decision             | Choice                          | Rationale                                                                             |
 | -------------------- | ------------------------------- | ------------------------------------------------------------------------------------- |
-| Monorepo setup       | `mise`                          | Reproducible developer tooling and runtime pinning                                    |
-| JS package manager   | `pnpm`                          | Good monorepo ergonomics                                                              |
+| Monorepo setup       | `mise`                          | Canonical setup and command entrypoint for all developers and CI                      |
+| JS package manager   | `pnpm` through `mise`           | Good monorepo ergonomics while keeping `mise` as the user-facing tool                 |
 | API framework        | Hono                            | Small, fast, TypeScript-friendly, suitable for API + realtime endpoints               |
 | UI framework         | React + Vite                    | Fast iteration and strong ecosystem                                                   |
 | Routing              | TanStack Router                 | Typed routes and app-scale routing                                                    |
@@ -759,7 +759,7 @@ Goal: create the monorepo and make local development pleasant.
 Exit criteria:
 
 - `mise` installs required runtimes.
-- `pnpm` workspace exists.
+- `mise`-managed pnpm workspace exists.
 - Controller API starts locally.
 - UI starts locally.
 - Docker Compose starts Postgres.

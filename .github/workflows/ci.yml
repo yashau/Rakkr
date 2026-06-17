@@ -21,6 +21,6 @@ jobs:
           install: true
 
       - run: mise trust
-      - run: pnpm install --frozen-lockfile
+      - run: mise run install:ci
       - run: mise run check
       - run: mise run build
