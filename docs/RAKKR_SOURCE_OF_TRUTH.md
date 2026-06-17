@@ -61,7 +61,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
 | RBAC                 | 🟦 Scaffold  | Durable grants, scoped middleware, and collection filtering     |
-| Audit trail          | 🟦 Scaffold  | Postgres-backed audit store, API events, and audit view started |
+| Audit trail          | 🟦 Scaffold  | Postgres-backed store, API/UI filters, and audit view started   |
 | Observability        | 🟨 Designed  | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
 ## North Star
@@ -692,7 +692,7 @@ Recording-control audit events should include actor, command, schedule/ad hoc so
 
 Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
-Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context.
+Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. The audit API and UI filter by actor, action, target, outcome, and time range.
 
 ---
 
@@ -867,9 +867,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add audit filtering by actor, action, target, outcome, and time range.
-2. Add user management UI for local auth roles and scopes.
-3. Add playback/download RBAC audit events for recording-library actions.
+1. Add user management UI for local auth roles and scopes.
+2. Add playback/download RBAC audit events for recording-library actions.
+3. Add durable room/interface/channel scope inheritance beyond node and schedule relationships.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
 

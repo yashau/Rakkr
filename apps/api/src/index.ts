@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
 
 import {
+  auditOutcomeSchema,
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
   type AuditEvent,
@@ -20,7 +21,7 @@ import {
   type ScheduleSummary,
 } from "@rakkr/shared";
 
-import { createAuditStore } from "./audit-store.js";
+import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 
 const startedAt = new Date();
@@ -39,6 +40,29 @@ const authService = new LocalAuthService();
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+});
+const optionalTextFilterSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().max(160).optional(),
+);
+const optionalDateFilterSchema = optionalTextFilterSchema.refine(
+  (value) => !value || !Number.isNaN(Date.parse(value)),
+  "Expected an ISO date/time value",
+);
+const auditEventsQuerySchema = z.object({
+  action: optionalTextFilterSchema,
+  actor: optionalTextFilterSchema,
+  from: optionalDateFilterSchema,
+  limit: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.coerce.number().int().min(1).max(500).optional(),
+  ),
+  outcome: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    auditOutcomeSchema.optional(),
+  ),
+  target: optionalTextFilterSchema,
+  to: optionalDateFilterSchema,
 });
 
 function requestContext(c: Context<AppBindings>, sessionId?: string) {
@@ -166,6 +190,18 @@ function authorizationReason(input: {
   }
 
   return undefined;
+}
+
+function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEventFilters {
+  return {
+    action: input.action,
+    actor: input.actor,
+    from: input.from ? new Date(input.from) : undefined,
+    limit: input.limit,
+    outcome: input.outcome,
+    target: input.target,
+    to: input.to ? new Date(input.to) : undefined,
+  };
 }
 
 function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
@@ -492,9 +528,15 @@ app.get("/api/v1/auth/me", async (c) => {
   });
 });
 
-app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), async (c) =>
-  c.json({ data: await auditStore.list() }),
-);
+app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), async (c) => {
+  const query = auditEventsQuerySchema.safeParse(c.req.query());
+
+  if (!query.success) {
+    return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
+  }
+
+  return c.json({ data: await auditStore.list(auditFilters(query.data)) });
+});
 
 app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), (c) =>
   c.json({ data: scopedNodes(currentUser(c)) }),

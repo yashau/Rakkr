@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, gte, ilike, isNull, lte, or, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -8,4 +8,4 @@ export function createDatabase(databaseUrl: string) {
   return drizzle(client);
 }
 
-export { and, desc, eq, gt, isNull };
+export { and, desc, eq, gt, gte, ilike, isNull, lte, or, type SQL };

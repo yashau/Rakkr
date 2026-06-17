@@ -1,9 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
+import { RotateCcw, Search } from "lucide-react";
+import { useState } from "react";
+import type { AuditOutcome } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { api, type AuditEventFilters } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+
+const outcomes = ["allowed", "denied", "failed", "partial", "succeeded"] as const;
+
+interface AuditFilterDraft {
+  action: string;
+  actor: string;
+  from: string;
+  outcome: "" | AuditOutcome;
+  target: string;
+  to: string;
+}
+
+const emptyDraft: AuditFilterDraft = {
+  action: "",
+  actor: "",
+  from: "",
+  outcome: "",
+  target: "",
+  to: "",
+};
 
 function outcomeClass(outcome: string) {
   if (outcome === "denied" || outcome === "failed") {
@@ -18,13 +42,20 @@ function outcomeClass(outcome: string) {
 }
 
 export function AuditPage() {
+  const [draft, setDraft] = useState<AuditFilterDraft>(emptyDraft);
+  const [filters, setFilters] = useState<AuditEventFilters>({});
   const auditQuery = useQuery({
-    queryFn: api.auditEvents,
-    queryKey: ["audit-events"],
+    queryFn: () => api.auditEvents(filters),
+    queryKey: ["audit-events", filters],
     refetchInterval: 5000,
   });
 
   const events = auditQuery.data?.data ?? [];
+  const updateDraft = (key: keyof AuditFilterDraft, value: string) =>
+    setDraft((current) => ({
+      ...current,
+      [key]: value,
+    }));
 
   return (
     <Card className="overflow-hidden rounded-lg shadow-sm">
@@ -32,6 +63,78 @@ export function AuditPage() {
         <h2 className="text-base font-semibold">Audit Trail</h2>
         <p className="text-sm text-muted-foreground">Permission decisions and controller actions</p>
       </div>
+
+      <form
+        className="grid gap-3 border-b border-border bg-panel px-4 py-3 md:grid-cols-[1fr_1fr_1fr_150px] xl:grid-cols-[1fr_1fr_1fr_150px_190px_190px_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setFilters(filtersFromDraft(draft));
+        }}
+      >
+        <FilterInput
+          label="Actor"
+          onChange={(value) => updateDraft("actor", value)}
+          value={draft.actor}
+        />
+        <FilterInput
+          label="Action"
+          onChange={(value) => updateDraft("action", value)}
+          value={draft.action}
+        />
+        <FilterInput
+          label="Target"
+          onChange={(value) => updateDraft("target", value)}
+          value={draft.target}
+        />
+
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Outcome
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onChange={(event) => updateDraft("outcome", event.target.value)}
+            value={draft.outcome}
+          >
+            <option value="">Any</option>
+            {outcomes.map((outcome) => (
+              <option key={outcome} value={outcome}>
+                {outcome}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <FilterInput
+          label="From"
+          onChange={(value) => updateDraft("from", value)}
+          type="datetime-local"
+          value={draft.from}
+        />
+        <FilterInput
+          label="To"
+          onChange={(value) => updateDraft("to", value)}
+          type="datetime-local"
+          value={draft.to}
+        />
+
+        <div className="flex items-end gap-2">
+          <Button className="h-9" type="submit">
+            <Search className="size-4" />
+            Apply
+          </Button>
+          <Button
+            className="h-9"
+            onClick={() => {
+              setDraft(emptyDraft);
+              setFilters({});
+            }}
+            type="button"
+            variant="outline"
+          >
+            <RotateCcw className="size-4" />
+            Clear
+          </Button>
+        </div>
+      </form>
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -83,4 +186,49 @@ export function AuditPage() {
       </div>
     </Card>
   );
+}
+
+function FilterInput({
+  label,
+  onChange,
+  type = "text",
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  type?: "datetime-local" | "text";
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+      {label}
+      <input
+        className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onChange={(event) => onChange(event.target.value)}
+        type={type}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function filtersFromDraft(draft: AuditFilterDraft): AuditEventFilters {
+  return {
+    action: valueOrUndefined(draft.action),
+    actor: valueOrUndefined(draft.actor),
+    from: dateTimeOrUndefined(draft.from),
+    outcome: draft.outcome || undefined,
+    target: valueOrUndefined(draft.target),
+    to: dateTimeOrUndefined(draft.to),
+  };
+}
+
+function valueOrUndefined(value: string) {
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function dateTimeOrUndefined(value: string) {
+  return value ? new Date(value).toISOString() : undefined;
 }

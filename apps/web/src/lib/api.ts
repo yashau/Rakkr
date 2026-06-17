@@ -1,5 +1,6 @@
 import type {
   AuditEvent,
+  AuditOutcome,
   CurrentUser,
   MeterFrame,
   RecorderNode,
@@ -21,6 +22,15 @@ export interface ControllerStatus {
   recordingProfile: RecordingProfile;
   startedAt: string;
   watchdogPolicy: WatchdogPolicy;
+}
+
+export interface AuditEventFilters {
+  action?: string;
+  actor?: string;
+  from?: string;
+  outcome?: AuditOutcome;
+  target?: string;
+  to?: string;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -60,7 +70,8 @@ export function clearAuthToken() {
 }
 
 export const api = {
-  auditEvents: () => fetchJson<{ data: AuditEvent[] }>("/api/v1/audit-events"),
+  auditEvents: (filters: AuditEventFilters = {}) =>
+    fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
   currentUser: () => fetchJson<{ data: CurrentUser }>("/api/v1/auth/me"),
   login: (email: string, password: string) =>
     fetchJson<{ data: { expiresAt: string; token: string; user: CurrentUser } }>(
@@ -98,3 +109,17 @@ export const api = {
       method: "POST",
     }),
 };
+
+function withQuery(path: string, filters: AuditEventFilters) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  const query = params.toString();
+
+  return query ? `${path}?${query}` : path;
+}
