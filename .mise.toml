@@ -55,19 +55,26 @@ run = "pnpm exec oxfmt --check apps packages \"!packages/db/drizzle/**\""
 description = "Build Rust crates"
 run = "cargo build --workspace"
 
+[tasks."rust:components"]
+description = "Install Rust components required by local and CI checks"
+run = "mise x rust@1.95.0 -- rustup component add clippy rustfmt"
+
 [tasks."rust:check"]
 description = "Run cargo check"
 run = "cargo check --workspace"
 
 [tasks."rust:fmt"]
+depends = ["rust:components"]
 description = "Format Rust crates"
 run = "cargo fmt --all"
 
 [tasks."rust:fmt-check"]
+depends = ["rust:components"]
 description = "Check Rust formatting"
 run = "cargo fmt --all --check"
 
 [tasks."rust:clippy"]
+depends = ["rust:components"]
 description = "Run Clippy with warnings denied"
 run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 
