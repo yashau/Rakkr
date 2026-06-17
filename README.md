@@ -37,7 +37,7 @@ Local dev sign-in defaults come from `.env.example`:
 - Email: `admin@rakkr.local`
 - Password: `rakkr-local-dev-password`
 
-Override them with `RAKKR_LOCAL_ADMIN_EMAIL`, `RAKKR_LOCAL_ADMIN_PASSWORD`, and `RAKKR_LOCAL_ADMIN_NAME`.
+Override them with `RAKKR_LOCAL_ADMIN_EMAIL`, `RAKKR_LOCAL_ADMIN_ID`, `RAKKR_LOCAL_ADMIN_PASSWORD`, and `RAKKR_LOCAL_ADMIN_NAME`.
 
 ## Workspace
 

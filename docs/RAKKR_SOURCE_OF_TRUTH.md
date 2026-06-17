@@ -593,8 +593,9 @@ Current scaffold status:
 - local admin login uses scrypt password hashing;
 - controller routes require bearer session tokens;
 - login and logout are audited;
-- auth session table exists in the Postgres schema;
-- durable session persistence and user management UI are still pending.
+- auth sessions persist through Postgres when `DATABASE_URL` and migrations are available;
+- in-memory auth session fallback keeps local development usable before Postgres is ready;
+- user management UI is still pending.
 
 ---
 
@@ -862,9 +863,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Persist auth sessions through Postgres instead of the in-memory runtime store.
-2. Add resource-scoped RBAC checks for rooms, nodes, channels, schedules, and recordings.
-3. Add audit filtering by actor, action, target, outcome, and time range.
+1. Add resource-scoped RBAC checks for rooms, nodes, channels, schedules, and recordings.
+2. Add audit filtering by actor, action, target, outcome, and time range.
+3. Add user management UI for local auth roles.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
 

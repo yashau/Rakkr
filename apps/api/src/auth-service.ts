@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual, scrypt as scryptCallback } from "node:crypto";
 
+import { and, authSessions, createDatabase, eq, gt, isNull, users } from "@rakkr/db";
 import { rolePermissions, type CurrentUser, type Role } from "@rakkr/shared";
 
 const passwordHashVersion = "scrypt";
@@ -9,6 +10,7 @@ const scryptBlockSize = 8;
 const scryptParallelization = 1;
 const scryptMaxMemory = 64 * 1024 * 1024;
 const sessionTtlMs = 12 * 60 * 60 * 1000;
+const defaultLocalAdminId = "00000000-0000-4000-8000-000000000001";
 
 interface AuthSession {
   createdAt: Date;
@@ -20,6 +22,11 @@ interface AuthSession {
 export interface AuthResult {
   sessionId?: string;
   user?: CurrentUser;
+}
+
+export interface SessionContext {
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 export interface LoginResult {
@@ -40,9 +47,16 @@ export class AuthError extends Error {
 
 export class LocalAuthService {
   private readonly sessions = new Map<string, AuthSession>();
+  private readonly db?: ReturnType<typeof createDatabase>;
+  private dbAvailable: boolean;
   private localAdminPasswordHash?: string;
 
-  async login(email: string, password: string): Promise<LoginResult> {
+  constructor(databaseUrl = process.env.DATABASE_URL) {
+    this.db = databaseUrl ? createDatabase(databaseUrl) : undefined;
+    this.dbAvailable = Boolean(this.db);
+  }
+
+  async login(email: string, password: string, context: SessionContext = {}): Promise<LoginResult> {
     const user = await this.localAdmin();
 
     if (email.toLowerCase() !== user.email.toLowerCase()) {
@@ -59,13 +73,15 @@ export class LocalAuthService {
     const token = `rakkr_${randomBytes(32).toString("base64url")}`;
     const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + sessionTtlMs);
-
-    this.sessions.set(tokenHash, {
+    const session: AuthSession = {
       createdAt: new Date(),
       expiresAt,
       tokenHash,
       user,
-    });
+    };
+
+    this.sessions.set(tokenHash, session);
+    await this.persistLoginSession(session, context);
 
     return {
       expiresAt: expiresAt.toISOString(),
@@ -83,6 +99,13 @@ export class LocalAuthService {
     }
 
     const tokenHash = hashToken(token);
+
+    const persistedSession = await this.authenticateFromDatabase(tokenHash);
+
+    if (persistedSession) {
+      return persistedSession;
+    }
+
     const session = this.sessions.get(tokenHash);
 
     if (!session || session.expiresAt.getTime() <= Date.now()) {
@@ -100,7 +123,10 @@ export class LocalAuthService {
     const token = bearerToken(authorizationHeader);
 
     if (token) {
-      this.sessions.delete(hashToken(token));
+      const tokenHash = hashToken(token);
+
+      this.sessions.delete(tokenHash);
+      await this.revokeDatabaseSession(tokenHash);
     }
   }
 
@@ -109,7 +135,7 @@ export class LocalAuthService {
 
     return {
       email: process.env.RAKKR_LOCAL_ADMIN_EMAIL ?? "admin@rakkr.local",
-      id: process.env.RAKKR_LOCAL_ADMIN_ID ?? "local_admin",
+      id: localAdminId(),
       name: process.env.RAKKR_LOCAL_ADMIN_NAME ?? "Local Admin",
       permissions: [...rolePermissions[role]],
       provider: "local",
@@ -124,6 +150,124 @@ export class LocalAuthService {
     }
 
     return this.localAdminPasswordHash;
+  }
+
+  private async persistLoginSession(session: AuthSession, context: SessionContext) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return;
+    }
+
+    try {
+      await db
+        .insert(users)
+        .values({
+          email: session.user.email,
+          id: session.user.id,
+          name: session.user.name,
+          passwordHash: await this.localAdminHash(),
+        })
+        .onConflictDoUpdate({
+          set: {
+            email: session.user.email,
+            name: session.user.name,
+            passwordHash: await this.localAdminHash(),
+            updatedAt: new Date(),
+          },
+          target: users.id,
+        });
+
+      await db.insert(authSessions).values({
+        expiresAt: session.expiresAt,
+        ipAddress: context.ipAddress,
+        tokenHash: session.tokenHash,
+        userAgent: context.userAgent,
+        userId: session.user.id,
+      });
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+    }
+  }
+
+  private async authenticateFromDatabase(tokenHash: string): Promise<AuthResult | undefined> {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return undefined;
+    }
+
+    try {
+      const [row] = await db
+        .select({
+          sessionId: authSessions.id,
+          userEmail: users.email,
+          userId: users.id,
+          userName: users.name,
+        })
+        .from(authSessions)
+        .innerJoin(users, eq(authSessions.userId, users.id))
+        .where(
+          and(
+            eq(authSessions.tokenHash, tokenHash),
+            isNull(authSessions.revokedAt),
+            gt(authSessions.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+
+      if (!row) {
+        return undefined;
+      }
+
+      await db
+        .update(authSessions)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(authSessions.tokenHash, tokenHash));
+
+      const role = localRole();
+
+      return {
+        sessionId: row.sessionId,
+        user: {
+          email: row.userEmail,
+          id: row.userId,
+          name: row.userName,
+          permissions: [...rolePermissions[role]],
+          provider: "local",
+          roles: [role],
+        },
+      };
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+      return undefined;
+    }
+  }
+
+  private async revokeDatabaseSession(tokenHash: string) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return;
+    }
+
+    try {
+      await db
+        .update(authSessions)
+        .set({ revokedAt: new Date() })
+        .where(eq(authSessions.tokenHash, tokenHash));
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+    }
+  }
+
+  private availableDatabase() {
+    return this.dbAvailable ? this.db : undefined;
+  }
+
+  private markDatabaseUnavailable(error: unknown) {
+    this.dbAvailable = false;
+    console.warn("auth session persistence unavailable; using memory store", error);
   }
 }
 
@@ -206,6 +350,20 @@ function localRole(): Role {
   }
 
   return "owner";
+}
+
+function localAdminId() {
+  const id = process.env.RAKKR_LOCAL_ADMIN_ID;
+
+  if (id && isUuid(id)) {
+    return id;
+  }
+
+  return defaultLocalAdminId;
+}
+
+function isUuid(value: string) {
+  return /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
 }
 
 function defaultLocalPassword() {

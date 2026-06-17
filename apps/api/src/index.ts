@@ -20,8 +20,8 @@ import {
   type ScheduleSummary,
 } from "@rakkr/shared";
 
-import { createAuditStore } from "./audit-store";
-import { AuthError, LocalAuthService, type AuthResult } from "./auth-service";
+import { createAuditStore } from "./audit-store.js";
+import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -304,7 +304,7 @@ app.post("/api/v1/auth/login", async (c) => {
   }
 
   try {
-    const result = await authService.login(body.data.email, body.data.password);
+    const result = await authService.login(body.data.email, body.data.password, requestContext(c));
 
     await recordAuditEvent(c, {
       action: "auth.login.succeeded",
