@@ -23,7 +23,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Auth                       | Local auth first, Azure AD OIDC-ready architecture                             |
 | Database                   | Postgres                                                                       |
 | ORM                        | Drizzle                                                                        |
-| Access control             | Proper RBAC with roles and permissions                                         |
+| Access control             | Default-deny RBAC for every user, node, recording, listen, and admin action    |
 | Recorder agent             | Rust                                                                           |
 | Network model              | Trusted LAN first with direct controller/node connection                       |
 | Future remote connectivity | Iroh preferred over libp2p if NAT traversal is needed later                    |
@@ -47,6 +47,8 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Scheduler            | Designed    | Human-friendly rules, metadata ownership, watchdog integration |
 | Storage upload       | Deferred    | Interface/stubs only in early milestones                       |
 | OIDC                 | Deferred    | Local auth first, Azure AD ready later                         |
+| RBAC                 | Designed    | Permission model must gate every controller and monitor action  |
+| Audit trail          | Designed    | Allowed and denied actions must be recorded with useful context |
 | Observability        | Designed    | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
 ## North Star
@@ -58,6 +60,7 @@ Rakkr should make audio recording boringly reliable. A user should know:
 - whether a scheduled recording is healthy while it is happening;
 - where every recording is stored;
 - what metadata, tags, and schedule produced it;
+- who accessed, controlled, listened to, or changed anything;
 - whether anything suspicious happened during capture.
 
 The system must favor reliability, observability, and recoverability over cleverness.
@@ -121,6 +124,8 @@ flowchart LR
 - Runs locally in Docker for development and production-friendly deployment.
 - Uses Postgres as the central system of record.
 - Uses local auth first while keeping an OIDC boundary ready for Azure AD.
+- Enforces RBAC server-side for all routes, streams, and commands.
+- Writes a proper audit trail for allowed and denied user, node, and service actions.
 
 ### Recorder Node Agent
 
@@ -539,19 +544,109 @@ Display examples:
 Initial:
 
 - local auth;
-- RBAC roles and permissions;
+- default-deny RBAC roles and permissions;
 - trusted LAN;
 - authenticated node enrollment;
 - node tokens/keys;
-- permission-gated controller routes.
+- permission-gated controller routes, streams, and commands;
+- audit trail for security-sensitive allowed and denied actions.
 
 Future:
 
 - Azure AD OIDC;
-- role-based permissions;
-- audit log for settings and recording actions;
 - optional remote node mode using Iroh;
 - stronger node identity and key rotation.
+
+---
+
+## RBAC And Audit Trail
+
+RBAC is a product invariant, not just a UI feature. Hiding a button is useful, but the controller must enforce permissions server-side before any action runs.
+
+Core rules:
+
+- default deny unless a role grants the exact permission;
+- every API route, realtime stream, live monitor stream, and node command requires authorization;
+- every privileged read and write action records an audit event;
+- denied authorization attempts are audit events too;
+- UI state should mirror permissions, but never replace server checks;
+- scheduled and automated node actions run under service identities and are audited.
+
+## Permission Scope Model
+
+Permissions should be scoped to the smallest practical resource:
+
+| Scope     | Examples                                      |
+| --------- | --------------------------------------------- |
+| Global    | system settings, auth settings, role editing  |
+| Site      | site-wide node inventory and policies         |
+| Room      | listen to a room, view room health            |
+| Node      | enroll, rename, control, restart, configure   |
+| Interface | view meters, map channels, assign templates   |
+| Channel   | listen, record, rename, include in profiles   |
+| Schedule  | create, edit, pause, run now, delete          |
+| Recording | playback, download, edit metadata, delete     |
+| Alert     | acknowledge, suppress, resolve, comment       |
+
+Scopes can be broad for administrators and narrow for operators. For example, a user may be allowed to listen to `Room A` but not `Room B`, or allowed to start scheduled recordings but not edit recording profiles.
+
+## Required Permission Families
+
+| Family             | Example Actions                                                      |
+| ------------------ | -------------------------------------------------------------------- |
+| Node inventory     | view node, edit alias/location/IP notes, enroll, disable             |
+| Metering           | view live meters, view channel details, view health timeline         |
+| Live listening     | start monitor stream, stop monitor stream, list active listeners     |
+| Recording control  | start, stop, pause, resume, cancel, retry failed job                 |
+| Recording library  | browse, playback, download, rename, tag, move folder, delete         |
+| Schedules          | create, edit, enable, disable, run now, skip occurrence, delete      |
+| Templates/settings | create, edit, deploy, rollback, assign to nodes/interfaces/channels  |
+| Alerts             | view, acknowledge, suppress, unsuppress, resolve, reopen             |
+| Audit              | view audit log, export audit log, configure retention                |
+| Administration     | manage users, roles, OIDC config, node credentials, system settings  |
+
+Listening to a room is always privileged. It must require an explicit `listen` style permission for the target room/node/interface/channel and must never be treated as a harmless read-only action.
+
+Recording controls are also privileged. Starting, stopping, pausing, resuming, or canceling a recording can affect legal, operational, and archival outcomes, so these actions require explicit permissions and audit events.
+
+## Audit Event Requirements
+
+The audit trail should answer who did what, to which resource, when, from where, whether it succeeded, and what changed.
+
+Minimum audit fields:
+
+| Field              | Requirement                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| Event ID           | Stable unique ID                                            |
+| Timestamp          | UTC ISO 8601                                                |
+| Actor              | User ID or service identity                                 |
+| Actor context      | Roles, session ID, IP address, user agent where available   |
+| Permission checked | Permission string and evaluated scope                       |
+| Action             | Canonical action name                                       |
+| Target             | Resource type and ID, plus friendly alias/name when known   |
+| Outcome            | allowed, denied, failed, partial, or succeeded              |
+| Reason             | Denial reason or failure message when applicable            |
+| Correlation IDs    | Request ID, command ID, schedule ID, recording ID as needed |
+| Before/after       | For settings, templates, metadata, roles, and schedules     |
+
+High-value audited actions:
+
+- login, logout, failed login, password/auth changes;
+- role and permission changes;
+- node enrollment, node credential rotation, node disable/delete;
+- live listening start, stop, failure, and denied attempts;
+- recording start, stop, pause, resume, cancel, and denied attempts;
+- schedule create, edit, enable, disable, skip, run-now, and delete;
+- recording playback, download, delete, rename, folder move, and tag changes;
+- template deployment and rollback;
+- alert acknowledge, suppress, unsuppress, resolve, and reopen;
+- export of recordings, metadata, logs, or audit records.
+
+Live listen audit events should include listener, target room/node/channel, start time, end time, duration, outcome, and a reason field when the UI collects one.
+
+Recording-control audit events should include actor, command, schedule/ad hoc source, target node/interface/channel map, profile, timestamp, and final command result.
+
+Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
 ---
 
@@ -565,6 +660,10 @@ Future:
 - [x] Hono API service.
 - [x] React/TanStack/shadcn UI shell.
 - [ ] Local auth.
+- [ ] Default-deny RBAC permission enforcement.
+- [ ] Audit event model and audit log UI.
+- [ ] Live listen permission checks and audit trail.
+- [ ] Recording control permission checks and audit trail.
 - [ ] Node enrollment model.
 - [x] Rust recorder agent skeleton.
 - [ ] Audio device discovery on Debian/X32 test rig.
@@ -598,7 +697,6 @@ Future:
 - [ ] Failed upload retry queue skeleton.
 - [ ] Checksum verification.
 - [ ] Waveform previews.
-- [ ] Audit log.
 - [ ] Template rollout and rollback.
 
 ## Later
@@ -645,6 +743,7 @@ Exit criteria:
 - Controller shows node online/offline state.
 - Controller shows live meters while not recording.
 - Basic local node event log exists.
+- Meter visibility is permission-gated.
 
 ## Milestone 2 - First Reliable Recording
 
@@ -659,6 +758,8 @@ Exit criteria:
 - Controller tracks cached recording metadata.
 - Playback and download work.
 - Recording file health events are captured.
+- Ad hoc recording controls are RBAC-gated and audited.
+- Playback and download are RBAC-gated and audited.
 
 ## Milestone 3 - Scheduling And Metadata Ownership
 
@@ -671,6 +772,7 @@ Exit criteria:
 - Schedule owns filename/folder/tag defaults.
 - Schedule exceptions and buffers work.
 - Schedule execution events appear in timeline.
+- Schedule create/edit/enable/disable/run-now/delete actions are RBAC-gated and audited.
 
 ## Milestone 4 - Watchdog Reliability
 
@@ -685,6 +787,7 @@ Exit criteria:
 - Auto-resolving alert lifecycle.
 - Recording quality timeline in UI.
 - Prometheus metrics exported.
+- Alert acknowledge/suppress/resolve actions are RBAC-gated and audited.
 
 ## Milestone 5 - Organization And Operations
 
@@ -696,7 +799,7 @@ Exit criteria:
 - Waveform previews.
 - Node inventory editing.
 - Template deployment.
-- Audit log.
+- Audit log search, filters, and export.
 - Upload provider stubs ready for SMB/S3.
 
 ---
