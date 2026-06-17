@@ -4,13 +4,15 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { streamSSE } from "hono/streaming";
-import type { MiddlewareHandler } from "hono";
+import { randomUUID } from "node:crypto";
+import type { Context, MiddlewareHandler } from "hono";
 
 import {
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
-  hasPermission,
   rolePermissions,
+  type AuditEvent,
+  type AuditOutcome,
   type CurrentUser,
   type MeterFrame,
   type Permission,
@@ -34,9 +36,89 @@ const localUser: CurrentUser = {
   roles: [localRole],
 };
 
-function requirePermission(permission: Permission): MiddlewareHandler {
+type AuditTarget = AuditEvent["target"];
+
+const auditEvents: AuditEvent[] = [];
+const maxAuditEvents = 500;
+
+function requestContext(c: Context) {
+  return {
+    ipAddress: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip"),
+    sessionId: c.req.header("x-rakkr-session-id") ?? "local-dev",
+    userAgent: c.req.header("user-agent"),
+  };
+}
+
+function recordAuditEvent(
+  c: Context,
+  input: {
+    action: string;
+    after?: Record<string, unknown>;
+    before?: Record<string, unknown>;
+    correlationIds?: Record<string, string>;
+    details?: Record<string, unknown>;
+    outcome: AuditOutcome;
+    permission?: Permission;
+    reason?: string;
+    target: AuditTarget;
+  },
+) {
+  const event: AuditEvent = {
+    action: input.action,
+    actor: {
+      id: localUser.id,
+      name: localUser.name,
+      roles: localUser.roles,
+      type: "user",
+    },
+    actorContext: requestContext(c),
+    after: input.after,
+    before: input.before,
+    correlationIds: input.correlationIds,
+    createdAt: new Date().toISOString(),
+    details: {
+      method: c.req.method,
+      path: c.req.path,
+      ...input.details,
+    },
+    id: `audit_${randomUUID()}`,
+    outcome: input.outcome,
+    permission: input.permission,
+    reason: input.reason,
+    target: input.target,
+  };
+
+  auditEvents.unshift(event);
+
+  if (auditEvents.length > maxAuditEvents) {
+    auditEvents.length = maxAuditEvents;
+  }
+
+  return event;
+}
+
+function requirePermission(
+  permission: Permission,
+  action: string,
+  target: (c: Context) => AuditTarget = () => ({ type: "controller" }),
+): MiddlewareHandler {
   return async (c, next) => {
-    if (!hasPermission(localRole, permission)) {
+    const allowed = localUser.permissions.includes(permission);
+    const auditTarget = target(c);
+
+    recordAuditEvent(c, {
+      action,
+      details: {
+        requiredPermission: permission,
+        roles: localUser.roles,
+      },
+      outcome: allowed ? "allowed" : "denied",
+      permission,
+      reason: allowed ? undefined : "missing_permission",
+      target: auditTarget,
+    });
+
+    if (!allowed) {
       return c.json(
         {
           error: "Forbidden",
@@ -181,15 +263,15 @@ app.get("/healthz", (c) =>
   }),
 );
 
-app.get("/metrics", (c) =>
+app.get("/metrics", requirePermission("metrics:read", "metrics.read"), (c) =>
   c.text(prometheusMetrics(), 200, {
     "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
   }),
 );
 
-app.get("/api/v1/status", requirePermission("node:read"), (c) =>
+app.get("/api/v1/status", requirePermission("node:read", "status.read"), (c) =>
   c.json({
-    activeRecordings: 0,
+    activeRecordings: recordings.filter((recording) => recording.status === "recording").length,
     cachedRecordings: recordings.filter((recording) => recording.cached).length,
     criticalAlerts: 0,
     nodeCount: nodes.length,
@@ -206,19 +288,92 @@ app.get("/api/v1/auth/me", (c) =>
   }),
 );
 
-app.get("/api/v1/nodes", requirePermission("node:read"), (c) => c.json({ data: nodes }));
-app.get("/api/v1/nodes/:nodeId/meters", requirePermission("node:read"), (c) => {
-  const nodeId = c.req.param("nodeId");
-  const frame = buildMeterFrame();
+app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), (c) =>
+  c.json({ data: auditEvents }),
+);
 
-  if (nodeId !== frame.nodeId) {
-    return c.json({ error: "Node not found" }, 404);
-  }
+app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), (c) =>
+  c.json({ data: nodes }),
+);
+app.get(
+  "/api/v1/nodes/:nodeId/meters",
+  requirePermission("node:read", "meters.read", (c) => ({
+    id: c.req.param("nodeId"),
+    type: "node",
+  })),
+  (c) => {
+    const nodeId = c.req.param("nodeId");
+    const frame = buildMeterFrame();
 
-  return c.json({ data: frame });
-});
+    if (nodeId !== frame.nodeId) {
+      return c.json({ error: "Node not found" }, 404);
+    }
 
-app.get("/api/v1/meter-events", requirePermission("node:read"), (c) =>
+    return c.json({ data: frame });
+  },
+);
+
+app.post(
+  "/api/v1/nodes/:nodeId/listen",
+  requirePermission("listen:monitor", "listen.monitor.start", (c) => ({
+    id: c.req.param("nodeId"),
+    type: "node",
+  })),
+  (c) => {
+    const nodeId = c.req.param("nodeId");
+    const node = nodes.find((candidate) => candidate.id === nodeId);
+
+    if (!node) {
+      recordAuditEvent(c, {
+        action: "listen.monitor.start.failed",
+        outcome: "failed",
+        permission: "listen:monitor",
+        reason: "node_not_found",
+        target: {
+          id: nodeId,
+          type: "node",
+        },
+      });
+
+      return c.json({ error: "Node not found" }, 404);
+    }
+
+    const sessionId = `listen_${randomUUID()}`;
+
+    recordAuditEvent(c, {
+      action: "listen.monitor.start.succeeded",
+      correlationIds: {
+        listenSessionId: sessionId,
+      },
+      details: {
+        mode: "stubbed",
+        targetLatencyMs: 1500,
+      },
+      outcome: "succeeded",
+      permission: "listen:monitor",
+      target: {
+        id: node.id,
+        name: node.alias,
+        type: "node",
+      },
+    });
+
+    return c.json(
+      {
+        data: {
+          mode: "stubbed",
+          nodeId: node.id,
+          sessionId,
+          startedAt: new Date().toISOString(),
+          targetLatencyMs: 1500,
+        },
+      },
+      202,
+    );
+  },
+);
+
+app.get("/api/v1/meter-events", requirePermission("node:read", "meters.stream"), (c) =>
   streamSSE(c, async (stream) => {
     while (true) {
       await stream.writeSSE({
@@ -230,11 +385,102 @@ app.get("/api/v1/meter-events", requirePermission("node:read"), (c) =>
   }),
 );
 
-app.get("/api/v1/schedules", requirePermission("schedule:read"), (c) =>
+app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), (c) =>
   c.json({ data: schedules }),
 );
-app.get("/api/v1/recordings", requirePermission("recording:read"), (c) =>
+app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), (c) =>
   c.json({ data: recordings }),
+);
+
+app.post("/api/v1/recordings", requirePermission("recording:create", "recordings.start"), (c) => {
+  const now = new Date();
+  const recording: RecordingSummary = {
+    cached: false,
+    durationSeconds: 0,
+    folder: `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
+    healthStatus: "unknown",
+    id: `rec_${randomUUID()}`,
+    name: `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_Council Chamber Rack`,
+    recordedAt: now.toISOString(),
+    source: "ad_hoc",
+    status: "recording",
+    tags: ["ad-hoc", "voice"],
+  };
+
+  recordings.unshift(recording);
+
+  recordAuditEvent(c, {
+    action: "recordings.start.succeeded",
+    correlationIds: {
+      recordingId: recording.id,
+    },
+    details: {
+      profileId: defaultVoiceRecordingProfile.id,
+      source: recording.source,
+    },
+    outcome: "succeeded",
+    permission: "recording:create",
+    target: {
+      id: recording.id,
+      name: recording.name,
+      type: "recording",
+    },
+  });
+
+  return c.json({ data: recording }, 202);
+});
+
+app.post(
+  "/api/v1/recordings/:recordingId/stop",
+  requirePermission("recording:control", "recordings.stop", (c) => ({
+    id: c.req.param("recordingId"),
+    type: "recording",
+  })),
+  (c) => {
+    const recordingId = c.req.param("recordingId");
+    const recording = recordings.find((candidate) => candidate.id === recordingId);
+
+    if (!recording) {
+      recordAuditEvent(c, {
+        action: "recordings.stop.failed",
+        outcome: "failed",
+        permission: "recording:control",
+        reason: "recording_not_found",
+        target: {
+          id: recordingId,
+          type: "recording",
+        },
+      });
+
+      return c.json({ error: "Recording not found" }, 404);
+    }
+
+    const before = { status: recording.status };
+
+    recording.cached = true;
+    recording.durationSeconds = Math.max(recording.durationSeconds, 1);
+    recording.status = "cached";
+
+    recordAuditEvent(c, {
+      action: "recordings.stop.succeeded",
+      after: {
+        status: recording.status,
+      },
+      before,
+      correlationIds: {
+        recordingId: recording.id,
+      },
+      outcome: "succeeded",
+      permission: "recording:control",
+      target: {
+        id: recording.id,
+        name: recording.name,
+        type: "recording",
+      },
+    });
+
+    return c.json({ data: recording });
+  },
 );
 
 serve(

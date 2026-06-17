@@ -58,8 +58,8 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Scheduler            | 🟨 Designed  | Human-friendly rules, metadata ownership, watchdog integration |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
-| RBAC                 | 🟨 Designed  | Permission model must gate every controller and monitor action |
-| Audit trail          | 🟨 Designed  | Allowed and denied actions must be recorded with useful context |
+| RBAC                 | 🟦 Scaffold  | Shared permissions and API middleware gate controller actions  |
+| Audit trail          | 🟦 Scaffold  | Audit schema, API events, and controller audit view started    |
 | Observability        | 🟨 Designed  | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
 ## North Star
@@ -687,10 +687,10 @@ Audit records must be queryable from the controller UI by actor, action, target,
 - [x] ✅ Hono API service.
 - [x] ✅ React/TanStack/shadcn UI shell.
 - [ ] ⏳ Local auth.
-- [ ] 🟨 Default-deny RBAC permission enforcement.
-- [ ] 🟨 Audit event model and audit log UI.
-- [ ] 🟨 Live listen permission checks and audit trail.
-- [ ] 🟨 Recording control permission checks and audit trail.
+- [ ] 🟦 Default-deny RBAC permission enforcement.
+- [ ] 🟦 Audit event model and audit log UI.
+- [ ] 🟦 Live listen permission checks and audit trail.
+- [ ] 🟦 Recording control permission checks and audit trail.
 - [ ] ⏳ Node enrollment model.
 - [x] ✅ Rust recorder agent skeleton.
 - [ ] 🚧 Audio device discovery on Debian/X32 test rig.

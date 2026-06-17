@@ -7,11 +7,12 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { CalendarDays, Database, Gauge, Radio, Settings } from "lucide-react";
+import { CalendarDays, Database, Gauge, Radio, Settings, ShieldCheck } from "lucide-react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { Button } from "@/components/ui/button";
+import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
 import { NodesPage } from "@/pages/nodes";
 import { RecordingsPage } from "@/pages/recordings";
@@ -27,6 +28,7 @@ function RootLayout() {
     { icon: Radio, label: "Nodes", to: "/nodes" },
     { icon: CalendarDays, label: "Schedules", to: "/schedules" },
     { icon: Database, label: "Recordings", to: "/recordings" },
+    { icon: ShieldCheck, label: "Audit", to: "/audit" },
   ] as const;
 
   return (
@@ -113,7 +115,19 @@ const recordingsRoute = createRoute({
   path: "/recordings",
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, nodesRoute, schedulesRoute, recordingsRoute]);
+const auditRoute = createRoute({
+  component: AuditPage,
+  getParentRoute: () => rootRoute,
+  path: "/audit",
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  nodesRoute,
+  schedulesRoute,
+  recordingsRoute,
+  auditRoute,
+]);
 
 const router = createRouter({ routeTree });
 

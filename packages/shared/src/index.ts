@@ -25,10 +25,12 @@ export const permissions = [
   "auth:manage",
   "health:acknowledge",
   "health:read",
+  "listen:monitor",
   "metrics:read",
   "node:control",
   "node:manage",
   "node:read",
+  "recording:control",
   "recording:create",
   "recording:delete",
   "recording:download",
@@ -54,9 +56,11 @@ export const rolePermissions: Record<Role, readonly Permission[]> = {
   operator: [
     "health:acknowledge",
     "health:read",
+    "listen:monitor",
     "metrics:read",
     "node:control",
     "node:read",
+    "recording:control",
     "recording:create",
     "recording:download",
     "recording:read",
@@ -84,6 +88,9 @@ export function hasAnyPermission(role: Role, required: Permission[]) {
   return required.some((permission) => hasPermission(role, permission));
 }
 
+export const auditOutcomeSchema = z.enum(["allowed", "denied", "failed", "partial", "succeeded"]);
+export const auditActorTypeSchema = z.enum(["node", "system", "user"]);
+
 export const currentUserSchema = z.object({
   email: z.string().email(),
   id: z.string().min(1),
@@ -91,6 +98,35 @@ export const currentUserSchema = z.object({
   permissions: z.array(permissionSchema),
   provider: z.enum(["local", "oidc"]),
   roles: z.array(roleSchema),
+});
+
+export const auditEventSchema = z.object({
+  action: z.string().min(1),
+  actor: z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    roles: z.array(roleSchema),
+    type: auditActorTypeSchema,
+  }),
+  actorContext: z.object({
+    ipAddress: z.string().optional(),
+    sessionId: z.string().optional(),
+    userAgent: z.string().optional(),
+  }),
+  after: z.record(z.string(), z.unknown()).optional(),
+  before: z.record(z.string(), z.unknown()).optional(),
+  correlationIds: z.record(z.string(), z.string()).optional(),
+  createdAt: isoDateTimeSchema,
+  details: z.record(z.string(), z.unknown()),
+  id: z.string().min(1),
+  outcome: auditOutcomeSchema,
+  permission: permissionSchema.optional(),
+  reason: z.string().optional(),
+  target: z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    type: z.string().min(1),
+  }),
 });
 
 export const audioChannelSchema = z.object({
@@ -226,6 +262,9 @@ export const defaultScheduledVoiceWatchdogPolicy = {
 } satisfies WatchdogPolicy;
 
 export type AudioChannel = z.infer<typeof audioChannelSchema>;
+export type AuditActorType = z.infer<typeof auditActorTypeSchema>;
+export type AuditEvent = z.infer<typeof auditEventSchema>;
+export type AuditOutcome = z.infer<typeof auditOutcomeSchema>;
 export type AudioInterface = z.infer<typeof audioInterfaceSchema>;
 export type AudioLevel = z.infer<typeof audioLevelSchema>;
 export type CurrentUser = z.infer<typeof currentUserSchema>;

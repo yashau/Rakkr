@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { Cpu, MapPin, Network } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Cpu, Headphones, MapPin, Network } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
@@ -11,6 +12,9 @@ export function NodesPage() {
     queryFn: api.nodes,
     queryKey: ["nodes"],
     refetchInterval: 5000,
+  });
+  const listenMutation = useMutation({
+    mutationFn: api.startListen,
   });
 
   return (
@@ -44,7 +48,16 @@ export function NodesPage() {
               </div>
             </div>
 
-            <div className="grid gap-2 text-sm md:min-w-72">
+            <div className="grid gap-3 text-sm md:min-w-72">
+              <Button
+                className="justify-self-start md:justify-self-end"
+                disabled={listenMutation.isPending}
+                onClick={() => listenMutation.mutate(node.id)}
+                variant="outline"
+              >
+                <Headphones className="size-4" />
+                Listen
+              </Button>
               {node.interfaces.map((audioInterface) => (
                 <div
                   className="rounded-md border border-stone-300 bg-stone-50 px-3 py-2"
