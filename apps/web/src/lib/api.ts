@@ -33,6 +33,23 @@ export interface AuditEventFilters {
   to?: string;
 }
 
+export interface RecordingDownloadTicket {
+  downloadId: string;
+  expiresAt: string;
+  fileName: string;
+  mode: "stubbed";
+  recordingId: string;
+  url: string;
+}
+
+export interface RecordingPlaybackSession {
+  mode: "stubbed";
+  recordingId: string;
+  sessionId: string;
+  startedAt: string;
+  streamUrl: string;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getAuthToken();
@@ -90,8 +107,16 @@ export const api = {
     }),
   meterFrame: (nodeId: string) => fetchJson<{ data: MeterFrame }>(`/api/v1/nodes/${nodeId}/meters`),
   nodes: () => fetchJson<{ data: RecorderNode[] }>("/api/v1/nodes"),
+  prepareRecordingDownload: (recordingId: string) =>
+    fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
+      method: "POST",
+    }),
   recordings: () => fetchJson<{ data: RecordingSummary[] }>("/api/v1/recordings"),
   schedules: () => fetchJson<{ data: ScheduleSummary[] }>("/api/v1/schedules"),
+  startPlayback: (recordingId: string) =>
+    fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
+      method: "POST",
+    }),
   startListen: (nodeId: string) =>
     fetchJson<{ data: { sessionId: string; startedAt: string } }>(
       `/api/v1/nodes/${nodeId}/listen`,

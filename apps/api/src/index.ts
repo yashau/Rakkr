@@ -396,6 +396,40 @@ function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
   );
 }
 
+function recordingHasFile(recording: RecordingSummary) {
+  return recording.cached || recording.status === "cached" || recording.status === "uploaded";
+}
+
+async function recordRecordingFileFailure(
+  c: Context<AppBindings>,
+  input: {
+    action: string;
+    permission: Permission;
+    reason: string;
+    recordingId: string;
+    targetName?: string;
+  },
+) {
+  await recordAuditEvent(c, {
+    action: input.action,
+    auth: currentAuth(c),
+    outcome: "failed",
+    permission: input.permission,
+    reason: input.reason,
+    target: {
+      id: input.recordingId,
+      name: input.targetName,
+      type: "recording",
+    },
+  });
+}
+
+function downloadFileName(recording: RecordingSummary) {
+  const cleanedName = recording.name.replace(/[^\w .-]/g, "_").trim();
+
+  return `${cleanedName || recording.id}.mp3`;
+}
+
 export const app = new Hono<AppBindings>();
 
 app.use("*", logger());
@@ -645,6 +679,147 @@ app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"
 );
 app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), (c) =>
   c.json({ data: scopedRecordings(currentUser(c)) }),
+);
+
+app.post(
+  "/api/v1/recordings/:recordingId/playback",
+  requirePermission("recording:playback", "recordings.playback.start", (c) => ({
+    id: c.req.param("recordingId"),
+    type: "recording",
+  })),
+  async (c) => {
+    const recordingId = c.req.param("recordingId");
+    const recording = recordings.find((candidate) => candidate.id === recordingId);
+
+    if (!recording) {
+      await recordRecordingFileFailure(c, {
+        action: "recordings.playback.failed",
+        permission: "recording:playback",
+        reason: "recording_not_found",
+        recordingId,
+      });
+
+      return c.json({ error: "Recording not found" }, 404);
+    }
+
+    if (!recordingHasFile(recording)) {
+      await recordRecordingFileFailure(c, {
+        action: "recordings.playback.failed",
+        permission: "recording:playback",
+        reason: "recording_not_cached",
+        recordingId,
+        targetName: recording.name,
+      });
+
+      return c.json({ error: "Recording is not ready for playback" }, 409);
+    }
+
+    const sessionId = `playback_${randomUUID()}`;
+
+    await recordAuditEvent(c, {
+      action: "recordings.playback.started",
+      auth: currentAuth(c),
+      correlationIds: {
+        playbackSessionId: sessionId,
+        recordingId: recording.id,
+      },
+      details: {
+        mode: "stubbed",
+        source: recording.source,
+      },
+      outcome: "succeeded",
+      permission: "recording:playback",
+      target: {
+        id: recording.id,
+        name: recording.name,
+        type: "recording",
+      },
+    });
+
+    return c.json(
+      {
+        data: {
+          mode: "stubbed",
+          recordingId: recording.id,
+          sessionId,
+          startedAt: new Date().toISOString(),
+          streamUrl: `/api/v1/recordings/${recording.id}/stream`,
+        },
+      },
+      202,
+    );
+  },
+);
+
+app.post(
+  "/api/v1/recordings/:recordingId/download",
+  requirePermission("recording:download", "recordings.download.prepare", (c) => ({
+    id: c.req.param("recordingId"),
+    type: "recording",
+  })),
+  async (c) => {
+    const recordingId = c.req.param("recordingId");
+    const recording = recordings.find((candidate) => candidate.id === recordingId);
+
+    if (!recording) {
+      await recordRecordingFileFailure(c, {
+        action: "recordings.download.failed",
+        permission: "recording:download",
+        reason: "recording_not_found",
+        recordingId,
+      });
+
+      return c.json({ error: "Recording not found" }, 404);
+    }
+
+    if (!recordingHasFile(recording)) {
+      await recordRecordingFileFailure(c, {
+        action: "recordings.download.failed",
+        permission: "recording:download",
+        reason: "recording_not_cached",
+        recordingId,
+        targetName: recording.name,
+      });
+
+      return c.json({ error: "Recording is not ready for download" }, 409);
+    }
+
+    const downloadId = `download_${randomUUID()}`;
+
+    await recordAuditEvent(c, {
+      action: "recordings.download.prepared",
+      auth: currentAuth(c),
+      correlationIds: {
+        downloadId,
+        recordingId: recording.id,
+      },
+      details: {
+        fileName: downloadFileName(recording),
+        mode: "stubbed",
+      },
+      outcome: "succeeded",
+      permission: "recording:download",
+      target: {
+        id: recording.id,
+        name: recording.name,
+        type: "recording",
+      },
+    });
+
+    return c.json(
+      {
+        data: {
+          downloadId,
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+          fileName: downloadFileName(recording),
+          mode: "stubbed",
+          recordingId: recording.id,
+          url: `/api/v1/recordings/${recording.id}/file`,
+        },
+      },
+      202,
+    );
+  },
 );
 
 app.post(

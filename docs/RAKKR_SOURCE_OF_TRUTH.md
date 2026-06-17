@@ -545,6 +545,8 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
+Current scaffold status: the recording library has UI controls and RBAC-gated controller actions for playback and download preparation. Both actions write audit events for success and failure. Actual cache-backed file streaming/download bytes still wait on the local recording cache implementation.
+
 ---
 
 ## Date And Time Rules
@@ -735,8 +737,8 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🟦 Channel aliases and groups.
 - [ ] 🟦 Mono-to-stereo-mix channel mode.
 - [ ] ⏳ Auto file splitting by length.
-- [ ] ⏳ Playback controls.
-- [ ] ⏳ Download recordings.
+- [ ] 🟦 Playback controls.
+- [ ] 🟦 Download recordings.
 - [ ] 🟦 Tags/folders/search filters.
 - [ ] 🟦 Node health dashboard.
 - [ ] ⏳ Disk/CPU/audio backend health.
@@ -868,7 +870,7 @@ Exit criteria:
 Continue controller trust and operations foundations while X32 validation is paused:
 
 1. Add user management UI for local auth roles and scopes.
-2. Add playback/download RBAC audit events for recording-library actions.
+2. Add cache-backed recording file serving for playback/download.
 3. Add durable room/interface/channel scope inheritance beyond node and schedule relationships.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
