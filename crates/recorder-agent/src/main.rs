@@ -32,6 +32,16 @@ async fn main() -> anyhow::Result<()> {
         "starting recorder agent scaffold"
     );
 
+    let meter_interface_id = inventory
+        .interfaces
+        .first()
+        .map(|audio_interface| audio_interface.id.clone())
+        .unwrap_or_else(|| "iface_default_capture".to_string());
+    let meter_channel_count = inventory
+        .interfaces
+        .first()
+        .map(|audio_interface| audio_interface.channel_count.max(1))
+        .unwrap_or(2);
     let mut ticker = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
     let mut tick = 0_u64;
 
@@ -43,8 +53,13 @@ async fn main() -> anyhow::Result<()> {
             }
             _ = ticker.tick() => {
                 tick += 1;
-                let frame = synthetic_meter_frame(&inventory.id, "iface_default_capture", 2, tick)
-                    .context("failed to create synthetic meter frame")?;
+                let frame = synthetic_meter_frame(
+                    &inventory.id,
+                    &meter_interface_id,
+                    meter_channel_count,
+                    tick,
+                )
+                .context("failed to create synthetic meter frame")?;
 
                 info!(
                     captured_at = %frame.captured_at,

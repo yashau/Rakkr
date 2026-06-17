@@ -19,6 +19,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Primary use case           | Reliable voice recording for meetings and long-running room audio              |
 | Deployment target          | Linux hosts, Dockerized controller services, Rust recorder agents              |
 | First test rig             | Debian recorder node at `172.22.145.152`, Behringer X32 Rack via USB           |
+| Hardware support stance    | X32 is only the first fixture; support generic Linux audio interfaces          |
 | Controller UI              | Hono API, React, TanStack Router, TanStack Query, shadcn/ui                    |
 | Auth                       | Local auth first, Azure AD OIDC-ready architecture                             |
 | Database                   | Postgres                                                                       |
@@ -41,6 +42,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | 🟦    | Scaffolded and ready to build on      |
 | 🟨    | Designed or partially implemented     |
 | 🚧    | Current or next active focus          |
+| ⏸️    | Paused or waiting on external state   |
 | ⏳    | Not started                           |
 | 🧊    | Deferred intentionally                |
 
@@ -52,8 +54,8 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Monorepo scaffold    | ✅ Complete  | `mise`, `pnpm`, Cargo workspace, Docker Compose, CI            |
 | Controller API       | 🟦 Scaffold  | Hono API with status, nodes, schedules, recordings, meters     |
 | Controller UI        | 🟦 Scaffold  | TanStack/shadcn operations dashboard on Tailwind 4              |
-| Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory and synthetic telemetry scaffold        |
-| Test rig integration | 🚧 Next      | Debian + X32 Rack available for hardware discovery             |
+| Recorder agent       | 🟦 Scaffold  | Rust CLI with generic Linux inventory and telemetry scaffold    |
+| Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
 | Health watchdog      | 🟨 Designed  | Core non-AI checks first, AI quality analysis later            |
 | Scheduler            | 🟨 Designed  | Human-friendly rules, metadata ownership, watchdog integration |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
@@ -218,7 +220,7 @@ Future remote mode should use Iroh before libp2p. libp2p is powerful, but Rakkr 
 ## Recorder Capabilities
 
 - Multiple recorder nodes.
-- Multiple audio interfaces per node.
+- Multiple well-supported Linux audio interfaces per node.
 - Multiple simultaneous recording jobs per node.
 - Configurable channel maps.
 - Mono, stereo, mono-to-stereo-mix, and grouped-channel recordings.
@@ -277,6 +279,8 @@ Nodes need rich identity, not just IDs.
 | Metadata | Tags and notes                               |
 
 The UI should make it obvious which physical room and device a node represents.
+
+The Behringer X32 Rack is the current physical test fixture, not a product-specific assumption. Recorder discovery should work with generic ALSA/JACK/PipeWire capture devices and expose enough raw identity to support per-device templates later.
 
 ---
 
@@ -693,7 +697,8 @@ Audit records must be queryable from the controller UI by actor, action, target,
 - [ ] 🟦 Recording control permission checks and audit trail.
 - [ ] ⏳ Node enrollment model.
 - [x] ✅ Rust recorder agent skeleton.
-- [ ] 🚧 Audio device discovery on Debian/X32 test rig.
+- [ ] 🟦 Generic Linux audio device discovery.
+- [ ] ⏸️ X32 test-rig validation.
 - [ ] 🟦 Realtime meters.
 - [ ] ⏳ Recording job model.
 - [ ] 🟦 Voice MP3 VBR default profile.
@@ -835,7 +840,7 @@ Exit criteria:
 
 | Question                             | Current Lean                                                       |
 | ------------------------------------ | ------------------------------------------------------------------ |
-| ALSA, JACK, or PipeWire first?       | Start with what the Debian/X32 rig exposes most cleanly            |
+| ALSA, JACK, or PipeWire first?       | Start with generic ALSA discovery; add JACK/PipeWire adapters next |
 | MP3 encoder choice in Rust pipeline? | To evaluate during agent prototype                                 |
 | Central live monitor protocol?       | Start simple; WebSocket/chunked stream, revisit if latency suffers |
 | Node local log storage               | SQLite likely                                                      |
@@ -845,12 +850,12 @@ Exit criteria:
 
 ## Current Next Action
 
-Connect the scaffold to real hardware discovery:
+Continue controller trust and operations foundations while X32 validation is paused:
 
-1. SSH into the Debian recorder node at `172.22.145.152`.
-2. Inspect ALSA/JACK/PipeWire visibility for the Behringer X32 Rack.
-3. Replace synthetic recorder-agent inventory with real device discovery.
-4. Stream real meter frames to the controller.
-5. Begin first ad hoc recording prototype.
+1. Persist audit events through Postgres instead of the in-memory controller store.
+2. Add local auth sessions and password hashing.
+3. Add resource-scoped RBAC checks for rooms, nodes, channels, schedules, and recordings.
+4. Return to the Debian recorder node when the X32 connection is confirmed.
+5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
 
 Last updated: `2026-06-17`
