@@ -296,6 +296,7 @@ export const auditEvents = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     actorDisplayName: varchar("actor_display_name", { length: 160 }),
+    actorId: varchar("actor_id", { length: 160 }),
     actorRoles: jsonb("actor_roles")
       .notNull()
       .default(sql`'[]'::jsonb`),
@@ -314,9 +315,7 @@ export const auditEvents = pgTable(
       .default(sql`'{}'::jsonb`),
     id: uuid("id").primaryKey().defaultRandom(),
     outcome: auditOutcomeEnum("outcome").notNull(),
-    permissionId: varchar("permission_id", { length: 120 }).references(() => permissions.id, {
-      onDelete: "set null",
-    }),
+    permissionId: varchar("permission_id", { length: 120 }),
     reason: text("reason"),
     targetId: varchar("target_id", { length: 160 }),
     targetName: varchar("target_name", { length: 160 }),
@@ -324,7 +323,7 @@ export const auditEvents = pgTable(
   },
   (table) => ({
     actionIdx: index("audit_events_action_idx").on(table.action),
-    actorIdx: index("audit_events_actor_idx").on(table.actorUserId),
+    actorIdx: index("audit_events_actor_idx").on(table.actorId),
     createdAtIdx: index("audit_events_created_at_idx").on(table.createdAt),
     outcomeIdx: index("audit_events_outcome_idx").on(table.outcome),
     permissionIdx: index("audit_events_permission_idx").on(table.permissionId),

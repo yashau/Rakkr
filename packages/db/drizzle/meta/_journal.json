@@ -15,6 +15,13 @@
       "when": 1781707762098,
       "tag": "0001_flat_ozymandias",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781708368765,
+      "tag": "0002_useful_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }

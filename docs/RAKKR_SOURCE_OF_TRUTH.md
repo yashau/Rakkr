@@ -61,7 +61,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
 | RBAC                 | 🟦 Scaffold  | Shared permissions and API middleware gate controller actions  |
-| Audit trail          | 🟦 Scaffold  | Audit schema, API events, and controller audit view started    |
+| Audit trail          | 🟦 Scaffold  | Postgres-backed audit store, API events, and audit view started |
 | Observability        | 🟨 Designed  | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
 ## North Star
@@ -679,6 +679,8 @@ Recording-control audit events should include actor, command, schedule/ad hoc so
 
 Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
+Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running.
+
 ---
 
 ## Backlog
@@ -852,9 +854,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Persist audit events through Postgres instead of the in-memory controller store.
-2. Add local auth sessions and password hashing.
-3. Add resource-scoped RBAC checks for rooms, nodes, channels, schedules, and recordings.
+1. Add local auth sessions and password hashing.
+2. Add resource-scoped RBAC checks for rooms, nodes, channels, schedules, and recordings.
+3. Add audit filtering by actor, action, target, outcome, and time range.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
 

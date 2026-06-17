@@ -22,6 +22,8 @@ import {
   type ScheduleSummary,
 } from "@rakkr/shared";
 
+import { createAuditStore } from "./audit-store";
+
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
 const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
@@ -38,8 +40,7 @@ const localUser: CurrentUser = {
 
 type AuditTarget = AuditEvent["target"];
 
-const auditEvents: AuditEvent[] = [];
-const maxAuditEvents = 500;
+const auditStore = createAuditStore();
 
 function requestContext(c: Context) {
   return {
@@ -49,7 +50,7 @@ function requestContext(c: Context) {
   };
 }
 
-function recordAuditEvent(
+async function recordAuditEvent(
   c: Context,
   input: {
     action: string;
@@ -88,11 +89,7 @@ function recordAuditEvent(
     target: input.target,
   };
 
-  auditEvents.unshift(event);
-
-  if (auditEvents.length > maxAuditEvents) {
-    auditEvents.length = maxAuditEvents;
-  }
+  await auditStore.append(event);
 
   return event;
 }
@@ -106,7 +103,7 @@ function requirePermission(
     const allowed = localUser.permissions.includes(permission);
     const auditTarget = target(c);
 
-    recordAuditEvent(c, {
+    await recordAuditEvent(c, {
       action,
       details: {
         requiredPermission: permission,
@@ -288,8 +285,8 @@ app.get("/api/v1/auth/me", (c) =>
   }),
 );
 
-app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), (c) =>
-  c.json({ data: auditEvents }),
+app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), async (c) =>
+  c.json({ data: await auditStore.list() }),
 );
 
 app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), (c) =>
@@ -301,7 +298,7 @@ app.get(
     id: c.req.param("nodeId"),
     type: "node",
   })),
-  (c) => {
+  async (c) => {
     const nodeId = c.req.param("nodeId");
     const frame = buildMeterFrame();
 
@@ -319,12 +316,12 @@ app.post(
     id: c.req.param("nodeId"),
     type: "node",
   })),
-  (c) => {
+  async (c) => {
     const nodeId = c.req.param("nodeId");
     const node = nodes.find((candidate) => candidate.id === nodeId);
 
     if (!node) {
-      recordAuditEvent(c, {
+      await recordAuditEvent(c, {
         action: "listen.monitor.start.failed",
         outcome: "failed",
         permission: "listen:monitor",
@@ -340,7 +337,7 @@ app.post(
 
     const sessionId = `listen_${randomUUID()}`;
 
-    recordAuditEvent(c, {
+    await recordAuditEvent(c, {
       action: "listen.monitor.start.succeeded",
       correlationIds: {
         listenSessionId: sessionId,
@@ -392,43 +389,47 @@ app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.re
   c.json({ data: recordings }),
 );
 
-app.post("/api/v1/recordings", requirePermission("recording:create", "recordings.start"), (c) => {
-  const now = new Date();
-  const recording: RecordingSummary = {
-    cached: false,
-    durationSeconds: 0,
-    folder: `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
-    healthStatus: "unknown",
-    id: `rec_${randomUUID()}`,
-    name: `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_Council Chamber Rack`,
-    recordedAt: now.toISOString(),
-    source: "ad_hoc",
-    status: "recording",
-    tags: ["ad-hoc", "voice"],
-  };
+app.post(
+  "/api/v1/recordings",
+  requirePermission("recording:create", "recordings.start"),
+  async (c) => {
+    const now = new Date();
+    const recording: RecordingSummary = {
+      cached: false,
+      durationSeconds: 0,
+      folder: `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
+      healthStatus: "unknown",
+      id: `rec_${randomUUID()}`,
+      name: `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_Council Chamber Rack`,
+      recordedAt: now.toISOString(),
+      source: "ad_hoc",
+      status: "recording",
+      tags: ["ad-hoc", "voice"],
+    };
 
-  recordings.unshift(recording);
+    recordings.unshift(recording);
 
-  recordAuditEvent(c, {
-    action: "recordings.start.succeeded",
-    correlationIds: {
-      recordingId: recording.id,
-    },
-    details: {
-      profileId: defaultVoiceRecordingProfile.id,
-      source: recording.source,
-    },
-    outcome: "succeeded",
-    permission: "recording:create",
-    target: {
-      id: recording.id,
-      name: recording.name,
-      type: "recording",
-    },
-  });
+    await recordAuditEvent(c, {
+      action: "recordings.start.succeeded",
+      correlationIds: {
+        recordingId: recording.id,
+      },
+      details: {
+        profileId: defaultVoiceRecordingProfile.id,
+        source: recording.source,
+      },
+      outcome: "succeeded",
+      permission: "recording:create",
+      target: {
+        id: recording.id,
+        name: recording.name,
+        type: "recording",
+      },
+    });
 
-  return c.json({ data: recording }, 202);
-});
+    return c.json({ data: recording }, 202);
+  },
+);
 
 app.post(
   "/api/v1/recordings/:recordingId/stop",
@@ -436,12 +437,12 @@ app.post(
     id: c.req.param("recordingId"),
     type: "recording",
   })),
-  (c) => {
+  async (c) => {
     const recordingId = c.req.param("recordingId");
     const recording = recordings.find((candidate) => candidate.id === recordingId);
 
     if (!recording) {
-      recordAuditEvent(c, {
+      await recordAuditEvent(c, {
         action: "recordings.stop.failed",
         outcome: "failed",
         permission: "recording:control",
@@ -461,7 +462,7 @@ app.post(
     recording.durationSeconds = Math.max(recording.durationSeconds, 1);
     recording.status = "cached";
 
-    recordAuditEvent(c, {
+    await recordAuditEvent(c, {
       action: "recordings.stop.succeeded",
       after: {
         status: recording.status,

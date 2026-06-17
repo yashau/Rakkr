@@ -26,6 +26,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.19.6
         version: 1.19.14(hono@4.12.25)
+      '@rakkr/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@rakkr/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -114,7 +117,10 @@ importers:
     dependencies:
       drizzle-orm:
         specifier: ^0.44.7
-        version: 0.44.7
+        version: 0.44.7(postgres@3.4.9)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
     devDependencies:
       '@types/node':
         specifier: ^24.10.1
@@ -1778,6 +1784,10 @@ packages:
     resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
     engines: {node: ^10 || ^12 || >=14}
 
+  postgres@3.4.9:
+    resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
+    engines: {node: '>=12'}
+
   prettier@3.8.4:
     resolution: {integrity: sha512-N2MylSdi48+5N/6S5j+maeHbUSIzzZ5uOcX5Hm4QpV8Dkb1HFjfAKTKX6yNPJQD9AhcT3ifHNB66tWTTJDi11Q==}
     engines: {node: '>=14'}
@@ -2768,7 +2778,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.4
 
-  drizzle-orm@0.44.7: {}
+  drizzle-orm@0.44.7(postgres@3.4.9):
+    optionalDependencies:
+      postgres: 3.4.9
 
   electron-to-chromium@1.5.373: {}
 
@@ -3045,6 +3057,8 @@ snapshots:
       nanoid: 3.3.12
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  postgres@3.4.9: {}
 
   prettier@3.8.4: {}
 
