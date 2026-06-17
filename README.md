@@ -39,6 +39,8 @@ Local dev sign-in defaults come from `.env.example`:
 
 Override them with `RAKKR_LOCAL_ADMIN_EMAIL`, `RAKKR_LOCAL_ADMIN_ID`, `RAKKR_LOCAL_ADMIN_PASSWORD`, and `RAKKR_LOCAL_ADMIN_NAME`.
 
+For non-admin local roles, scoped resource access can be seeded with `RAKKR_LOCAL_RESOURCE_GRANTS`, for example `{"node":["node_x32_test"]}`.
+
 ## Workspace
 
 ```text

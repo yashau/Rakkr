@@ -60,7 +60,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Scheduler            | 🟨 Designed  | Human-friendly rules, metadata ownership, watchdog integration |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
-| RBAC                 | 🟦 Scaffold  | Shared permissions and API middleware gate controller actions  |
+| RBAC                 | 🟦 Scaffold  | Permission and resource-scope middleware gate targeted actions |
 | Audit trail          | 🟦 Scaffold  | Postgres-backed audit store, API events, and audit view started |
 | Observability        | 🟨 Designed  | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
@@ -606,6 +606,7 @@ RBAC is a product invariant, not just a UI feature. Hiding a button is useful, b
 Core rules:
 
 - default deny unless a role grants the exact permission;
+- targeted actions must also pass a resource-scope check;
 - every API route, realtime stream, live monitor stream, and node command requires authorization;
 - every privileged read and write action records an audit event;
 - denied authorization attempts are audit events too;
@@ -629,6 +630,8 @@ Permissions should be scoped to the smallest practical resource:
 | Alert     | acknowledge, suppress, resolve, comment       |
 
 Scopes can be broad for administrators and narrow for operators. For example, a user may be allowed to listen to `Room A` but not `Room B`, or allowed to start scheduled recordings but not edit recording profiles.
+
+Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access; narrower local roles can use `RAKKR_LOCAL_RESOURCE_GRANTS` while durable per-user grants and collection filtering are still pending.
 
 ## Required Permission Families
 
@@ -863,9 +866,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add resource-scoped RBAC checks for rooms, nodes, channels, schedules, and recordings.
+1. Add durable per-user resource grants and collection filtering.
 2. Add audit filtering by actor, action, target, outcome, and time range.
-3. Add user management UI for local auth roles.
+3. Add user management UI for local auth roles and scopes.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
 

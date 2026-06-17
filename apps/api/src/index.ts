@@ -104,19 +104,27 @@ function requirePermission(
 ): MiddlewareHandler {
   return async (c, next) => {
     const auth = await authService.authenticate(c.req.header("authorization"));
-    const allowed = auth.user?.permissions.includes(permission) ?? false;
     const auditTarget = target(c);
+    const hasPermission = auth.user?.permissions.includes(permission) ?? false;
+    const hasScope = auth.user ? hasResourceScope(auth.user, auditTarget) : false;
+    const allowed = hasPermission && hasScope;
+    const reason = authorizationReason({
+      authenticated: Boolean(auth.user),
+      hasPermission,
+      hasScope,
+    });
 
     await recordAuditEvent(c, {
       action,
       auth,
       details: {
         requiredPermission: permission,
+        resourceScope: auditTarget,
         roles: auth.user?.roles ?? [],
       },
       outcome: allowed ? "allowed" : "denied",
       permission,
-      reason: allowed ? undefined : auth.user ? "missing_permission" : "unauthenticated",
+      reason,
       target: auditTarget,
     });
 
@@ -132,6 +140,70 @@ function requirePermission(
 
     await next();
   };
+}
+
+function authorizationReason(input: {
+  authenticated: boolean;
+  hasPermission: boolean;
+  hasScope: boolean;
+}) {
+  if (!input.authenticated) {
+    return "unauthenticated";
+  }
+
+  if (!input.hasPermission) {
+    return "missing_permission";
+  }
+
+  if (!input.hasScope) {
+    return "missing_resource_scope";
+  }
+
+  return undefined;
+}
+
+function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
+  if (!user || !target.id) {
+    return Boolean(user);
+  }
+
+  if (user.roles.includes("owner") || user.roles.includes("admin")) {
+    return true;
+  }
+
+  const grants = localResourceGrants();
+  const exactGrants = grants.get(target.type) ?? new Set<string>();
+  const wildcardGrants = grants.get("*") ?? new Set<string>();
+
+  return exactGrants.has(target.id) || exactGrants.has("*") || wildcardGrants.has("*");
+}
+
+function localResourceGrants() {
+  const grants = new Map<string, Set<string>>();
+  const raw = process.env.RAKKR_LOCAL_RESOURCE_GRANTS;
+
+  if (!raw) {
+    return grants;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    for (const [resourceType, values] of Object.entries(parsed)) {
+      if (!Array.isArray(values)) {
+        continue;
+      }
+
+      grants.set(
+        resourceType,
+        new Set(values.filter((value): value is string => typeof value === "string")),
+      );
+    }
+  } catch (error) {
+    console.warn("invalid RAKKR_LOCAL_RESOURCE_GRANTS JSON; ignoring scoped grants", error);
+  }
+
+  return grants;
 }
 
 const nodes: RecorderNode[] = [
