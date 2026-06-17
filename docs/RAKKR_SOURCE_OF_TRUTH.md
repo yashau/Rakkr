@@ -545,7 +545,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls and RBAC-gated controller actions for playback and download preparation. Both actions write audit events for success and failure. Actual cache-backed file streaming/download bytes still wait on the local recording cache implementation.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. The controller can serve local cached bytes from `RAKKR_RECORDING_CACHE_DIR`, with deterministic placeholder materialization for demo cached recordings until recorder nodes write real audio files.
 
 ---
 
@@ -719,7 +719,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🟦 Realtime meters.
 - [ ] ⏳ Recording job model.
 - [ ] 🟦 Voice MP3 VBR default profile.
-- [ ] ⏳ Local recording cache.
+- [ ] 🟦 Local recording cache.
 - [ ] 🟦 Recording library metadata.
 - [ ] 🟨 Scheduler data model.
 - [ ] ⏳ Human-friendly schedule UI.
@@ -870,7 +870,7 @@ Exit criteria:
 Continue controller trust and operations foundations while X32 validation is paused:
 
 1. Add user management UI for local auth roles and scopes.
-2. Add cache-backed recording file serving for playback/download.
+2. Replace demo cache placeholders with recorder-agent-produced local cache files.
 3. Add durable room/interface/channel scope inheritance beyond node and schedule relationships.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.

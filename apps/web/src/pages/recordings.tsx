@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Play, Radio, Square } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { formatDateTime, formatDuration } from "@/lib/dates";
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
+  const [audioPreview, setAudioPreview] = useState<{ name: string; url: string }>();
   const [notice, setNotice] = useState<{ detail: string; title: string }>();
   const recordingsQuery = useQuery({
     queryFn: api.recordings,
@@ -24,31 +25,65 @@ export function RecordingsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["recordings"] }),
   });
   const playbackMutation = useMutation({
-    mutationFn: api.startPlayback,
+    mutationFn: async (recordingId: string) => {
+      const playback = await api.startPlayback(recordingId);
+      const stream = await api.recordingStream(recordingId);
+
+      return {
+        playback: playback.data,
+        stream,
+      };
+    },
     onError: () =>
       setNotice({
         detail: "The selected recording could not be opened for playback.",
         title: "Playback unavailable",
       }),
-    onSuccess: (response) =>
+    onSuccess: (response) => {
+      const url = URL.createObjectURL(response.stream.blob);
+
+      setAudioPreview({
+        name: response.stream.fileName,
+        url,
+      });
       setNotice({
-        detail: `${response.data.sessionId} started at ${formatDateTime(response.data.startedAt)}`,
+        detail: `${response.playback.sessionId} started at ${formatDateTime(response.playback.startedAt)}`,
         title: "Playback ready",
-      }),
+      });
+    },
   });
   const downloadMutation = useMutation({
-    mutationFn: api.prepareRecordingDownload,
+    mutationFn: async (recordingId: string) => {
+      const ticket = await api.prepareRecordingDownload(recordingId);
+      const file = await api.recordingFile(recordingId);
+
+      return {
+        file,
+        ticket: ticket.data,
+      };
+    },
     onError: () =>
       setNotice({
         detail: "The selected recording could not be prepared for download.",
         title: "Download unavailable",
       }),
-    onSuccess: (response) =>
+    onSuccess: (response) => {
+      downloadBlob(response.file);
       setNotice({
-        detail: `${response.data.fileName} prepared until ${formatDateTime(response.data.expiresAt)}`,
+        detail: `${response.ticket.fileName} prepared until ${formatDateTime(response.ticket.expiresAt)}`,
         title: "Download prepared",
-      }),
+      });
+    },
   });
+
+  useEffect(
+    () => () => {
+      if (audioPreview?.url) {
+        URL.revokeObjectURL(audioPreview.url);
+      }
+    },
+    [audioPreview?.url],
+  );
 
   return (
     <div className="grid gap-4">
@@ -67,6 +102,15 @@ export function RecordingsPage() {
         </section>
       ) : null}
 
+      {audioPreview ? (
+        <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
+          <div className="mb-2 text-sm font-medium">{audioPreview.name}</div>
+          <audio className="w-full" controls src={audioPreview.url}>
+            <track kind="captions" />
+          </audio>
+        </section>
+      ) : null}
+
       {recordingsQuery.data?.data.map((recording) => (
         <RecordingCard
           downloadPending={downloadMutation.isPending}
@@ -81,6 +125,16 @@ export function RecordingsPage() {
       ))}
     </div>
   );
+}
+
+function downloadBlob(file: Awaited<ReturnType<typeof api.recordingFile>>) {
+  const url = URL.createObjectURL(file.blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = file.fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function RecordingCard({

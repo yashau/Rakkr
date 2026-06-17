@@ -50,6 +50,11 @@ export interface RecordingPlaybackSession {
   streamUrl: string;
 }
 
+export interface RecordingFileBlob {
+  blob: Blob;
+  fileName: string;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getAuthToken();
@@ -72,6 +77,29 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+async function fetchBlob(path: string, init?: RequestInit): Promise<RecordingFileBlob> {
+  const headers = new Headers(init?.headers);
+  const token = getAuthToken();
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${apiBase}${path}`, {
+    ...init,
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return {
+    blob: await response.blob(),
+    fileName: fileNameFromDisposition(response.headers.get("Content-Disposition")),
+  };
 }
 
 export function getAuthToken() {
@@ -112,6 +140,8 @@ export const api = {
       method: "POST",
     }),
   recordings: () => fetchJson<{ data: RecordingSummary[] }>("/api/v1/recordings"),
+  recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),
+  recordingStream: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/stream`),
   schedules: () => fetchJson<{ data: ScheduleSummary[] }>("/api/v1/schedules"),
   startPlayback: (recordingId: string) =>
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
@@ -147,4 +177,10 @@ function withQuery(path: string, filters: AuditEventFilters) {
   const query = params.toString();
 
   return query ? `${path}?${query}` : path;
+}
+
+function fileNameFromDisposition(disposition: string | null) {
+  const match = /filename="([^"]+)"/.exec(disposition ?? "");
+
+  return match?.[1] ?? "recording.mp3";
 }

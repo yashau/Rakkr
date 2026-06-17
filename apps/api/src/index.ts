@@ -14,15 +14,14 @@ import {
   defaultVoiceRecordingProfile,
   type AuditEvent,
   type AuditOutcome,
-  type MeterFrame,
   type Permission,
-  type RecorderNode,
   type RecordingSummary,
-  type ScheduleSummary,
 } from "@rakkr/shared";
 
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
+import { buildMeterFrame, nodes, prometheusMetrics, recordings, schedules } from "./demo-data.js";
+import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -254,118 +253,6 @@ function resourceScopeTargets(target: AuditTarget): AuditTarget[] {
   );
 }
 
-const nodes: RecorderNode[] = [
-  {
-    agentVersion: "0.1.0",
-    alias: "Council Chamber Rack",
-    hostname: "rakkr-x32-01",
-    id: "node_x32_test",
-    interfaces: [
-      {
-        alias: "X32 USB",
-        backend: "alsa",
-        channelCount: 32,
-        channels: Array.from({ length: 8 }, (_, index) => ({
-          alias: `X32 Channel ${index + 1}`,
-          index: index + 1,
-        })),
-        id: "iface_x32_usb",
-        sampleRates: [48000],
-        systemName: "Behringer X32 Rack USB",
-      },
-    ],
-    ipAddresses: ["172.22.145.152"],
-    lastSeenAt: new Date().toISOString(),
-    location: {
-      room: "Council Chamber",
-      site: "Main Office",
-    },
-    notes: "Initial Debian test rig with X32 Rack over USB.",
-    status: "online",
-    tags: ["x32", "voice", "test-rig"],
-  },
-];
-
-const schedules: ScheduleSummary[] = [
-  {
-    id: "sched_council_weekly",
-    name: "Council Meeting",
-    nextRunAt: "2026-06-22T05:00:00.000Z",
-    nodeId: "node_x32_test",
-    room: "Council Chamber",
-    tags: ["council", "scheduled", "voice"],
-    timezone: "Indian/Maldives",
-  },
-];
-
-const recordings: RecordingSummary[] = [
-  {
-    cached: true,
-    durationSeconds: 3720,
-    folder: "Meetings/2026/06/Council Meeting",
-    healthStatus: "healthy",
-    id: "rec_demo_001",
-    name: "2026-06-15_0900_Council Meeting_Council Chamber Rack",
-    nodeId: "node_x32_test",
-    recordedAt: "2026-06-15T04:00:00.000Z",
-    scheduleId: "sched_council_weekly",
-    source: "schedule",
-    status: "cached",
-    tags: ["council", "voice"],
-  },
-];
-
-function buildMeterFrame(): MeterFrame {
-  const capturedAt = new Date().toISOString();
-  const phase = Date.now() / 650;
-
-  return {
-    capturedAt,
-    interfaceId: "iface_x32_usb",
-    levels: Array.from({ length: 8 }, (_, index) => {
-      const wave = Math.sin(phase + index * 0.58);
-      const bump = Math.cos(phase / 2 + index * 0.23);
-      const rmsDbfs = Math.max(-72, -42 + wave * 12 + bump * 5);
-      const peakDbfs = Math.min(-3, rmsDbfs + 11 + Math.abs(wave) * 6);
-
-      return {
-        channelIndex: index + 1,
-        clipping: peakDbfs > -1,
-        label: `Ch ${index + 1}`,
-        peakDbfs: Number(peakDbfs.toFixed(1)),
-        rmsDbfs: Number(rmsDbfs.toFixed(1)),
-      };
-    }),
-    nodeId: "node_x32_test",
-  };
-}
-
-function prometheusMetrics() {
-  const frame = buildMeterFrame();
-  const lines = [
-    "# HELP rakkr_node_online Whether a recorder node is online.",
-    "# TYPE rakkr_node_online gauge",
-    'rakkr_node_online{node_id="node_x32_test",alias="Council Chamber Rack"} 1',
-    "# HELP rakkr_recording_active Active recording jobs on a node.",
-    "# TYPE rakkr_recording_active gauge",
-    'rakkr_recording_active{node_id="node_x32_test"} 0',
-    "# HELP rakkr_input_rms_dbfs Current RMS level by audio channel.",
-    "# TYPE rakkr_input_rms_dbfs gauge",
-    ...frame.levels.map(
-      (level) =>
-        `rakkr_input_rms_dbfs{node_id="node_x32_test",interface_id="iface_x32_usb",channel="${level.channelIndex}"} ${level.rmsDbfs}`,
-    ),
-    "# HELP rakkr_input_peak_dbfs Current peak level by audio channel.",
-    "# TYPE rakkr_input_peak_dbfs gauge",
-    ...frame.levels.map(
-      (level) =>
-        `rakkr_input_peak_dbfs{node_id="node_x32_test",interface_id="iface_x32_usb",channel="${level.channelIndex}"} ${level.peakDbfs}`,
-    ),
-  ];
-
-  return `${lines.join("\n")}\n`;
-}
-
 function currentAuth(c: Context<AppBindings>) {
   return c.get("auth");
 }
@@ -396,10 +283,6 @@ function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
   );
 }
 
-function recordingHasFile(recording: RecordingSummary) {
-  return recording.cached || recording.status === "cached" || recording.status === "uploaded";
-}
-
 async function recordRecordingFileFailure(
   c: Context<AppBindings>,
   input: {
@@ -424,10 +307,55 @@ async function recordRecordingFileFailure(
   });
 }
 
-function downloadFileName(recording: RecordingSummary) {
-  const cleanedName = recording.name.replace(/[^\w .-]/g, "_").trim();
+async function serveRecordingFile(
+  c: Context<AppBindings>,
+  recordingId: string,
+  disposition: "attachment" | "inline",
+  permission: Permission,
+) {
+  const recording = recordings.find((candidate) => candidate.id === recordingId);
+  const action =
+    disposition === "attachment" ? "recordings.download.file" : "recordings.playback.stream";
 
-  return `${cleanedName || recording.id}.mp3`;
+  if (!recording || !recordingHasCachedFile(recording)) {
+    await recordRecordingFileFailure(c, {
+      action: `${action}.failed`,
+      permission,
+      reason: recording ? "recording_not_cached" : "recording_not_found",
+      recordingId,
+      targetName: recording?.name,
+    });
+
+    return c.json(
+      { error: recording ? "Recording is not cached" : "Recording not found" },
+      recording ? 409 : 404,
+    );
+  }
+
+  const file = await loadRecordingFile(recording);
+
+  await recordAuditEvent(c, {
+    action: `${action}.succeeded`,
+    auth: currentAuth(c),
+    details: {
+      disposition,
+      fileName: file.fileName,
+      size: file.size,
+    },
+    outcome: "succeeded",
+    permission,
+    target: {
+      id: recording.id,
+      name: recording.name,
+      type: "recording",
+    },
+  });
+
+  return c.body(new Uint8Array(file.bytes), 200, {
+    "Content-Disposition": `${disposition}; filename="${file.fileName}"`,
+    "Content-Length": file.size.toString(),
+    "Content-Type": file.mimeType,
+  });
 }
 
 export const app = new Hono<AppBindings>();
@@ -702,7 +630,7 @@ app.post(
       return c.json({ error: "Recording not found" }, 404);
     }
 
-    if (!recordingHasFile(recording)) {
+    if (!recordingHasCachedFile(recording)) {
       await recordRecordingFileFailure(c, {
         action: "recordings.playback.failed",
         permission: "recording:playback",
@@ -772,7 +700,7 @@ app.post(
       return c.json({ error: "Recording not found" }, 404);
     }
 
-    if (!recordingHasFile(recording)) {
+    if (!recordingHasCachedFile(recording)) {
       await recordRecordingFileFailure(c, {
         action: "recordings.download.failed",
         permission: "recording:download",
@@ -794,7 +722,7 @@ app.post(
         recordingId: recording.id,
       },
       details: {
-        fileName: downloadFileName(recording),
+        fileName: recordingFileName(recording),
         mode: "stubbed",
       },
       outcome: "succeeded",
@@ -811,7 +739,7 @@ app.post(
         data: {
           downloadId,
           expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-          fileName: downloadFileName(recording),
+          fileName: recordingFileName(recording),
           mode: "stubbed",
           recordingId: recording.id,
           url: `/api/v1/recordings/${recording.id}/file`,
@@ -820,6 +748,25 @@ app.post(
       202,
     );
   },
+);
+
+app.get(
+  "/api/v1/recordings/:recordingId/stream",
+  requirePermission("recording:playback", "recordings.playback.stream", (c) => ({
+    id: c.req.param("recordingId"),
+    type: "recording",
+  })),
+  async (c) => serveRecordingFile(c, c.req.param("recordingId"), "inline", "recording:playback"),
+);
+
+app.get(
+  "/api/v1/recordings/:recordingId/file",
+  requirePermission("recording:download", "recordings.download.file", (c) => ({
+    id: c.req.param("recordingId"),
+    type: "recording",
+  })),
+  async (c) =>
+    serveRecordingFile(c, c.req.param("recordingId"), "attachment", "recording:download"),
 );
 
 app.post(
@@ -899,6 +846,7 @@ app.post(
     const before = { status: recording.status };
 
     recording.cached = true;
+    recording.cachePath = `ad-hoc/${recording.id}.mp3`;
     recording.durationSeconds = Math.max(recording.durationSeconds, 1);
     recording.status = "cached";
 

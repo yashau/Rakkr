@@ -222,6 +222,7 @@ export const scheduleSummarySchema = z.object({
 
 export const recordingSummarySchema = z.object({
   cached: z.boolean(),
+  cachePath: z.string().min(1).optional(),
   durationSeconds: z.number().int().nonnegative(),
   folder: z.string().min(1),
   healthStatus: z.enum(["healthy", "warning", "critical", "unknown"]),
