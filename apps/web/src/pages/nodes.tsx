@@ -281,6 +281,8 @@ export function NodesPage() {
                     label="Audio"
                   />
                 </div>
+
+                <NodeHealthEvents events={healthEvents} />
               </div>
 
               <div className="grid gap-3 text-sm md:min-w-72">
@@ -413,6 +415,46 @@ function HealthSummaryTile({
   );
 }
 
+function NodeHealthEvents({ events }: { events: HealthEvent[] }) {
+  const recentEvents = [...events]
+    .sort((left, right) => Date.parse(right.openedAt) - Date.parse(left.openedAt))
+    .slice(0, 3);
+  const tone = recentEvents.reduce<"critical" | "healthy" | "unknown" | "warning">(
+    (current, event) => highestTone(current, healthTone(event)),
+    recentEvents.length > 0 ? "healthy" : "unknown",
+  );
+
+  return (
+    <div className="rounded-md border border-border bg-background p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">Recent Health Events</div>
+        <Badge className={healthBadgeClass(tone)} variant="outline">
+          {recentEvents.length}
+        </Badge>
+      </div>
+      {recentEvents.length > 0 ? (
+        <div className="grid gap-2">
+          {recentEvents.map((event) => (
+            <div className="grid gap-1 text-xs" key={event.id}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className={healthBadgeClass(healthTone(event))} variant="outline">
+                  {event.severity}
+                </Badge>
+                <span className="font-medium">{readableHealthType(event.type)}</span>
+                <span className="text-muted-foreground">{event.status}</span>
+                <span className="text-muted-foreground">{formatDateTime(event.openedAt)}</span>
+              </div>
+              <div className="truncate text-muted-foreground">{healthEventDetails(event)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">No node health events.</p>
+      )}
+    </div>
+  );
+}
+
 function nodeHealthSummary(events: HealthEvent[]) {
   const disk = latestHealthEvent(events, [
     "agent.system.disk_pressure",
@@ -527,6 +569,19 @@ function healthMetric(event: HealthEvent) {
   return undefined;
 }
 
+function healthEventDetails(event: HealthEvent) {
+  const metric = healthMetric(event);
+
+  if (metric) {
+    return metric;
+  }
+
+  const reason = stringDetail(event.details.reason);
+  const error = stringDetail(event.details.error);
+
+  return reason ?? error ?? readableHealthType(event.type);
+}
+
 function readableHealthType(type: string) {
   return type
     .replace(/^agent\./, "")
@@ -552,6 +607,10 @@ function healthBadgeClass(tone: "critical" | "healthy" | "unknown" | "warning") 
 
 function numericDetail(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringDetail(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function isUuid(value: string) {
