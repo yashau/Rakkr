@@ -55,7 +55,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Controller API       | 🟦 Scaffold  | RBAC, audit, health, nodes, jobs, schedules, settings, pinned channel maps |
 | Controller UI        | 🟦 Scaffold  | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
 | Recorder agent       | 🟦 Scaffold  | Inventory, capture jobs, meters, health log, channel-map render foundation |
-| Test rig integration | 🟨 Partial   | Debian node reachable; ALSA loopback meter smoke validated; X32 validation waits for device check |
+| Test rig integration | 🟨 Partial   | Debian node reachable; ALSA loopback meter/render smoke validated; X32 validation waits for device check |
 | Health watchdog      | 🟦 Scaffold  | Health events, lifecycle actions, meter ingest, low-signal runner, timelines |
 | Scheduler            | 🟦 Scaffold  | Persistent schedules, recurrence, buffers, metadata ownership, due runner |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
@@ -273,7 +273,8 @@ Current:
 - Channel maps: revisions, promotion metadata, assignment history, rollback, and agent fetch.
 - Jobs: pin target, template, channel entries, channel mode, and source width when created.
 - Agent: pinned-map first, live-assignment fallback, ffmpeg render foundation.
-- Pending: ALSA loopback render validation and richer rollout controls.
+- Validation: ALSA loopback mapped/rendered output passed on Debian node `recorder` on `2026-06-18`.
+- Pending: richer rollout controls.
 
 ## Node Inventory
 
@@ -302,6 +303,7 @@ Current:
 - Node IDs use readable domain identifiers in Drizzle/Postgres.
 - Credentials, interfaces, recordings, jobs, schedules, and health events correlate by node ID.
 - `snd-aloop` can fake a Linux capture device before X32 validation resumes.
+- ALSA loopback render smoke passed on Debian node `recorder` on `2026-06-18`.
 
 - `mise run agent:loopback-smoke`: raw WAV capture through ALSA loopback.
 - `mise run agent:loopback-meter-smoke`: Rakkr meter frame from ALSA loopback.
@@ -853,7 +855,7 @@ Current:
 - [ ] 🧊 Failed upload retry queue skeleton.
 - [ ] ⏳ Checksum verification.
 - [ ] ⏳ Waveform previews.
-- [ ] 🟨 Template revisions, rollback history, pinned job targeting, and DSP render foundation.
+- [ ] 🟦 Template revisions, rollback history, pinned job targeting, and loopback-validated DSP render foundation.
 
 ## Later
 
@@ -898,7 +900,7 @@ Exit criteria:
 - ⏸️ Agent discovers X32 USB audio interface and channel count.
 - 🟦 Controller shows node online/offline state.
 - 🟦 Controller shows live meters while not recording.
-- 🟦 ALSA loopback fake-interface meter smoke test passes on Debian node.
+- 🟦 ALSA loopback fake-interface meter and render smoke tests pass on Debian node.
 - 🟦 Basic local node event log exists.
 - 🟦 Meter visibility is permission-gated.
 
@@ -977,7 +979,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Validate mapped/rendered output with ALSA loopback and expose richer rollout promotion controls.
+1. Expose richer rollout promotion controls for channel-map templates.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 
