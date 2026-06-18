@@ -79,6 +79,15 @@ export interface RecordingPlaybackSession {
   streamUrl: string;
 }
 
+export interface ListenMonitorSession {
+  mode: "controller_meter_preview";
+  nodeId: string;
+  sessionId: string;
+  startedAt: string;
+  streamUrl: string;
+  targetLatencyMs: number;
+}
+
 export interface RecordingFileBlob {
   blob: Blob;
   fileName: string;
@@ -486,12 +495,10 @@ export const api = {
       method: "POST",
     }),
   startListen: (nodeId: string) =>
-    fetchJson<{ data: { sessionId: string; startedAt: string } }>(
-      `/api/v1/nodes/${nodeId}/listen`,
-      {
-        method: "POST",
-      },
-    ),
+    fetchJson<{ data: ListenMonitorSession }>(`/api/v1/nodes/${nodeId}/listen`, {
+      method: "POST",
+    }),
+  listenStream: (streamUrl: string) => fetchBlob(streamUrl),
   rotateNodeCredential: (nodeId: string) =>
     fetchJson<{ data: NodeEnrollmentResult }>(`/api/v1/nodes/${nodeId}/credentials/rotate`, {
       method: "POST",

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import type { RecorderNode } from "@rakkr/shared";
+import type { MeterFrame, RecorderNode } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import { buildMeterFrame } from "./demo-data.js";
@@ -64,6 +64,8 @@ const nodeEnrollmentSchema = z
     tags: z.array(z.string().trim().min(1).max(48)).max(32).default([]),
   })
   .strict();
+const monitorChunkDurationMs = 1500;
+const monitorChunkSampleRate = 16_000;
 
 export function registerNodeRoutes({
   app,
@@ -194,16 +196,19 @@ export function registerNodeRoutes({
       type: "node",
     })),
     async (c) => {
-      const node = await nodeStore.find(c.req.param("nodeId"));
+      const nodeId = c.req.param("nodeId");
+      const node = await nodeStore.find(nodeId);
 
       if (!node) {
-        await recordNodeFailure(c, "listen.monitor.start.failed", "node_not_found", undefined, {
+        await recordNodeFailure(c, "listen.monitor.start.failed", "node_not_found", nodeId, {
           permission: "listen:monitor",
+          targetId: nodeId,
         });
         return c.json({ error: "Node not found" }, 404);
       }
 
       const sessionId = `listen_${randomUUID()}`;
+      const streamUrl = listenStreamUrl(node.id, sessionId);
 
       await recordAuditEvent(c, {
         action: "listen.monitor.start.succeeded",
@@ -212,7 +217,8 @@ export function registerNodeRoutes({
           listenSessionId: sessionId,
         },
         details: {
-          mode: "stubbed",
+          mode: "controller_meter_preview",
+          streamUrl,
           targetLatencyMs: 1500,
         },
         outcome: "succeeded",
@@ -227,15 +233,80 @@ export function registerNodeRoutes({
       return c.json(
         {
           data: {
-            mode: "stubbed",
+            mode: "controller_meter_preview",
             nodeId: node.id,
             sessionId,
             startedAt: new Date().toISOString(),
+            streamUrl,
             targetLatencyMs: 1500,
           },
         },
         202,
       );
+    },
+  );
+
+  app.get(
+    "/api/v1/nodes/:nodeId/listen/stream",
+    requirePermission("listen:monitor", "listen.monitor.stream", (c) => ({
+      id: c.req.param("nodeId"),
+      type: "node",
+    })),
+    async (c) => {
+      const nodeId = c.req.param("nodeId");
+      const node = await nodeStore.find(nodeId);
+
+      if (!node) {
+        await recordNodeFailure(c, "listen.monitor.stream.failed", "node_not_found", nodeId, {
+          permission: "listen:monitor",
+          targetId: nodeId,
+        });
+        return c.json({ error: "Node not found" }, 404);
+      }
+
+      const frame = await monitorMeterFrame(node.id);
+
+      if (!frame) {
+        await recordNodeFailure(
+          c,
+          "listen.monitor.stream.failed",
+          "meter_frame_not_found",
+          node.alias,
+          {
+            permission: "listen:monitor",
+            targetId: node.id,
+          },
+        );
+        return c.json({ error: "Monitor data unavailable" }, 409);
+      }
+
+      const chunk = monitorWavChunk(frame);
+      const sessionId = c.req.query("sessionId");
+
+      await recordAuditEvent(c, {
+        action: "listen.monitor.stream.succeeded",
+        auth: currentAuth(c),
+        correlationIds: sessionId ? { listenSessionId: sessionId } : undefined,
+        details: {
+          durationMs: monitorChunkDurationMs,
+          mode: "controller_meter_preview",
+          sourceCapturedAt: frame.capturedAt,
+        },
+        outcome: "succeeded",
+        permission: "listen:monitor",
+        target: {
+          id: node.id,
+          name: node.alias,
+          type: "node",
+        },
+      });
+
+      return c.body(new Uint8Array(chunk), 200, {
+        "Cache-Control": "no-store",
+        "Content-Disposition": `inline; filename="${node.id}-monitor.wav"`,
+        "Content-Length": chunk.byteLength.toString(),
+        "Content-Type": "audio/wav",
+      });
     },
   );
 
@@ -264,6 +335,18 @@ export function registerNodeRoutes({
     return (await meterFrameStore.latest(seededFrame.nodeId)) ?? seededFrame;
   }
 
+  async function monitorMeterFrame(nodeId: string) {
+    const frame = await meterFrameStore.latest(nodeId);
+
+    if (frame) {
+      return frame;
+    }
+
+    const seededFrame = buildMeterFrame();
+
+    return seededFrame.nodeId === nodeId ? seededFrame : undefined;
+  }
+
   async function recordNodeFailure(
     c: Context<AppBindings>,
     action: string,
@@ -271,6 +354,7 @@ export function registerNodeRoutes({
     name?: string,
     options: {
       permission?: "listen:monitor" | "node:manage";
+      targetId?: string;
     } = {},
   ) {
     await recordAuditEvent(c, {
@@ -280,11 +364,53 @@ export function registerNodeRoutes({
       permission: options.permission ?? "node:manage",
       reason,
       target: {
+        id: options.targetId,
         name,
         type: "node",
       },
     });
   }
+}
+
+function listenStreamUrl(nodeId: string, sessionId: string) {
+  return `/api/v1/nodes/${encodeURIComponent(nodeId)}/listen/stream?sessionId=${encodeURIComponent(sessionId)}`;
+}
+
+function monitorWavChunk(frame: MeterFrame) {
+  const sampleCount = Math.round((monitorChunkSampleRate * monitorChunkDurationMs) / 1000);
+  const dataBytes = sampleCount * 2;
+  const bytes = Buffer.alloc(44 + dataBytes);
+  const amplitude = monitorAmplitude(frame);
+
+  bytes.write("RIFF", 0);
+  bytes.writeUInt32LE(36 + dataBytes, 4);
+  bytes.write("WAVE", 8);
+  bytes.write("fmt ", 12);
+  bytes.writeUInt32LE(16, 16);
+  bytes.writeUInt16LE(1, 20);
+  bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(monitorChunkSampleRate, 24);
+  bytes.writeUInt32LE(monitorChunkSampleRate * 2, 28);
+  bytes.writeUInt16LE(2, 32);
+  bytes.writeUInt16LE(16, 34);
+  bytes.write("data", 36);
+  bytes.writeUInt32LE(dataBytes, 40);
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const phase = (2 * Math.PI * 440 * index) / monitorChunkSampleRate;
+    const sample = Math.round(Math.sin(phase) * amplitude * 32767);
+
+    bytes.writeInt16LE(sample, 44 + index * 2);
+  }
+
+  return bytes;
+}
+
+function monitorAmplitude(frame: MeterFrame) {
+  const peakDbfs = Math.max(-90, ...frame.levels.map((level) => level.peakDbfs));
+  const linear = 10 ** (peakDbfs / 20);
+
+  return Math.max(0.02, Math.min(0.25, linear));
 }
 
 function nodeSnapshot(node: RecorderNode | undefined) {

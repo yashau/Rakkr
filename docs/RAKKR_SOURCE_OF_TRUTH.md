@@ -51,6 +51,8 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | ⏳ | Not started |
 | 🧊 | Deferred intentionally |
 
+Promotion rule: a feature moves from 🟦 to 🟨 once at least one useful workflow exists with real API/UI/agent behavior, persistence where applicable, tests/checks, and a pushed commit. It only moves to ✅ when the required product scope is complete and no longer depends on placeholders.
+
 ## Progress Dashboard
 
 | Workstream | Status | Current State |
@@ -150,7 +152,7 @@ Central settings must cover:
 - staged rollout and rollback;
 - bulk deployment to similar recorders.
 
-Current scaffold:
+Current partial implementation:
 
 - Drizzle/Postgres plus JSON fallback stores.
 - Profile, watchdog, channel map, and assignment APIs.
@@ -173,11 +175,12 @@ Nodes need:
 - tags and notes;
 - online/offline/recording/alert status.
 
-Current scaffold:
+Current partial implementation:
 
 - RBAC-gated node list, enroll, credential rotation, status, and health routes.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback tasks can fake capture/meter/render before X32 validation resumes.
+- RBAC-gated listen monitor start/stream returns a controller meter-preview WAV for browser playback.
 
 ---
 
@@ -192,7 +195,7 @@ Scheduler rules:
 - No arbitrary product limit on schedule count.
 - Scheduled recordings inherit schedule-owned filename, folder, tags, profile, targets, watchdog, retention, and future upload policy.
 
-Current scaffold:
+Current partial implementation:
 
 - Drizzle/Postgres schedule store.
 - Preview, create, edit, run-now, skip-next, delete.
@@ -221,7 +224,7 @@ Default scheduled voice rule:
 - During the scheduled recording window, after a grace period, alert if the signal does not exceed a configurable dBFS threshold for enough cumulative time.
 - This is not simple silence detection and not a preflight check.
 
-Current scaffold:
+Current partial implementation:
 
 - Lifecycle health events in Postgres plus local node JSONL logs.
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
@@ -287,7 +290,7 @@ Required permission families:
 
 Audit events must capture actor, permission, target, outcome, reason, timestamp, correlation IDs, and before/after values where relevant.
 
-Current scaffold:
+Current partial implementation:
 
 - Local users, groups, roles, scopes, access policies, passwords, status.
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
@@ -337,7 +340,7 @@ Required features:
 - cache/upload status;
 - future preview/transcode assets.
 
-Current scaffold:
+Current partial implementation:
 
 - Recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
 - Scoped filters, metadata editing, playback, download, cache attach, and audit events.
@@ -352,9 +355,9 @@ Current scaffold:
 Current rule:
 
 - Local cache is the reliable source for now.
-- SMB/S3 execution is scaffolded; cache retention only runs after confirmed upload.
+- SMB/S3 execution is early but functional; cache retention only runs after confirmed upload.
 
-Current scaffold:
+Current partial implementation:
 
 - Failed upload retry queue for future SMB/S3 providers.
 - Queue entries are auditable, visible, retryable, and metric-exported.
@@ -435,7 +438,8 @@ Examples:
 6. ✅ Add policy-controlled cache deletion after confirmed upload.
 7. ✅ Add request-driven ad-hoc recording start.
 8. ✅ Add checksum verification for confirmed uploads.
-9. ⏸️ Return to X32 hardware validation after device is confirmed.
+9. ✅ Add RBAC-gated controller meter-preview listen stream.
+10. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
@@ -443,7 +447,7 @@ Examples:
 | -------- | ------------ |
 | ALSA/JACK/PipeWire order | ALSA first, then JACK/PipeWire adapters |
 | Rust MP3 encoder path | Evaluate during agent recording pipeline hardening |
-| Live monitor protocol | Start with encrypted WebSocket/chunk stream |
+| Live monitor protocol | HTTP WAV preview now; encrypted WebSocket/chunk stream for agent audio next |
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 

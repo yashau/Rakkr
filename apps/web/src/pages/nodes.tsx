@@ -1,4 +1,4 @@
-import { type Dispatch, type ReactNode, type SetStateAction, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { HealthEvent } from "@rakkr/shared";
 import {
@@ -59,6 +59,12 @@ export function NodesPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(emptyDraft);
   const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
+  const [listenPreview, setListenPreview] = useState<{
+    nodeAlias: string;
+    sessionId: string;
+    startedAt: string;
+    url: string;
+  }>();
   const nodesQuery = useQuery({
     queryFn: api.nodes,
     queryKey: ["nodes"],
@@ -70,7 +76,32 @@ export function NodesPage() {
     refetchInterval: 5000,
   });
   const listenMutation = useMutation({
-    mutationFn: api.startListen,
+    mutationFn: async (node: { alias: string; id: string }) => {
+      const session = await api.startListen(node.id);
+      const stream = await api.listenStream(session.data.streamUrl);
+
+      return {
+        nodeAlias: node.alias,
+        session: session.data,
+        stream,
+      };
+    },
+    onSuccess: ({ nodeAlias, session, stream }) => {
+      const url = URL.createObjectURL(stream.blob);
+
+      setListenPreview((current) => {
+        if (current?.url) {
+          URL.revokeObjectURL(current.url);
+        }
+
+        return {
+          nodeAlias,
+          sessionId: session.sessionId,
+          startedAt: session.startedAt,
+          url,
+        };
+      });
+    },
   });
   const enrollMutation = useMutation({
     mutationFn: api.enrollNode,
@@ -87,6 +118,15 @@ export function NodesPage() {
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
     },
   });
+
+  useEffect(
+    () => () => {
+      if (listenPreview?.url) {
+        URL.revokeObjectURL(listenPreview.url);
+      }
+    },
+    [listenPreview?.url],
+  );
 
   return (
     <div className="grid gap-4">
@@ -226,6 +266,18 @@ export function NodesPage() {
         </form>
       </Card>
 
+      {listenPreview ? (
+        <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
+          <div className="mb-2 text-sm font-medium">
+            {listenPreview.nodeAlias} / {listenPreview.sessionId} /{" "}
+            {formatDateTime(listenPreview.startedAt)}
+          </div>
+          <audio className="w-full" controls src={listenPreview.url}>
+            <track kind="captions" />
+          </audio>
+        </section>
+      ) : null}
+
       {nodesQuery.data?.data.map((node) => {
         const healthEvents = (healthEventsQuery.data?.data ?? []).filter(
           (event) => event.nodeId === node.id,
@@ -291,7 +343,7 @@ export function NodesPage() {
                 <Button
                   className="justify-self-start md:justify-self-end"
                   disabled={listenMutation.isPending}
-                  onClick={() => listenMutation.mutate(node.id)}
+                  onClick={() => listenMutation.mutate({ alias: node.alias, id: node.id })}
                   variant="outline"
                 >
                   <Headphones className="size-4" />

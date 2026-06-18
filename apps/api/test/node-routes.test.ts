@@ -1,0 +1,255 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import test from "node:test";
+import { Hono } from "hono";
+import type { AuditEvent, CurrentUser, MeterFrame, Permission, RecorderNode } from "@rakkr/shared";
+import type { AuthResult } from "../src/auth-service.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "../src/http-types.js";
+import type { MeterFrameStore } from "../src/meter-store.js";
+import type { NodeStore } from "../src/node-store.js";
+
+const { createAuditStore } = await import("../src/audit-store.js");
+const { registerNodeRoutes } = await import("../src/node-routes.js");
+
+test("listen start returns a monitor stream URL and audits access", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const app = nodeApp({
+    auditStore,
+    frames: [meterFrame()],
+    nodes: [node()],
+    permissionCalls,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node().id}/listen`, { method: "POST" });
+  const body = (await response.json()) as {
+    data: { mode: string; sessionId: string; streamUrl: string; targetLatencyMs: number };
+  };
+  const [event] = await auditStore.list({ action: "listen.monitor.start.succeeded" });
+
+  assert.equal(response.status, 202);
+  assert.equal(body.data.mode, "controller_meter_preview");
+  assert.equal(body.data.targetLatencyMs, 1500);
+  assert.match(body.data.streamUrl, new RegExp(`/api/v1/nodes/${node().id}/listen/stream`));
+  assert.match(body.data.streamUrl, /sessionId=listen_/);
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "listen.monitor.start",
+    permission: "listen:monitor",
+    target: { id: node().id, type: "node" },
+  });
+  assert.equal(event?.details.streamUrl, body.data.streamUrl);
+  assert.equal(event?.correlationIds?.listenSessionId, body.data.sessionId);
+});
+
+test("listen stream returns a short wav preview derived from meter levels", async () => {
+  const auditStore = createAuditStore("");
+  const app = nodeApp({
+    auditStore,
+    frames: [meterFrame()],
+    nodes: [node()],
+    permissionCalls: [],
+  });
+
+  const response = await app.request(
+    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_test`,
+  );
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const [event] = await auditStore.list({ action: "listen.monitor.stream.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "audio/wav");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(bytes.toString("ascii", 0, 4), "RIFF");
+  assert.equal(bytes.toString("ascii", 8, 12), "WAVE");
+  assert.equal(bytes.readUInt16LE(22), 1);
+  assert.equal(bytes.readUInt32LE(24), 16_000);
+  assert.equal(bytes.readUInt32LE(40), 48_000);
+  assert.equal(event?.correlationIds?.listenSessionId, "listen_test");
+  assert.equal(event?.details.mode, "controller_meter_preview");
+});
+
+test("listen stream reports unavailable monitor data", async () => {
+  const auditStore = createAuditStore("");
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes: [node()],
+    permissionCalls: [],
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node().id}/listen/stream`);
+  const [event] = await auditStore.list({ action: "listen.monitor.stream.failed" });
+
+  assert.equal(response.status, 409);
+  assert.equal(event?.reason, "meter_frame_not_found");
+  assert.equal(event?.target.id, node().id);
+});
+
+interface PermissionCall {
+  action: string;
+  permission: Permission;
+  target?: AuditTarget;
+}
+
+function nodeApp({
+  auditStore,
+  frames,
+  nodes,
+  permissionCalls,
+}: {
+  auditStore: ReturnType<typeof createAuditStore>;
+  frames: MeterFrame[];
+  nodes: RecorderNode[];
+  permissionCalls: PermissionCall[];
+}) {
+  const app = new Hono<AppBindings>();
+
+  registerNodeRoutes({
+    app,
+    currentAuth: () => auth(),
+    currentUser: () => user(),
+    hasResourceScope: async () => true,
+    meterFrameStore: memoryMeterFrameStore(frames),
+    nodeStore: memoryNodeStore(nodes),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => nodes,
+  });
+
+  return app;
+}
+
+function requirePermission(calls: PermissionCall[]): RequirePermission {
+  return (permission, action, target) => {
+    return async (c, next) => {
+      calls.push({
+        action,
+        permission,
+        target: target ? await target(c) : undefined,
+      });
+      await next();
+    };
+  };
+}
+
+function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
+  return async (_c, input) => {
+    const event: AuditEvent = {
+      action: input.action,
+      actor: input.actor ?? {
+        id: "user_node_route",
+        name: "Node Route User",
+        roles: ["operator"],
+        type: "user",
+      },
+      actorContext: {},
+      after: input.after,
+      before: input.before,
+      correlationIds: input.correlationIds,
+      createdAt: new Date().toISOString(),
+      details: input.details ?? {},
+      id: `audit_${randomUUID()}`,
+      outcome: input.outcome,
+      permission: input.permission,
+      reason: input.reason,
+      target: input.target,
+    };
+
+    await auditStore.append(event);
+
+    return event;
+  };
+}
+
+function memoryMeterFrameStore(frames: MeterFrame[]): MeterFrameStore {
+  return {
+    async latest(nodeId) {
+      return frames.find((frame) => frame.nodeId === nodeId);
+    },
+    async save(frame) {
+      frames.unshift(frame);
+
+      return {
+        frame,
+        receivedAt: new Date().toISOString(),
+      };
+    },
+  };
+}
+
+function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
+  return {
+    async authenticateCredential() {
+      return undefined;
+    },
+    async enroll() {
+      throw new Error("not implemented");
+    },
+    async find(nodeId) {
+      return nodes.find((candidate) => candidate.id === nodeId);
+    },
+    async list() {
+      return nodes;
+    },
+    async rotateCredential() {
+      throw new Error("not implemented");
+    },
+  };
+}
+
+function auth(): AuthResult {
+  return { user: user() };
+}
+
+function user(): CurrentUser {
+  return {
+    email: "node-route@example.com",
+    groups: [],
+    id: "user_node_route",
+    name: "Node Route User",
+    permissions: ["listen:monitor", "node:read"],
+    provider: "local",
+    resourceGrants: [],
+    roles: ["operator"],
+  };
+}
+
+function node(): RecorderNode {
+  return {
+    agentVersion: "0.1.0",
+    alias: "Monitor Room",
+    hostname: "monitor-room-node",
+    id: "node_monitor_room",
+    interfaces: [],
+    ipAddresses: ["10.0.0.50"],
+    lastSeenAt: "2026-06-18T12:00:00.000Z",
+    location: {
+      room: "Monitor Room",
+      site: "Main Site",
+    },
+    status: "online",
+    tags: ["voice"],
+  };
+}
+
+function meterFrame(): MeterFrame {
+  return {
+    capturedAt: "2026-06-18T12:00:00.000Z",
+    interfaceId: "iface_monitor",
+    levels: [
+      {
+        channelIndex: 1,
+        clipping: false,
+        label: "Mic 1",
+        peakDbfs: -12,
+        rmsDbfs: -24,
+      },
+    ],
+    nodeId: node().id,
+  };
+}
