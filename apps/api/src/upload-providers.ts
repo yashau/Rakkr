@@ -23,14 +23,14 @@ const providerStorePath = path.resolve(
 
 const uploadProviderDrivers: Record<UploadProvider, UploadProviderDriver> = {
   s3: {
-    implemented: false,
+    implemented: true,
     provider: "s3",
     requiredFields: ["target", "credentialRef"],
   },
   smb: {
-    implemented: false,
+    implemented: true,
     provider: "smb",
-    requiredFields: ["target", "credentialRef"],
+    requiredFields: ["target"],
   },
   stub: {
     implemented: true,

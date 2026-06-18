@@ -33,7 +33,16 @@ test("reports upload provider configuration readiness", async () => {
     credentialRef: "secret://rakkr/s3/archive",
   });
 
-  assert.equal(pending?.status, "not_implemented");
+  assert.equal(pending?.status, "ready");
   assert.equal(pending?.configured, true);
-  assert.equal(pending?.implemented, false);
+  assert.equal(pending?.implemented, true);
+
+  const mountedShare = await store.update("smb", {
+    displayName: "Mounted Share",
+    enabled: true,
+    target: "/mnt/rakkr-recordings",
+  });
+
+  assert.equal(mountedShare?.status, "ready");
+  assert.deepEqual(mountedShare?.requiredFields, ["target"]);
 });

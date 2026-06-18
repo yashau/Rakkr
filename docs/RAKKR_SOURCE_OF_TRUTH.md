@@ -65,7 +65,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
-| Storage upload | 🟦 | Stub queue, provider config/status, policy templates, auto-queue, audited runner, API/UI control, metrics |
+| Storage upload | 🟦 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | 🟦 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
@@ -359,14 +359,13 @@ Current scaffold:
 - Upload policy templates choose provider, target, trigger, and retry budget.
 - Schedules and recordings carry `uploadPolicyId` for provider selection.
 - Cache attach auto-queues recordings when enabled policy trigger is `on_recording_cached`.
-- Executor skeleton processes due queue items through provider readiness and retry budgets.
+- Executor processes due queue items through provider readiness and retry budgets.
+- SMB copies cached files to mounted share targets; S3 sends cached files to `s3://` targets.
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
 - Controller API and Settings UI expose upload runner status and run-now control.
 
 Later:
 
-- SMB provider.
-- S3 provider.
 - checksum verification after upload.
 - retention policy after confirmed upload.
 
@@ -425,9 +424,8 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Add SMB/S3 providers.
+1. 🚧 Add local VAD and noise/speech scoring.
 2. ⏸️ Return to X32 hardware validation after device is confirmed.
-3. 🧊 Add local VAD and noise/speech scoring.
 
 ## Open Questions
 

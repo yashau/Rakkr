@@ -54,6 +54,14 @@ References: [Microsoft identity platform auth code flow](https://learn.microsoft
 
 Local cached recording files are served from `RAKKR_RECORDING_CACHE_DIR`, defaulting to `data/recordings`.
 
+## Upload Providers
+
+Upload queue execution supports:
+
+- `stub://queue-only` for dry-run queue processing.
+- SMB via a mounted filesystem target such as `/mnt/rakkr-recordings` or `file:///mnt/rakkr-recordings`.
+- S3 via `s3://bucket/prefix`; AWS credentials and region come from the normal AWS SDK environment/instance configuration, while Rakkr stores `credentialRef` as the operator-facing secret reference.
+
 Recorder agents authenticate with node credentials, sample ALSA S16_LE PCM for live meter frames by default, post those frames to the controller, and keep a local JSONL health log. Meter behavior is controlled by `RAKKR_METER_BACKEND` (`alsa` or `synthetic`), `RAKKR_METER_SAMPLE_SECONDS`, `RAKKR_METER_CLIP_DBFS`, and `RAKKR_METER_FLATLINE_DBFS`. System health sampling is controlled by `RAKKR_SYSTEM_HEALTH_ENABLED`, `RAKKR_SYSTEM_HEALTH_DISK_PATH`, disk warning/critical percentages, and load warning/critical per-core thresholds. The default log path is `RAKKR_AGENT_HEALTH_LOG_FILE=data/agent/health-events.jsonl`, with size rotation controlled by `RAKKR_AGENT_HEALTH_LOG_MAX_BYTES`.
 
 ## Workspace
