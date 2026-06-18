@@ -90,6 +90,15 @@ export interface RecordingMetadataUpdate {
   tags?: string[];
 }
 
+export interface RecordingStartInput {
+  folder?: string;
+  name?: string;
+  nodeId: string;
+  recordingProfileId?: string;
+  tags?: string[];
+  uploadPolicyId?: string;
+}
+
 export interface UploadQueueInput {
   provider?: UploadProvider;
   reason?: string;
@@ -499,8 +508,12 @@ export const api = {
     fetchJson<void>(`/api/v1/schedules/${scheduleId}`, {
       method: "DELETE",
     }),
-  startRecording: () =>
+  startRecording: (input: RecordingStartInput) =>
     fetchJson<{ data: RecordingSummary; job: RecordingJob }>("/api/v1/recordings", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
       method: "POST",
     }),
   status: () => fetchJson<ControllerStatus>("/api/v1/status"),

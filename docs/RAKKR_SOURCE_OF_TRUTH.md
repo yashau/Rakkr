@@ -342,6 +342,7 @@ Current scaffold:
 - Recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
 - Scoped filters, metadata editing, playback, download, cache attach, and audit events.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
+- Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
@@ -435,7 +436,8 @@ Examples:
 4. ✅ Add waveform/metadata extraction for encoded cache files.
 5. ✅ Add RBAC-gated audit CSV export.
 6. ✅ Add policy-controlled cache deletion after confirmed upload.
-7. ⏸️ Return to X32 hardware validation after device is confirmed.
+7. ✅ Add request-driven ad-hoc recording start.
+8. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

@@ -3,8 +3,8 @@ import type { Context, Hono } from "hono";
 import { z } from "zod";
 import {
   defaultVoiceRecordingProfile,
-  defaultStubUploadPolicy,
   type Permission,
+  type RecorderNode,
   type RecordingSummary,
   type UploadQueueItem,
   recordingStatusSchema,
@@ -18,7 +18,11 @@ import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recor
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
-import { uploadPolicyForQueue, uploadQueueInputForPolicy } from "./upload-policies.js";
+import {
+  findUploadPolicy,
+  uploadPolicyForQueue,
+  uploadQueueInputForPolicy,
+} from "./upload-policies.js";
 import {
   enqueueRecordingUpload,
   listUploadQueueItems,
@@ -81,6 +85,19 @@ const uploadQueueRequestSchema = z
     uploadPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
+const recordingStartRequestSchema = z
+  .object({
+    folder: z.string().trim().min(1).max(240).optional(),
+    name: z.string().trim().min(1).max(240).optional(),
+    nodeId: z.string().trim().min(1).max(160),
+    recordingProfileId: z.string().trim().min(1).max(160).optional(),
+    tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
+    uploadPolicyId: z.string().trim().min(1).max(160).optional(),
+  })
+  .strict();
+const recordingStartTargetSchema = z.object({
+  nodeId: z.string().trim().min(1).max(160),
+});
 
 export function registerRecordingRoutes({
   app,
@@ -594,31 +611,57 @@ export function registerRecordingRoutes({
 
   app.post(
     "/api/v1/recordings",
-    requirePermission("recording:create", "recordings.start", () => ({
-      id: "node_x32_test",
-      name: "Council Chamber Rack",
-      type: "node",
-    })),
+    requirePermission("recording:create", "recordings.start", recordingStartTarget),
     async (c) => {
+      const body = recordingStartRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordRecordingStartFailure(c, "invalid_request");
+        return c.json({ error: "Invalid recording start request", issues: body.error.issues }, 400);
+      }
+
       const now = new Date();
+      const node = await nodeStore.find(body.data.nodeId);
+
+      if (!node) {
+        await recordRecordingStartFailure(c, "node_not_found", body.data.nodeId);
+        return c.json({ error: "Node not found" }, 404);
+      }
+
+      const recordingProfileId = body.data.recordingProfileId ?? defaultVoiceRecordingProfile.id;
+      const profile = await settingsStore.findRecordingProfile(recordingProfileId);
+
+      if (!profile) {
+        await recordRecordingStartFailure(c, "recording_profile_not_found", node.id, node.alias);
+        return c.json({ error: "Recording profile not found" }, 404);
+      }
+
+      const uploadPolicy = body.data.uploadPolicyId
+        ? await findUploadPolicy(body.data.uploadPolicyId)
+        : await uploadPolicyForQueue(undefined);
+
+      if (!uploadPolicy) {
+        await recordRecordingStartFailure(c, "upload_policy_not_found", node.id, node.alias);
+        return c.json({ error: "Upload policy not found" }, 404);
+      }
+
       const recording: RecordingSummary = {
         cached: false,
         durationSeconds: 0,
-        folder: `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
+        folder: body.data.folder ?? defaultAdHocFolder(now, node),
         healthStatus: "unknown",
         id: `rec_${randomUUID()}`,
-        name: `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_Council Chamber Rack`,
-        nodeId: "node_x32_test",
+        name: body.data.name ?? defaultAdHocName(now, node),
+        nodeId: node.id,
         recordedAt: now.toISOString(),
-        recordingProfileId: defaultVoiceRecordingProfile.id,
+        recordingProfileId,
         source: "ad_hoc",
         status: "recording",
-        tags: ["ad-hoc", "voice"],
-        uploadPolicyId: defaultStubUploadPolicy.id,
+        tags: uniqueTags(body.data.tags ?? ["ad-hoc", "voice"]),
+        uploadPolicyId: uploadPolicy.id,
       };
 
       await recordingStore.create(recording);
-      const node = await nodeStore.find(recording.nodeId ?? "node_x32_test");
       const job = await createRecordingJob(
         recording,
         await recordingJobTargetOptions({
@@ -638,7 +681,7 @@ export function registerRecordingRoutes({
         details: {
           jobCommand: job.command,
           jobStatus: job.status,
-          profileId: defaultVoiceRecordingProfile.id,
+          profileId: recordingProfileId,
           source: recording.source,
         },
         outcome: "succeeded",
@@ -718,6 +761,26 @@ export function registerRecordingRoutes({
     },
   );
 
+  async function recordRecordingStartFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    nodeId?: string,
+    nodeName?: string,
+  ) {
+    await recordAuditEvent(c, {
+      action: "recordings.start.failed",
+      auth: currentAuth(c),
+      outcome: "failed",
+      permission: "recording:create",
+      reason,
+      target: {
+        id: nodeId,
+        name: nodeName,
+        type: "node",
+      },
+    });
+  }
+
   async function recordUploadQueueFailure(
     c: Context<AppBindings>,
     input: {
@@ -745,6 +808,28 @@ export function registerRecordingRoutes({
       },
     });
   }
+}
+
+async function recordingStartTarget(c: Context<AppBindings>) {
+  const body = recordingStartTargetSchema.safeParse(
+    await c.req.raw
+      .clone()
+      .json()
+      .catch(() => ({})),
+  );
+
+  return {
+    id: body.success ? body.data.nodeId : "__invalid_node__",
+    type: "node" as const,
+  };
+}
+
+function defaultAdHocFolder(now: Date, node: RecorderNode) {
+  return `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${node.location.room}`;
+}
+
+function defaultAdHocName(now: Date, node: RecorderNode) {
+  return `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_${node.alias}`;
 }
 
 function recordingMetadataSnapshot(recording: RecordingSummary) {
