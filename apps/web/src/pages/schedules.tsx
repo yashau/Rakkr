@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, CalendarPlus, Pencil, PlusCircle, RotateCcw, Save } from "lucide-react";
+import {
+  CalendarClock,
+  CalendarPlus,
+  Pencil,
+  PlusCircle,
+  Repeat2,
+  RotateCcw,
+  Save,
+} from "lucide-react";
 import {
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
   type RecorderNode,
+  type ScheduleDayOfWeek,
   type ScheduleInput,
+  type ScheduleRecurrence,
   type ScheduleSummary,
 } from "@rakkr/shared";
 
@@ -19,13 +29,20 @@ import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 
 interface ScheduleDraft {
+  dayOfMonth: number;
+  daysOfWeek: ScheduleDayOfWeek[];
   enabled: boolean;
+  endTime: string;
   folderTemplate: string;
+  interval: number;
   name: string;
   nextRunAt: string;
   nodeId: string;
+  recurrenceMode: ScheduleRecurrence["mode"];
+  recurrenceStartAt: string;
   recordingProfileId: string;
   room: string;
+  startTime: string;
   tags: string;
   timezone: string;
   titleTemplate: string;
@@ -33,6 +50,17 @@ interface ScheduleDraft {
 }
 
 const fallbackTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const dayOptions: Array<{ id: ScheduleDayOfWeek; label: string }> = [
+  { id: "monday", label: "Mon" },
+  { id: "tuesday", label: "Tue" },
+  { id: "wednesday", label: "Wed" },
+  { id: "thursday", label: "Thu" },
+  { id: "friday", label: "Fri" },
+  { id: "saturday", label: "Sat" },
+  { id: "sunday", label: "Sun" },
+];
+const selectClass =
+  "h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 export function SchedulesPage() {
   const queryClient = useQueryClient();
@@ -104,6 +132,20 @@ export function SchedulesPage() {
     }));
   }
 
+  function toggleDay(day: ScheduleDayOfWeek) {
+    setDraft((current) => {
+      const isSelected = current.daysOfWeek.includes(day);
+      const daysOfWeek = isSelected
+        ? current.daysOfWeek.filter((candidate) => candidate !== day)
+        : [...current.daysOfWeek, day];
+
+      return {
+        ...current,
+        daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : current.daysOfWeek,
+      };
+    });
+  }
+
   function submitSchedule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     saveScheduleMutation.mutate({
@@ -154,7 +196,7 @@ export function SchedulesPage() {
             <div className="grid gap-2">
               <Label htmlFor="schedule-node">Recorder Node</Label>
               <select
-                className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className={selectClass}
                 id="schedule-node"
                 onChange={(event) => selectNode(event.target.value)}
                 required
@@ -190,17 +232,128 @@ export function SchedulesPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="schedule-next-run">Next Run</Label>
-              <Input
-                id="schedule-next-run"
-                onChange={(event) => updateDraft("nextRunAt", event.target.value)}
-                type="datetime-local"
-                value={draft.nextRunAt}
-              />
+              <Label htmlFor="schedule-recurrence-mode">Recurrence</Label>
+              <select
+                className={selectClass}
+                id="schedule-recurrence-mode"
+                onChange={(event) =>
+                  updateDraft(
+                    "recurrenceMode",
+                    event.target.value as ScheduleDraft["recurrenceMode"],
+                  )
+                }
+                value={draft.recurrenceMode}
+              >
+                <option value="manual">Manual next run</option>
+                <option value="once">One-off</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="always_on">Always on</option>
+              </select>
             </div>
 
+            {draft.recurrenceMode === "manual" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-next-run">Manual Next Run</Label>
+                <Input
+                  id="schedule-next-run"
+                  onChange={(event) => updateDraft("nextRunAt", event.target.value)}
+                  type="datetime-local"
+                  value={draft.nextRunAt}
+                />
+              </div>
+            ) : null}
+
+            {draft.recurrenceMode === "once" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-start-at">Start At</Label>
+                <Input
+                  id="schedule-start-at"
+                  onChange={(event) => updateDraft("recurrenceStartAt", event.target.value)}
+                  required
+                  type="datetime-local"
+                  value={draft.recurrenceStartAt}
+                />
+              </div>
+            ) : null}
+
+            {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="schedule-start-time">Start Time</Label>
+                  <Input
+                    id="schedule-start-time"
+                    onChange={(event) => updateDraft("startTime", event.target.value)}
+                    required
+                    type="time"
+                    value={draft.startTime}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="schedule-end-time">End Time</Label>
+                  <Input
+                    id="schedule-end-time"
+                    onChange={(event) => updateDraft("endTime", event.target.value)}
+                    required
+                    type="time"
+                    value={draft.endTime}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="schedule-interval">Every</Label>
+                  <Input
+                    id="schedule-interval"
+                    min={1}
+                    onChange={(event) => updateDraft("interval", Number(event.target.value))}
+                    required
+                    type="number"
+                    value={draft.interval}
+                  />
+                </div>
+              </>
+            ) : null}
+
+            {draft.recurrenceMode === "monthly" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-day-of-month">Day Of Month</Label>
+                <Input
+                  id="schedule-day-of-month"
+                  max={31}
+                  min={1}
+                  onChange={(event) => updateDraft("dayOfMonth", Number(event.target.value))}
+                  required
+                  type="number"
+                  value={draft.dayOfMonth}
+                />
+              </div>
+            ) : null}
+
+            {draft.recurrenceMode === "weekly" ? (
+              <div className="grid gap-2 md:col-span-2">
+                <Label>Days Of Week</Label>
+                <div className="flex flex-wrap gap-2">
+                  {dayOptions.map((day) => {
+                    const selected = draft.daysOfWeek.includes(day.id);
+
+                    return (
+                      <Button
+                        aria-pressed={selected}
+                        key={day.id}
+                        onClick={() => toggleDay(day.id)}
+                        type="button"
+                        variant={selected ? "default" : "outline"}
+                      >
+                        {day.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex items-center gap-2 pt-7">
-              <input
+              <Input
                 checked={draft.enabled}
                 className="size-4 accent-teal-700"
                 id="schedule-enabled"
@@ -277,9 +430,15 @@ export function SchedulesPage() {
               <p className="text-sm text-muted-foreground">
                 {schedule.room} / {schedule.timezone}
               </p>
-              <p className="mt-1 text-sm">
-                {schedule.nextRunAt ? formatDateTime(schedule.nextRunAt) : "No upcoming run"}
-              </p>
+              <div className="mt-1 flex items-center gap-2 text-sm">
+                <Repeat2 className="size-4 text-teal-700" />
+                <span>{recurrenceSummary(schedule.recurrence)}</span>
+              </div>
+              {schedule.nextRunAt ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Next: {formatDateTime(schedule.nextRunAt)}
+                </p>
+              ) : null}
               <dl className="mt-3 grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
                 <div>
                   <dt className="font-medium text-foreground">Title</dt>
@@ -342,13 +501,20 @@ export function SchedulesPage() {
 
 function defaultDraft(node?: RecorderNode): ScheduleDraft {
   return {
+    dayOfMonth: 1,
+    daysOfWeek: ["monday"],
     enabled: true,
+    endTime: "10:00",
     folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
+    interval: 1,
     name: "",
     nextRunAt: "",
     nodeId: node?.id ?? "",
+    recurrenceMode: "weekly",
+    recurrenceStartAt: "",
     recordingProfileId: defaultVoiceRecordingProfile.id,
     room: node?.location.room ?? "",
+    startTime: "09:00",
     tags: "voice, scheduled",
     timezone: fallbackTimezone,
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
@@ -357,7 +523,8 @@ function defaultDraft(node?: RecorderNode): ScheduleDraft {
 }
 
 function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
-  return {
+  const draft: ScheduleDraft = {
+    ...defaultDraft(),
     enabled: schedule.enabled,
     folderTemplate: schedule.folderTemplate,
     name: schedule.name,
@@ -370,15 +537,20 @@ function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
     titleTemplate: schedule.titleTemplate,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
+
+  return applyRecurrenceToDraft(draft, schedule.recurrence);
 }
 
 function draftToInput(draft: ScheduleDraft): ScheduleInput {
+  const recurrence = recurrenceFromDraft(draft);
+
   return {
     enabled: draft.enabled,
     folderTemplate: draft.folderTemplate,
     name: draft.name,
-    nextRunAt: isoFromLocalDateTime(draft.nextRunAt),
+    nextRunAt: nextRunAtFromDraft(draft, recurrence),
     nodeId: draft.nodeId,
+    recurrence,
     recordingProfileId: draft.recordingProfileId,
     room: draft.room,
     tags: uniqueTags(draft.tags),
@@ -386,6 +558,95 @@ function draftToInput(draft: ScheduleDraft): ScheduleInput {
     titleTemplate: draft.titleTemplate,
     watchdogPolicyId: draft.watchdogPolicyId,
   };
+}
+
+function recurrenceFromDraft(draft: ScheduleDraft): ScheduleRecurrence {
+  const interval = Math.max(1, Math.floor(draft.interval || 1));
+
+  if (draft.recurrenceMode === "manual") {
+    return { mode: "manual" };
+  }
+
+  if (draft.recurrenceMode === "once") {
+    return {
+      mode: "once",
+      startsAt: isoFromLocalDateTime(draft.recurrenceStartAt) ?? new Date().toISOString(),
+    };
+  }
+
+  if (draft.recurrenceMode === "daily") {
+    return {
+      endTime: draft.endTime,
+      interval,
+      mode: "daily",
+      startTime: draft.startTime,
+    };
+  }
+
+  if (draft.recurrenceMode === "weekly") {
+    return {
+      daysOfWeek: draft.daysOfWeek,
+      endTime: draft.endTime,
+      interval,
+      mode: "weekly",
+      startTime: draft.startTime,
+    };
+  }
+
+  if (draft.recurrenceMode === "monthly") {
+    return {
+      dayOfMonth: Math.min(31, Math.max(1, Math.floor(draft.dayOfMonth || 1))),
+      endTime: draft.endTime,
+      interval,
+      mode: "monthly",
+      startTime: draft.startTime,
+    };
+  }
+
+  return { mode: "always_on" };
+}
+
+function nextRunAtFromDraft(draft: ScheduleDraft, recurrence: ScheduleRecurrence) {
+  if (recurrence.mode === "once") {
+    return recurrence.startsAt;
+  }
+
+  if (recurrence.mode === "manual") {
+    return isoFromLocalDateTime(draft.nextRunAt);
+  }
+
+  return undefined;
+}
+
+function applyRecurrenceToDraft(draft: ScheduleDraft, recurrence: ScheduleRecurrence) {
+  const nextDraft = { ...draft, recurrenceMode: recurrence.mode };
+
+  if (recurrence.mode === "once") {
+    return {
+      ...nextDraft,
+      recurrenceStartAt: localDateTimeInput(recurrence.startsAt),
+    };
+  }
+
+  if (
+    recurrence.mode === "daily" ||
+    recurrence.mode === "weekly" ||
+    recurrence.mode === "monthly"
+  ) {
+    nextDraft.endTime = recurrence.endTime;
+    nextDraft.interval = recurrence.interval;
+    nextDraft.startTime = recurrence.startTime;
+  }
+
+  if (recurrence.mode === "weekly") {
+    nextDraft.daysOfWeek = recurrence.daysOfWeek;
+  }
+
+  if (recurrence.mode === "monthly") {
+    nextDraft.dayOfMonth = recurrence.dayOfMonth;
+  }
+
+  return nextDraft;
 }
 
 function isoFromLocalDateTime(value: string) {
@@ -412,4 +673,36 @@ function uniqueTags(value: string) {
         .filter(Boolean),
     ),
   ];
+}
+
+function recurrenceSummary(recurrence: ScheduleRecurrence) {
+  if (recurrence.mode === "manual") {
+    return "Manual next run";
+  }
+
+  if (recurrence.mode === "once") {
+    return `One-off at ${formatDateTime(recurrence.startsAt)}`;
+  }
+
+  if (recurrence.mode === "daily") {
+    return `Every ${intervalLabel(recurrence.interval, "day")} ${recurrence.startTime}-${recurrence.endTime}`;
+  }
+
+  if (recurrence.mode === "weekly") {
+    return `Every ${intervalLabel(recurrence.interval, "week")} on ${dayList(recurrence.daysOfWeek)} ${recurrence.startTime}-${recurrence.endTime}`;
+  }
+
+  if (recurrence.mode === "monthly") {
+    return `Every ${intervalLabel(recurrence.interval, "month")} on day ${recurrence.dayOfMonth} ${recurrence.startTime}-${recurrence.endTime}`;
+  }
+
+  return "Always on";
+}
+
+function intervalLabel(interval: number, unit: string) {
+  return interval === 1 ? unit : `${interval} ${unit}s`;
+}
+
+function dayList(days: ScheduleDayOfWeek[]) {
+  return days.map((day) => dayOptions.find((option) => option.id === day)?.label ?? day).join(", ");
 }

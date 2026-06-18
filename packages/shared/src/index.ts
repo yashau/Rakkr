@@ -3,6 +3,7 @@ import { z } from "zod";
 export const isoDateTimeSchema = z.string().min(1);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const dbfsSchema = z.number().min(-160).max(24);
+const timeOfDaySchema = z.string().regex(/^\d{2}:\d{2}$/);
 
 export const nodeStatusSchema = z.enum(["online", "offline", "degraded", "recording", "alerting"]);
 
@@ -225,6 +226,47 @@ export const recordingProfileSchema = z.object({
   silenceSkipEnabled: z.boolean(),
   vbr: z.boolean(),
 });
+export const scheduleDayOfWeekSchema = z.enum([
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+]);
+export const scheduleRecurrenceSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("manual"),
+  }),
+  z.object({
+    mode: z.literal("once"),
+    startsAt: isoDateTimeSchema,
+  }),
+  z.object({
+    endTime: timeOfDaySchema,
+    interval: z.number().int().positive(),
+    mode: z.literal("daily"),
+    startTime: timeOfDaySchema,
+  }),
+  z.object({
+    daysOfWeek: z.array(scheduleDayOfWeekSchema).min(1).max(7),
+    endTime: timeOfDaySchema,
+    interval: z.number().int().positive(),
+    mode: z.literal("weekly"),
+    startTime: timeOfDaySchema,
+  }),
+  z.object({
+    dayOfMonth: z.number().int().min(1).max(31),
+    endTime: timeOfDaySchema,
+    interval: z.number().int().positive(),
+    mode: z.literal("monthly"),
+    startTime: timeOfDaySchema,
+  }),
+  z.object({
+    mode: z.literal("always_on"),
+  }),
+]);
 
 export const watchdogPolicySchema = z.object({
   activeDuring: z.enum(["always", "scheduled_recording", "recording"]),
@@ -246,6 +288,7 @@ export const scheduleSummarySchema = z.object({
   name: z.string().min(1),
   nextRunAt: isoDateTimeSchema.optional(),
   nodeId: z.string().min(1),
+  recurrence: scheduleRecurrenceSchema.default({ mode: "manual" }),
   recordingProfileId: z.string().min(1),
   room: z.string().min(1),
   tags: z.array(z.string().min(1)),
@@ -260,6 +303,7 @@ export const scheduleInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
   nextRunAt: isoDateTimeSchema.optional(),
   nodeId: z.string().trim().min(1).max(160),
+  recurrence: scheduleRecurrenceSchema.optional(),
   recordingProfileId: z.string().trim().min(1).max(160),
   room: z.string().trim().min(1).max(160),
   tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
@@ -274,6 +318,7 @@ export const scheduleUpdateSchema = z
     name: z.string().trim().min(1).max(160).optional(),
     nextRunAt: isoDateTimeSchema.optional(),
     nodeId: z.string().trim().min(1).max(160).optional(),
+    recurrence: scheduleRecurrenceSchema.optional(),
     recordingProfileId: z.string().trim().min(1).max(160).optional(),
     room: z.string().trim().min(1).max(160).optional(),
     tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
@@ -383,7 +428,9 @@ export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;
 export type ResourceGrant = z.infer<typeof resourceGrantSchema>;
+export type ScheduleDayOfWeek = z.infer<typeof scheduleDayOfWeekSchema>;
 export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
+export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
 export type ScheduleUpdate = z.infer<typeof scheduleUpdateSchema>;
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;

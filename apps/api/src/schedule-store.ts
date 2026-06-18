@@ -4,7 +4,9 @@ import { createDatabase, desc, eq, schedules as schedulesTable } from "@rakkr/db
 import {
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
+  scheduleRecurrenceSchema,
   scheduleSummarySchema,
+  type ScheduleRecurrence,
   type ScheduleSummary,
 } from "@rakkr/shared";
 
@@ -266,9 +268,9 @@ function loadSchedules(seedSchedules: ScheduleSummary[]) {
     throw new Error("schedule_store_invalid");
   }
 
-  return schedules.filter(
-    (schedule): schedule is ScheduleSummary => scheduleSummarySchema.safeParse(schedule).success,
-  );
+  return schedules
+    .map(normalizeSchedule)
+    .filter((schedule): schedule is ScheduleSummary => schedule !== undefined);
 }
 
 function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
@@ -290,15 +292,16 @@ function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
 }
 
 function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
-  const recurrence = record(row.recurrence);
+  const recurrence = recurrenceFromValue(row.recurrence);
 
   return {
     enabled: row.enabled,
     folderTemplate: row.folderTemplate,
     id: row.id,
     name: row.name,
-    nextRunAt: isoOrUndefined(row.nextRunAt) ?? stringOrUndefined(recurrence?.nextRunAt),
+    nextRunAt: isoOrUndefined(row.nextRunAt) ?? nextRunAtFromRecurrence(recurrence),
     nodeId: row.nodeId ?? "unassigned",
+    recurrence,
     recordingProfileId: row.recordingProfileId ?? defaultVoiceRecordingProfile.id,
     room: row.room,
     tags: stringArray(row.tags),
@@ -309,17 +312,57 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
 }
 
 function scheduleRecurrence(schedule: ScheduleSummary) {
-  return {
-    mode: "manual",
-    nextRunAt: schedule.nextRunAt ?? null,
-  };
+  return schedule.recurrence;
 }
 
 function cloneSchedule(schedule: ScheduleSummary) {
   return {
     ...schedule,
+    recurrence: { ...schedule.recurrence },
     tags: [...schedule.tags],
   };
+}
+
+function normalizeSchedule(value: unknown) {
+  const parsed = scheduleSummarySchema.safeParse(value);
+
+  if (parsed.success) {
+    return parsed.data;
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const migrated = {
+    ...value,
+    recurrence: recurrenceFromValue(value.recurrence, stringOrUndefined(value.nextRunAt)),
+  };
+  const migratedParsed = scheduleSummarySchema.safeParse(migrated);
+
+  return migratedParsed.success ? migratedParsed.data : undefined;
+}
+
+function recurrenceFromValue(value: unknown, nextRunAt?: string): ScheduleRecurrence {
+  const parsed = scheduleRecurrenceSchema.safeParse(value);
+
+  if (parsed.success) {
+    return parsed.data;
+  }
+
+  if (isRecord(value) && value.mode === "manual") {
+    return { mode: "manual" };
+  }
+
+  if (nextRunAt) {
+    return { mode: "once", startsAt: nextRunAt };
+  }
+
+  return { mode: "manual" };
+}
+
+function nextRunAtFromRecurrence(recurrence: ScheduleRecurrence) {
+  return recurrence.mode === "once" ? recurrence.startsAt : undefined;
 }
 
 function dateOrNull(value: string | undefined) {
@@ -340,10 +383,12 @@ function stringOrUndefined(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }
 
 function isScheduleStore(value: unknown): value is { schedules: unknown[] } {

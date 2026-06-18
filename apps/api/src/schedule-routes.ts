@@ -4,6 +4,7 @@ import {
   scheduleInputSchema,
   scheduleUpdateSchema,
   type RecordingSummary,
+  type ScheduleRecurrence,
   type ScheduleInput,
   type ScheduleSummary,
   type ScheduleUpdate,
@@ -54,7 +55,7 @@ export function registerScheduleRoutes({
         return c.json({ error: "Invalid schedule", issues: body.error.issues }, 400);
       }
 
-      if (!isValidOptionalDate(body.data.nextRunAt)) {
+      if (!isValidScheduleTiming(body.data)) {
         await recordScheduleWriteFailure(c, "schedules.create.failed", "invalid_next_run_at");
         return c.json({ error: "Invalid next run date" }, 400);
       }
@@ -121,7 +122,7 @@ export function registerScheduleRoutes({
         return c.json({ error: "Invalid schedule update", issues: body.error.issues }, 400);
       }
 
-      if (!isValidOptionalDate(body.data.nextRunAt)) {
+      if (!isValidScheduleTiming(body.data)) {
         await recordScheduleWriteFailure(
           c,
           "schedules.update.failed",
@@ -274,13 +275,16 @@ export function registerScheduleRoutes({
 }
 
 function buildSchedule(input: ScheduleInput): ScheduleSummary {
+  const recurrence = input.recurrence ?? recurrenceFromNextRun(input.nextRunAt);
+
   return {
     enabled: input.enabled,
     folderTemplate: input.folderTemplate,
     id: input.id ?? `sched_${randomUUID()}`,
     name: input.name,
-    nextRunAt: validIsoOrUndefined(input.nextRunAt),
+    nextRunAt: nextRunAtForRecurrence(recurrence, input.nextRunAt),
     nodeId: input.nodeId,
+    recurrence,
     recordingProfileId: input.recordingProfileId,
     room: input.room,
     tags: uniqueTags(input.tags),
@@ -293,6 +297,10 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
 function sanitizeScheduleUpdate(input: ScheduleUpdate): Partial<Omit<ScheduleSummary, "id">> {
   const updates: Partial<Omit<ScheduleSummary, "id">> = { ...input };
 
+  if (input.recurrence) {
+    updates.nextRunAt = nextRunAtForRecurrence(input.recurrence, input.nextRunAt);
+  }
+
   if (input.nextRunAt) {
     updates.nextRunAt = validIsoOrUndefined(input.nextRunAt);
   }
@@ -304,12 +312,32 @@ function sanitizeScheduleUpdate(input: ScheduleUpdate): Partial<Omit<ScheduleSum
   return updates;
 }
 
+function isValidScheduleTiming(input: { nextRunAt?: string; recurrence?: ScheduleRecurrence }) {
+  const nextRunAt = input.recurrence?.mode === "once" ? input.recurrence.startsAt : input.nextRunAt;
+
+  return isValidOptionalDate(nextRunAt);
+}
+
 function isValidOptionalDate(value: string | undefined) {
   return !value || !Number.isNaN(Date.parse(value));
 }
 
 function validIsoOrUndefined(value: string | undefined) {
   return value ? new Date(value).toISOString() : undefined;
+}
+
+function recurrenceFromNextRun(nextRunAt: string | undefined): ScheduleRecurrence {
+  return nextRunAt
+    ? { mode: "once", startsAt: new Date(nextRunAt).toISOString() }
+    : { mode: "manual" };
+}
+
+function nextRunAtForRecurrence(recurrence: ScheduleRecurrence, fallback: string | undefined) {
+  if (recurrence.mode === "once") {
+    return validIsoOrUndefined(recurrence.startsAt);
+  }
+
+  return validIsoOrUndefined(fallback);
 }
 
 function materializeScheduledRecording(
@@ -413,6 +441,8 @@ function uniqueTags(tags: string[]) {
 function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
   return {
     folderTemplate: schedule.folderTemplate,
+    nextRunAt: schedule.nextRunAt,
+    recurrence: schedule.recurrence,
     recordingProfileId: schedule.recordingProfileId,
     tags: schedule.tags,
     titleTemplate: schedule.titleTemplate,
