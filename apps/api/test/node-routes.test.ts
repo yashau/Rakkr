@@ -11,7 +11,7 @@ import type {
   RequirePermission,
 } from "../src/http-types.js";
 import type { MeterFrameStore } from "../src/meter-store.js";
-import type { NodeStore } from "../src/node-store.js";
+import type { NodeStore, NodeUpdateInput } from "../src/node-store.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerNodeRoutes } = await import("../src/node-routes.js");
@@ -88,6 +88,50 @@ test("listen stream reports unavailable monitor data", async () => {
   assert.equal(response.status, 409);
   assert.equal(event?.reason, "meter_frame_not_found");
   assert.equal(event?.target.id, node().id);
+});
+
+test("node update changes identity fields and audits before and after", async () => {
+  const auditStore = createAuditStore("");
+  const nodes = [node()];
+  const permissionCalls: PermissionCall[] = [];
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes,
+    permissionCalls,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node().id}`, {
+    body: JSON.stringify({
+      alias: "Council Chamber Recorder",
+      ipAddresses: ["10.0.0.51"],
+      location: {
+        room: "Council Chamber",
+        site: "Main Site",
+      },
+      notes: "Rack shelf A",
+      tags: ["voice", "council"],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const body = (await response.json()) as { data: RecorderNode };
+  const [event] = await auditStore.list({ action: "nodes.update.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.alias, "Council Chamber Recorder");
+  assert.equal(body.data.location.room, "Council Chamber");
+  assert.deepEqual(body.data.ipAddresses, ["10.0.0.51"]);
+  assert.deepEqual(body.data.tags, ["voice", "council"]);
+  assert.equal(body.data.notes, "Rack shelf A");
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "nodes.update",
+    permission: "node:manage",
+    target: { id: node().id, type: "node" },
+  });
+  assert.equal(event?.before?.alias, "Monitor Room");
+  assert.equal(event?.after?.alias, "Council Chamber Recorder");
+  assert.equal(event?.permission, "node:manage");
 });
 
 interface PermissionCall {
@@ -198,6 +242,28 @@ function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
     },
     async rotateCredential() {
       throw new Error("not implemented");
+    },
+    async update(nodeId, input: NodeUpdateInput) {
+      const index = nodes.findIndex((candidate) => candidate.id === nodeId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      nodes[index] = {
+        ...nodes[index],
+        alias: input.alias ?? nodes[index].alias,
+        hostname: input.hostname ?? nodes[index].hostname,
+        ipAddresses: input.ipAddresses ?? nodes[index].ipAddresses,
+        location: {
+          ...nodes[index].location,
+          ...input.location,
+        },
+        notes: input.notes === undefined ? nodes[index].notes : (input.notes ?? undefined),
+        tags: input.tags ?? nodes[index].tags,
+      };
+
+      return nodes[index];
     },
   };
 }

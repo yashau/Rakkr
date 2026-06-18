@@ -158,6 +158,9 @@ function memoryNodeStore(nodes: RecorderNode[]) {
     async rotateCredential() {
       throw new Error("not implemented");
     },
+    async update() {
+      throw new Error("not implemented");
+    },
   };
 }
 

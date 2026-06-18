@@ -33,6 +33,20 @@ export interface NodeEnrollmentInput {
   tags: string[];
 }
 
+export interface NodeUpdateInput {
+  alias?: string;
+  hostname?: string;
+  ipAddresses?: string[];
+  location?: {
+    building?: string;
+    floor?: string;
+    room?: string;
+    site?: string;
+  };
+  notes?: string | null;
+  tags?: string[];
+}
+
 export interface NodeInterfaceInput {
   alias: string;
   backend: AudioInterface["backend"];
@@ -80,6 +94,7 @@ export interface NodeStore {
   find(nodeId: string): Promise<RecorderNode | undefined>;
   list(): Promise<RecorderNode[]>;
   rotateCredential(nodeId: string, actorUserId?: string): Promise<NodeEnrollmentResult | undefined>;
+  update(nodeId: string, input: NodeUpdateInput): Promise<RecorderNode | undefined>;
 }
 
 export function createNodeStore(seedNodes: RecorderNode[] = []): NodeStore {
@@ -111,6 +126,18 @@ class SeedOnlyNodeStore implements NodeStore {
 
   async rotateCredential(): Promise<NodeEnrollmentResult> {
     throw new NodeStoreError("Node credential rotation requires Postgres", "database_unavailable");
+  }
+
+  async update(nodeId: string, input: NodeUpdateInput) {
+    const index = this.seedNodes.findIndex((node) => node.id === nodeId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    this.seedNodes[index] = updatedNode(this.seedNodes[index], input);
+
+    return this.seedNodes[index];
   }
 }
 
@@ -243,6 +270,38 @@ class PostgresNodeStore implements NodeStore {
     };
   }
 
+  async update(nodeId: string, input: NodeUpdateInput) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      throw new NodeStoreError("Node storage is unavailable", "database_unavailable");
+    }
+
+    const [row] = await db.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).limit(1);
+
+    if (!row) {
+      return undefined;
+    }
+
+    const existing = nodeFromRows(row, [], []);
+    const next = updatedNode(existing, input);
+
+    await db
+      .update(nodeRows)
+      .set({
+        alias: next.alias,
+        hostname: next.hostname,
+        location: next.location,
+        network: { ipAddresses: next.ipAddresses },
+        notes: next.notes ?? null,
+        tags: next.tags,
+        updatedAt: new Date(),
+      })
+      .where(eq(nodeRows.id, nodeId));
+
+    return this.find(nodeId);
+  }
+
   private async createCredential(nodeId: string, actorUserId?: string) {
     const token = `rakkr_node_${randomBytes(32).toString("base64url")}`;
     const [row] = await this.db
@@ -358,6 +417,27 @@ function nodeFromRows(
     status: node.status,
     tags: stringArray(node.tags),
   };
+}
+
+function updatedNode(node: RecorderNode, input: NodeUpdateInput): RecorderNode {
+  return {
+    ...node,
+    alias: input.alias ?? node.alias,
+    hostname: input.hostname ?? node.hostname,
+    ipAddresses: input.ipAddresses ?? node.ipAddresses,
+    location: {
+      ...node.location,
+      ...definedLocation(input.location),
+    },
+    notes: input.notes === undefined ? node.notes : (input.notes ?? undefined),
+    tags: input.tags ?? node.tags,
+  };
+}
+
+function definedLocation(location: NodeUpdateInput["location"]) {
+  return Object.fromEntries(
+    Object.entries(location ?? {}).filter(([, value]) => value !== undefined),
+  ) as Partial<RecorderNode["location"]>;
 }
 
 function interfaceFromRows(

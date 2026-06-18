@@ -64,6 +64,25 @@ const nodeEnrollmentSchema = z
     tags: z.array(z.string().trim().min(1).max(48)).max(32).default([]),
   })
   .strict();
+const nodeUpdateSchema = z
+  .object({
+    alias: z.string().trim().min(1).max(160).optional(),
+    hostname: z.string().trim().min(1).max(255).optional(),
+    ipAddresses: z.array(z.string().trim().min(1).max(120)).max(16).optional(),
+    location: z
+      .object({
+        building: z.string().trim().min(1).max(120).optional(),
+        floor: z.string().trim().min(1).max(80).optional(),
+        room: z.string().trim().min(1).max(160).optional(),
+        site: z.string().trim().min(1).max(160).optional(),
+      })
+      .strict()
+      .optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
+  })
+  .strict()
+  .refine(hasNodeUpdate, "At least one node field is required");
 const monitorChunkDurationMs = 1500;
 const monitorChunkSampleRate = 16_000;
 
@@ -117,6 +136,70 @@ export function registerNodeRoutes({
         await recordNodeFailure(c, "nodes.enroll.failed", reason, body.data.alias);
         return c.json({ error: "Node enrollment unavailable" }, 503);
       }
+    },
+  );
+
+  app.patch(
+    "/api/v1/nodes/:nodeId",
+    requirePermission("node:manage", "nodes.update", (c) => ({
+      id: c.req.param("nodeId"),
+      type: "node",
+    })),
+    async (c) => {
+      const nodeId = c.req.param("nodeId");
+      const body = nodeUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordNodeFailure(c, "nodes.update.failed", "invalid_request", nodeId, {
+          targetId: nodeId,
+        });
+        return c.json({ error: "Invalid node update", issues: body.error.issues }, 400);
+      }
+
+      const before = await nodeStore.find(nodeId);
+
+      if (!before) {
+        await recordNodeFailure(c, "nodes.update.failed", "node_not_found", nodeId, {
+          targetId: nodeId,
+        });
+        return c.json({ error: "Node not found" }, 404);
+      }
+
+      const updated = await nodeStore.update(nodeId, body.data).catch(async (error: unknown) => {
+        const reason = error instanceof NodeStoreError ? error.code : "node_update_failed";
+
+        await recordNodeFailure(c, "nodes.update.failed", reason, before.alias, {
+          targetId: nodeId,
+        });
+        return "unavailable" as const;
+      });
+
+      if (updated === "unavailable") {
+        return c.json({ error: "Node update unavailable" }, 503);
+      }
+
+      if (!updated) {
+        await recordNodeFailure(c, "nodes.update.failed", "node_not_found", before.alias, {
+          targetId: nodeId,
+        });
+        return c.json({ error: "Node not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "nodes.update.succeeded",
+        after: nodeSnapshot(updated),
+        auth: currentAuth(c),
+        before: nodeSnapshot(before),
+        outcome: "succeeded",
+        permission: "node:manage",
+        target: {
+          id: updated.id,
+          name: updated.alias,
+          type: "node",
+        },
+      });
+
+      return c.json({ data: updated });
     },
   );
 
@@ -376,6 +459,16 @@ function listenStreamUrl(nodeId: string, sessionId: string) {
   return `/api/v1/nodes/${encodeURIComponent(nodeId)}/listen/stream?sessionId=${encodeURIComponent(sessionId)}`;
 }
 
+function hasNodeUpdate(value: Record<string, unknown>) {
+  return Object.entries(value).some(([key, entry]) => {
+    if (key === "location") {
+      return typeof entry === "object" && entry !== null && Object.keys(entry).length > 0;
+    }
+
+    return entry !== undefined;
+  });
+}
+
 function monitorWavChunk(frame: MeterFrame) {
   const sampleCount = Math.round((monitorChunkSampleRate * monitorChunkDurationMs) / 1000);
   const dataBytes = sampleCount * 2;
@@ -422,6 +515,7 @@ function nodeSnapshot(node: RecorderNode | undefined) {
         interfaces: node.interfaces.length,
         ipAddresses: node.ipAddresses,
         location: node.location,
+        notes: node.notes,
         status: node.status,
         tags: node.tags,
       }

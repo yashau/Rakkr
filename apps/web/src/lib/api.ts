@@ -203,6 +203,20 @@ export interface NodeEnrollmentResult {
   node: RecorderNode;
 }
 
+export interface NodeMetadataUpdate {
+  alias?: string;
+  hostname?: string;
+  ipAddresses?: string[];
+  location?: {
+    building?: string;
+    floor?: string;
+    room?: string;
+    site?: string;
+  };
+  notes?: string | null;
+  tags?: string[];
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getAuthToken();
@@ -502,6 +516,14 @@ export const api = {
   rotateNodeCredential: (nodeId: string) =>
     fetchJson<{ data: NodeEnrollmentResult }>(`/api/v1/nodes/${nodeId}/credentials/rotate`, {
       method: "POST",
+    }),
+  updateNode: (nodeId: string, input: NodeMetadataUpdate) =>
+    fetchJson<{ data: RecorderNode }>(`/api/v1/nodes/${nodeId}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
     }),
   createSchedule: (input: ScheduleInput) =>
     fetchJson<{ data: ScheduleSummary }>("/api/v1/schedules", {
