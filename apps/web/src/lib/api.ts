@@ -1,6 +1,7 @@
 import type {
   AuditEvent,
   AuditOutcome,
+  AccessGroup,
   AccessPolicy,
   AccessPolicyInput,
   CurrentUser,
@@ -77,6 +78,7 @@ export interface RecordingFilters {
 }
 
 export interface UserAccessUpdate {
+  groupIds: string[];
   resourceGrants: ResourceGrant[];
   roles: Role[];
 }
@@ -141,6 +143,7 @@ export function clearAuthToken() {
 }
 
 export const api = {
+  accessGroups: () => fetchJson<{ data: AccessGroup[] }>("/api/v1/auth/groups"),
   accessPolicies: () => fetchJson<{ data: AccessPolicy[] }>("/api/v1/auth/access-policies"),
   auditEvents: (filters: AuditEventFilters = {}) =>
     fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),

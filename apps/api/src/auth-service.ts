@@ -48,6 +48,7 @@ interface AuthSession {
 }
 
 export interface LocalAccess {
+  groupIds?: string[];
   resourceGrants: ResourceGrant[];
   roles: Role[];
 }
@@ -86,6 +87,7 @@ export class AuthError extends Error {
 export class LocalAuthService {
   private accessPolicyOverrides?: AccessPolicyInput[];
   private readonly localAccessOverrides = new Map<string, LocalAccess>();
+  private readonly localGroupOverrides = new Map<string, AccessGroup[]>();
   private readonly sessions = new Map<string, AuthSession>();
   private readonly db?: ReturnType<typeof createDatabase>;
   private dbAvailable: boolean;
@@ -174,6 +176,30 @@ export class LocalAuthService {
     return [await this.localAdmin()];
   }
 
+  async localGroups(): Promise<AccessGroup[]> {
+    const overrideGroups = [...this.localGroupOverrides.values()].flat();
+    const db = this.availableDatabase();
+
+    if (db) {
+      try {
+        const rows = await db
+          .select({
+            id: accessGroups.id,
+            name: accessGroups.name,
+          })
+          .from(accessGroups);
+
+        if (rows.length > 0) {
+          return uniqueGroups([...rows, ...overrideGroups]);
+        }
+      } catch (error) {
+        this.markDatabaseUnavailable(error);
+      }
+    }
+
+    return uniqueGroups([...localGroupsFromEnv(), ...overrideGroups]);
+  }
+
   async localUser(userId: string): Promise<CurrentUser | undefined> {
     return userId === localAdminId() ? this.localAdmin() : undefined;
   }
@@ -190,9 +216,11 @@ export class LocalAuthService {
       resourceGrants: uniqueResourceGrants(access.resourceGrants),
       roles: uniqueRoles(access.roles),
     };
+    const nextGroups = groupsFromIds(access.groupIds ?? []);
 
     this.localAccessOverrides.set(userId, nextAccess);
-    await this.persistLocalUserAccess(userId, nextAccess);
+    this.localGroupOverrides.set(userId, nextGroups);
+    await this.persistLocalUserAccess(userId, nextAccess, nextGroups);
 
     const user = await this.localAdmin();
 
@@ -459,10 +487,7 @@ export class LocalAuthService {
     }
 
     try {
-      await db
-        .insert(accessGroups)
-        .values(user.groups.map((group) => ({ id: group.id, name: group.name })))
-        .onConflictDoNothing();
+      await this.upsertGroups(user.groups);
       await db
         .insert(userAccessGroups)
         .values(user.groups.map((group) => ({ groupId: group.id, userId: user.id })))
@@ -473,6 +498,45 @@ export class LocalAuthService {
   }
 
   private async localGroupsForUser(userId: string): Promise<AccessGroup[]> {
+    const override = this.localGroupOverrides.get(userId);
+
+    if (override) {
+      return override;
+    }
+
+    const db = this.availableDatabase();
+
+    if (db) {
+      try {
+        const rows = await db
+          .select({
+            id: accessGroups.id,
+            name: accessGroups.name,
+          })
+          .from(userAccessGroups)
+          .innerJoin(accessGroups, eq(userAccessGroups.groupId, accessGroups.id))
+          .where(eq(userAccessGroups.userId, userId));
+
+        if (rows.length > 0) {
+          return rows;
+        }
+
+        const [userRow] = await db
+          .select({
+            id: users.id,
+          })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        if (userRow) {
+          return [];
+        }
+      } catch (error) {
+        this.markDatabaseUnavailable(error);
+      }
+    }
+
     if (userId !== localAdminId()) {
       return [];
     }
@@ -529,7 +593,7 @@ export class LocalAuthService {
         };
   }
 
-  private async persistLocalUserAccess(userId: string, access: LocalAccess) {
+  private async persistLocalUserAccess(userId: string, access: LocalAccess, groups: AccessGroup[]) {
     const db = this.availableDatabase();
 
     if (!db) {
@@ -538,9 +602,11 @@ export class LocalAuthService {
 
     try {
       await this.ensureSecurityCatalog();
+      await this.upsertGroups(groups);
 
       await db.delete(userRoles).where(eq(userRoles.userId, userId));
       await db.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
+      await db.delete(userAccessGroups).where(eq(userAccessGroups.userId, userId));
 
       await db.insert(userRoles).values(
         access.roles.map((roleId) => ({
@@ -558,8 +624,36 @@ export class LocalAuthService {
           })),
         );
       }
+
+      if (groups.length > 0) {
+        await db.insert(userAccessGroups).values(
+          groups.map((group) => ({
+            groupId: group.id,
+            userId,
+          })),
+        );
+      }
     } catch (error) {
       this.markDatabaseUnavailable(error);
+    }
+  }
+
+  private async upsertGroups(groups: AccessGroup[]) {
+    const db = this.availableDatabase();
+
+    if (!db || groups.length === 0) {
+      return;
+    }
+
+    for (const group of groups) {
+      await db.insert(accessGroups).values(group).onConflictDoNothing();
+      await db
+        .update(accessGroups)
+        .set({
+          name: group.name,
+          updatedAt: new Date(),
+        })
+        .where(eq(accessGroups.id, group.id));
     }
   }
 
@@ -731,18 +825,31 @@ function localGroupsFromEnv(): AccessGroup[] {
     ? jsonStringArray(raw, "RAKKR_LOCAL_ADMIN_GROUPS")
     : raw.split(",");
 
+  return groupsFromIds(values);
+}
+
+function groupsFromIds(values: readonly string[]) {
+  return uniqueGroups(
+    values
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((value) => ({
+        id: value,
+        name: value,
+      })),
+  );
+}
+
+function uniqueGroups(values: readonly AccessGroup[]) {
   return [
     ...new Map(
       values
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .map((value) => [
-          value,
-          {
-            id: value,
-            name: value,
-          },
-        ]),
+        .map((group) => ({
+          id: group.id.trim(),
+          name: group.name.trim() || group.id.trim(),
+        }))
+        .filter((group) => group.id)
+        .map((group) => [group.id, group] as const),
     ).values(),
   ];
 }

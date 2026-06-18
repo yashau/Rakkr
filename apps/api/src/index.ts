@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
 
 import {
+  accessGroupIdSchema,
   accessPolicyInputSchema,
   auditOutcomeSchema,
   defaultScheduledVoiceWatchdogPolicy,
@@ -67,6 +68,7 @@ const auditEventsQuerySchema = z.object({
 });
 const userAccessRequestSchema = z
   .object({
+    groupIds: z.array(accessGroupIdSchema).max(64).default([]),
     resourceGrants: z.array(resourceGrantSchema).default([]),
     roles: z.array(roleSchema).min(1),
   })
@@ -595,6 +597,29 @@ app.get("/api/v1/auth/me", async (c) => {
     data: auth.user,
   });
 });
+
+app.get(
+  "/api/v1/auth/groups",
+  requirePermission("auth:manage", "auth.groups.read", () => ({ type: "auth" })),
+  async (c) => {
+    const groups = await authService.localGroups();
+
+    await recordAuditEvent(c, {
+      action: "auth.groups.read.succeeded",
+      auth: currentAuth(c),
+      details: {
+        count: groups.length,
+      },
+      outcome: "succeeded",
+      permission: "auth:manage",
+      target: {
+        type: "auth",
+      },
+    });
+
+    return c.json({ data: groups });
+  },
+);
 
 app.get(
   "/api/v1/auth/users",

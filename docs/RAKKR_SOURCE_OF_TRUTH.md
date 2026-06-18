@@ -60,7 +60,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Scheduler            | 🟨 Designed  | Human-friendly rules, metadata ownership, watchdog integration |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
-| RBAC                 | 🟦 Scaffold  | Durable grants, user/group allow-deny policies, scoped middleware |
+| RBAC                 | 🟦 Scaffold  | Durable grants, group memberships, allow-deny policies, scoped middleware |
 | Audit trail          | 🟦 Scaffold  | Postgres-backed store, API/UI filters, metadata audit events     |
 | Observability        | 🟨 Designed  | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
@@ -597,9 +597,10 @@ Current scaffold status:
 - login and logout are audited;
 - auth sessions persist through Postgres when `DATABASE_URL` and migrations are available;
 - user resource grants persist through Postgres and can be bootstrapped from local dev env;
-- access groups and allow/deny access policies are modeled in Drizzle/Postgres;
+- access groups, group memberships, and allow/deny access policies are modeled in Drizzle/Postgres;
 - local development can bootstrap groups with `RAKKR_LOCAL_ADMIN_GROUPS` and policies with `RAKKR_LOCAL_ACCESS_POLICIES`;
 - Access UI can edit local roles and resource scopes for the local account;
+- Access UI can edit local group memberships and show known local groups;
 - Access UI can edit global access policies for user, group, or everyone subjects;
 - Drizzle migrations are verified against local Docker Postgres using the canonical `127.0.0.1` connection string;
 - in-memory auth session fallback keeps local development usable before Postgres is ready;
@@ -660,7 +661,7 @@ Current scaffold grant IDs:
 - Schedule: `schedule:sched_council_weekly`
 - Recording: `recording:rec_demo_001`
 
-Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access unless an explicit access policy deny matches the target. Narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Global access policies live in `access_policies`, support `allow` and `deny`, and target `user`, `group`, or `everyone` subjects. Access groups are modeled with `access_groups` and `user_access_groups`; local bootstrap can attach groups to the local admin with `RAKKR_LOCAL_ADMIN_GROUPS`. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist, so a recorder-level deny also blocks its recordings and live streams. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local role/scope/policy changes. Recording metadata edits are guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants. Live Docker/Postgres smoke coverage verifies migration, access-policy deny behavior, recording metadata persistence, and recording job persistence.
+Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access unless an explicit access policy deny matches the target. Narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Global access policies live in `access_policies`, support `allow` and `deny`, and target `user`, `group`, or `everyone` subjects. Access groups and memberships persist through `access_groups` and `user_access_groups`; local bootstrap can attach groups to the local admin with `RAKKR_LOCAL_ADMIN_GROUPS`, and Access UI can now edit local group membership alongside roles and scopes. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist, so a recorder-level deny also blocks its recordings and live streams. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local role/scope/policy/group changes. Recording metadata edits are guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants. Live Docker/Postgres smoke coverage verifies migration, access-policy deny behavior, group-policy membership behavior, recording metadata persistence, and recording job persistence.
 
 ## Required Permission Families
 
@@ -896,7 +897,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add first-class local group membership management, then multi-user local auth or OIDC-backed user sync.
+1. Add multi-user local auth or OIDC-backed user sync on top of the local access model.
 2. Add persistent node enrollment and node credential rotation.
 3. Add scheduler-owned metadata execution paths for filename, folder, tag, and watchdog policy defaults.
 4. Return to the Debian recorder node when the X32 connection is confirmed.

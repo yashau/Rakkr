@@ -65,6 +65,7 @@ export const accessGroupSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
 });
+export const accessGroupIdSchema = z.string().trim().min(1).max(120);
 export const resourceGrantSchema = z.object({
   resourceId: z.string().min(1),
   resourceType: z.string().min(1),
@@ -328,6 +329,7 @@ export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AuditOutcome = z.infer<typeof auditOutcomeSchema>;
 export type AudioInterface = z.infer<typeof audioInterfaceSchema>;
 export type AccessGroup = z.infer<typeof accessGroupSchema>;
+export type AccessGroupId = z.infer<typeof accessGroupIdSchema>;
 export type AccessPolicy = z.infer<typeof accessPolicySchema>;
 export type AccessPolicyEffect = z.infer<typeof accessPolicyEffectSchema>;
 export type AccessPolicyInput = z.infer<typeof accessPolicyInputSchema>;

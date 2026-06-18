@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   roles,
+  type AccessGroup,
   type AccessPolicy,
   type AccessPolicyInput,
   type ResourceGrant,
@@ -18,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api, type UserAccessUpdate } from "@/lib/api";
 
 interface AccessDraft {
+  groupsText: string;
   grantsText: string;
   roles: Role[];
 }
@@ -31,6 +33,10 @@ export function AccessPage() {
     queryFn: api.accessUsers,
     queryKey: ["access-users"],
   });
+  const groupsQuery = useQuery({
+    queryFn: api.accessGroups,
+    queryKey: ["access-groups"],
+  });
   const policiesQuery = useQuery({
     queryFn: api.accessPolicies,
     queryKey: ["access-policies"],
@@ -39,6 +45,7 @@ export function AccessPage() {
     mutationFn: ({ access, userId }: { access: UserAccessUpdate; userId: string }) =>
       api.updateUserAccess(userId, access),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
@@ -52,6 +59,7 @@ export function AccessPage() {
     },
   });
   const users = usersQuery.data?.data;
+  const groups = groupsQuery.data?.data ?? [];
 
   useEffect(() => {
     if (policiesQuery.data) {
@@ -69,6 +77,7 @@ export function AccessPage() {
 
       for (const user of users) {
         next[user.id] ??= {
+          groupsText: groupsToText(user.groups),
           grantsText: grantsToText(user.resourceGrants),
           roles: user.roles,
         };
@@ -114,6 +123,15 @@ export function AccessPage() {
             />
           </div>
           {policyError ? <p className="text-sm text-red-700">{policyError}</p> : null}
+          {groups.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {groups.map((group) => (
+                <Badge className="bg-background" key={group.id} variant="outline">
+                  {group.name}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <Button disabled={updatePoliciesMutation.isPending} type="submit">
             <Save className="size-4" />
             Save Policies
@@ -123,6 +141,7 @@ export function AccessPage() {
 
       {(users ?? []).map((user) => {
         const draft = drafts[user.id] ?? {
+          groupsText: groupsToText(user.groups),
           grantsText: grantsToText(user.resourceGrants),
           roles: user.roles,
         };
@@ -175,6 +194,7 @@ export function AccessPage() {
                   event.preventDefault();
                   updateMutation.mutate({
                     access: {
+                      groupIds: groupIdsFromText(draft.groupsText),
                       resourceGrants: grantsFromText(draft.grantsText),
                       roles: draft.roles.length > 0 ? draft.roles : ["viewer"],
                     },
@@ -182,6 +202,21 @@ export function AccessPage() {
                   });
                 }}
               >
+                <div className="grid gap-2">
+                  <Label htmlFor={`${user.id}-groups`}>Groups</Label>
+                  <Textarea
+                    className="min-h-20 bg-background font-mono text-xs"
+                    id={`${user.id}-groups`}
+                    onChange={(event) =>
+                      updateDraft(user.id, setDrafts, {
+                        ...draft,
+                        groupsText: event.target.value,
+                      })
+                    }
+                    placeholder="operators"
+                    value={draft.groupsText}
+                  />
+                </div>
                 <div className="grid gap-2">
                   <Label htmlFor={`${user.id}-scopes`}>Scopes</Label>
                   <Textarea
@@ -334,6 +369,14 @@ function grantsToText(grants: ResourceGrant[]) {
   return grants.map((grant) => `${grant.resourceType}:${grant.resourceId}`).join("\n");
 }
 
+function groupsToText(groups: AccessGroup[]) {
+  return groups.map((group) => group.id).join("\n");
+}
+
+function groupIdsFromText(value: string) {
+  return uniqueTextValues(value);
+}
+
 function grantsFromText(value: string): ResourceGrant[] {
   return value
     .split(/\r?\n/)
@@ -353,4 +396,15 @@ function grantsFromText(value: string): ResourceGrant[] {
           };
     })
     .filter((grant) => grant.resourceId && grant.resourceType);
+}
+
+function uniqueTextValues(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(/[,\n]/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
