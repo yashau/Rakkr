@@ -1,18 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Play, Radio, Square } from "lucide-react";
+import { Check, Download, Pencil, Play, Radio, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { RecordingJob } from "@rakkr/shared";
+import type { RecordingJob, RecordingSummary } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { api, type RecordingMetadataUpdate } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
+
+interface RecordingMetadataDraft {
+  folder: string;
+  name: string;
+  tags: string;
+}
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
   const [audioPreview, setAudioPreview] = useState<{ name: string; url: string }>();
   const [notice, setNotice] = useState<{ detail: string; title: string }>();
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+    staleTime: 30_000,
+  });
   const recordingsQuery = useQuery({
     queryFn: api.recordings,
     queryKey: ["recordings"],
@@ -87,6 +100,25 @@ export function RecordingsPage() {
       });
     },
   });
+  const updateMetadataMutation = useMutation({
+    mutationFn: ({ input, recordingId }: { input: RecordingMetadataUpdate; recordingId: string }) =>
+      api.updateRecordingMetadata(recordingId, input),
+    onError: () =>
+      setNotice({
+        detail: "The selected recording metadata could not be saved.",
+        title: "Update failed",
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      setNotice({
+        detail: `${response.data.name} was saved.`,
+        title: "Recording updated",
+      });
+    },
+  });
+
+  const canEditRecordings =
+    currentUserQuery.data?.data.permissions.includes("recording:edit") ?? false;
 
   useEffect(
     () => () => {
@@ -131,10 +163,18 @@ export function RecordingsPage() {
           <RecordingCard
             downloadPending={downloadMutation.isPending}
             jobs={jobs}
+            canEdit={canEditRecordings}
+            editPending={updateMetadataMutation.isPending}
             key={recording.id}
             onDownload={() => downloadMutation.mutate(recording.id)}
             onPlayback={() => playbackMutation.mutate(recording.id)}
             onStop={() => stopMutation.mutate(recording.id)}
+            onUpdate={(input) =>
+              updateMetadataMutation.mutateAsync({
+                input,
+                recordingId: recording.id,
+              })
+            }
             playbackPending={playbackMutation.isPending}
             recording={recording}
             stopPending={stopMutation.isPending}
@@ -156,51 +196,141 @@ function downloadBlob(file: Awaited<ReturnType<typeof api.recordingFile>>) {
 }
 
 function RecordingCard({
+  canEdit,
   downloadPending,
+  editPending,
   jobs,
   onDownload,
   onPlayback,
   onStop,
+  onUpdate,
   playbackPending,
   recording,
   stopPending,
 }: {
+  canEdit: boolean;
   downloadPending: boolean;
+  editPending: boolean;
   jobs: RecordingJob[];
   onDownload: () => void;
   onPlayback: () => void;
   onStop: () => void;
+  onUpdate: (input: RecordingMetadataUpdate) => Promise<unknown>;
   playbackPending: boolean;
-  recording: Awaited<ReturnType<typeof api.recordings>>["data"][number];
+  recording: RecordingSummary;
   stopPending: boolean;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
   const fileReady =
     recording.cached || recording.status === "cached" || recording.status === "uploaded";
+  const [draft, setDraft] = useState<RecordingMetadataDraft>(() => draftFromRecording(recording));
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft(draftFromRecording(recording));
+    }
+  }, [isEditing, recording]);
+
+  const resetDraft = () => {
+    setDraft(draftFromRecording(recording));
+    setIsEditing(false);
+  };
+  const saveDisabled = editPending || !draft.name.trim() || !draft.folder.trim();
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-base font-semibold">{recording.name}</h2>
-            <Badge
-              className={
-                recording.healthStatus === "healthy"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-amber-200 bg-amber-50 text-amber-700"
-              }
-              variant="outline"
+        <div className="min-w-0 flex-1">
+          {isEditing ? (
+            <form
+              className="grid gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onUpdate({
+                  folder: draft.folder.trim(),
+                  name: draft.name.trim(),
+                  tags: tagsFromText(draft.tags),
+                })
+                  .then(() => setIsEditing(false))
+                  .catch(() => undefined);
+              }}
             >
-              {recording.healthStatus}
-            </Badge>
-            <Badge variant="secondary">{recording.status}</Badge>
-          </div>
-          <p className="truncate text-sm text-muted-foreground">{recording.folder}</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span>{formatDateTime(recording.recordedAt)}</span>
-            <span>{formatDuration(recording.durationSeconds)}</span>
-            <span>{recording.source}</span>
-          </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`${recording.id}-name`}>Name</Label>
+                  <Input
+                    id={`${recording.id}-name`}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, name: event.target.value }))
+                    }
+                    value={draft.name}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`${recording.id}-folder`}>Folder</Label>
+                  <Input
+                    id={`${recording.id}-folder`}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, folder: event.target.value }))
+                    }
+                    value={draft.folder}
+                  />
+                </div>
+                <div className="grid gap-1.5 md:col-span-2">
+                  <Label htmlFor={`${recording.id}-tags`}>Tags</Label>
+                  <Input
+                    id={`${recording.id}-tags`}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, tags: event.target.value }))
+                    }
+                    value={draft.tags}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={saveDisabled} type="submit">
+                  <Check className="size-4" />
+                  Save
+                </Button>
+                <Button onClick={resetDraft} type="button" variant="outline">
+                  <X className="size-4" />
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-base font-semibold">{recording.name}</h2>
+                <Badge
+                  className={
+                    recording.healthStatus === "healthy"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }
+                  variant="outline"
+                >
+                  {recording.healthStatus}
+                </Badge>
+                <Badge variant="secondary">{recording.status}</Badge>
+              </div>
+              <p className="truncate text-sm text-muted-foreground">{recording.folder}</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>{formatDateTime(recording.recordedAt)}</span>
+                <span>{formatDuration(recording.durationSeconds)}</span>
+                <span>{recording.source}</span>
+              </div>
+              {recording.tags.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {recording.tags.map((tag) => (
+                    <Badge className="bg-background" key={tag} variant="outline">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
           {jobs.length > 0 ? (
             <div className="mt-3 grid gap-2">
               {jobs.map((job) => (
@@ -226,7 +356,13 @@ function RecordingCard({
             </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+          {canEdit && !isEditing ? (
+            <Button disabled={editPending} onClick={() => setIsEditing(true)} variant="outline">
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+          ) : null}
           {recording.status === "recording" ? (
             <Button disabled={stopPending} onClick={onStop} variant="outline">
               <Square className="size-4" />
@@ -265,4 +401,33 @@ function jobStatusClass(status: RecordingJob["status"]) {
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function draftFromRecording(recording: RecordingSummary): RecordingMetadataDraft {
+  return {
+    folder: recording.folder,
+    name: recording.name,
+    tags: tagsToText(recording.tags),
+  };
+}
+
+function tagsToText(tags: string[]) {
+  return tags.join(", ");
+}
+
+function tagsFromText(value: string) {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+
+  for (const tag of value.split(",")) {
+    const trimmed = tag.trim();
+    const key = trimmed.toLocaleLowerCase();
+
+    if (trimmed && !seen.has(key)) {
+      seen.add(key);
+      tags.push(trimmed);
+    }
+  }
+
+  return tags;
 }

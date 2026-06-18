@@ -6,6 +6,8 @@ import type { AuditOutcome } from "@rakkr/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api, type AuditEventFilters } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 
@@ -87,9 +89,12 @@ export function AuditPage() {
           value={draft.target}
         />
 
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-          Outcome
+        <div className="grid gap-1">
+          <Label className="text-xs text-muted-foreground" htmlFor="audit-outcome">
+            Outcome
+          </Label>
           <select
+            id="audit-outcome"
             className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onChange={(event) => updateDraft("outcome", event.target.value)}
             value={draft.outcome}
@@ -101,7 +106,7 @@ export function AuditPage() {
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
         <FilterInput
           label="From"
@@ -200,15 +205,18 @@ function FilterInput({
   value: string;
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <input
-        className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    <div className="grid gap-1">
+      <Label className="text-xs text-muted-foreground" htmlFor={`audit-${label}`}>
+        {label}
+      </Label>
+      <Input
+        id={`audit-${label}`}
+        className="bg-background"
         onChange={(event) => onChange(event.target.value)}
         type={type}
         value={value}
       />
-    </label>
+    </div>
   );
 }
 

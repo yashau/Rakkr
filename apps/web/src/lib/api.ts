@@ -58,6 +58,12 @@ export interface RecordingFileBlob {
   fileName: string;
 }
 
+export interface RecordingMetadataUpdate {
+  folder?: string;
+  name?: string;
+  tags?: string[];
+}
+
 export interface UserAccessUpdate {
   resourceGrants: ResourceGrant[];
   roles: Role[];
@@ -172,6 +178,14 @@ export const api = {
   stopRecording: (recordingId: string) =>
     fetchJson<{ data: RecordingSummary }>(`/api/v1/recordings/${recordingId}/stop`, {
       method: "POST",
+    }),
+  updateRecordingMetadata: (recordingId: string, input: RecordingMetadataUpdate) =>
+    fetchJson<{ data: RecordingSummary }>(`/api/v1/recordings/${recordingId}/metadata`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
     }),
   updateUserAccess: (userId: string, access: UserAccessUpdate) =>
     fetchJson<{ data: CurrentUser }>(`/api/v1/auth/users/${userId}/access`, {

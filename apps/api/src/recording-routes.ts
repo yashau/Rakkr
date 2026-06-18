@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
+import { z } from "zod";
 import {
   defaultVoiceRecordingProfile,
   type Permission,
@@ -37,6 +38,18 @@ interface RecordingRouteDependencies {
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
+
+const recordingMetadataUpdateSchema = z
+  .object({
+    folder: z.string().trim().min(1).max(240).optional(),
+    name: z.string().trim().min(1).max(240).optional(),
+    tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.folder !== undefined || value.name !== undefined || value.tags !== undefined,
+    "Expected at least one metadata field",
+  );
 
 export function registerRecordingRoutes({
   app,
@@ -498,6 +511,81 @@ export function registerRecordingRoutes({
       serveRecordingFile(c, c.req.param("recordingId"), "attachment", "recording:download"),
   );
 
+  app.patch(
+    "/api/v1/recordings/:recordingId/metadata",
+    requirePermission("recording:edit", "recordings.metadata.update", (c) => ({
+      id: c.req.param("recordingId"),
+      type: "recording",
+    })),
+    async (c) => {
+      const recordingId = c.req.param("recordingId");
+      const body = recordingMetadataUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordAuditEvent(c, {
+          action: "recordings.metadata.update.failed",
+          auth: currentAuth(c),
+          outcome: "failed",
+          permission: "recording:edit",
+          reason: "invalid_request",
+          target: {
+            id: recordingId,
+            type: "recording",
+          },
+        });
+
+        return c.json({ error: "Invalid recording metadata", issues: body.error.issues }, 400);
+      }
+
+      const recording = await recordingStore.find(recordingId);
+
+      if (!recording) {
+        await recordAuditEvent(c, {
+          action: "recordings.metadata.update.failed",
+          auth: currentAuth(c),
+          outcome: "failed",
+          permission: "recording:edit",
+          reason: "recording_not_found",
+          target: {
+            id: recordingId,
+            type: "recording",
+          },
+        });
+
+        return c.json({ error: "Recording not found" }, 404);
+      }
+
+      const before = recordingMetadataSnapshot(recording);
+      const updated: RecordingSummary = {
+        ...recording,
+        folder: body.data.folder ?? recording.folder,
+        name: body.data.name ?? recording.name,
+        tags: body.data.tags ? uniqueTags(body.data.tags) : recording.tags,
+      };
+
+      await recordingStore.save(updated);
+
+      await recordAuditEvent(c, {
+        action: "recordings.metadata.update.succeeded",
+        after: recordingMetadataSnapshot(updated),
+        auth: currentAuth(c),
+        before,
+        details: {
+          fields: Object.keys(body.data),
+        },
+        outcome: "succeeded",
+        permission: "recording:edit",
+        target: {
+          id: updated.id,
+          name: updated.name,
+          type: "recording",
+        },
+      });
+
+      return c.json({ data: updated });
+    },
+  );
+
   app.post(
     "/api/v1/recordings",
     requirePermission("recording:create", "recordings.start", () => ({
@@ -747,4 +835,28 @@ function durationFromHeader(value: string | undefined) {
   }
 
   return Math.floor(parsed);
+}
+
+function recordingMetadataSnapshot(recording: RecordingSummary) {
+  return {
+    folder: recording.folder,
+    name: recording.name,
+    tags: recording.tags,
+  };
+}
+
+function uniqueTags(tags: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const tag of tags) {
+    const key = tag.toLocaleLowerCase();
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(tag);
+    }
+  }
+
+  return result;
 }

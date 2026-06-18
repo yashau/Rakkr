@@ -52,16 +52,16 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | -------------------- | ----------- | -------------------------------------------------------------- |
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
-| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, Postgres-backed recordings/jobs     |
-| Controller UI        | 🟦 Scaffold  | Dashboard plus recording/job lease status surfaces              |
+| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, Postgres-backed recordings/jobs/edits |
+| Controller UI        | 🟦 Scaffold  | Dashboard plus recording/job status and metadata editing         |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, telemetry   |
 | Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
 | Health watchdog      | 🟨 Designed  | Core non-AI checks first, AI quality analysis later            |
 | Scheduler            | 🟨 Designed  | Human-friendly rules, metadata ownership, watchdog integration |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
-| RBAC                 | 🟦 Scaffold  | Durable grants, scoped middleware, and collection filtering     |
-| Audit trail          | 🟦 Scaffold  | Postgres-backed store, API/UI filters, and audit view started   |
+| RBAC                 | 🟦 Scaffold  | Durable grants, scoped middleware, edit permissions, filters     |
+| Audit trail          | 🟦 Scaffold  | Postgres-backed store, API/UI filters, metadata audit events     |
 | Observability        | 🟨 Designed  | Local logs, central store, OpenTelemetry/Prometheus/Mimir      |
 
 ## North Star
@@ -545,7 +545,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Recording metadata now flows through a controller store that uses the Drizzle/Postgres `recordings` table when `DATABASE_URL` is configured and falls back to `RAKKR_RECORDING_METADATA_STORE_PATH`, defaulting to `data/recordings-metadata.json`. Controller start creates a persisted recording metadata row and a queued recording job. Recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs are modeled in Drizzle/Postgres via `recording_jobs` and `recording_job_status`; the controller uses Postgres as the primary job store and falls back to the JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`. Claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`, and the recordings UI surfaces each recording's job status, claimant, lease expiry, and terminal failure reason. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording persists metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Recording metadata now flows through a controller store that uses the Drizzle/Postgres `recordings` table when `DATABASE_URL` is configured and falls back to `RAKKR_RECORDING_METADATA_STORE_PATH`, defaulting to `data/recordings-metadata.json`. The recordings UI exposes permission-aware inline editing for name, folder, and tags; the controller validates `PATCH /api/v1/recordings/:recordingId/metadata`, requires `recording:edit`, persists the update, and writes before/after audit events for success and failure. Controller start creates a persisted recording metadata row and a queued recording job. Recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs are modeled in Drizzle/Postgres via `recording_jobs` and `recording_job_status`; the controller uses Postgres as the primary job store and falls back to the JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`. Claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`, and the recordings UI surfaces each recording's job status, claimant, lease expiry, and terminal failure reason. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording persists metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
 
 ---
 
@@ -645,7 +645,7 @@ Current scaffold grant IDs:
 - Schedule: `schedule:sched_council_weekly`
 - Recording: `recording:rec_demo_001`
 
-Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access; narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local role/scope changes.
+Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access; narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local role/scope changes. Recording metadata edits are now guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants.
 
 ## Required Permission Families
 
@@ -705,7 +705,7 @@ Recording-control audit events should include actor, command, schedule/ad hoc so
 
 Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
-Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. The audit API and UI filter by actor, action, target, outcome, and time range.
+Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
 
 ---
 
@@ -881,7 +881,7 @@ Exit criteria:
 Continue controller trust and operations foundations while X32 validation is paused:
 
 1. Run a live Postgres smoke for recording metadata/jobs once local Docker/Postgres is available.
-2. Add recording metadata edit actions for rename, folder, and tags with RBAC/audit coverage.
+2. Add recording library search/filter views for folders, tags, schedule, node, status, and health.
 3. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
 4. Add persistent node enrollment and node credential rotation.
 5. Return to the Debian recorder node when the X32 connection is confirmed.

@@ -27,6 +27,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/api";
 import { AccessPage } from "@/pages/access";
 import { AuditPage } from "@/pages/audit";
@@ -187,27 +189,29 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
             loginMutation.mutate();
           }}
         >
-          <label className="grid gap-2 text-sm font-medium">
-            Email
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="login-email">Email</Label>
+            <Input
               autoComplete="username"
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="h-10 bg-background"
+              id="login-email"
               onChange={(event) => setEmail(event.target.value)}
               type="email"
               value={email}
             />
-          </label>
+          </div>
 
-          <label className="grid gap-2 text-sm font-medium">
-            Password
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="login-password">Password</Label>
+            <Input
               autoComplete="current-password"
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="h-10 bg-background"
+              id="login-password"
               onChange={(event) => setPassword(event.target.value)}
               type="password"
               value={password}
             />
-          </label>
+          </div>
 
           {loginMutation.isError ? (
             <p className="text-sm text-red-700">Invalid email or password.</p>
