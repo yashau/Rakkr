@@ -59,11 +59,11 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | Controller API | 🟦 | Auth, RBAC, audit, nodes, recordings, jobs, schedules, settings, metrics |
 | Controller UI | 🟦 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
-| Recorder agent | 🟦 | Inventory, meters, jobs, capture growth guards, health log |
+| Recorder agent | 🟦 | Inventory, meters, jobs, capture growth guards, profile rendering, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟦 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
-| Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
+| Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview, encoded cache output |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
 | Storage upload | 🟦 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | 🟦 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |

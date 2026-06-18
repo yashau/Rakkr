@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, RecorderNode, RecordingSummary } from "@rakkr/shared";
+import type { AuditEvent, RecorderNode, RecordingProfile, RecordingSummary } from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent } from "../src/http-types.js";
 import type { MeterFrameStore } from "../src/meter-store.js";
 import type { NodeStore } from "../src/node-store.js";
@@ -61,6 +61,23 @@ test("agent failed job marks recording metadata failed", async () => {
   assert.equal(updated?.status, "failed");
   assert.equal(event?.details.recordingStatus, "failed");
   assert.equal(event?.details.reason, "capture_output_stalled");
+});
+
+test("recording job honors custom output profile", async () => {
+  const job = await createRecordingJob(
+    {
+      ...recording(),
+      id: "rec_custom_profile",
+    },
+    {
+      profile: flacProfile(),
+    },
+  );
+
+  assert.equal(job.command.outputBitrateKbps, 256);
+  assert.equal(job.command.outputCodec, "flac");
+  assert.equal(job.command.outputFileName, "rec_custom_profile.flac");
+  assert.equal(job.command.outputVbr, false);
 });
 
 function memoryNodeStore(): NodeStore {
@@ -184,5 +201,18 @@ function recording(): RecordingSummary {
     source: "schedule",
     status: "recording",
     tags: ["voice"],
+  };
+}
+
+function flacProfile(): RecordingProfile {
+  return {
+    bitrateKbps: 256,
+    channelMode: "stereo",
+    codec: "flac",
+    id: "voice-flac",
+    name: "Voice FLAC",
+    silenceDetectionEnabled: false,
+    silenceSkipEnabled: false,
+    vbr: false,
   };
 }

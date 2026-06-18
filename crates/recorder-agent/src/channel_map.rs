@@ -393,14 +393,19 @@ fn output_codec_args(plan: &CapturePlan) -> Vec<OsString> {
         "mp3" if plan.output_vbr => {
             let quality = mp3_vbr_quality(plan.output_bitrate_kbps.unwrap_or(128));
 
-            os_args(["-codec:a", "libmp3lame", "-q:a", &quality.to_string()])
+            vec![
+                OsString::from("-codec:a"),
+                OsString::from("libmp3lame"),
+                OsString::from("-q:a"),
+                OsString::from(quality.to_string()),
+            ]
         }
-        "mp3" => os_args([
-            "-codec:a",
-            "libmp3lame",
-            "-b:a",
-            &format!("{}k", plan.output_bitrate_kbps.unwrap_or(128)),
-        ]),
+        "mp3" => vec![
+            OsString::from("-codec:a"),
+            OsString::from("libmp3lame"),
+            OsString::from("-b:a"),
+            OsString::from(format!("{}k", plan.output_bitrate_kbps.unwrap_or(128))),
+        ],
         _ => os_args(["-codec:a", "pcm_s16le"]),
     }
 }
@@ -416,10 +421,10 @@ fn mp3_vbr_quality(bitrate_kbps: u32) -> u8 {
         190..=224 => 2,
         175..=189 => 3,
         165..=174 => 4,
-        130..=164 => 5,
-        115..=129 => 6,
-        100..=114 => 7,
-        85..=99 => 8,
+        128..=164 => 5,
+        112..=127 => 6,
+        96..=111 => 7,
+        80..=95 => 8,
         _ => 9,
     }
 }
@@ -572,8 +577,16 @@ mod tests {
         let args = render_command_args(&plan, Path::new("rec.raw.wav"), None);
         let text_args = string_args(args);
 
-        assert!(text_args.windows(2).any(|args| args == ["-codec:a", "libmp3lame"]));
-        assert!(text_args.windows(2).any(|args| args == ["-q:a", "6"]));
+        assert!(
+            text_args
+                .windows(2)
+                .any(|args| args[0] == "-codec:a" && args[1] == "libmp3lame")
+        );
+        assert!(
+            text_args
+                .windows(2)
+                .any(|args| args[0] == "-q:a" && args[1] == "5")
+        );
         assert_eq!(text_args.last().map(String::as_str), Some("rec.mp3"));
     }
 
@@ -582,7 +595,10 @@ mod tests {
         let plan = render_test_plan("flac", None, false, "rec.flac");
         let args = string_args(render_command_args(&plan, Path::new("rec.raw.wav"), None));
 
-        assert!(args.windows(2).any(|args| args == ["-codec:a", "flac"]));
+        assert!(
+            args.windows(2)
+                .any(|args| args[0] == "-codec:a" && args[1] == "flac")
+        );
     }
 
     #[test]
