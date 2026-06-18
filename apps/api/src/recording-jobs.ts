@@ -8,6 +8,9 @@ type RecordingJobCommand = RecordingJob["command"];
 type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
 type RecordingJobRow = typeof recordingJobsTable.$inferSelect;
 interface RecordingJobOptions {
+  captureDevice?: string;
+  captureInterfaceId?: string;
+  channelMap?: RecordingJobCommand["channelMap"];
   durationSeconds?: number;
 }
 
@@ -40,10 +43,14 @@ export async function createRecordingJob(
 ): Promise<RecordingJob> {
   const job: RecordingJob = {
     command: {
-      captureChannels: positiveInteger(process.env.RAKKR_AGENT_CAPTURE_CHANNELS, 2),
-      captureDevice: process.env.RAKKR_AGENT_CAPTURE_DEVICE ?? "default",
+      captureChannels:
+        options.channelMap?.sourceChannels ??
+        positiveInteger(process.env.RAKKR_AGENT_CAPTURE_CHANNELS, 2),
+      captureDevice: options.captureDevice ?? process.env.RAKKR_AGENT_CAPTURE_DEVICE ?? "default",
       captureFormat: process.env.RAKKR_AGENT_CAPTURE_FORMAT ?? "S16_LE",
+      captureInterfaceId: options.captureInterfaceId,
       captureSampleRate: positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SAMPLE_RATE, 48_000),
+      channelMap: options.channelMap,
       durationSeconds:
         options.durationSeconds ?? positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SECONDS, 3_600),
       outputFileName: `${recording.id}.wav`,
@@ -465,7 +472,9 @@ function commandFromValue(value: unknown): RecordingJobCommand {
     captureChannels: positiveIntegerFromUnknown(value.captureChannels, 2),
     captureDevice: stringFromUnknown(value.captureDevice, "default"),
     captureFormat: stringFromUnknown(value.captureFormat, "S16_LE"),
+    captureInterfaceId: stringOrUndefined(value.captureInterfaceId),
     captureSampleRate: positiveIntegerFromUnknown(value.captureSampleRate, 48_000),
+    channelMap: channelMapFromValue(value.channelMap),
     durationSeconds: positiveIntegerFromUnknown(value.durationSeconds, 3_600),
     outputFileName: stringFromUnknown(value.outputFileName, "recording.wav"),
     type: "alsa_capture",
@@ -486,6 +495,43 @@ function positiveIntegerFromUnknown(value: unknown, fallback: number) {
 
 function stringFromUnknown(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function stringOrUndefined(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function channelMapFromValue(value: unknown): RecordingJobCommand["channelMap"] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const sourceChannels = positiveIntegerFromUnknown(value.sourceChannels, 0);
+
+  if (sourceChannels <= 0) {
+    return undefined;
+  }
+
+  return {
+    assignmentId: stringFromUnknown(value.assignmentId, "unknown_assignment"),
+    channelMode: channelModeFromUnknown(value.channelMode),
+    sourceChannels,
+    targetId: stringFromUnknown(value.targetId, "unknown_target"),
+    targetType: value.targetType === "interface" ? "interface" : "node",
+    templateId: stringFromUnknown(value.templateId, "unknown_template"),
+    templateName: stringFromUnknown(value.templateName, "Unknown Template"),
+  };
+}
+
+function channelModeFromUnknown(
+  value: unknown,
+): NonNullable<RecordingJobCommand["channelMap"]>["channelMode"] {
+  return value === "mono" ||
+    value === "stereo" ||
+    value === "mono_to_stereo_mix" ||
+    value === "multichannel"
+    ? value
+    : "mono_to_stereo_mix";
 }
 
 function isRecordingJobStore(value: unknown): value is { jobs: unknown[] } {

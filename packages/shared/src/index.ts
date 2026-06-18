@@ -455,13 +455,24 @@ export const recordingSummarySchema = z.object({
   tags: z.array(z.string().min(1)),
   watchdogPolicyId: z.string().min(1).optional(),
 });
+export const recordingJobChannelMapSchema = z.object({
+  assignmentId: z.string().min(1),
+  channelMode: channelModeSchema,
+  sourceChannels: z.number().int().positive(),
+  targetId: z.string().min(1),
+  targetType: templateAssignmentTargetSchema,
+  templateId: z.string().min(1),
+  templateName: z.string().min(1),
+});
 export const recordingJobSchema = z.object({
   claimedBy: z.string().min(1).optional(),
   command: z.object({
     captureChannels: z.number().int().positive(),
     captureDevice: z.string().min(1),
     captureFormat: z.string().min(1),
+    captureInterfaceId: z.string().min(1).optional(),
     captureSampleRate: z.number().int().positive(),
+    channelMap: recordingJobChannelMapSchema.optional(),
     durationSeconds: z.number().int().positive(),
     outputFileName: z.string().min(1),
     type: z.literal("alsa_capture"),
@@ -556,6 +567,7 @@ export type RecorderNode = z.infer<typeof recorderNodeSchema>;
 export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
 export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
 export type RecordingJob = z.infer<typeof recordingJobSchema>;
+export type RecordingJobChannelMap = z.infer<typeof recordingJobChannelMapSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;
 export type ResourceGrant = z.infer<typeof resourceGrantSchema>;

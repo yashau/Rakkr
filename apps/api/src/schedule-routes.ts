@@ -12,6 +12,7 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
+import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import {
@@ -25,6 +26,7 @@ import {
   uniqueTags,
 } from "./schedule-engine.js";
 import { ScheduleStoreError, type ScheduleStore } from "./schedule-store.js";
+import type { SettingsStore } from "./settings-store.js";
 
 interface ScheduleRouteDependencies {
   app: Hono<AppBindings>;
@@ -36,6 +38,7 @@ interface ScheduleRouteDependencies {
   requirePermission: RequirePermission;
   scheduleStore: ScheduleStore;
   scopedSchedules: (user: NonNullable<AuthResult["user"]>) => Promise<ScheduleSummary[]>;
+  settingsStore: SettingsStore;
 }
 
 export function registerScheduleRoutes({
@@ -48,6 +51,7 @@ export function registerScheduleRoutes({
   requirePermission,
   scheduleStore,
   scopedSchedules,
+  settingsStore,
 }: ScheduleRouteDependencies) {
   app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
     c.json({ data: await scopedSchedules(currentUser(c)) }),
@@ -229,9 +233,14 @@ export function registerScheduleRoutes({
       const before = scheduleExecutionSnapshot(schedule);
 
       await recordingStore.create(recording);
-      const job = await createRecordingJob(recording, {
-        durationSeconds: scheduleRecordingDurationSeconds(schedule),
-      });
+      const job = await createRecordingJob(
+        recording,
+        await recordingJobTargetOptions({
+          durationSeconds: scheduleRecordingDurationSeconds(schedule),
+          node,
+          settingsStore,
+        }),
+      );
 
       await recordAuditEvent(c, {
         action: "schedules.run_now.succeeded",

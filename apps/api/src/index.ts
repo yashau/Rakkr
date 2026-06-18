@@ -6,7 +6,6 @@ import { logger } from "hono/logger";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
-
 import { registerAgentRoutes } from "./agent-routes.js";
 import {
   accessGroupIdSchema,
@@ -20,7 +19,6 @@ import {
   type RecorderNode,
   type ScheduleSummary,
 } from "@rakkr/shared";
-
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
@@ -66,6 +64,7 @@ export const scheduleRunner = createScheduleRunner({
   nodeStore,
   recordingStore,
   scheduleStore,
+  settingsStore,
 });
 export const watchdogRunner = createWatchdogRunner({
   auditStore,
@@ -930,6 +929,7 @@ registerScheduleRoutes({
   requirePermission,
   scheduleStore,
   scopedSchedules,
+  settingsStore,
 });
 
 registerAgentRoutes({
@@ -957,10 +957,12 @@ registerRecordingRoutes({
   app,
   currentAuth,
   currentUser,
+  nodeStore,
   recordAuditEvent,
   recordingStore,
   requirePermission,
   scopedRecordings,
+  settingsStore,
 });
 
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {

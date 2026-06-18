@@ -1,4 +1,5 @@
 mod capture;
+mod channel_map;
 mod config;
 mod controller;
 mod health_log;

@@ -3,6 +3,7 @@ import type { AuditEvent, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
 import type { NodeStore } from "./node-store.js";
+import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import {
@@ -17,12 +18,14 @@ import {
   skipNextScheduleOccurrence,
 } from "./schedule-engine.js";
 import type { ScheduleStore } from "./schedule-store.js";
+import type { SettingsStore } from "./settings-store.js";
 
 interface ScheduleRunnerDependencies {
   auditStore: AuditStore;
   nodeStore: NodeStore;
   recordingStore: RecordingStore;
   scheduleStore: ScheduleStore;
+  settingsStore: SettingsStore;
 }
 
 export interface DueScheduleRun {
@@ -75,7 +78,13 @@ export function createScheduleRunner(dependencies: ScheduleRunnerDependencies) {
 }
 
 export async function runDueSchedules(
-  { auditStore, nodeStore, recordingStore, scheduleStore }: ScheduleRunnerDependencies,
+  {
+    auditStore,
+    nodeStore,
+    recordingStore,
+    scheduleStore,
+    settingsStore,
+  }: ScheduleRunnerDependencies,
   now = new Date(),
 ) {
   const results: DueScheduleRun[] = [];
@@ -136,9 +145,14 @@ export async function runDueSchedules(
       const recording = materializeScheduledRecording(schedule, node, now);
 
       await recordingStore.create(recording);
-      const job = await createRecordingJob(recording, {
-        durationSeconds: scheduleRecordingDurationSeconds(schedule),
-      });
+      const job = await createRecordingJob(
+        recording,
+        await recordingJobTargetOptions({
+          durationSeconds: scheduleRecordingDurationSeconds(schedule),
+          node,
+          settingsStore,
+        }),
+      );
       const updates = advanceScheduleAfterRun(schedule, now);
       const updated = await scheduleStore.update(schedule.id, updates);
 

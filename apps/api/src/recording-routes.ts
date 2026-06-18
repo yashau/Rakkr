@@ -10,18 +10,23 @@ import {
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import type { NodeStore } from "./node-store.js";
+import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
+import type { SettingsStore } from "./settings-store.js";
 
 interface RecordingRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
+  settingsStore: SettingsStore;
 }
 
 const recordingMetadataUpdateSchema = z
@@ -63,10 +68,12 @@ export function registerRecordingRoutes({
   app,
   currentAuth,
   currentUser,
+  nodeStore,
   recordAuditEvent,
   recordingStore,
   requirePermission,
   scopedRecordings,
+  settingsStore,
 }: RecordingRouteDependencies) {
   const recordRecordingFileFailure = async (
     c: Context<AppBindings>,
@@ -429,7 +436,11 @@ export function registerRecordingRoutes({
       };
 
       await recordingStore.create(recording);
-      const job = await createRecordingJob(recording);
+      const node = await nodeStore.find(recording.nodeId ?? "node_x32_test");
+      const job = await createRecordingJob(
+        recording,
+        await recordingJobTargetOptions({ node, settingsStore }),
+      );
 
       await recordAuditEvent(c, {
         action: "recordings.start.succeeded",
