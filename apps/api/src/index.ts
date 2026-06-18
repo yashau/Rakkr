@@ -44,6 +44,7 @@ import { createRecordingStore } from "./recording-store.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleRunner } from "./schedule-runner.js";
 import { createScheduleStore } from "./schedule-store.js";
+import { createWatchdogRunner } from "./watchdog-runner.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -60,6 +61,11 @@ export const scheduleRunner = createScheduleRunner({
   nodeStore,
   recordingStore,
   scheduleStore,
+});
+export const watchdogRunner = createWatchdogRunner({
+  auditStore,
+  healthEventStore,
+  recordingStore,
 });
 type NodeRecord = RecorderNode;
 type InterfaceRecord = NodeRecord["interfaces"][number];
@@ -949,6 +955,10 @@ registerRecordingRoutes({
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {
   if (process.env.RAKKR_SCHEDULE_RUNNER_ENABLED !== "0") {
     scheduleRunner.start();
+  }
+
+  if (process.env.RAKKR_WATCHDOG_RUNNER_ENABLED !== "0") {
+    watchdogRunner.start();
   }
 
   serve(

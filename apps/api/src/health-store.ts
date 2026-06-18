@@ -42,10 +42,17 @@ export interface HealthEventLifecycleUpdate {
   suppressedUntil?: Date | null;
 }
 
+export interface HealthEventUpdateInput {
+  details?: Record<string, unknown>;
+  severity?: HealthSeverity;
+  status?: HealthEventStatus;
+}
+
 export interface HealthEventStore {
   create(input: HealthEventCreateInput): Promise<HealthEvent>;
   find(eventId: string): Promise<HealthEvent | undefined>;
   list(filters?: HealthEventFilters): Promise<HealthEvent[]>;
+  update(eventId: string, update: HealthEventUpdateInput): Promise<HealthEvent | undefined>;
   updateLifecycle(
     eventId: string,
     update: HealthEventLifecycleUpdate,
@@ -107,6 +114,21 @@ class MemoryHealthEventStore implements HealthEventStore {
     this.events[index] = {
       ...this.events[index],
       ...lifecyclePatch(update),
+    };
+
+    return this.events[index];
+  }
+
+  async update(eventId: string, update: HealthEventUpdateInput) {
+    const index = this.events.findIndex((event) => event.id === eventId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    this.events[index] = {
+      ...this.events[index],
+      ...update,
     };
 
     return this.events[index];
@@ -201,6 +223,26 @@ class PostgresHealthEventStore implements HealthEventStore {
     }
   }
 
+  async update(eventId: string, update: HealthEventUpdateInput) {
+    if (!this.dbAvailable) {
+      return this.fallback.update(eventId, update);
+    }
+
+    try {
+      const [row] = await this.db
+        .update(healthEventsTable)
+        .set(updateRow(update))
+        .where(eq(healthEventsTable.id, eventId))
+        .returning();
+
+      return row ? healthEventFromRow(row) : undefined;
+    } catch (error) {
+      this.dbAvailable = false;
+      console.warn("health event update unavailable; using memory store", error);
+      return this.fallback.update(eventId, update);
+    }
+  }
+
   async updateLifecycle(eventId: string, update: HealthEventLifecycleUpdate) {
     if (!this.dbAvailable) {
       return this.fallback.updateLifecycle(eventId, update);
@@ -290,6 +332,14 @@ function lifecyclePatch(update: HealthEventLifecycleUpdate): Partial<HealthEvent
     suppressedAt: dateToIso(update.suppressedAt),
     suppressedBy: stringOrUndefined(update.suppressedBy),
     suppressedUntil: dateToIso(update.suppressedUntil),
+  });
+}
+
+function updateRow(update: HealthEventUpdateInput): Partial<typeof healthEventsTable.$inferInsert> {
+  return withoutUndefined({
+    details: update.details,
+    severity: update.severity,
+    status: update.status,
   });
 }
 

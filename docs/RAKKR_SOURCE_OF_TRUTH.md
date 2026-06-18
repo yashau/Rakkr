@@ -56,7 +56,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, jobs, metadata editing, filters, schedule editing, and execution detail |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, telemetry   |
 | Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
-| Health watchdog      | 🟦 Scaffold  | Health event model, writer API, lifecycle actions, and recording health sync exist |
+| Health watchdog      | 🟦 Scaffold  | Health event model, lifecycle actions, scheduled low-signal runner, and recording health sync exist |
 | Scheduler            | 🟦 Scaffold  | Persistent store, create/edit/run-now/skip/delete UI, metadata ownership, recurrence editing, paused ranges, quick text helpers, previews, execution detail, timeline, and due runner |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
@@ -417,7 +417,7 @@ Recordings should show a quality timeline with:
 - device/dropout events;
 - AI quality markers later.
 
-Current scaffold status: health events have a shared lifecycle type, Drizzle/Postgres table, and RBAC-gated API. `GET /api/v1/health-events` reads and filters by node, recording, schedule, severity, lifecycle status, and result limit. `POST /api/v1/health-events` writes targeted health events, and `POST /api/v1/health-events/:eventId/acknowledge`, `/suppress`, `/resolve`, and `/reopen` manage alert lifecycle. Read routes require `health:read`; writer and lifecycle routes require `health:acknowledge`; all returned or mutated events are checked against the same resource-scope model used by nodes, schedules, recordings, meters, and jobs, so a room or recorder denial also hides and blocks its health events. Lifecycle actions write audit events with before/after snapshots. Recording-linked events update the recording health status: unresolved warning/critical events mark the recording warning/critical, resolved events can return it to healthy, and reopened events restore the active health state. The Schedules execution detail page consumes this API to show linked health events next to recordings, jobs, and audit history, and exposes acknowledge, suppress, resolve, and reopen controls for users with `health:acknowledge`. DSP watchdog writers, repeated/update semantics, local node log sync, and full quality timeline rendering are still pending.
+Current scaffold status: health events have a shared lifecycle type, Drizzle/Postgres table, and RBAC-gated API. `GET /api/v1/health-events` reads and filters by node, recording, schedule, severity, lifecycle status, and result limit. `POST /api/v1/health-events` writes targeted health events, and `POST /api/v1/health-events/:eventId/acknowledge`, `/suppress`, `/resolve`, and `/reopen` manage alert lifecycle. Read routes require `health:read`; writer and lifecycle routes require `health:acknowledge`; all returned or mutated events are checked against the same resource-scope model used by nodes, schedules, recordings, meters, and jobs, so a room or recorder denial also hides and blocks its health events. Lifecycle actions write audit events with before/after snapshots. Recording-linked events update the recording health status: unresolved warning/critical events mark the recording warning/critical, resolved events can return it to healthy, and reopened events restore the active health state. A background watchdog runner evaluates active scheduled recordings after the policy grace/window, opens `watchdog.scheduled_low_signal` events when the highest observed signal stays below threshold, updates the existing active event instead of duplicating alerts, emits repeat audit events on the policy cadence, and auto-resolves when signal recovers. The runner is controlled by `RAKKR_WATCHDOG_RUNNER_ENABLED`, `RAKKR_WATCHDOG_RUNNER_INTERVAL_SECONDS`, and `RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS`; deterministic demo-meter smoke tests can force a level with `RAKKR_DEMO_METER_DBFS`. The Schedules execution detail page consumes this API to show linked health events next to recordings, jobs, and audit history, and exposes acknowledge, suppress, resolve, and reopen controls for users with `health:acknowledge`. Real node DSP watchdog sampling, local node log sync, and full quality timeline rendering are still pending.
 
 ---
 
@@ -734,7 +734,7 @@ Recording-control audit events should include actor, command, schedule/ad hoc so
 
 Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
-Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Local user create/access/password/status/delete actions write audit events, and password reset, disable, and delete revoke active sessions. Node enrollment and node credential rotation write security audit events with node snapshots and credential prefixes only. Schedule create/update writes target schedule audit events with before/after template, tag, profile, watchdog, room, recurrence, buffer, and next-run metadata. Schedule run-now writes before/after audit metadata showing schedule templates, materialized recording metadata, job ID, recording ID, recording profile, and watchdog policy. Schedule skip-next writes before/after schedule state plus the skipped local date. Schedule delete writes the deleted schedule snapshot. Automatic due-schedule skips are audited under the `system:scheduler` actor. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
+Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Local user create/access/password/status/delete actions write audit events, and password reset, disable, and delete revoke active sessions. Node enrollment and node credential rotation write security audit events with node snapshots and credential prefixes only. Schedule create/update writes target schedule audit events with before/after template, tag, profile, watchdog, room, recurrence, buffer, and next-run metadata. Schedule run-now writes before/after audit metadata showing schedule templates, materialized recording metadata, job ID, recording ID, recording profile, and watchdog policy. Schedule skip-next writes before/after schedule state plus the skipped local date. Schedule delete writes the deleted schedule snapshot. Automatic due-schedule skips are audited under the `system:scheduler` actor. Watchdog low-signal create, repeat, and auto-resolve actions are audited under the `system:watchdog` actor with health event, recording, schedule, and node correlation IDs. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
 
 ---
 
@@ -766,7 +766,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🟦 Human-friendly schedule UI.
 - [ ] 🟦 Schedule-owned filename/folder/tag templates.
 - [ ] 🟦 Watchdog event model.
-- [ ] 🚧 Scheduled low-signal alert rule.
+- [ ] 🟦 Scheduled low-signal alert rule.
 - [ ] 🟨 Local node event log.
 - [ ] 🟦 Central event store.
 - [ ] 🟦 Prometheus metrics endpoint.
@@ -910,7 +910,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add watchdog-backed scheduled low-signal event generation and repeated/update semantics.
+1. Add real node DSP watchdog sample ingestion and quality timeline rendering.
 2. Add richer recurrence helper coverage after real scheduling examples accumulate.
 3. Add OIDC-backed user sync when Azure AD work starts.
 4. Return to the Debian recorder node when the X32 connection is confirmed.

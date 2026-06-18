@@ -84,6 +84,7 @@ export const recordings: RecordingSummary[] = [
 export function buildMeterFrame(): MeterFrame {
   const capturedAt = new Date().toISOString();
   const phase = Date.now() / 650;
+  const forcedLevel = demoMeterDbfsOverride();
 
   return {
     capturedAt,
@@ -91,7 +92,7 @@ export function buildMeterFrame(): MeterFrame {
     levels: Array.from({ length: 8 }, (_, index) => {
       const wave = Math.sin(phase + index * 0.58);
       const bump = Math.cos(phase / 2 + index * 0.23);
-      const rmsDbfs = Math.max(-72, -42 + wave * 12 + bump * 5);
+      const rmsDbfs = forcedLevel ?? Math.max(-72, -42 + wave * 12 + bump * 5);
       const peakDbfs = Math.min(-3, rmsDbfs + 11 + Math.abs(wave) * 6);
 
       return {
@@ -104,6 +105,18 @@ export function buildMeterFrame(): MeterFrame {
     }),
     nodeId: "node_x32_test",
   };
+}
+
+function demoMeterDbfsOverride() {
+  const raw = process.env.RAKKR_DEMO_METER_DBFS;
+
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = Number(raw);
+
+  return Number.isFinite(parsed) ? Math.min(24, Math.max(-160, parsed)) : undefined;
 }
 
 export function prometheusMetrics() {

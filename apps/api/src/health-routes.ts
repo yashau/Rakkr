@@ -9,6 +9,7 @@ import type {
   HealthEventLifecycleUpdate,
   HealthEventStore,
 } from "./health-store.js";
+import { syncRecordingHealth } from "./health-sync.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -131,7 +132,7 @@ export function registerHealthRoutes({
       }
 
       const event = await healthEventStore.create(input);
-      await syncRecordingHealth(event.recordingId);
+      await syncRecordingHealth(healthEventStore, recordingStore, event.recordingId);
       await recordAuditEvent(c, {
         action: "health.events.create.succeeded",
         after: healthEventSnapshot(event),
@@ -233,7 +234,7 @@ export function registerHealthRoutes({
       return c.json({ error: "Health event not found" }, 404);
     }
 
-    await syncRecordingHealth(updated.recordingId);
+    await syncRecordingHealth(healthEventStore, recordingStore, updated.recordingId);
     await recordAuditEvent(c, {
       action: `health.events.${action}.succeeded`,
       after: healthEventSnapshot(updated),
@@ -245,30 +246,6 @@ export function registerHealthRoutes({
     });
 
     return c.json({ data: updated });
-  }
-
-  async function syncRecordingHealth(recordingId: string | undefined) {
-    if (!recordingId) {
-      return;
-    }
-
-    const recording = await recordingStore.find(recordingId);
-
-    if (!recording) {
-      return;
-    }
-
-    const activeEvents = (await healthEventStore.list({ limit: 500, recordingId })).filter(
-      (event) => event.status !== "resolved",
-    );
-    const nextHealth = recordingHealthStatus(activeEvents);
-
-    if (recording.healthStatus !== nextHealth) {
-      await recordingStore.save({
-        ...recording,
-        healthStatus: nextHealth,
-      });
-    }
   }
 
   async function canManageHealthTargets(
@@ -458,16 +435,4 @@ function healthAuditTarget(event: HealthEvent): AuditTarget {
     name: event.type,
     type: "health_event",
   };
-}
-
-function recordingHealthStatus(events: HealthEvent[]) {
-  if (events.some((event) => event.severity === "critical")) {
-    return "critical";
-  }
-
-  if (events.some((event) => event.severity === "warning")) {
-    return "warning";
-  }
-
-  return "healthy";
 }
