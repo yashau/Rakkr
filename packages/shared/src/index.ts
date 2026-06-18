@@ -539,6 +539,28 @@ export const uploadQueueItemSchema = z.object({
   updatedAt: isoDateTimeSchema,
   uploadPolicyId: z.string().min(1).optional(),
 });
+export const uploadQueueRunItemSchema = z.object({
+  itemId: z.string().min(1),
+  provider: uploadProviderSchema,
+  reason: z.string().min(1).optional(),
+  recordingId: z.string().min(1),
+  status: uploadQueueStatusSchema,
+});
+export const uploadQueueRunSummarySchema = z.object({
+  attempted: z.number().int().nonnegative(),
+  deferred: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  items: z.array(uploadQueueRunItemSchema),
+  succeeded: z.number().int().nonnegative(),
+});
+export const uploadRunnerStatusSchema = z.object({
+  batchSize: z.number().int().positive(),
+  intervalSeconds: z.number().int().positive(),
+  lastRunAt: isoDateTimeSchema.optional(),
+  lastSummary: uploadQueueRunSummarySchema.optional(),
+  running: z.boolean(),
+  started: z.boolean(),
+});
 export const uploadProviderConfigSchema = z.object({
   credentialRef: z.string().trim().min(1).max(240).optional(),
   displayName: z.string().trim().min(1).max(160),
@@ -706,6 +728,9 @@ export type UploadPolicyInput = z.infer<typeof uploadPolicyInputSchema>;
 export type UploadPolicyTrigger = z.infer<typeof uploadPolicyTriggerSchema>;
 export type UploadPolicyUpdate = z.infer<typeof uploadPolicyUpdateSchema>;
 export type UploadQueueItem = z.infer<typeof uploadQueueItemSchema>;
+export type UploadQueueRunItem = z.infer<typeof uploadQueueRunItemSchema>;
+export type UploadQueueRunSummary = z.infer<typeof uploadQueueRunSummarySchema>;
 export type UploadQueueStatus = z.infer<typeof uploadQueueStatusSchema>;
+export type UploadRunnerStatus = z.infer<typeof uploadRunnerStatusSchema>;
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;
 export type WatchdogPolicyUpdate = z.infer<typeof watchdogPolicyUpdateSchema>;

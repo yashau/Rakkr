@@ -41,6 +41,7 @@ import { registerSettingsRoutes } from "./settings-routes.js";
 import { createSettingsStore } from "./settings-store.js";
 import { registerStatusRoutes } from "./status-routes.js";
 import { createUploadProviderStore } from "./upload-providers.js";
+import { registerUploadRunnerRoutes } from "./upload-runner-routes.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -957,6 +958,14 @@ registerRecordingRoutes({
   requirePermission,
   scopedRecordings,
   settingsStore,
+});
+
+registerUploadRunnerRoutes({
+  app,
+  currentAuth,
+  recordAuditEvent,
+  requirePermission,
+  uploadRunner,
 });
 
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {

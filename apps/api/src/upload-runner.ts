@@ -1,13 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { AuditEvent } from "@rakkr/shared";
+import type { AuditEvent, UploadQueueRunItem, UploadQueueRunSummary } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
 import type { UploadProviderStore } from "./upload-providers.js";
-import {
-  runUploadQueueOnce,
-  type UploadQueueRunItem,
-  type UploadQueueRunSummary,
-} from "./upload-executor.js";
+import { runUploadQueueOnce } from "./upload-executor.js";
 
 interface UploadRunnerDependencies {
   auditStore: AuditStore;
@@ -16,6 +12,10 @@ interface UploadRunnerDependencies {
 }
 
 export function createUploadRunner(dependencies: UploadRunnerDependencies) {
+  const batchSize = dependencies.limit ?? uploadRunnerBatchSize();
+  let intervalMs = uploadRunnerIntervalMs();
+  let lastRunAt: string | undefined;
+  let lastSummary: UploadQueueRunSummary | undefined;
   let running = false;
   let timer: NodeJS.Timeout | undefined;
 
@@ -27,7 +27,12 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
     running = true;
 
     try {
-      return await runUploadQueuePass(dependencies, now);
+      const summary = await runUploadQueuePass({ ...dependencies, limit: batchSize }, now);
+
+      lastRunAt = new Date().toISOString();
+      lastSummary = summary;
+
+      return summary;
     } finally {
       running = false;
     }
@@ -37,15 +42,26 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
     async runOnce(now = new Date()) {
       return tick(now);
     },
-    start(intervalMs = uploadRunnerIntervalMs()) {
+    start(nextIntervalMs = uploadRunnerIntervalMs()) {
       if (timer) {
         return;
       }
 
+      intervalMs = nextIntervalMs;
       timer = setInterval(() => {
         void tick();
-      }, intervalMs);
+      }, nextIntervalMs);
       void tick();
+    },
+    status() {
+      return {
+        batchSize,
+        intervalSeconds: Math.max(1, Math.round(intervalMs / 1_000)),
+        lastRunAt,
+        lastSummary,
+        running,
+        started: Boolean(timer),
+      };
     },
     stop() {
       if (timer) {
@@ -55,6 +71,8 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
     },
   };
 }
+
+export type UploadRunner = ReturnType<typeof createUploadRunner>;
 
 export async function runUploadQueuePass(
   { auditStore, limit = uploadRunnerBatchSize(), providerStore }: UploadRunnerDependencies,

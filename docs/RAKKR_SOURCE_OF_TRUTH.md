@@ -65,7 +65,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
-| Storage upload | 🟦 | Stub queue, provider config/status, policy templates, auto-queue, audited runner, UI actions, metrics |
+| Storage upload | 🟦 | Stub queue, provider config/status, policy templates, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | 🧊 | Azure AD-ready boundary; local auth first |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
@@ -360,6 +360,7 @@ Current scaffold:
 - Cache attach auto-queues recordings when enabled policy trigger is `on_recording_cached`.
 - Executor skeleton processes due queue items through provider readiness and retry budgets.
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
+- Controller API and Settings UI expose upload runner status and run-now control.
 
 Later:
 
@@ -423,11 +424,10 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Expose upload runner status/control in controller API/UI.
+1. 🚧 Add Azure AD OIDC user sync.
 2. ⏸️ Return to X32 hardware validation after device is confirmed.
-3. 🧊 Add Azure AD OIDC user sync.
-4. 🧊 Add SMB/S3 providers.
-5. 🧊 Add local VAD and noise/speech scoring.
+3. 🧊 Add SMB/S3 providers.
+4. 🧊 Add local VAD and noise/speech scoring.
 
 ## Open Questions
 

@@ -1,4 +1,4 @@
-import type { UploadProvider, UploadQueueItem } from "@rakkr/shared";
+import type { UploadQueueItem, UploadQueueRunItem, UploadQueueRunSummary } from "@rakkr/shared";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 import {
   failUploadQueueItem,
@@ -16,22 +16,6 @@ interface UploadExecutorOptions {
 interface ProviderUploadResult {
   ok: boolean;
   reason?: string;
-}
-
-export interface UploadQueueRunItem {
-  itemId: string;
-  provider: UploadProvider;
-  reason?: string;
-  recordingId: string;
-  status: UploadQueueItem["status"];
-}
-
-export interface UploadQueueRunSummary {
-  attempted: number;
-  deferred: number;
-  failed: number;
-  items: UploadQueueRunItem[];
-  succeeded: number;
 }
 
 export async function runUploadQueueOnce(

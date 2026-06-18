@@ -31,6 +31,8 @@ import type {
   UploadPolicyInput,
   UploadPolicyUpdate,
   UploadQueueItem,
+  UploadQueueRunSummary,
+  UploadRunnerStatus,
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
@@ -407,6 +409,14 @@ export const api = {
   recordings: (filters: RecordingFilters = {}) =>
     fetchJson<{ data: RecordingSummary[] }>(withQuery("/api/v1/recordings", filters)),
   uploadQueue: () => fetchJson<{ data: UploadQueueItem[] }>("/api/v1/upload-queue"),
+  uploadRunner: () => fetchJson<{ data: UploadRunnerStatus }>("/api/v1/upload-runner"),
+  runUploadRunner: () =>
+    fetchJson<{ data: UploadRunnerStatus; summary: UploadQueueRunSummary }>(
+      "/api/v1/upload-runner/run",
+      {
+        method: "POST",
+      },
+    ),
   enqueueRecordingUpload: (recordingId: string, input: UploadQueueInput = {}) =>
     fetchJson<{ data: UploadQueueItem }>(`/api/v1/recordings/${recordingId}/upload-queue`, {
       body: JSON.stringify(input),

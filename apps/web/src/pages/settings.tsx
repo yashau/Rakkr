@@ -31,8 +31,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UploadPolicyPanel } from "@/components/upload-policy-panel";
+import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { uploadProviderStatusClass } from "@/lib/upload-status";
 
 export function SettingsPage() {
   const profilesQuery = useQuery({
@@ -121,6 +123,8 @@ export function SettingsPage() {
       </div>
 
       <UploadPolicyPanel />
+
+      <UploadRunnerPanel />
 
       <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
@@ -978,20 +982,4 @@ function parseTargetValue(value: string): { id: string; type: "interface" | "nod
   }
 
   return { id: idParts.join(":"), type };
-}
-
-function uploadProviderStatusClass(status: UploadProviderRuntimeStatus["status"]) {
-  if (status === "ready") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (status === "disabled") {
-    return "border-slate-200 bg-slate-50 text-slate-700";
-  }
-
-  if (status === "not_configured") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  return "border-rose-200 bg-rose-50 text-rose-700";
 }
