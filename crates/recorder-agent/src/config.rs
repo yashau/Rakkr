@@ -132,4 +132,38 @@ pub struct AgentConfig {
         default_value_t = 1_048_576
     )]
     pub agent_health_log_max_bytes: u64,
+
+    #[arg(long, env = "RAKKR_SYSTEM_HEALTH_ENABLED", default_value_t = true)]
+    pub system_health_enabled: bool,
+
+    #[arg(long, env = "RAKKR_SYSTEM_HEALTH_DISK_PATH", default_value = ".")]
+    pub system_health_disk_path: PathBuf,
+
+    #[arg(
+        long,
+        env = "RAKKR_SYSTEM_HEALTH_DISK_WARNING_PERCENT",
+        default_value_t = 85.0
+    )]
+    pub system_health_disk_warning_percent: f32,
+
+    #[arg(
+        long,
+        env = "RAKKR_SYSTEM_HEALTH_DISK_CRITICAL_PERCENT",
+        default_value_t = 95.0
+    )]
+    pub system_health_disk_critical_percent: f32,
+
+    #[arg(
+        long,
+        env = "RAKKR_SYSTEM_HEALTH_LOAD_WARNING_PER_CORE",
+        default_value_t = 2.0
+    )]
+    pub system_health_load_warning_per_core: f32,
+
+    #[arg(
+        long,
+        env = "RAKKR_SYSTEM_HEALTH_LOAD_CRITICAL_PER_CORE",
+        default_value_t = 4.0
+    )]
+    pub system_health_load_critical_per_core: f32,
 }

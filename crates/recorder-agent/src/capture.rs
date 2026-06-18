@@ -238,6 +238,12 @@ mod tests {
             run_next_job: false,
             room: "Room".to_string(),
             site: "Site".to_string(),
+            system_health_disk_critical_percent: 95.0,
+            system_health_disk_path: PathBuf::from("."),
+            system_health_disk_warning_percent: 85.0,
+            system_health_enabled: true,
+            system_health_load_critical_per_core: 4.0,
+            system_health_load_warning_per_core: 2.0,
         }
     }
 

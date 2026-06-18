@@ -4,6 +4,7 @@ mod controller;
 mod health_log;
 mod inventory;
 mod state;
+mod system_health;
 mod telemetry;
 
 use std::time::Duration;
@@ -98,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
     let mut meter_sync_failed = false;
+    let mut system_health_state = system_health::SystemHealthState::default();
     let token = config.controller_token.as_deref();
     let meter_context = MeterLoopContext {
         capture: &meter_capture,
@@ -149,6 +151,13 @@ async fn main() -> anyhow::Result<()> {
                     &frame,
                     &mut meter_clipping_active,
                     &mut meter_flatline_active,
+                ).await?;
+
+                update_system_health(
+                    &config,
+                    token,
+                    &inventory,
+                    &mut system_health_state,
                 ).await?;
 
                 if let Some(token) = token {
@@ -489,6 +498,27 @@ async fn update_meter_health(
         )
         .await
         .context("append flatline recovery health event")?;
+    }
+
+    Ok(())
+}
+
+async fn update_system_health(
+    config: &AgentConfig,
+    token: Option<&str>,
+    inventory: &inventory::NodeInventory,
+    state: &mut system_health::SystemHealthState,
+) -> anyhow::Result<()> {
+    for event in system_health::collect_system_health_events(config, inventory, state) {
+        append_and_sync_health_event(
+            config,
+            token,
+            event.event_type,
+            event.severity,
+            event.details,
+        )
+        .await
+        .context("append system health event")?;
     }
 
     Ok(())
