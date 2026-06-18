@@ -79,3 +79,9 @@ mise run rust:fmt     # format Rust crates
 ## First Hardware Target
 
 The initial recorder test rig is a Debian node at `172.22.145.152` with a Behringer X32 Rack connected over USB.
+
+Before the physical interface is ready, a Linux recorder node can fake a capture device with ALSA `snd-aloop`:
+
+```powershell
+mise run agent:loopback-smoke
+```

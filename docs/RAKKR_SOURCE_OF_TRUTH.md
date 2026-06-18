@@ -55,7 +55,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, health events, Postgres-backed nodes/credentials/recordings/jobs/schedules |
 | Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, jobs, metadata editing, filters, schedule editing, execution detail, and quality timelines |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, ALSA-backed meter sampling, controller meter sync, and local health log |
-| Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
+| Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check; ALSA loopback smoke path exists |
 | Health watchdog      | 🟦 Scaffold  | Health event model, lifecycle actions, node meter ingest, clipping/flatline agent events, scheduled low-signal runner, quality timelines, and recording health sync exist |
 | Scheduler            | 🟦 Scaffold  | Persistent store, create/edit/run-now/skip/delete UI, metadata ownership, recurrence editing, paused ranges, quick text helpers, previews, execution detail, timeline, and due runner |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
@@ -280,7 +280,7 @@ Nodes need rich identity, not just IDs.
 
 The UI should make it obvious which physical room and device a node represents.
 
-The Behringer X32 Rack is the current physical test fixture, not a product-specific assumption. Recorder discovery should work with generic ALSA/JACK/PipeWire capture devices and expose enough raw identity to support per-device templates later.
+The Behringer X32 Rack is the current physical test fixture, not a product-specific assumption. Recorder discovery should work with generic ALSA/JACK/PipeWire capture devices and expose enough raw identity to support per-device templates later. Before the X32 is ready, `mise run agent:loopback-smoke` can load Linux `snd-aloop`, play a sine tone into `hw:Loopback,0,0`, capture from `hw:Loopback,1,0`, and print the Rakkr agent meter settings for that fake interface.
 
 Current scaffold status: nodes can be listed, enrolled, and issued rotated recorder credentials through RBAC-gated controller routes. Persisted node IDs now use varchar domain identifiers in Drizzle/Postgres instead of UUID-only columns, so future readable node IDs and existing seed IDs such as `node_x32_test` fit the same storage model as schedules, recordings, jobs, and health-event correlations. Dependent node credential, interface, and health-event foreign keys use the same string-compatible node ID type while credential IDs and interface IDs can still be generated UUIDs.
 
@@ -910,9 +910,10 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add xrun/device disconnect agent health events and harden meter backend controls after hardware validation resumes.
-2. Add richer recurrence helper coverage after real scheduling examples accumulate.
-3. Add OIDC-backed user sync when Azure AD work starts.
-4. Return to the Debian recorder node when the X32 connection is confirmed.
+1. Use ALSA loopback smoke testing to validate agent meter sampling against a fake capture device before X32 validation resumes.
+2. Add xrun/device disconnect agent health events and harden meter backend controls after hardware validation resumes.
+3. Add richer recurrence helper coverage after real scheduling examples accumulate.
+4. Add OIDC-backed user sync when Azure AD work starts.
+5. Return to the Debian recorder node when the X32 connection is confirmed.
 
 Last updated: `2026-06-18`

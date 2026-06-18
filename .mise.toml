@@ -90,6 +90,10 @@ run = "pnpm --filter @rakkr/db db:migrate"
 description = "Replay Drizzle migrations against a fresh throwaway Postgres database"
 run = "pnpm --filter @rakkr/db db:verify"
 
+[tasks."agent:loopback-smoke"]
+description = "Exercise a Linux ALSA snd-aloop fake capture device"
+run = "bash scripts/alsa-loopback-smoke.sh"
+
 [tasks."rust:build"]
 description = "Build Rust crates"
 run = "cargo build --workspace"
