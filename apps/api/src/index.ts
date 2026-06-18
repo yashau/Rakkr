@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
 
 import {
+  accessPolicyInputSchema,
   auditOutcomeSchema,
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
@@ -73,6 +74,9 @@ const userAccessRequestSchema = z
     message: "Local access manager must keep auth:manage",
     path: ["roles"],
   });
+const accessPolicyUpdateSchema = z.object({
+  policies: z.array(accessPolicyInputSchema).default([]),
+});
 
 function requestContext(c: Context<AppBindings>, sessionId?: string) {
   return {
@@ -146,12 +150,15 @@ function requirePermission(
     const auth = await authService.authenticate(c.req.header("authorization"));
     const auditTarget = await target(c);
     const hasPermission = auth.user?.permissions.includes(permission) ?? false;
-    const hasScope = auth.user ? await hasResourceScope(auth.user, auditTarget) : false;
-    const allowed = hasPermission && hasScope;
+    const scope = auth.user
+      ? await resourceScopeDecision(auth.user, auditTarget)
+      : { allowed: false, reason: "unauthenticated" };
+    const allowed = hasPermission && scope.allowed;
     const reason = authorizationReason({
       authenticated: Boolean(auth.user),
       hasPermission,
-      hasScope,
+      hasScope: scope.allowed,
+      scopeReason: scope.reason,
     });
 
     await recordAuditEvent(c, {
@@ -160,6 +167,7 @@ function requirePermission(
       details: {
         requiredPermission: permission,
         resourceScope: auditTarget,
+        resourceScopeDecision: scope.reason,
         roles: auth.user?.roles ?? [],
       },
       outcome: allowed ? "allowed" : "denied",
@@ -187,6 +195,7 @@ function authorizationReason(input: {
   authenticated: boolean;
   hasPermission: boolean;
   hasScope: boolean;
+  scopeReason?: string;
 }) {
   if (!input.authenticated) {
     return "unauthenticated";
@@ -197,7 +206,7 @@ function authorizationReason(input: {
   }
 
   if (!input.hasScope) {
-    return "missing_resource_scope";
+    return input.scopeReason ?? "missing_resource_scope";
   }
 
   return undefined;
@@ -217,29 +226,60 @@ function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEvent
 
 function accessSnapshot(user: CurrentUser | undefined) {
   return {
+    groups: user?.groups ?? [],
     resourceGrants: user?.resourceGrants ?? [],
     roles: user?.roles ?? [],
   };
 }
 
 async function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
-  if (!user || !target.id) {
-    return Boolean(user);
-  }
+  return (await resourceScopeDecision(user, target)).allowed;
+}
 
-  if (user.roles.includes("owner") || user.roles.includes("admin")) {
-    return true;
+async function resourceScopeDecision(user: AuthResult["user"], target: AuditTarget) {
+  if (!user || !target.id) {
+    return {
+      allowed: Boolean(user),
+      reason: user ? undefined : "unauthenticated",
+    };
   }
 
   const targets = await resourceScopeTargets(target);
+  const policyDecision = await authService.accessPolicyDecision(user, targets);
 
-  return targets.some((candidate) =>
+  if (policyDecision?.effect === "deny") {
+    return {
+      allowed: false,
+      reason: "access_policy_denied",
+    };
+  }
+
+  if (user.roles.includes("owner") || user.roles.includes("admin")) {
+    return {
+      allowed: true,
+      reason: undefined,
+    };
+  }
+
+  if (policyDecision?.effect === "allow") {
+    return {
+      allowed: true,
+      reason: undefined,
+    };
+  }
+
+  const allowedByGrant = targets.some((candidate) =>
     user.resourceGrants.some(
       (grant) =>
         (grant.resourceType === candidate.type || grant.resourceType === "*") &&
         (grant.resourceId === candidate.id || grant.resourceId === "*"),
     ),
   );
+
+  return {
+    allowed: allowedByGrant,
+    reason: allowedByGrant ? undefined : "missing_resource_scope",
+  };
 }
 
 async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]> {
@@ -576,6 +616,76 @@ app.get(
     });
 
     return c.json({ data: users });
+  },
+);
+
+app.get(
+  "/api/v1/auth/access-policies",
+  requirePermission("auth:manage", "auth.access_policies.read", () => ({ type: "auth" })),
+  async (c) => {
+    const policies = await authService.accessPolicies();
+
+    await recordAuditEvent(c, {
+      action: "auth.access_policies.read.succeeded",
+      auth: currentAuth(c),
+      details: {
+        count: policies.length,
+      },
+      outcome: "succeeded",
+      permission: "auth:manage",
+      target: {
+        type: "auth",
+      },
+    });
+
+    return c.json({ data: policies });
+  },
+);
+
+app.patch(
+  "/api/v1/auth/access-policies",
+  requirePermission("auth:manage", "auth.access_policies.update", () => ({ type: "auth" })),
+  async (c) => {
+    const body = accessPolicyUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+    if (!body.success) {
+      await recordAuditEvent(c, {
+        action: "auth.access_policies.update.failed",
+        auth: currentAuth(c),
+        outcome: "failed",
+        permission: "auth:manage",
+        reason: "invalid_request",
+        target: {
+          type: "auth",
+        },
+      });
+
+      return c.json({ error: "Invalid access policies", issues: body.error.issues }, 400);
+    }
+
+    const before = await authService.accessPolicies();
+    const updated = await authService.updateLocalAccessPolicies(
+      body.data.policies,
+      currentUser(c).id,
+    );
+
+    await recordAuditEvent(c, {
+      action: "auth.access_policies.update.succeeded",
+      after: {
+        policies: updated,
+      },
+      auth: currentAuth(c),
+      before: {
+        policies: before,
+      },
+      outcome: "succeeded",
+      permission: "auth:manage",
+      target: {
+        type: "auth",
+      },
+    });
+
+    return c.json({ data: updated });
   },
 );
 

@@ -1,6 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual, scrypt as scryptCallback } from "node:crypto";
 
 import {
+  accessGroups,
+  accessPolicies as accessPolicyRows,
   and,
   authSessions,
   createDatabase,
@@ -12,12 +14,18 @@ import {
   roles as roleRows,
   userResourceGrants,
   userRoles,
+  userAccessGroups,
   users,
 } from "@rakkr/db";
 import {
+  accessPolicyInputSchema,
   permissions,
   rolePermissions,
   roles,
+  type AccessGroup,
+  type AccessPolicy,
+  type AccessPolicyEffect,
+  type AccessPolicyInput,
   type CurrentUser,
   type ResourceGrant,
   type Role,
@@ -42,6 +50,11 @@ interface AuthSession {
 export interface LocalAccess {
   resourceGrants: ResourceGrant[];
   roles: Role[];
+}
+
+export interface AccessPolicyDecision {
+  effect: AccessPolicyEffect;
+  policy: AccessPolicy;
 }
 
 export interface AuthResult {
@@ -71,6 +84,7 @@ export class AuthError extends Error {
 }
 
 export class LocalAuthService {
+  private accessPolicyOverrides?: AccessPolicyInput[];
   private readonly localAccessOverrides = new Map<string, LocalAccess>();
   private readonly sessions = new Map<string, AuthSession>();
   private readonly db?: ReturnType<typeof createDatabase>;
@@ -191,12 +205,96 @@ export class LocalAuthService {
     return user;
   }
 
+  async accessPolicies(): Promise<AccessPolicy[]> {
+    if (this.accessPolicyOverrides) {
+      return accessPoliciesWithIds(this.accessPolicyOverrides);
+    }
+
+    const db = this.availableDatabase();
+
+    if (db) {
+      try {
+        const rows = await db.select().from(accessPolicyRows);
+
+        if (rows.length > 0) {
+          return rows.map((row) => ({
+            effect: row.effect,
+            id: row.id,
+            reason: row.reason ?? undefined,
+            resourceId: row.resourceId,
+            resourceType: row.resourceType,
+            subjectId: row.subjectId ?? undefined,
+            subjectType: row.subjectType,
+          }));
+        }
+      } catch (error) {
+        this.markDatabaseUnavailable(error);
+      }
+    }
+
+    return localAccessPoliciesFromEnv();
+  }
+
+  async accessPolicyDecision(
+    user: CurrentUser,
+    targets: Array<{ id?: string; type: string }>,
+  ): Promise<AccessPolicyDecision | undefined> {
+    const matchingPolicies = (await this.accessPolicies()).filter(
+      (policy) => policyMatchesSubject(policy, user) && policyMatchesTarget(policy, targets),
+    );
+    const deny = matchingPolicies.find((policy) => policy.effect === "deny");
+
+    if (deny) {
+      return { effect: "deny", policy: deny };
+    }
+
+    const allow = matchingPolicies.find((policy) => policy.effect === "allow");
+
+    return allow ? { effect: "allow", policy: allow } : undefined;
+  }
+
+  async updateLocalAccessPolicies(
+    policies: AccessPolicyInput[],
+    actorUserId?: string,
+  ): Promise<AccessPolicy[]> {
+    const nextPolicies = uniqueAccessPolicyInputs(policies);
+
+    this.accessPolicyOverrides = nextPolicies;
+
+    const db = this.availableDatabase();
+
+    if (db) {
+      try {
+        await db.delete(accessPolicyRows);
+
+        if (nextPolicies.length > 0) {
+          await db.insert(accessPolicyRows).values(
+            nextPolicies.map((policy) => ({
+              createdByUserId: actorUserId && isUuid(actorUserId) ? actorUserId : undefined,
+              effect: policy.effect,
+              reason: policy.reason,
+              resourceId: policy.resourceId,
+              resourceType: policy.resourceType,
+              subjectId: policy.subjectId,
+              subjectType: policy.subjectType,
+            })),
+          );
+        }
+      } catch (error) {
+        this.markDatabaseUnavailable(error);
+      }
+    }
+
+    return accessPoliciesWithIds(nextPolicies);
+  }
+
   async localAdmin(): Promise<CurrentUser> {
     const userId = localAdminId();
     const access = await this.localAccessForUser(userId);
 
     return {
       email: process.env.RAKKR_LOCAL_ADMIN_EMAIL ?? "admin@rakkr.local",
+      groups: await this.localGroupsForUser(userId),
       id: userId,
       name: process.env.RAKKR_LOCAL_ADMIN_NAME ?? "Local Admin",
       permissions: permissionsForRoles(access.roles),
@@ -242,6 +340,7 @@ export class LocalAuthService {
         });
 
       await this.persistResourceGrants(session.user);
+      await this.persistGroups(session.user);
 
       await db.insert(authSessions).values({
         expiresAt: session.expiresAt,
@@ -291,11 +390,13 @@ export class LocalAuthService {
         .where(eq(authSessions.tokenHash, tokenHash));
 
       const access = await this.localAccessForUser(row.userId);
+      const groups = await this.localGroupsForUser(row.userId);
 
       return {
         sessionId: row.sessionId,
         user: {
           email: row.userEmail,
+          groups,
           id: row.userId,
           name: row.userName,
           permissions: permissionsForRoles(access.roles),
@@ -348,6 +449,35 @@ export class LocalAuthService {
     } catch (error) {
       this.markDatabaseUnavailable(error);
     }
+  }
+
+  private async persistGroups(user: CurrentUser) {
+    const db = this.availableDatabase();
+
+    if (!db || user.groups.length === 0 || !isUuid(user.id)) {
+      return;
+    }
+
+    try {
+      await db
+        .insert(accessGroups)
+        .values(user.groups.map((group) => ({ id: group.id, name: group.name })))
+        .onConflictDoNothing();
+      await db
+        .insert(userAccessGroups)
+        .values(user.groups.map((group) => ({ groupId: group.id, userId: user.id })))
+        .onConflictDoNothing();
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+    }
+  }
+
+  private async localGroupsForUser(userId: string): Promise<AccessGroup[]> {
+    if (userId !== localAdminId()) {
+      return [];
+    }
+
+    return localGroupsFromEnv();
   }
 
   private async localAccessForUser(userId: string): Promise<LocalAccess> {
@@ -586,6 +716,108 @@ function localResourceGrantsFromEnv(): ResourceGrant[] {
     });
   } catch (error) {
     console.warn("invalid RAKKR_LOCAL_RESOURCE_GRANTS JSON; ignoring scoped grants", error);
+    return [];
+  }
+}
+
+function localGroupsFromEnv(): AccessGroup[] {
+  const raw = process.env.RAKKR_LOCAL_ADMIN_GROUPS;
+
+  if (!raw) {
+    return [];
+  }
+
+  const values = raw.trim().startsWith("[")
+    ? jsonStringArray(raw, "RAKKR_LOCAL_ADMIN_GROUPS")
+    : raw.split(",");
+
+  return [
+    ...new Map(
+      values
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => [
+          value,
+          {
+            id: value,
+            name: value,
+          },
+        ]),
+    ).values(),
+  ];
+}
+
+function localAccessPoliciesFromEnv(): AccessPolicy[] {
+  const raw = process.env.RAKKR_LOCAL_ACCESS_POLICIES;
+
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = accessPolicyInputSchema.array().parse(JSON.parse(raw));
+
+    return accessPoliciesWithIds(parsed);
+  } catch (error) {
+    console.warn("invalid RAKKR_LOCAL_ACCESS_POLICIES JSON; ignoring access policies", error);
+    return [];
+  }
+}
+
+function accessPoliciesWithIds(policies: readonly AccessPolicyInput[]): AccessPolicy[] {
+  return policies.map((policy, index) => ({
+    ...policy,
+    id: `policy_${hashToken(JSON.stringify(policy)).slice(0, 16)}_${index}`,
+  }));
+}
+
+function policyMatchesSubject(policy: AccessPolicy, user: CurrentUser) {
+  if (policy.subjectType === "everyone") {
+    return true;
+  }
+
+  if (policy.subjectType === "user") {
+    return policy.subjectId === user.id || policy.subjectId === user.email;
+  }
+
+  return Boolean(policy.subjectId && user.groups.some((group) => group.id === policy.subjectId));
+}
+
+function policyMatchesTarget(policy: AccessPolicy, targets: Array<{ id?: string; type: string }>) {
+  return targets.some(
+    (target) =>
+      target.id &&
+      (policy.resourceType === target.type || policy.resourceType === "*") &&
+      (policy.resourceId === target.id || policy.resourceId === "*"),
+  );
+}
+
+function uniqueAccessPolicyInputs(values: readonly AccessPolicyInput[]) {
+  return [
+    ...new Map(
+      values.map((policy) => [
+        [
+          policy.effect,
+          policy.subjectType,
+          policy.subjectId ?? "",
+          policy.resourceType,
+          policy.resourceId,
+        ].join(":"),
+        policy,
+      ]),
+    ).values(),
+  ];
+}
+
+function jsonStringArray(raw: string, name: string) {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch (error) {
+    console.warn(`invalid ${name} JSON; ignoring groups`, error);
     return [];
   }
 }

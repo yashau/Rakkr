@@ -1,6 +1,8 @@
 import type {
   AuditEvent,
   AuditOutcome,
+  AccessPolicy,
+  AccessPolicyInput,
   CurrentUser,
   MeterFrame,
   RecorderNode,
@@ -129,6 +131,7 @@ export function clearAuthToken() {
 }
 
 export const api = {
+  accessPolicies: () => fetchJson<{ data: AccessPolicy[] }>("/api/v1/auth/access-policies"),
   auditEvents: (filters: AuditEventFilters = {}) =>
     fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
   accessUsers: () => fetchJson<{ data: CurrentUser[] }>("/api/v1/auth/users"),
@@ -182,6 +185,14 @@ export const api = {
   updateRecordingMetadata: (recordingId: string, input: RecordingMetadataUpdate) =>
     fetchJson<{ data: RecordingSummary }>(`/api/v1/recordings/${recordingId}/metadata`, {
       body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
+  updateAccessPolicies: (policies: AccessPolicyInput[]) =>
+    fetchJson<{ data: AccessPolicy[] }>("/api/v1/auth/access-policies", {
+      body: JSON.stringify({ policies }),
       headers: {
         "Content-Type": "application/json",
       },

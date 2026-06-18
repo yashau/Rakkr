@@ -50,6 +50,13 @@
       "when": 1781750846230,
       "tag": "0006_chilly_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781752247143,
+      "tag": "0007_wide_shocker",
+      "breakpoints": true
     }
   ]
 }
