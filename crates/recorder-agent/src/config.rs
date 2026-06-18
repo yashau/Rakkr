@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(Clone, Debug, Parser)]
@@ -27,4 +29,26 @@ pub struct AgentConfig {
 
     #[arg(long, default_value_t = false)]
     pub print_inventory: bool,
+
+    #[arg(long, env = "RAKKR_CONTROLLER_TOKEN")]
+    pub controller_token: Option<String>,
+
+    #[arg(long, env = "RAKKR_ATTACH_CACHE_RECORDING_ID")]
+    pub attach_cache_recording_id: Option<String>,
+
+    #[arg(long, env = "RAKKR_ATTACH_CACHE_FILE")]
+    pub attach_cache_file: Option<PathBuf>,
+
+    #[arg(
+        long,
+        env = "RAKKR_ATTACH_CACHE_CONTENT_TYPE",
+        default_value = "audio/mpeg"
+    )]
+    pub attach_cache_content_type: String,
+
+    #[arg(long, env = "RAKKR_ATTACH_CACHE_DURATION_SECONDS")]
+    pub attach_cache_duration_seconds: Option<u64>,
+
+    #[arg(long, env = "RAKKR_ATTACH_CACHE_FILE_NAME")]
+    pub attach_cache_file_name: Option<String>,
 }

@@ -545,7 +545,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. The controller can attach recorder-produced cache files through `PUT /api/v1/recordings/:recordingId/cache-file`, store those bytes under `RAKKR_RECORDING_CACHE_DIR`, and serve only files that actually exist. Stopping a recording now marks metadata `completed`; it does not claim the recording is cached until a recorder artifact is attached.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. The controller can attach recorder-produced cache files through `PUT /api/v1/recordings/:recordingId/cache-file`, store those bytes under `RAKKR_RECORDING_CACHE_DIR`, and serve only files that actually exist. The Rust agent can upload a completed local file into that endpoint with `--attach-cache-recording-id` and `--attach-cache-file`. Stopping a recording now marks metadata `completed`; it does not claim the recording is cached until a recorder artifact is attached.
 
 ---
 
@@ -880,7 +880,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Wire recorder-agent capture output into the cache-file attach endpoint.
+1. Replace the recorder-agent cache attach command's manual file input with real capture output from recorder jobs.
 2. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
 3. Add persistent node enrollment and node credential rotation.
 4. Return to the Debian recorder node when the X32 connection is confirmed.

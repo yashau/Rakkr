@@ -1,4 +1,5 @@
 mod config;
+mod controller;
 mod inventory;
 mod telemetry;
 
@@ -22,6 +23,11 @@ async fn main() -> anyhow::Result<()> {
 
     if config.print_inventory {
         println!("{}", serde_json::to_string_pretty(&inventory)?);
+        return Ok(());
+    }
+
+    if config.attach_cache_file.is_some() || config.attach_cache_recording_id.is_some() {
+        controller::attach_cache_file(&config).await?;
         return Ok(());
     }
 
