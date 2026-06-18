@@ -515,12 +515,37 @@ function channelMapFromValue(value: unknown): RecordingJobCommand["channelMap"] 
   return {
     assignmentId: stringFromUnknown(value.assignmentId, "unknown_assignment"),
     channelMode: channelModeFromUnknown(value.channelMode),
+    entries: channelMapEntriesFromValue(value.entries, sourceChannels),
     sourceChannels,
     targetId: stringFromUnknown(value.targetId, "unknown_target"),
     targetType: value.targetType === "interface" ? "interface" : "node",
     templateId: stringFromUnknown(value.templateId, "unknown_template"),
     templateName: stringFromUnknown(value.templateName, "Unknown Template"),
   };
+}
+
+function channelMapEntriesFromValue(value: unknown, sourceChannels: number) {
+  if (!Array.isArray(value)) {
+    return Array.from({ length: sourceChannels }, (_, index) => ({
+      included: true,
+      label: `Channel ${index + 1}`,
+      outputChannelIndex: index + 1,
+      sourceChannelIndex: index + 1,
+    }));
+  }
+
+  return value.filter(isRecord).map((entry) => ({
+    included: entry.included === true,
+    label: stringFromUnknown(
+      entry.label,
+      `Channel ${positiveIntegerFromUnknown(entry.sourceChannelIndex, 1)}`,
+    ),
+    outputChannelIndex:
+      typeof entry.outputChannelIndex === "number" && Number.isInteger(entry.outputChannelIndex)
+        ? entry.outputChannelIndex
+        : undefined,
+    sourceChannelIndex: positiveIntegerFromUnknown(entry.sourceChannelIndex, 1),
+  }));
 }
 
 function channelModeFromUnknown(

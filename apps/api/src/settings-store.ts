@@ -137,7 +137,7 @@ class JsonSettingsStore implements SettingsStore {
       return undefined;
     }
 
-    const updated = { ...this.channelMapTemplates[index], ...update, id: templateId };
+    const updated = nextChannelMapRevision(this.channelMapTemplates[index], update, templateId);
     this.channelMapTemplates[index] = updated;
     persistSettings(channelMapStorePath, "templates", this.channelMapTemplates);
 
@@ -328,7 +328,7 @@ class PostgresSettingsStore implements SettingsStore {
         return undefined;
       }
 
-      const updated = { ...existing, ...update, id: templateId };
+      const updated = nextChannelMapRevision(existing, update, templateId);
       await this.writeChannelMapTemplate(updated);
 
       return updated;
@@ -748,11 +748,15 @@ function persistSettings<T>(filePath: string, key: string, values: T[]) {
 }
 
 function channelMapTemplateFromInput(input: ChannelMapTemplateInput): ChannelMapTemplate {
+  const now = new Date().toISOString();
+
   return channelMapTemplateSchema.parse({
     channelMode: input.channelMode,
     entries: input.entries,
     id: input.id ?? `channel_map_${randomUUID()}`,
     name: input.name,
+    promotedAt: now,
+    revision: 1,
     tags: input.tags,
   });
 }
@@ -762,6 +766,7 @@ function channelMapTemplateToRow(template: ChannelMapTemplate): ChannelMapTempla
     channelMode: template.channelMode,
     entries: template.entries,
     id: template.id,
+    metadata: channelMapTemplateMetadata(template),
     name: template.name,
     tags: template.tags,
     updatedAt: new Date(),
@@ -769,13 +774,49 @@ function channelMapTemplateToRow(template: ChannelMapTemplate): ChannelMapTempla
 }
 
 function channelMapTemplateFromRow(row: ChannelMapTemplateRow): ChannelMapTemplate {
+  const metadata = record(row.metadata) ?? {};
+
   return channelMapTemplateSchema.parse({
     channelMode: row.channelMode,
     entries: row.entries,
     id: row.id,
     name: row.name,
+    promotedAt: stringOrUndefined(metadata.promotedAt),
+    promotedFromTemplateId: stringOrUndefined(metadata.promotedFromTemplateId),
+    revision: positiveIntegerOrDefault(metadata.revision, 1),
     tags: row.tags,
   });
+}
+
+function nextChannelMapRevision(
+  existing: ChannelMapTemplate,
+  update: ChannelMapTemplateUpdate,
+  templateId: string,
+) {
+  return channelMapTemplateSchema.parse({
+    ...existing,
+    ...update,
+    id: templateId,
+    promotedAt: new Date().toISOString(),
+    promotedFromTemplateId: existing.id,
+    revision: existing.revision + 1,
+  });
+}
+
+function channelMapTemplateMetadata(template: ChannelMapTemplate) {
+  const metadata: Record<string, unknown> = {
+    revision: template.revision,
+  };
+
+  if (template.promotedAt) {
+    metadata.promotedAt = template.promotedAt;
+  }
+
+  if (template.promotedFromTemplateId) {
+    metadata.promotedFromTemplateId = template.promotedFromTemplateId;
+  }
+
+  return metadata;
 }
 
 function channelMapAssignmentFromInput(
@@ -933,6 +974,14 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function positiveIntegerOrDefault(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function stringOrUndefined(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function uuidFromDomainId(value: string) {

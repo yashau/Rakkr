@@ -52,17 +52,17 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | -------------------- | ----------- | -------------------------------------------------------------- |
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
-| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, health events, Postgres-backed nodes/credentials/recordings/jobs/schedules/settings, pinned job channel maps, and assignment rollback |
-| Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, node health summaries/trends/drilldown, jobs, metadata editing, filters, settings profiles/policies, channel-map assignment rollback, schedule editing, execution detail, and quality timelines |
-| Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, ALSA-backed meter sampling, disk/load/audio health sampling, controller meter sync, assignment fetch/apply foundation, and local health log |
+| Controller API       | 🟦 Scaffold  | RBAC, audit, health, nodes, jobs, schedules, settings, pinned channel maps |
+| Controller UI        | 🟦 Scaffold  | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
+| Recorder agent       | 🟦 Scaffold  | Inventory, capture jobs, meters, health log, channel-map render foundation |
 | Test rig integration | 🟨 Partial   | Debian node reachable; ALSA loopback meter smoke validated; X32 validation waits for device check |
-| Health watchdog      | 🟦 Scaffold  | Health event model, lifecycle actions, node meter ingest, clipping/flatline/xrun/device-unavailable/job/system health events, scheduled low-signal runner, quality timelines, and recording health sync exist |
-| Scheduler            | 🟦 Scaffold  | Persistent store, create/edit/run-now/skip/delete UI, metadata ownership, recurrence editing, paused ranges, quick text helpers, previews, execution detail, timeline, and due runner |
+| Health watchdog      | 🟦 Scaffold  | Health events, lifecycle actions, meter ingest, low-signal runner, timelines |
+| Scheduler            | 🟦 Scaffold  | Persistent schedules, recurrence, buffers, metadata ownership, due runner |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
-| RBAC                 | 🟦 Scaffold  | Durable grants, group memberships, allow-deny policies, scoped middleware |
-| Audit trail          | 🟦 Scaffold  | Postgres-backed store, API/UI filters, metadata audit events     |
-| Observability        | 🟦 Scaffold  | Local node health log, central store, store-backed Prometheus endpoint, OpenTelemetry/Mimir later |
+| RBAC                 | 🟦 Scaffold  | Durable grants, groups, allow/deny policies, scoped middleware |
+| Audit trail          | 🟦 Scaffold  | Postgres-backed store, filters, high-value action events |
+| Observability        | 🟦 Scaffold  | Local log, central events, Prometheus endpoint; OTel/Mimir later |
 
 ## North Star
 
@@ -189,7 +189,9 @@ Start with direct LAN connectivity:
 - realtime meter streaming over encrypted WebSocket;
 - live monitor stream with modest latency tolerance over encrypted transport.
 
-Trusting the LAN only means Rakkr can assume direct routability during early development. It must not mean plaintext controller/node traffic. All controller-to-node and node-to-controller communication should use transport-layer encryption for confidentiality and integrity.
+Trusting the LAN only means Rakkr can assume direct routability during early development.
+It must not mean plaintext controller/node traffic.
+All controller-to-node and node-to-controller communication should use transport-layer encryption for confidentiality and integrity.
 
 Required encrypted flows:
 
@@ -202,7 +204,8 @@ Required encrypted flows:
 - local event log sync;
 - health events and alert updates.
 
-Initial development can use locally trusted certificates or a development CA. Production should support managed controller/node certificates, certificate rotation, and a path toward mutual TLS or equivalent node identity.
+Initial development can use locally trusted certificates or a development CA.
+Production should support managed controller/node certificates, certificate rotation, and a path toward mutual TLS or equivalent node identity.
 
 Keep the transport boundary abstract:
 
@@ -211,7 +214,9 @@ Keep the transport boundary abstract:
 - `MeterStream`
 - `MonitorAudioStream`
 
-Future remote mode should use Iroh before libp2p. libp2p is powerful, but Rakkr is a centrally managed recorder platform, not a decentralized mesh. Iroh better matches the later need: dial a known node by key, attempt direct QUIC, and fall back to relay if needed.
+Future remote mode should use Iroh before libp2p.
+libp2p is powerful, but Rakkr is a centrally managed recorder platform, not a decentralized mesh.
+Iroh better matches the later need: dial a known node by key, attempt direct QUIC, and fall back to relay if needed.
 
 ---
 
@@ -261,7 +266,14 @@ Rakkr must support central settings for all recorders:
 - staged rollout and rollback;
 - en-masse deployment to similar recorders.
 
-Current scaffold status: recording profiles, watchdog policies, channel map templates, and channel-map assignments now have a central settings store with JSON fallback and Postgres support through the `recording_profiles`, `watchdog_policies`, `channel_map_templates`, and `template_assignments` tables. The default `voice-mp3-vbr` profile and `scheduled-voice-watchdog` policy are seeded from shared configuration, can be edited through RBAC-gated `settings:read` and `settings:manage` controller routes, and write before/after audit events for updates. The Settings UI exposes profile name, codec, bitrate, channel mode, VBR, silence detection, silence skip, watchdog active period, metric, threshold, window, grace, repeat cadence, minimum signal duration, severity, reusable channel-map entries, tags, node/interface assignment controls, assignment history counts, and rollback actions. The dashboard status reads the active profile and watchdog policy from the central store. Channel-map assignment history is persisted and audited, rollback is available through the controller and UI, and recorder agents can fetch node/interface assignment bundles from the controller. Recording jobs now pin the selected interface or node assignment into the command at creation time, including target identity, template identity, channel mode, and raw source-channel width, so ad hoc and scheduled jobs execute against the intended rollout even if settings change before claim. The agent prefers that pinned map, falls back to live node/interface assignments, derives raw capture width from the highest included source channel, and logs the applied map as a job health event. DSP remap/mixdown output and fuller staged rollout/version promotion workflows remain pending.
+Current:
+
+- Store: JSON fallback plus Drizzle/Postgres tables for profiles, watchdog policies, channel maps, and assignments.
+- UI/API: RBAC-gated settings management with before/after audit events.
+- Channel maps: revisions, promotion metadata, assignment history, rollback, and agent fetch.
+- Jobs: pin target, template, channel entries, channel mode, and source width when created.
+- Agent: pinned-map first, live-assignment fallback, ffmpeg render foundation.
+- Pending: ALSA loopback render validation and richer rollout controls.
 
 ## Node Inventory
 
@@ -282,9 +294,18 @@ Nodes need rich identity, not just IDs.
 
 The UI should make it obvious which physical room and device a node represents.
 
-The Behringer X32 Rack is the current physical test fixture, not a product-specific assumption. Recorder discovery should work with generic ALSA/JACK/PipeWire capture devices and expose enough raw identity to support per-device templates later. Before the X32 is ready, `mise run agent:loopback-smoke` can load Linux `snd-aloop`, play a sine tone into the loopback playback side, capture from the paired loopback recording side, and print the Rakkr agent meter settings for that fake interface. `mise run agent:loopback-meter-smoke` runs the same fake device flow through the Rakkr agent `--print-meter-frame` path.
+The Behringer X32 Rack is only the current physical fixture. Rakkr must support generic ALSA/JACK/PipeWire capture devices.
 
-Current scaffold status: nodes can be listed, enrolled, and issued rotated recorder credentials through RBAC-gated controller routes. Persisted node IDs now use varchar domain identifiers in Drizzle/Postgres instead of UUID-only columns, so future readable node IDs and existing seed IDs such as `node_x32_test` fit the same storage model as schedules, recordings, jobs, and health-event correlations. Dependent node credential, interface, and health-event foreign keys use the same string-compatible node ID type while credential IDs and interface IDs can still be generated UUIDs.
+Current:
+
+- Nodes list/enroll/rotate credentials through RBAC-gated routes.
+- Node IDs use readable domain identifiers in Drizzle/Postgres.
+- Credentials, interfaces, recordings, jobs, schedules, and health events correlate by node ID.
+- `snd-aloop` can fake a Linux capture device before X32 validation resumes.
+
+- `mise run agent:loopback-smoke`: raw WAV capture through ALSA loopback.
+- `mise run agent:loopback-meter-smoke`: Rakkr meter frame from ALSA loopback.
+- `mise run agent:loopback-render-smoke`: mapped/rendered output validation.
 
 ---
 
@@ -349,7 +370,15 @@ Example:
 
 Ad hoc recordings can use ad hoc defaults or user-provided metadata.
 
-Current scaffold status: schedules persist through a controller store that uses the Drizzle/Postgres `schedules` table when `DATABASE_URL` is configured and falls back to `RAKKR_SCHEDULE_STORE_PATH`, defaulting to `data/schedules.json`. Schedule IDs, recording profile IDs, watchdog policy IDs, recording schedule IDs, and health-event schedule IDs are varchar domain identifiers so the database accepts readable IDs such as `sched_council_weekly`, `voice-mp3-vbr`, and `scheduled-voice-watchdog`. `GET /api/v1/schedules`, `GET /api/v1/schedules/:scheduleId/occurrences`, `POST /api/v1/schedules`, `PATCH /api/v1/schedules/:scheduleId`, `POST /api/v1/schedules/:scheduleId/run-now`, `POST /api/v1/schedules/:scheduleId/skip-next`, and `DELETE /api/v1/schedules/:scheduleId` are RBAC-gated by `schedule:read` or `schedule:manage` and participate in resource-scope checks for schedule, room, and node targets. Create/update actions validate node targets, persist enabled state, structured recurrence, title/folder templates, tags, room, timezone, profile, watchdog policy, and computed next-run timestamps, and write before/after audit events. Run-now materializes schedule-owned title, folder, tags, recording profile, and watchdog policy before creating a persisted recording plus queued recording job. Skip-next adds a structured skip exception for the next scheduled local date, advances or disables the schedule, and writes an audit event. Delete removes the schedule through both the JSON fallback and Drizzle/Postgres stores and audits the deleted snapshot. Start-early and stop-late buffers are persisted in recurrence JSON, affect computed run times, and set recording job duration for scheduled jobs. Paused date ranges are stored as structured recurrence exceptions and skipped by the same recurrence engine used for due runs and previews. The occurrence preview endpoint returns upcoming recording windows, including start-early and stop-late effects. The background schedule runner scans due enabled schedules, honors skip and pause exceptions without creating recordings, materializes recordings and jobs under a `system:scheduler` actor, advances or disables schedules after a run, retries failed due executions after a configurable delay, and writes due-run audit events. The Schedules UI now supports create, edit, reset, Run Now, Skip Next, Delete, manual next-run, one-off, daily, weekly, monthly, always-on schedule rules, paused date ranges, and quick text helpers such as daily, weekday, weekly, monthly day, one-off, and always-on patterns with browser-local date entry and ISO UTC API timestamps. Each schedule card shows upcoming recording windows, a recent schedule audit timeline, and a Details link. The schedule execution detail route correlates upcoming windows, schedule-owned recordings, recording jobs, linked health events, and audit history in one operator view. 🧪 API recurrence coverage now exercises weekly interval previews with buffers, skip and pause exceptions, monthly day clamping, overnight duration math, and skip-next advancement. Deeper natural-language parsing beyond the current helper patterns is still pending.
+Current:
+
+- Store: Drizzle/Postgres with JSON fallback and readable domain IDs.
+- API: read, preview, create, edit, run-now, skip-next, and delete are RBAC/resource scoped.
+- Model: recurrence, timezone, room, profile, watchdog policy, tags, buffers, pauses, and metadata templates.
+- Runner: due schedules create recordings/jobs under `system:scheduler` and audit outcomes.
+- UI: one-off, daily, weekly, monthly, always-on, buffers, pauses, quick helpers, and execution detail.
+- Tests: recurrence previews, buffers, skip/pause, monthly clamping, overnight duration, and skip-next.
+- Pending: deeper natural-language scheduling beyond current helper patterns.
 
 ---
 
@@ -419,7 +448,14 @@ Recordings should show a quality timeline with:
 - device/dropout events;
 - AI quality markers later.
 
-Current scaffold status: health events have a shared lifecycle type, Drizzle/Postgres table, and RBAC-gated API. `GET /api/v1/health-events` reads and filters by node, recording, schedule, severity, lifecycle status, and result limit. `POST /api/v1/health-events` writes targeted health events, and `POST /api/v1/health-events/:eventId/acknowledge`, `/suppress`, `/resolve`, and `/reopen` manage alert lifecycle. Node-authenticated agents can post live meter frames to `POST /api/v1/nodes/:nodeId/meter-frame`; the controller validates the shared `MeterFrame` shape, checks that the credential owns the node, stores the latest frame, serves it through meter APIs, and feeds it to the watchdog runner. Node-authenticated agents can also sync local node health events to `POST /api/v1/nodes/:nodeId/health-events`; the controller validates severity/type/details, enforces node and recording ownership, creates central health events, syncs linked recording health, and writes node-actor audit events. Read routes require `health:read`; user writer and lifecycle routes require `health:acknowledge`; all returned or mutated events are checked against the same resource-scope model used by nodes, schedules, recordings, meters, and jobs, so a room or recorder denial also hides and blocks its health events. Lifecycle actions write audit events with before/after snapshots. Recording-linked events update the recording health status: unresolved warning/critical events mark the recording warning/critical, resolved events can return it to healthy, and reopened events restore the active health state. A background watchdog runner evaluates active scheduled recordings after the policy grace/window, opens `watchdog.scheduled_low_signal` events when the highest observed signal stays below threshold, updates the existing active event instead of duplicating alerts, emits repeat audit events on the policy cadence, and auto-resolves when signal recovers. The runner is controlled by `RAKKR_WATCHDOG_RUNNER_ENABLED`, `RAKKR_WATCHDOG_RUNNER_INTERVAL_SECONDS`, and `RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS`; deterministic demo-meter smoke tests can force a level with `RAKKR_DEMO_METER_DBFS`. The Rust recorder agent writes a size-rotated local JSONL health log via `RAKKR_AGENT_HEALTH_LOG_FILE` and `RAKKR_AGENT_HEALTH_LOG_MAX_BYTES`, samples ALSA S16_LE PCM through `arecord` by default for RMS/peak meter frames, keeps a synthetic fallback for non-Linux/dev hosts, exposes `--print-meter-frame` for one-shot validation, and syncs startup, meter `device_unavailable`/`xrun`/generic capture failure and recovery, meter-sync failure/recovery, clipping, flatline, recording-job capture/control-plane/cache-upload failures, disk pressure, CPU/load pressure, and audio-backend availability health events when a node token is configured. Controller cache-file attach failures now create recording-linked `controller.recording.cache_file_failed` events, sync recording health, and include the health event ID in the failure audit record. Meter sampling is controlled by `RAKKR_METER_BACKEND` (`alsa` or `synthetic`), `RAKKR_METER_SAMPLE_SECONDS`, `RAKKR_METER_CLIP_DBFS`, and `RAKKR_METER_FLATLINE_DBFS`. System health sampling is controlled by `RAKKR_SYSTEM_HEALTH_ENABLED`, `RAKKR_SYSTEM_HEALTH_DISK_PATH`, disk warning/critical percentages, and load warning/critical per-core thresholds. The Nodes UI now renders disk, CPU, and audio health summary tiles, a browser-local ISO-date seven-day health trend, and the three most recent node health events per node from RBAC-filtered health-event data. ALSA loopback meter smoke was validated on Debian node `zenith` on `2026-06-18` using `hw:1,0,0` playback and `hw:1,1,0` capture; Rakkr reported `interfaceId=alsa_hw_1_1`, channel 1 `rmsDbfs=-4.9`, and channel 1 `peakDbfs=-1.9`. JACK/PipeWire meter adapters and noise/speech classification remain pending. The recording library and Schedules execution detail page render health-event-backed quality timelines with warning/critical/resolved spans and watchdog dBFS threshold details. The schedule detail page also shows linked health events next to recordings, jobs, and audit history, and exposes acknowledge, suppress, resolve, and reopen controls for users with `health:acknowledge`.
+Current:
+
+- Store/API: lifecycle health events in Drizzle/Postgres with RBAC/resource-scoped lifecycle actions.
+- Agents: post meter frames, sync local health events, and maintain size-rotated JSONL logs.
+- Watchdog: scheduled low-signal alerts open, repeat, and auto-resolve.
+- UI: node health summaries, trends, recent events, and recording/schedule quality timelines.
+- Coverage: ALSA loopback meter smoke passed on Debian node `zenith` on `2026-06-18`.
+- Pending: JACK/PipeWire meters, noise/speech classification, and richer quality scoring.
 
 ---
 
@@ -530,7 +566,11 @@ Candidate metrics:
 - `rakkr_upload_failures_total`
 - `rakkr_device_xruns_total`
 
-Current scaffold status: `/metrics` is protected by `metrics:read`, writes the same audit trail as other controller reads, and now renders Prometheus gauges from scoped controller stores instead of static demo data. The export includes process start time, visible node online state, active and cached recordings by node, recording jobs by node/status, latest RMS/peak/clipping channel values from stored meter frames, unresolved health events by severity/status, active watchdog alerts, and active xrun events. The controller status API also derives critical alert counts from visible unresolved health events. Full OpenTelemetry instrumentation and Mimir-oriented deployment guidance are still pending.
+Current:
+
+- `/metrics` is protected by `metrics:read`, audited, and backed by scoped stores.
+- Export covers node state, recordings, jobs, meters, health events, watchdog alerts, and xruns.
+- Pending: full OpenTelemetry instrumentation and Mimir deployment guidance.
 
 ---
 
@@ -555,7 +595,13 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Recording metadata now flows through a controller store that uses the Drizzle/Postgres `recordings` table when `DATABASE_URL` is configured and falls back to `RAKKR_RECORDING_METADATA_STORE_PATH`, defaulting to `data/recordings-metadata.json`. The recordings UI exposes permission-aware inline editing for name, folder, and tags; the controller validates `PATCH /api/v1/recordings/:recordingId/metadata`, requires `recording:edit`, persists the update, and writes before/after audit events for success and failure. Schedule run-now execution materializes year-first recording names, folders, tags, recording profile IDs, and watchdog policy IDs from schedule-owned templates before creating the recording row and queued job. The recording list now has RBAC-scoped API and UI filters for search text, folder, tag, node, schedule, status, and health, with invalid filter requests rejected before query execution. Recording cards render a health-event-backed quality timeline showing healthy baseline plus warning/critical/resolved spans and watchdog dBFS details. Schedule execution detail reuses the schedule filter and job list to show schedule-owned recordings, job state, recording health status, linked quality timelines, linked health events, and audit context together. Controller start creates a persisted recording metadata row and a queued recording job. Recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs are modeled in Drizzle/Postgres via `recording_jobs` and `recording_job_status`; the controller uses Postgres as the primary job store and falls back to the JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`. Claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`, and the recordings UI surfaces each recording's job status, claimant, lease expiry, and terminal failure reason. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording persists metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
+Current:
+
+- Store: recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
+- UI/API: scoped filters, metadata editing, playback, download, cache files, and audit events.
+- Schedules: run-now materializes schedule-owned name, folder, tags, profile, and watchdog policy.
+- Agent: claim, capture, heartbeat, stop handling, cache upload, local job state, and job leasing.
+- Pending: waveform previews, checksums, upload retry queue, and real SMB/S3 providers.
 
 ---
 
@@ -600,28 +646,15 @@ Future:
 - optional remote node mode using Iroh;
 - stronger node identity and key rotation.
 
-Current scaffold status:
+Current:
 
-- local admin login uses scrypt password hashing;
-- persisted local users can be created from the Access UI and can log in with their own passwords;
-- controller routes require bearer session tokens;
-- login and logout are audited;
-- auth sessions persist through Postgres when `DATABASE_URL` and migrations are available;
-- user resource grants persist through Postgres and can be bootstrapped from local dev env;
-- access groups, group memberships, and allow/deny access policies are modeled in Drizzle/Postgres;
-- local development can bootstrap groups with `RAKKR_LOCAL_ADMIN_GROUPS` and policies with `RAKKR_LOCAL_ACCESS_POLICIES`;
-- Access UI can edit local roles and resource scopes for the local account;
-- Access UI can create local users with initial roles, groups, and scopes;
-- Access UI can edit local group memberships and show known local groups;
-- Access UI can reset local passwords, enable/disable local users, and delete local users;
-- Access UI can edit global access policies for user, group, or everyone subjects;
-- disabled local users cannot log in, and disable/delete/password-reset actions revoke active sessions;
-- Nodes UI can enroll persisted recorder nodes and display one-time node tokens;
-- node credentials persist as token hashes in Postgres and rotation revokes active credentials before issuing a new one-time token;
-- recorder-agent job polling, job state updates, and cache-file upload endpoints require node bearer credentials and audit node actors;
-- Drizzle migrations are replayed against a fresh throwaway Postgres database by `mise run db:verify`, which is now part of `mise run check` and CI;
-- in-memory auth session fallback keeps local development usable before Postgres is ready;
-- OIDC-backed user sync is still pending.
+- Local auth uses scrypt password hashing, bearer sessions, login/logout audit, and Postgres-backed sessions.
+- Access UI manages local users, roles, groups, scopes, passwords, status, and global access policies.
+- Disabled/deleted/password-reset users lose active sessions.
+- Node enrollment issues one-time tokens and stores only token hashes.
+- Recorder-agent routes require node credentials and audit node actors.
+- `mise run db:verify` replays Drizzle migrations in `mise run check` and CI.
+- Pending: Azure AD OIDC user sync.
 
 ---
 
@@ -658,7 +691,8 @@ Permissions should be scoped to the smallest practical resource:
 | Recording | playback, download, edit metadata, delete     |
 | Alert     | acknowledge, suppress, resolve, comment       |
 
-Scopes can be broad for administrators and narrow for operators. For example, a user may be allowed to listen to `Room A` but not `Room B`, or allowed to start scheduled recordings but not edit recording profiles.
+Scopes can be broad for administrators and narrow for operators.
+For example, a user may be allowed to listen to `Room A` but not `Room B`, or allowed to start scheduled recordings but not edit recording profiles.
 
 Access policies must support:
 
@@ -678,7 +712,22 @@ Current scaffold grant IDs:
 - Schedule: `schedule:sched_council_weekly`
 - Recording: `recording:rec_demo_001`
 
-Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access unless an explicit access policy deny matches the target. Narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Persisted local users can be created with independent password hashes, roles, groups, and scopes. Global access policies live in `access_policies`, support `allow` and `deny`, and target `user`, `group`, or `everyone` subjects. Access groups and memberships persist through `access_groups` and `user_access_groups`; local bootstrap can attach groups to the local admin with `RAKKR_LOCAL_ADMIN_GROUPS`, and Access UI can now edit local group membership alongside roles and scopes. Node, schedule, recording, health-event, status, and meter stream collections filter by the evaluated scope. Persisted schedules now participate in schedule, room, and node scope inheritance, including newly-created schedules from the Schedules UI. Persisted enrolled nodes participate in node, site, room, interface, and channel scope inheritance. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist, so a recorder-level deny also blocks its recordings, live streams, and linked health events. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local user/role/scope/policy/group/password/status/delete changes. Node enrollment and credential rotation are RBAC-gated by `node:manage`, write audit events, and store only hashed node tokens. Recorder-agent control-plane routes now authenticate with node credentials instead of user session RBAC, enforce that the credential can only touch its own node/jobs/recordings/meter frames/health events, and write node-actor audit events for denied, failed, and succeeded job/cache/health-event actions. Schedule read/occurrence-preview actions are guarded by `schedule:read`; create/edit/run-now/skip-next/delete actions are guarded by `schedule:manage` and scoped to the target schedule plus inherited room/node targets. Health event reads are guarded by `health:read`; health event create/acknowledge/suppress/resolve/reopen actions are guarded by `health:acknowledge`, accept schedule/recording/node targets, and apply resource-scope checks before mutation. Automatic due-schedule execution runs as the `system:scheduler` actor and audits succeeded/failed/skipped materialization with schedule, recording, and job correlation IDs as applicable. Recording metadata edits are guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants. Live Docker/Postgres smoke coverage verifies migration, multi-user local login, local user password reset/disable/enable/delete, node enrollment/credential rotation, access-policy deny behavior, group-policy membership behavior, recording metadata persistence, structured schedule recurrence create/edit/run-now persistence, start-early buffer computation, skip-next exceptions, paused date range handling, due-schedule skip handling, schedule deletion, schedule occurrence previews, schedule timeline audit filtering, due-schedule execution, recording job persistence, health event lifecycle persistence, node-authenticated meter ingest, and node health-event sync.
+Current:
+
+- Controller actions check both permission and resource scope.
+- Explicit deny wins over role grants, inherited grants, and admin/operator visibility.
+- Local users can have independent passwords, roles, groups, and scopes.
+- Access policies support `allow` and `deny` for user, group, and everyone subjects.
+- Groups and memberships persist in Drizzle/Postgres and are editable in Access UI.
+- Node, schedule, recording, health-event, status, and meter collections are scope-filtered.
+- Schedules inherit schedule, room, and node scope.
+- Nodes inherit site, room, interface, and channel scope.
+- Recorder-level deny blocks recordings, live streams, linked health events, and control actions.
+- Node credentials can only act for their own node, jobs, recordings, meters, and health events.
+- Schedule, health, and recording metadata actions are permission-gated and scoped.
+- Automated schedule runs use `system:scheduler` and are audited.
+
+- Smoke coverage: auth, users, credentials, policies, groups, schedules, jobs, health events, meter ingest, and node health sync.
 
 ## Required Permission Families
 
@@ -695,9 +744,12 @@ Current scaffold status: targeted controller actions evaluate both permission an
 | Audit              | view audit log, export audit log, configure retention                |
 | Administration     | manage users, roles, OIDC config, node credentials, system settings  |
 
-Listening to a room is always privileged. It must require an explicit `listen` style permission for the target room/node/interface/channel and must never be treated as a harmless read-only action.
+Listening to a room is always privileged.
+It must require an explicit `listen` style permission for the target room/node/interface/channel and must never be treated as a harmless read-only action.
 
-Recording controls are also privileged. Starting, stopping, pausing, resuming, or canceling a recording can affect legal, operational, and archival outcomes, so these actions require explicit permissions and audit events.
+Recording controls are also privileged.
+Starting, stopping, pausing, resuming, or canceling a recording can affect legal, operational, and archival outcomes.
+These actions require explicit permissions and audit events.
 
 ## Audit Event Requirements
 
@@ -736,9 +788,19 @@ Live listen audit events should include listener, target room/node/channel, star
 
 Recording-control audit events should include actor, command, schedule/ad hoc source, target node/interface/channel map, profile, timestamp, and final command result.
 
-Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
+Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range.
+Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
-Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Local user create/access/password/status/delete actions write audit events, and password reset, disable, and delete revoke active sessions. Node enrollment and node credential rotation write security audit events with node snapshots and credential prefixes only. Node-synced health events write node-actor audit entries with local event IDs and central health-event IDs. Schedule create/update writes target schedule audit events with before/after template, tag, profile, watchdog, room, recurrence, buffer, and next-run metadata. Schedule run-now writes before/after audit metadata showing schedule templates, materialized recording metadata, job ID, recording ID, recording profile, and watchdog policy. Schedule skip-next writes before/after schedule state plus the skipped local date. Schedule delete writes the deleted schedule snapshot. Automatic due-schedule skips are audited under the `system:scheduler` actor. Watchdog low-signal create, repeat, and auto-resolve actions are audited under the `system:watchdog` actor with health event, recording, schedule, and node correlation IDs. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
+Current:
+
+- Audit events persist through Postgres with an in-memory local fallback.
+- Authorization decisions carry actor/session context.
+- User, access, password, status, node credential, schedule, watchdog, health, and recording metadata actions are audited.
+- Password reset, disable, and delete revoke active sessions.
+- Node token audit entries store credential prefixes only.
+- Schedule and recording metadata audits include before/after values.
+- Watchdog audit events include health event, recording, schedule, and node correlations.
+- Audit API and UI filter by actor, action, target, outcome, and time range.
 
 ---
 
@@ -791,7 +853,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🧊 Failed upload retry queue skeleton.
 - [ ] ⏳ Checksum verification.
 - [ ] ⏳ Waveform previews.
-- [ ] 🟨 Template rollback history, pinned job targeting, and agent assignment application foundation.
+- [ ] 🟨 Template revisions, rollback history, pinned job targeting, and DSP render foundation.
 
 ## Later
 
@@ -915,7 +977,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add DSP remap/mixdown output and fuller rollout version promotion workflows.
+1. Validate mapped/rendered output with ALSA loopback and expose richer rollout promotion controls.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 

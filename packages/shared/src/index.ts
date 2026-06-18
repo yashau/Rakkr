@@ -250,6 +250,9 @@ export const channelMapTemplateSchema = z.object({
   entries: z.array(channelMapEntrySchema).min(1).max(128),
   id: z.string().min(1),
   name: z.string().min(1),
+  promotedAt: isoDateTimeSchema.optional(),
+  promotedFromTemplateId: z.string().min(1).optional(),
+  revision: z.number().int().positive().default(1),
   tags: z.array(z.string().min(1)).default([]),
 });
 export const channelMapTemplateInputSchema = z.object({
@@ -458,6 +461,7 @@ export const recordingSummarySchema = z.object({
 export const recordingJobChannelMapSchema = z.object({
   assignmentId: z.string().min(1),
   channelMode: channelModeSchema,
+  entries: z.array(channelMapEntrySchema).min(1).max(128),
   sourceChannels: z.number().int().positive(),
   targetId: z.string().min(1),
   targetType: templateAssignmentTargetSchema,

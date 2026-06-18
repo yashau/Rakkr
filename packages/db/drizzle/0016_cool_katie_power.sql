@@ -1,0 +1,1 @@
+ALTER TABLE "channel_map_templates" ADD COLUMN "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL;

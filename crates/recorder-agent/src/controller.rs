@@ -7,7 +7,7 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 use crate::capture::spawn_capture_plan;
-use crate::channel_map::{capture_plan_for_job, channel_map_details};
+use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
 use crate::config::AgentConfig;
 use crate::health_log::{self, AgentHealthEvent};
 use crate::state::write_job_state;
@@ -58,6 +58,7 @@ pub struct ControllerCaptureCommand {
 pub struct ControllerRecordingJobChannelMap {
     pub assignment_id: String,
     pub channel_mode: String,
+    pub entries: Vec<ControllerChannelMapEntry>,
     pub source_channels: u16,
     pub target_id: String,
     pub target_type: String,
@@ -273,7 +274,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             return Err(error);
         }
     };
-    let output_path = loop {
+    let raw_output_path = loop {
         match capture.try_complete() {
             Ok(Some(output_path)) => {
                 write_job_state(config, &job, "captured", Some(&output_path), None)?;
@@ -392,15 +393,65 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
 
         tokio::time::sleep(Duration::from_secs(config.job_poll_seconds.max(1))).await;
     };
+    let output_path = match render_capture_output(&capture_plan, &raw_output_path) {
+        Ok(rendered_path) => {
+            if rendered_path != raw_output_path {
+                append_job_health_event(
+                    config,
+                    token,
+                    &job,
+                    "agent.recording_job.channel_map_rendered",
+                    "info",
+                    json!({
+                        "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
+                        "jobId": job.id.as_str(),
+                        "rawOutputPath": raw_output_path.display().to_string(),
+                        "recordingId": job.recording_id.as_str(),
+                        "renderedOutputPath": rendered_path.display().to_string(),
+                    }),
+                )
+                .await?;
+                write_job_state(config, &job, "rendered", Some(&rendered_path), None)?;
+            }
+
+            rendered_path
+        }
+        Err(error) => {
+            let reason = error.to_string();
+
+            let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+            append_job_health_event(
+                config,
+                token,
+                &job,
+                "agent.recording_job.channel_map_render_failed",
+                "critical",
+                json!({
+                    "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
+                    "error": reason.as_str(),
+                    "jobId": job.id.as_str(),
+                    "rawOutputPath": raw_output_path.display().to_string(),
+                    "recordingId": job.recording_id.as_str(),
+                }),
+            )
+            .await?;
+            write_job_state(
+                config,
+                &job,
+                "failed",
+                Some(&raw_output_path),
+                Some(&reason),
+            )?;
+
+            return Err(error);
+        }
+    };
 
     let upload_result = upload_cache_file(CacheFileUpload {
         content_type: "audio/wav",
         controller_url: &config.controller_url,
         duration_seconds: Some(job.command.duration_seconds),
-        file_name: output_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .map(str::to_string),
+        file_name: Some(job.command.output_file_name.clone()),
         file_path: &output_path,
         job_id: Some(&job.id),
         recording_id: &job.recording_id,

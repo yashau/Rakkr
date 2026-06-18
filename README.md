@@ -85,4 +85,5 @@ Before the physical interface is ready, a Linux recorder node can fake a capture
 ```powershell
 mise run agent:loopback-smoke        # record a WAV through snd-aloop
 mise run agent:loopback-meter-smoke  # sample Rakkr agent meters through snd-aloop
+mise run agent:loopback-render-smoke # capture and validate mapped/rendered output
 ```

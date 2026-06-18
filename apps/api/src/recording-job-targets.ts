@@ -78,6 +78,7 @@ function channelMapSelection(
   return {
     assignmentId: assignment.id,
     channelMode: template.channelMode,
+    entries: template.entries,
     sourceChannels,
     targetId: assignment.targetId,
     targetType: assignment.targetType,

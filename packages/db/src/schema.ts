@@ -330,6 +330,9 @@ export const channelMapTemplates = pgTable("channel_map_templates", {
     .notNull()
     .default(sql`'[]'::jsonb`),
   id: varchar("id", { length: 160 }).primaryKey(),
+  metadata: jsonb("metadata")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   name: varchar("name", { length: 160 }).notNull(),
   tags: jsonb("tags")
     .notNull()

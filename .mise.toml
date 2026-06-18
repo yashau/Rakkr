@@ -104,6 +104,10 @@ run = "bash scripts/alsa-loopback-smoke.sh"
 description = "Sample Rakkr agent meters from a Linux ALSA snd-aloop fake capture device"
 run = "bash scripts/agent-loopback-meter-smoke.sh"
 
+[tasks."agent:loopback-render-smoke"]
+description = "Capture and render mapped audio from a Linux ALSA snd-aloop fake device"
+run = "bash scripts/alsa-loopback-render-smoke.sh"
+
 [tasks."rust:build"]
 description = "Build Rust crates"
 run = "cargo build --workspace"

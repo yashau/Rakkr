@@ -10,9 +10,19 @@ use crate::config::AgentConfig;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CaptureChannelMapEntry {
+    pub included: bool,
+    pub label: String,
+    pub output_channel_index: Option<u16>,
+    pub source_channel_index: u16,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptureChannelMap {
     pub assignment_id: String,
     pub channel_mode: String,
+    pub entries: Vec<CaptureChannelMapEntry>,
     pub source_channels: u16,
     pub target_id: String,
     pub target_type: String,
@@ -27,6 +37,7 @@ pub struct CapturePlan {
     pub device: String,
     pub format: String,
     pub output_path: PathBuf,
+    pub render_command: String,
     pub sample_rate: u32,
     pub seconds: u64,
 }
@@ -39,6 +50,7 @@ pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CaptureP
         device: config.capture_device.clone(),
         format: config.capture_format.clone(),
         output_path: capture_output_path(config)?,
+        render_command: config.channel_render_command.clone(),
         sample_rate: config.capture_sample_rate,
         seconds: config.capture_seconds,
     })
@@ -232,6 +244,7 @@ mod tests {
             attach_cache_recording_id: None,
             agent_state_file: PathBuf::from("state.json"),
             capture_channels: 1,
+            channel_render_command: "ffmpeg".to_string(),
             capture_command: "arecord".to_string(),
             capture_device: "hw:2,0".to_string(),
             capture_format: "S16_LE".to_string(),
