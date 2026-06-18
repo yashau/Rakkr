@@ -75,7 +75,7 @@ run = "cargo build --workspace"
 
 [tasks."rust:components"]
 description = "Install Rust components required by local and CI checks"
-run = "mise x rust@1.95.0 -- rustup component add clippy rustfmt && mise x rust@nightly -- rustup +nightly component add miri"
+run = "mise x rust@1.95.0 -- rustup component add clippy rustfmt && mise x rust@nightly-2026-06-17 -- rustup +nightly-2026-06-17 component add miri"
 
 [tasks."rust:check"]
 depends = ["rust:components"]
@@ -100,4 +100,4 @@ run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 [tasks."rust:miri"]
 depends = ["rust:components"]
 description = "Run Miri tests with a mise-provided nightly Rust toolchain"
-run = "mise x rust@nightly -- cargo miri test --workspace"
+run = "mise x rust@nightly-2026-06-17 -- cargo miri test --workspace"
