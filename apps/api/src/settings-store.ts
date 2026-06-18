@@ -894,19 +894,12 @@ function recordingProfileToRow(profile: RecordingProfile): RecordingProfileInser
 }
 
 function watchdogPolicyToRow(policy: WatchdogPolicy): WatchdogPolicyInsert {
+  const { id, name, ...rules } = policy;
+
   return {
-    id: policy.id,
-    name: policy.name,
-    rules: {
-      activeDuring: policy.activeDuring,
-      graceSeconds: policy.graceSeconds,
-      metric: policy.metric,
-      minCumulativeSecondsAboveThreshold: policy.minCumulativeSecondsAboveThreshold,
-      repeatEverySeconds: policy.repeatEverySeconds,
-      severity: policy.severity,
-      thresholdDbfs: policy.thresholdDbfs,
-      windowSeconds: policy.windowSeconds,
-    },
+    id,
+    name,
+    rules,
   };
 }
 

@@ -80,6 +80,10 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
   pushType(lines, "rakkr_input_peak_dbfs", "gauge");
   pushHelp(lines, "rakkr_input_clipping_ratio", "Latest clipping state by audio channel.");
   pushType(lines, "rakkr_input_clipping_ratio", "gauge");
+  pushHelp(lines, "rakkr_input_speech_score", "Latest local speech-likelihood score by channel.");
+  pushType(lines, "rakkr_input_speech_score", "gauge");
+  pushHelp(lines, "rakkr_input_noise_score", "Latest local non-speech noise score by channel.");
+  pushType(lines, "rakkr_input_noise_score", "gauge");
   for (const frame of input.meterFrames) {
     for (const level of frame.levels) {
       const labels = {
@@ -91,6 +95,11 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
       pushMetric(lines, "rakkr_input_rms_dbfs", labels, level.rmsDbfs);
       pushMetric(lines, "rakkr_input_peak_dbfs", labels, level.peakDbfs);
       pushMetric(lines, "rakkr_input_clipping_ratio", labels, level.clipping ? 1 : 0);
+
+      if (level.quality) {
+        pushMetric(lines, "rakkr_input_speech_score", labels, level.quality.speechScore);
+        pushMetric(lines, "rakkr_input_noise_score", labels, level.quality.noiseScore);
+      }
     }
   }
 

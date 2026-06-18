@@ -57,20 +57,28 @@ interface SignalSample {
   channelIndex?: number;
   durationSeconds: number;
   interfaceId?: string;
+  maxNoiseScore: number;
   maxPeakDbfs: number;
   maxRmsDbfs: number;
+  maxSpeechScore: number;
   metricDbfs: number;
+  speechLike: boolean;
 }
 
 interface SignalEvaluation {
   coverageSeconds: number;
   cumulativeSecondsAboveThreshold: number;
+  cumulativeSpeechLikeSeconds: number;
   latestChannelIndex?: number;
   latestInterfaceId?: string;
   latestMetricDbfs: number;
+  latestNoiseScore: number;
   latestPeakDbfs: number;
   latestRmsDbfs: number;
+  latestSpeechScore: number;
   maxMetricDbfs: number;
+  maxNoiseScore: number;
+  maxSpeechScore: number;
   sampleCount: number;
   windowStartedAt: string;
 }
@@ -405,15 +413,25 @@ function evaluationDetails(policy: WatchdogPolicy, evaluation: SignalEvaluation)
   return {
     coverageSeconds: Number(evaluation.coverageSeconds.toFixed(1)),
     cumulativeSecondsAboveThreshold: Number(evaluation.cumulativeSecondsAboveThreshold.toFixed(1)),
+    cumulativeSpeechLikeSeconds: Number(evaluation.cumulativeSpeechLikeSeconds.toFixed(1)),
     latestChannelIndex: evaluation.latestChannelIndex,
     latestInterfaceId: evaluation.latestInterfaceId,
     latestMetricDbfs: evaluation.latestMetricDbfs,
+    latestNoiseScore: evaluation.latestNoiseScore,
     latestPeakDbfs: evaluation.latestPeakDbfs,
     latestRmsDbfs: evaluation.latestRmsDbfs,
+    latestSpeechScore: evaluation.latestSpeechScore,
     maxMetricDbfs: evaluation.maxMetricDbfs,
+    maxNoiseScore: evaluation.maxNoiseScore,
+    maxSpeechScore: evaluation.maxSpeechScore,
     metric: policy.metric,
     minCumulativeSecondsAboveThreshold: policy.minCumulativeSecondsAboveThreshold,
+    minCumulativeSpeechSeconds: minCumulativeSpeechSeconds(policy),
+    minSpeechScore: minSpeechScore(policy),
+    qualityMode: policy.qualityMode ?? "signal_only",
     sampleCount: evaluation.sampleCount,
+    signalBelowThreshold: signalLevelIsBelowPolicy(evaluation, policy),
+    speechBelowThreshold: speechIsBelowPolicy(evaluation, policy),
     thresholdDbfs: policy.thresholdDbfs,
     windowSeconds: policy.windowSeconds,
     windowStartedAt: evaluation.windowStartedAt,
@@ -434,14 +452,22 @@ function signalSample(
     return {
       capturedAtMs: now.getTime(),
       durationSeconds,
+      maxNoiseScore: 0,
       maxPeakDbfs: -160,
       maxRmsDbfs: -160,
+      maxSpeechScore: 0,
       metricDbfs: -160,
+      speechLike: false,
     };
   }
 
   const maxPeak = Math.max(...frame.levels.map((level) => level.peakDbfs));
   const maxRms = Math.max(...frame.levels.map((level) => level.rmsDbfs));
+  const maxNoiseScore = Math.max(0, ...frame.levels.map((level) => level.quality?.noiseScore ?? 0));
+  const maxSpeechScore = Math.max(
+    0,
+    ...frame.levels.map((level) => level.quality?.speechScore ?? 0),
+  );
   const metricLevel =
     policy.metric === "peak"
       ? maxBy(frame.levels, (level) => level.peakDbfs)
@@ -452,9 +478,12 @@ function signalSample(
     channelIndex: metricLevel.channelIndex,
     durationSeconds,
     interfaceId: frame.interfaceId,
+    maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
     maxPeakDbfs: Number(maxPeak.toFixed(1)),
     maxRmsDbfs: Number(maxRms.toFixed(1)),
+    maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
     metricDbfs: Number(metricValue(frame, policy).toFixed(1)),
+    speechLike: maxSpeechScore >= minSpeechScore(policy),
   };
 }
 
@@ -473,22 +502,40 @@ function signalEvaluation(
   const cumulativeSecondsAboveThreshold = samples
     .filter((sample) => sample.metricDbfs >= policy.thresholdDbfs)
     .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeSpeechLikeSeconds = samples
+    .filter((sample) => sample.speechLike)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const maxNoiseScore = samples.length
+    ? Math.max(...samples.map((sample) => sample.maxNoiseScore))
+    : 0;
+  const maxSpeechScore = samples.length
+    ? Math.max(...samples.map((sample) => sample.maxSpeechScore))
+    : 0;
 
   return {
     coverageSeconds,
     cumulativeSecondsAboveThreshold,
+    cumulativeSpeechLikeSeconds,
     latestChannelIndex: latest?.channelIndex,
     latestInterfaceId: latest?.interfaceId,
     latestMetricDbfs: latest?.metricDbfs ?? -160,
+    latestNoiseScore: latest?.maxNoiseScore ?? 0,
     latestPeakDbfs: latest?.maxPeakDbfs ?? -160,
     latestRmsDbfs: latest?.maxRmsDbfs ?? -160,
+    latestSpeechScore: latest?.maxSpeechScore ?? 0,
     maxMetricDbfs: Number(maxMetricDbfs.toFixed(1)),
+    maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
+    maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
     sampleCount: samples.length,
     windowStartedAt: new Date(windowStartMs).toISOString(),
   };
 }
 
 function signalIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  return signalLevelIsBelowPolicy(evaluation, policy) || speechIsBelowPolicy(evaluation, policy);
+}
+
+function signalLevelIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
   if (evaluation.maxMetricDbfs < policy.thresholdDbfs) {
     return true;
   }
@@ -498,6 +545,20 @@ function signalIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolic
   }
 
   return evaluation.cumulativeSecondsAboveThreshold < policy.minCumulativeSecondsAboveThreshold;
+}
+
+function speechIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  if (policy.qualityMode !== "speech_required") {
+    return false;
+  }
+
+  const requiredSpeechSeconds = minCumulativeSpeechSeconds(policy);
+
+  if (evaluation.coverageSeconds < requiredSpeechSeconds) {
+    return false;
+  }
+
+  return evaluation.cumulativeSpeechLikeSeconds < requiredSpeechSeconds;
 }
 
 function watchdogApplies(policy: WatchdogPolicy, recording: RecordingSummary) {
@@ -675,6 +736,14 @@ function watchdogRunnerIntervalMs() {
 
 function maxSampleSpanSeconds() {
   return positiveInteger(process.env.RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS, 30);
+}
+
+function minCumulativeSpeechSeconds(policy: WatchdogPolicy) {
+  return policy.minCumulativeSpeechSeconds ?? policy.minCumulativeSecondsAboveThreshold;
+}
+
+function minSpeechScore(policy: WatchdogPolicy) {
+  return policy.minSpeechScore ?? 0.55;
 }
 
 function positiveInteger(value: string | undefined, fallback: number) {

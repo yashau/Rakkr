@@ -28,7 +28,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Audio devices | Generic Linux audio interfaces; X32 Rack is only the first test fixture |
 | Default profile | Voice, MP3 VBR, 128kbps target, fully configurable |
 | Scheduling | Human-friendly rules; no cron language exposed |
-| Storage | Local node cache now; SMB/S3 providers later |
+| Storage | Local node cache plus SMB/S3 upload providers |
 | Observability | Local lifecycle log, central events, Prometheus/Mimir path |
 | Dates | Store UTC ISO 8601; display browser timezone in year-first format |
 
@@ -64,7 +64,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Generic devices | 🟦 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
-| Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
+| Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
 | Storage upload | 🟦 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | 🟦 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
@@ -96,8 +96,8 @@ flowchart LR
   Agent --> Cache["Local Recording Cache"]
   API --> Events["Audit + Health Events"]
   API --> Metrics["Prometheus / future OTel"]
-  Cache -. later .-> Storage["SMB / S3 Upload Providers"]
-  Agent -. later .-> AI["VAD / noise / speech scoring"]
+  Cache --> Storage["SMB / S3 Upload Providers"]
+  Agent --> Quality["Local VAD / noise / speech scoring"]
   Transport -. later .-> Iroh["Iroh Remote Mode"]
 ```
 
@@ -225,6 +225,7 @@ Current scaffold:
 
 - Lifecycle health events in Postgres plus local node JSONL logs.
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
+- Local meter frames include speech/noise scores; speech-required policies can alert on loud non-speech audio.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 
@@ -241,7 +242,7 @@ Future analysis targets:
 - intelligibility score;
 - optional transcription snippets for search.
 
-Likely path: DSP metrics, local VAD, noise classifier, optional cloud/commercial provider.
+Current path: local DSP/VAD scores first; optional AI/classifier second opinion later.
 
 ---
 
@@ -348,7 +349,7 @@ Current scaffold:
 Current rule:
 
 - Local cache is the reliable source for now.
-- Upload providers stay stubbed until basics are stable.
+- SMB/S3 execution is scaffolded; retention waits for verified uploads.
 
 Current scaffold:
 
@@ -385,6 +386,8 @@ Important metric names:
 - `rakkr_input_rms_dbfs`
 - `rakkr_input_peak_dbfs`
 - `rakkr_input_clipping_ratio`
+- `rakkr_input_speech_score`
+- `rakkr_input_noise_score`
 - `rakkr_recording_active`
 - `rakkr_recording_duration_seconds`
 - `rakkr_recording_bytes_written`
@@ -424,8 +427,9 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Add local VAD and noise/speech scoring.
-2. ⏸️ Return to X32 hardware validation after device is confirmed.
+1. ✅ Add local VAD and noise/speech scoring.
+2. 🚧 Harden recording file-growth and encoder-failure detection.
+3. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

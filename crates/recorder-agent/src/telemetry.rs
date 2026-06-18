@@ -21,7 +21,18 @@ pub struct AudioLevel {
     pub clipping: bool,
     pub label: String,
     pub peak_dbfs: f32,
+    pub quality: AudioQuality,
     pub rms_dbfs: f32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioQuality {
+    pub crest_factor_db: f32,
+    pub noise_score: f32,
+    pub speech_like: bool,
+    pub speech_score: f32,
+    pub zero_crossing_rate: f32,
 }
 
 pub struct MeterCaptureConfig<'a> {
@@ -144,12 +155,14 @@ fn pcm_s16le_meter_frame_at(
         .map(|(index, stats)| {
             let rms_dbfs = amplitude_to_dbfs(stats.rms());
             let peak_dbfs = amplitude_to_dbfs(stats.peak);
+            let quality = stats.audio_quality(rms_dbfs, peak_dbfs);
 
             AudioLevel {
                 channel_index: u16::try_from(index + 1).unwrap_or(u16::MAX),
                 clipping: peak_dbfs >= clip_dbfs,
                 label: format!("Input {}", index + 1),
                 peak_dbfs: round_1(peak_dbfs),
+                quality,
                 rms_dbfs: round_1(rms_dbfs),
             }
         })
@@ -180,6 +193,7 @@ pub fn synthetic_meter_frame(
                 clipping: peak_dbfs > -1.0,
                 label: format!("Input {channel_index}"),
                 peak_dbfs: round_1(peak_dbfs),
+                quality: synthetic_quality(rms_dbfs, peak_dbfs, phase),
                 rms_dbfs: round_1(rms_dbfs),
             }
         })
@@ -202,17 +216,39 @@ pub fn synthetic_meter_frame(
 #[derive(Default)]
 struct ChannelStats {
     peak: f64,
+    previous_nonzero_sign: Option<i8>,
     sample_count: u64,
     sum_squares: f64,
+    zero_crossings: u64,
 }
 
 impl ChannelStats {
     fn observe(&mut self, sample: i16) {
-        let normalized = f64::from(i32::from(sample).abs()) / 32768.0;
+        let signed = f64::from(sample) / 32768.0;
+        let normalized = signed.abs();
 
         self.peak = self.peak.max(normalized);
         self.sample_count += 1;
         self.sum_squares += normalized * normalized;
+
+        let sign = if sample > 0 {
+            1
+        } else if sample < 0 {
+            -1
+        } else {
+            0
+        };
+
+        if sign != 0 {
+            if self
+                .previous_nonzero_sign
+                .is_some_and(|previous| previous != sign)
+            {
+                self.zero_crossings += 1;
+            }
+
+            self.previous_nonzero_sign = Some(sign);
+        }
     }
 
     fn rms(&self) -> f64 {
@@ -221,6 +257,32 @@ impl ChannelStats {
         }
 
         (self.sum_squares / self.sample_count as f64).sqrt()
+    }
+
+    fn zero_crossing_rate(&self) -> f32 {
+        if self.sample_count < 2 {
+            return 0.0;
+        }
+
+        (self.zero_crossings as f32 / (self.sample_count - 1) as f32).min(1.0)
+    }
+
+    fn audio_quality(&self, rms_dbfs: f32, peak_dbfs: f32) -> AudioQuality {
+        let crest_factor_db = (peak_dbfs - rms_dbfs).max(0.0);
+        let zero_crossing_rate = self.zero_crossing_rate();
+        let audible_score = rising_score(rms_dbfs, -65.0, -35.0);
+        let zcr_score = band_score(zero_crossing_rate, 0.015, 0.22);
+        let crest_score = band_score(crest_factor_db, 4.0, 22.0);
+        let speech_score = clamp_01(audible_score * (0.2 + zcr_score * 0.45 + crest_score * 0.35));
+        let noise_score = clamp_01(audible_score * (1.0 - speech_score));
+
+        AudioQuality {
+            crest_factor_db: round_2(crest_factor_db.min(80.0)),
+            noise_score: round_2(noise_score),
+            speech_like: speech_score >= 0.55,
+            speech_score: round_2(speech_score),
+            zero_crossing_rate: round_2(zero_crossing_rate),
+        }
     }
 }
 
@@ -234,6 +296,44 @@ fn amplitude_to_dbfs(value: f64) -> f32 {
 
 fn round_1(value: f32) -> f32 {
     (value * 10.0).round() / 10.0
+}
+
+fn round_2(value: f32) -> f32 {
+    (value * 100.0).round() / 100.0
+}
+
+fn synthetic_quality(rms_dbfs: f32, peak_dbfs: f32, phase: f32) -> AudioQuality {
+    let audible_score = rising_score(rms_dbfs, -65.0, -35.0);
+    let speech_score = clamp_01(audible_score * (0.62 + phase.sin() * 0.18));
+    let noise_score = clamp_01(audible_score * (1.0 - speech_score));
+
+    AudioQuality {
+        crest_factor_db: round_2((peak_dbfs - rms_dbfs).max(0.0)),
+        noise_score: round_2(noise_score),
+        speech_like: speech_score >= 0.55,
+        speech_score: round_2(speech_score),
+        zero_crossing_rate: round_2(0.08 + phase.cos().abs() * 0.08),
+    }
+}
+
+fn rising_score(value: f32, floor: f32, ceiling: f32) -> f32 {
+    clamp_01((value - floor) / (ceiling - floor))
+}
+
+fn band_score(value: f32, low: f32, high: f32) -> f32 {
+    if value < low {
+        return clamp_01(value / low);
+    }
+
+    if value > high {
+        return clamp_01(1.0 - (value - high) / high);
+    }
+
+    1.0
+}
+
+fn clamp_01(value: f32) -> f32 {
+    value.clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -287,6 +387,27 @@ mod tests {
 
         assert_eq!(frame.levels[0].rms_dbfs, -160.0);
         assert_eq!(frame.levels[1].peak_dbfs, -160.0);
+        assert_eq!(frame.levels[0].quality.speech_score, 0.0);
+        assert_eq!(frame.levels[0].quality.noise_score, 0.0);
         assert!(!frame.levels[0].clipping);
+    }
+
+    #[test]
+    fn estimates_speech_like_quality_from_pcm_shape() {
+        let pcm = (0..480)
+            .map(|index| {
+                let envelope = if index % 29 < 14 { 0.9 } else { 0.35 };
+                let sign = if index % 17 < 8 { 1.0 } else { -1.0 };
+                (sign * envelope * 10_000.0) as i16
+            })
+            .flat_map(i16::to_le_bytes)
+            .collect::<Vec<_>>();
+
+        let frame =
+            pcm_s16le_meter_frame_at("node_1", "iface_1", &pcm, 1, -1.0, "2026-06-18T00:00:00Z")
+                .expect("speech-like frame");
+
+        assert!(frame.levels[0].quality.speech_score > frame.levels[0].quality.noise_score);
+        assert!(frame.levels[0].quality.speech_like);
     }
 }

@@ -38,6 +38,14 @@ test("renders store-backed Prometheus gauges", () => {
     output,
     /rakkr_input_clipping_ratio\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 1/,
   );
+  assert.match(
+    output,
+    /rakkr_input_speech_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.82/,
+  );
+  assert.match(
+    output,
+    /rakkr_input_noise_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.12/,
+  );
   assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 1/);
   assert.match(output, /rakkr_recording_watchdog_alerts_active\{severity="critical"\} 1/);
   assert.match(output, /rakkr_upload_queue_depth\{provider="stub",status="failed"\} 1/);
@@ -107,6 +115,13 @@ function meterFrame(): MeterFrame {
         clipping: true,
         label: "Ch 1",
         peakDbfs: -2.1,
+        quality: {
+          crestFactorDb: 16.4,
+          noiseScore: 0.12,
+          speechLike: true,
+          speechScore: 0.82,
+          zeroCrossingRate: 0.09,
+        },
         rmsDbfs: -18.5,
       },
     ],

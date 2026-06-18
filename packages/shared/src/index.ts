@@ -218,6 +218,13 @@ export const audioInterfaceSchema = z.object({
   systemName: z.string().min(1),
 });
 
+export const audioQualitySchema = z.object({
+  crestFactorDb: z.number().min(0).max(80),
+  noiseScore: z.number().min(0).max(1),
+  speechLike: z.boolean(),
+  speechScore: z.number().min(0).max(1),
+  zeroCrossingRate: z.number().min(0).max(1),
+});
 export const recorderNodeSchema = z.object({
   agentVersion: z.string().min(1),
   alias: z.string().min(1),
@@ -242,6 +249,7 @@ export const audioLevelSchema = z.object({
   clipping: z.boolean(),
   label: z.string().min(1),
   peakDbfs: dbfsSchema,
+  quality: audioQualitySchema.optional(),
   rmsDbfs: dbfsSchema,
 });
 
@@ -403,7 +411,10 @@ export const watchdogPolicySchema = z.object({
   id: z.string().min(1),
   metric: z.enum(["peak", "rms", "percentile_95"]),
   minCumulativeSecondsAboveThreshold: z.number().nonnegative(),
+  minCumulativeSpeechSeconds: z.number().nonnegative().optional(),
+  minSpeechScore: z.number().min(0).max(1).optional(),
   name: z.string().min(1),
+  qualityMode: z.enum(["signal_only", "speech_required"]).optional(),
   repeatEverySeconds: z.number().int().positive(),
   severity: healthSeveritySchema,
   thresholdDbfs: dbfsSchema,
@@ -415,7 +426,10 @@ export const watchdogPolicyUpdateSchema = z
     graceSeconds: z.number().int().nonnegative().max(86_400).optional(),
     metric: z.enum(["peak", "rms", "percentile_95"]).optional(),
     minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400).optional(),
+    minCumulativeSpeechSeconds: z.number().nonnegative().max(86_400).optional(),
+    minSpeechScore: z.number().min(0).max(1).optional(),
     name: z.string().trim().min(1).max(160).optional(),
+    qualityMode: z.enum(["signal_only", "speech_required"]).optional(),
     repeatEverySeconds: z.number().int().positive().max(86_400).optional(),
     severity: healthSeveritySchema.optional(),
     thresholdDbfs: dbfsSchema.optional(),
@@ -716,6 +730,7 @@ export type AccessPolicyEffect = z.infer<typeof accessPolicyEffectSchema>;
 export type AccessPolicyInput = z.infer<typeof accessPolicyInputSchema>;
 export type AccessPolicySubjectType = z.infer<typeof accessPolicySubjectTypeSchema>;
 export type AudioLevel = z.infer<typeof audioLevelSchema>;
+export type AudioQuality = z.infer<typeof audioQualitySchema>;
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 export type OidcDiscovery = z.infer<typeof oidcDiscoverySchema>;
 export type OidcProvider = z.infer<typeof oidcProviderSchema>;
