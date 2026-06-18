@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   and,
   audioChannels,
@@ -226,10 +226,6 @@ class PostgresNodeStore implements NodeStore {
       throw new NodeStoreError("Node credential storage is unavailable", "database_unavailable");
     }
 
-    if (!isUuid(nodeId)) {
-      return undefined;
-    }
-
     const [node] = await db.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).limit(1);
 
     if (!node) {
@@ -315,6 +311,7 @@ function nodeInputToRow(input: NodeEnrollmentInput): typeof nodeRows.$inferInser
     agentVersion: input.agentVersion,
     alias: input.alias,
     hostname: input.hostname,
+    id: `node_${randomUUID()}`,
     location: input.location,
     metadata: {
       enrolledAt: new Date().toISOString(),

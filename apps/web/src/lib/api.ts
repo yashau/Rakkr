@@ -5,6 +5,7 @@ import type {
   AccessPolicy,
   AccessPolicyInput,
   CurrentUser,
+  HealthEvent,
   MeterFrame,
   RecorderNode,
   RecordingProfile,
@@ -79,6 +80,14 @@ export interface RecordingFilters {
   search?: string;
   status?: RecordingSummary["status"];
   tag?: string;
+}
+
+export interface HealthEventFilters {
+  limit?: number;
+  nodeId?: string;
+  recordingId?: string;
+  scheduleId?: string;
+  severity?: HealthEvent["severity"];
 }
 
 export interface UserAccessUpdate {
@@ -199,6 +208,8 @@ export const api = {
   accessPolicies: () => fetchJson<{ data: AccessPolicy[] }>("/api/v1/auth/access-policies"),
   auditEvents: (filters: AuditEventFilters = {}) =>
     fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
+  healthEvents: (filters: HealthEventFilters = {}) =>
+    fetchJson<{ data: HealthEvent[] }>(withQuery("/api/v1/health-events", filters)),
   accessUsers: () => fetchJson<{ data: CurrentUser[] }>("/api/v1/auth/users"),
   createLocalUser: (input: LocalUserCreateInput) =>
     fetchJson<{ data: CurrentUser }>("/api/v1/auth/users", {

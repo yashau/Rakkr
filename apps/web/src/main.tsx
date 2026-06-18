@@ -12,6 +12,7 @@ import {
   Link,
   Outlet,
   RouterProvider,
+  useParams,
 } from "@tanstack/react-router";
 import {
   CalendarDays,
@@ -35,6 +36,7 @@ import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
 import { NodesPage } from "@/pages/nodes";
 import { RecordingsPage } from "@/pages/recordings";
+import { ScheduleDetailPage } from "@/pages/schedule-detail";
 import { SchedulesPage } from "@/pages/schedules";
 
 import "./styles.css";
@@ -247,6 +249,18 @@ const schedulesRoute = createRoute({
   path: "/schedules",
 });
 
+function ScheduleDetailRouteComponent() {
+  const { scheduleId } = useParams({ from: "/schedules/$scheduleId" });
+
+  return <ScheduleDetailPage scheduleId={scheduleId} />;
+}
+
+const scheduleDetailRoute = createRoute({
+  component: ScheduleDetailRouteComponent,
+  getParentRoute: () => rootRoute,
+  path: "/schedules/$scheduleId",
+});
+
 const recordingsRoute = createRoute({
   component: RecordingsPage,
   getParentRoute: () => rootRoute,
@@ -269,6 +283,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   nodesRoute,
   schedulesRoute,
+  scheduleDetailRoute,
   recordingsRoute,
   auditRoute,
   accessRoute,

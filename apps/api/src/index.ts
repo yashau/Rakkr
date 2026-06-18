@@ -27,6 +27,8 @@ import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
+import { registerHealthRoutes } from "./health-routes.js";
+import { createHealthEventStore } from "./health-store.js";
 import type { RecordAuditEvent } from "./http-types.js";
 import {
   nodes as seedNodes,
@@ -49,6 +51,7 @@ const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
+const healthEventStore = createHealthEventStore();
 const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
@@ -920,6 +923,14 @@ registerAgentRoutes({
   nodeStore,
   recordAuditEvent,
   recordingStore,
+});
+
+registerHealthRoutes({
+  app,
+  currentUser,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
+  healthEventStore,
+  requirePermission,
 });
 
 registerRecordingRoutes({

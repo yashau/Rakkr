@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
   CalendarClock,
   CalendarPlus,
+  FileSearch,
   Pencil,
   PlusCircle,
   Repeat2,
@@ -634,6 +636,12 @@ export function SchedulesPage() {
               </div>
               <div className="grid gap-3 md:justify-items-end">
                 <div className="flex flex-wrap gap-2 md:justify-end">
+                  <Button asChild type="button" variant="outline">
+                    <Link params={{ scheduleId: schedule.id }} to="/schedules/$scheduleId">
+                      <FileSearch className="size-4" />
+                      Details
+                    </Link>
+                  </Button>
                   <Button onClick={() => editSchedule(schedule)} type="button" variant="outline">
                     <Pencil className="size-4" />
                     Edit

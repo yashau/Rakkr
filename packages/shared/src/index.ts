@@ -403,7 +403,7 @@ export const recordingJobSchema = z.object({
 export const healthEventSchema = z.object({
   details: z.record(z.string(), z.unknown()),
   id: z.string().min(1),
-  nodeId: z.string().min(1),
+  nodeId: z.string().min(1).optional(),
   openedAt: isoDateTimeSchema,
   recordingId: z.string().optional(),
   resolvedAt: isoDateTimeSchema.nullable(),

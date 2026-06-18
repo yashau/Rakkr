@@ -212,7 +212,7 @@ export const nodes = pgTable(
     alias: varchar("alias", { length: 160 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     hostname: varchar("hostname", { length: 255 }).notNull(),
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: varchar("id", { length: 160 }).primaryKey(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     location: jsonb("location")
       .notNull()
@@ -245,7 +245,7 @@ export const nodeCredentials = pgTable(
     }),
     id: uuid("id").primaryKey().defaultRandom(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
-    nodeId: uuid("node_id")
+    nodeId: varchar("node_id", { length: 160 })
       .notNull()
       .references(() => nodes.id, { onDelete: "cascade" }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
@@ -266,7 +266,7 @@ export const audioInterfaces = pgTable(
     channelCount: integer("channel_count").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     id: uuid("id").primaryKey().defaultRandom(),
-    nodeId: uuid("node_id")
+    nodeId: varchar("node_id", { length: 160 })
       .notNull()
       .references(() => nodes.id, { onDelete: "cascade" }),
     sampleRates: jsonb("sample_rates")
@@ -411,7 +411,7 @@ export const healthEvents = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     id: uuid("id").primaryKey().defaultRandom(),
-    nodeId: uuid("node_id").references(() => nodes.id, {
+    nodeId: varchar("node_id", { length: 160 }).references(() => nodes.id, {
       onDelete: "set null",
     }),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
