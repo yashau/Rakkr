@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -64,15 +65,16 @@ test("defers provider failures until the retry budget is exhausted", async () =>
 test("uploads SMB queue items to a mounted filesystem target", async () => {
   const providerStore = createUploadProviderStore();
   const target = path.join(uploadRoot, "mounted-share");
+  const contents = "smb-bytes";
 
-  await cacheRecording("rec_smb_upload", "smb-bytes");
+  await cacheRecording("rec_smb_upload", contents);
   await providerStore.update("smb", {
     displayName: "Mounted Share",
     enabled: true,
     target,
   });
 
-  const queued = await enqueueRecordingUpload(recording("rec_smb_upload"), {
+  const queued = await enqueueRecordingUpload(recording("rec_smb_upload", contents), {
     maxAttempts: 1,
     provider: "smb",
   });
@@ -81,6 +83,13 @@ test("uploads SMB queue items to a mounted filesystem target", async () => {
   const uploaded = await readFile(path.join(target, "Council Meeting.mp3"), "utf8");
 
   assert.equal(result.succeeded, 1);
+  assert.deepEqual(result.items[0]?.checksumVerification, {
+    algorithm: "sha256",
+    expected: sha256Prefixed(contents),
+    method: "file_copy_sha256",
+    observed: sha256Prefixed(contents),
+    status: "matched",
+  });
   assert.equal(item?.status, "succeeded");
   assert.equal(uploaded, "smb-bytes");
 });
@@ -88,8 +97,9 @@ test("uploads SMB queue items to a mounted filesystem target", async () => {
 test("uploads S3 queue items with bucket, key, and recording metadata", async () => {
   const providerStore = createUploadProviderStore();
   const sentCommands = [];
+  const contents = "s3-bytes";
 
-  await cacheRecording("rec_s3_ready_upload", "s3-bytes");
+  await cacheRecording("rec_s3_ready_upload", contents);
   await providerStore.update("s3", {
     credentialRef: "env://aws-test",
     displayName: "Archive S3",
@@ -97,7 +107,7 @@ test("uploads S3 queue items with bucket, key, and recording metadata", async ()
     target: "s3://rakkr-archive/meetings",
   });
 
-  const queued = await enqueueRecordingUpload(recording("rec_s3_ready_upload"), {
+  const queued = await enqueueRecordingUpload(recording("rec_s3_ready_upload", contents), {
     maxAttempts: 1,
     provider: "s3",
   });
@@ -113,17 +123,53 @@ test("uploads S3 queue items with bucket, key, and recording metadata", async ()
   const input = sentCommands[0]?.input;
 
   assert.equal(result.succeeded, 1);
+  assert.deepEqual(result.items[0]?.checksumVerification, {
+    algorithm: "sha256",
+    expected: sha256Prefixed(contents),
+    method: "s3_checksum_sha256",
+    status: "provider_validated",
+  });
   assert.equal(item?.status, "succeeded");
   assert.equal(input?.Bucket, "rakkr-archive");
+  assert.equal(input?.ChecksumSHA256, sha256Base64(contents));
   assert.equal(input?.Key, "meetings/Council Meeting.mp3");
+  assert.equal(input?.Metadata?.checksum, sha256Prefixed(contents));
   assert.equal(input?.Metadata?.recording_id, "rec_s3_ready_upload");
 });
 
-function recording(id: string): RecordingSummary {
+test("fails real provider upload when cached file checksum disagrees with metadata", async () => {
+  const providerStore = createUploadProviderStore();
+  const target = path.join(uploadRoot, "checksum-mismatch-share");
+
+  await cacheRecording("rec_smb_checksum_mismatch", "actual-bytes");
+  await providerStore.update("smb", {
+    displayName: "Mismatch Share",
+    enabled: true,
+    target,
+  });
+
+  await enqueueRecordingUpload(
+    {
+      ...recording("rec_smb_checksum_mismatch"),
+      checksum: sha256Prefixed("different-bytes"),
+    },
+    {
+      maxAttempts: 1,
+      provider: "smb",
+    },
+  );
+  const result = await runUploadQueueOnce({ providerStore });
+
+  assert.equal(result.succeeded, 0);
+  assert.equal(result.failed, 1);
+  assert.equal(result.items[0]?.reason, "source_checksum_mismatch");
+});
+
+function recording(id: string, contents?: string): RecordingSummary {
   return {
     cachePath: `scheduled/${id}.mp3`,
     cached: true,
-    checksum: `sha256:${id}`,
+    checksum: contents ? sha256Prefixed(contents) : `sha256:${id}`,
     durationSeconds: 900,
     folder: "Meetings/2026",
     healthStatus: "healthy",
@@ -141,4 +187,16 @@ async function cacheRecording(id: string, contents: string) {
 
   await mkdir(path.dirname(cachePath), { recursive: true });
   await writeFile(cachePath, contents);
+}
+
+function sha256Prefixed(contents: string) {
+  return `sha256:${sha256Hex(contents)}`;
+}
+
+function sha256Base64(contents: string) {
+  return Buffer.from(sha256Hex(contents), "hex").toString("base64");
+}
+
+function sha256Hex(contents: string) {
+  return createHash("sha256").update(contents).digest("hex");
 }

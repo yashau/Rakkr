@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -57,8 +57,9 @@ test("upload runner deletes local cache after confirmed upload when policy reque
   const auditStore = createAuditStore("");
   const providerStore = createUploadProviderStore();
   const uploadedRoot = path.join(runnerRoot, "retention-share");
-  const cachedRecording = recording("rec_upload_retention_test");
-  const cachePath = await cacheRecording(cachedRecording.id, "archive-bytes");
+  const contents = "archive-bytes";
+  const cachedRecording = recording("rec_upload_retention_test", contents);
+  const cachePath = await cacheRecording(cachedRecording.id, contents);
   const recordingStore = memoryRecordingStore([cachedRecording]);
   const runner = createUploadRunner({
     auditStore,
@@ -107,6 +108,13 @@ test("upload runner deletes local cache after confirmed upload when policy reque
   assert.deepEqual(itemEvents[0]?.details.retention, {
     cacheDeleted: true,
     policyId: policy.id,
+  });
+  assert.deepEqual(itemEvents[0]?.details.checksumVerification, {
+    algorithm: "sha256",
+    expected: sha256Prefixed(contents),
+    method: "file_copy_sha256",
+    observed: sha256Prefixed(contents),
+    status: "matched",
   });
 });
 
@@ -188,11 +196,11 @@ function user(): CurrentUser {
   };
 }
 
-function recording(id = "rec_upload_runner_test"): RecordingSummary {
+function recording(id = "rec_upload_runner_test", contents?: string): RecordingSummary {
   return {
     cachePath: `scheduled/${id}.mp3`,
     cached: true,
-    checksum: `sha256:${id}`,
+    checksum: contents ? sha256Prefixed(contents) : `sha256:${id}`,
     durationSeconds: 900,
     folder: "Meetings/2026",
     healthStatus: "healthy",
@@ -233,4 +241,8 @@ async function cacheRecording(id: string, contents: string) {
   await writeFile(cachePath, contents);
 
   return cachePath;
+}
+
+function sha256Prefixed(contents: string) {
+  return `sha256:${createHash("sha256").update(contents).digest("hex")}`;
 }

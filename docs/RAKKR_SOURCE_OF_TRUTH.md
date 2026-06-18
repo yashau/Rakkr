@@ -365,13 +365,10 @@ Current scaffold:
 - Cache attach auto-queues recordings when enabled policy trigger is `on_recording_cached`.
 - Executor processes due queue items through provider readiness and retry budgets.
 - SMB copies cached files to mounted share targets; S3 sends cached files to `s3://` targets.
+- SMB verifies copied bytes with SHA-256; S3 uploads send `ChecksumSHA256`.
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
 - Controller API and Settings UI expose upload runner status and run-now control.
 - Upload policies can delete controller cache after confirmed non-stub upload.
-
-Later:
-
-- checksum verification after upload.
 
 ## Observability
 
@@ -437,7 +434,8 @@ Examples:
 5. ✅ Add RBAC-gated audit CSV export.
 6. ✅ Add policy-controlled cache deletion after confirmed upload.
 7. ✅ Add request-driven ad-hoc recording start.
-8. ⏸️ Return to X32 hardware validation after device is confirmed.
+8. ✅ Add checksum verification for confirmed uploads.
+9. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

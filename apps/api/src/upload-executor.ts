@@ -1,9 +1,15 @@
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, mkdir, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { UploadQueueItem, UploadQueueRunItem, UploadQueueRunSummary } from "@rakkr/shared";
+import type {
+  UploadChecksumVerification,
+  UploadQueueItem,
+  UploadQueueRunItem,
+  UploadQueueRunSummary,
+} from "@rakkr/shared";
 import type { UploadProviderRuntimeStatus } from "@rakkr/shared";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 import {
@@ -21,6 +27,7 @@ interface UploadExecutorOptions {
 }
 
 interface ProviderUploadResult {
+  checksumVerification?: UploadChecksumVerification;
   ok: boolean;
   reason?: string;
 }
@@ -56,6 +63,7 @@ export async function runUploadQueueOnce(
     if (next) {
       items.push({
         itemId: next.id,
+        checksumVerification: providerResult.checksumVerification,
         provider: next.provider,
         reason: next.lastError,
         recordingId: next.recordingId,
@@ -94,16 +102,51 @@ async function runProviderUpload(
 
   try {
     const sourcePath = resolvedCachePath(item.cachePath);
+    const sourceChecksum = await fileSha256(sourcePath);
+    const expectedChecksum = normalizedSha256(item.checksum);
 
-    if (item.provider === "smb") {
-      await copyToMountedShare(sourcePath, target, uploadFileName(item));
-
-      return { ok: true };
+    if (expectedChecksum && expectedChecksum !== sourceChecksum.hex) {
+      return { ok: false, reason: "source_checksum_mismatch" };
     }
 
-    await uploadToS3(sourcePath, target, uploadFileName(item), item, options.s3Client);
+    if (item.provider === "smb") {
+      const targetPath = await copyToMountedShare(sourcePath, target, uploadFileName(item));
+      const targetChecksum = await fileSha256(targetPath);
 
-    return { ok: true };
+      if (targetChecksum.hex !== sourceChecksum.hex) {
+        return { ok: false, reason: "uploaded_checksum_mismatch" };
+      }
+
+      return {
+        checksumVerification: {
+          algorithm: "sha256",
+          expected: sourceChecksum.prefixed,
+          method: "file_copy_sha256",
+          observed: targetChecksum.prefixed,
+          status: "matched",
+        },
+        ok: true,
+      };
+    }
+
+    await uploadToS3(
+      sourcePath,
+      target,
+      uploadFileName(item),
+      item,
+      sourceChecksum,
+      options.s3Client,
+    );
+
+    return {
+      checksumVerification: {
+        algorithm: "sha256",
+        expected: sourceChecksum.prefixed,
+        method: "s3_checksum_sha256",
+        status: "provider_validated",
+      },
+      ok: true,
+    };
   } catch (error) {
     return { ok: false, reason: uploadFailureReason(item.provider, error) };
   }
@@ -115,6 +158,8 @@ async function copyToMountedShare(sourcePath: string, target: string, fileName: 
 
   await mkdir(path.dirname(targetPath), { recursive: true });
   await copyFile(sourcePath, targetPath);
+
+  return targetPath;
 }
 
 async function uploadToS3(
@@ -122,6 +167,7 @@ async function uploadToS3(
   target: string,
   fileName: string,
   item: UploadQueueItem,
+  sourceChecksum: FileSha256,
   s3Client?: S3Sender,
 ) {
   const client = s3Client ?? new S3Client({});
@@ -132,6 +178,7 @@ async function uploadToS3(
     new PutObjectCommand({
       Body: createReadStream(sourcePath),
       Bucket: destination.bucket,
+      ChecksumSHA256: sourceChecksum.base64,
       ContentLength: sourceStats.size,
       ContentType: contentType(fileName),
       Key: destination.key,
@@ -142,6 +189,34 @@ async function uploadToS3(
       },
     }),
   );
+}
+
+interface FileSha256 {
+  base64: string;
+  hex: string;
+  prefixed: string;
+}
+
+async function fileSha256(filePath: string): Promise<FileSha256> {
+  const bytes = await readFile(filePath);
+  const hash = createHash("sha256").update(bytes);
+  const hex = hash.digest("hex");
+
+  return {
+    base64: Buffer.from(hex, "hex").toString("base64"),
+    hex,
+    prefixed: `sha256:${hex}`,
+  };
+}
+
+function normalizedSha256(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  const candidate = value.replace(/^sha256:/i, "").toLowerCase();
+
+  return /^[a-f0-9]{64}$/.test(candidate) ? candidate : undefined;
 }
 
 function contentType(fileName: string) {

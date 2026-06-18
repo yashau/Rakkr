@@ -576,7 +576,15 @@ export const uploadQueueItemSchema = z.object({
   updatedAt: isoDateTimeSchema,
   uploadPolicyId: z.string().min(1).optional(),
 });
+export const uploadChecksumVerificationSchema = z.object({
+  algorithm: z.literal("sha256"),
+  expected: z.string().min(1),
+  method: z.enum(["file_copy_sha256", "s3_checksum_sha256"]),
+  observed: z.string().min(1).optional(),
+  status: z.enum(["matched", "provider_validated"]),
+});
 export const uploadQueueRunItemSchema = z.object({
+  checksumVerification: uploadChecksumVerificationSchema.optional(),
   itemId: z.string().min(1),
   provider: uploadProviderSchema,
   reason: z.string().min(1).optional(),
@@ -772,6 +780,7 @@ export type UploadPolicy = z.infer<typeof uploadPolicySchema>;
 export type UploadPolicyInput = z.infer<typeof uploadPolicyInputSchema>;
 export type UploadPolicyTrigger = z.infer<typeof uploadPolicyTriggerSchema>;
 export type UploadPolicyUpdate = z.infer<typeof uploadPolicyUpdateSchema>;
+export type UploadChecksumVerification = z.infer<typeof uploadChecksumVerificationSchema>;
 export type UploadQueueItem = z.infer<typeof uploadQueueItemSchema>;
 export type UploadQueueRunItem = z.infer<typeof uploadQueueRunItemSchema>;
 export type UploadQueueRunSummary = z.infer<typeof uploadQueueRunSummarySchema>;

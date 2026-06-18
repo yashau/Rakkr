@@ -156,6 +156,7 @@ async function appendUploadItemAudit(
     },
     createdAt: new Date().toISOString(),
     details: {
+      ...(item.checksumVerification ? { checksumVerification: item.checksumVerification } : {}),
       provider: item.provider,
       ...(retention ? { retention } : {}),
       status: item.status,
