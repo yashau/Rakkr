@@ -235,6 +235,28 @@ export const nodes = pgTable(
   }),
 );
 
+export const nodeCredentials = pgTable(
+  "node_credentials",
+  {
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    id: uuid("id").primaryKey().defaultRandom(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => nodes.id, { onDelete: "cascade" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    tokenHash: text("token_hash").notNull().unique(),
+    tokenPrefix: varchar("token_prefix", { length: 48 }).notNull(),
+  },
+  (table) => ({
+    nodeIdx: index("node_credentials_node_idx").on(table.nodeId),
+    tokenPrefixIdx: index("node_credentials_token_prefix_idx").on(table.tokenPrefix),
+  }),
+);
+
 export const audioInterfaces = pgTable(
   "audio_interfaces",
   {

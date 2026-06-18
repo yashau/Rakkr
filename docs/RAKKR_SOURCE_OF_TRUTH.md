@@ -52,8 +52,8 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | -------------------- | ----------- | -------------------------------------------------------------- |
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
-| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, Postgres-backed recordings/jobs/edits |
-| Controller UI        | 🟦 Scaffold  | Dashboard plus recording/job status, metadata editing, and filters |
+| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, Postgres-backed nodes/credentials/recordings/jobs |
+| Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, jobs, metadata editing, and filters |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, telemetry   |
 | Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
 | Health watchdog      | 🟨 Designed  | Core non-AI checks first, AI quality analysis later            |
@@ -580,7 +580,7 @@ Initial:
 - trusted LAN for reachability only;
 - encrypted transport for all controller/node communication;
 - authenticated node enrollment;
-- node tokens/keys;
+- hashed node tokens/keys with credential rotation;
 - permission-gated controller routes, streams, and commands;
 - audit trail for security-sensitive allowed and denied actions.
 
@@ -604,6 +604,8 @@ Current scaffold status:
 - Access UI can create local users with initial roles, groups, and scopes;
 - Access UI can edit local group memberships and show known local groups;
 - Access UI can edit global access policies for user, group, or everyone subjects;
+- Nodes UI can enroll persisted recorder nodes and display one-time node tokens;
+- node credentials persist as token hashes in Postgres and rotation revokes active credentials before issuing a new one-time token;
 - Drizzle migrations are verified against local Docker Postgres using the canonical `127.0.0.1` connection string;
 - in-memory auth session fallback keeps local development usable before Postgres is ready;
 - password reset, user disable/delete, and OIDC-backed user sync are still pending.
@@ -663,7 +665,7 @@ Current scaffold grant IDs:
 - Schedule: `schedule:sched_council_weekly`
 - Recording: `recording:rec_demo_001`
 
-Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access unless an explicit access policy deny matches the target. Narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Persisted local users can be created with independent password hashes, roles, groups, and scopes. Global access policies live in `access_policies`, support `allow` and `deny`, and target `user`, `group`, or `everyone` subjects. Access groups and memberships persist through `access_groups` and `user_access_groups`; local bootstrap can attach groups to the local admin with `RAKKR_LOCAL_ADMIN_GROUPS`, and Access UI can now edit local group membership alongside roles and scopes. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist, so a recorder-level deny also blocks its recordings and live streams. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local user/role/scope/policy/group changes. Recording metadata edits are guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants. Live Docker/Postgres smoke coverage verifies migration, multi-user local login, access-policy deny behavior, group-policy membership behavior, recording metadata persistence, and recording job persistence.
+Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access unless an explicit access policy deny matches the target. Narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Persisted local users can be created with independent password hashes, roles, groups, and scopes. Global access policies live in `access_policies`, support `allow` and `deny`, and target `user`, `group`, or `everyone` subjects. Access groups and memberships persist through `access_groups` and `user_access_groups`; local bootstrap can attach groups to the local admin with `RAKKR_LOCAL_ADMIN_GROUPS`, and Access UI can now edit local group membership alongside roles and scopes. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Persisted enrolled nodes now participate in node, site, room, interface, and channel scope inheritance. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist, so a recorder-level deny also blocks its recordings and live streams. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local user/role/scope/policy/group changes. Node enrollment and credential rotation are RBAC-gated by `node:manage`, write audit events, and store only hashed node tokens. Recording metadata edits are guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants. Live Docker/Postgres smoke coverage verifies migration, multi-user local login, node enrollment/credential rotation, access-policy deny behavior, group-policy membership behavior, recording metadata persistence, and recording job persistence.
 
 ## Required Permission Families
 
@@ -723,7 +725,7 @@ Recording-control audit events should include actor, command, schedule/ad hoc so
 
 Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
-Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
+Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Node enrollment and node credential rotation write security audit events with node snapshots and credential prefixes only. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
 
 ---
 
@@ -742,7 +744,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🟦 Audit event model and audit log UI.
 - [ ] 🟦 Live listen permission checks and audit trail.
 - [ ] 🟦 Recording control permission checks and audit trail.
-- [ ] ⏳ Node enrollment model.
+- [ ] 🟦 Node enrollment model.
 - [x] ✅ Rust recorder agent skeleton.
 - [ ] 🟦 Generic Linux audio device discovery.
 - [ ] ⏸️ X32 test-rig validation.
@@ -899,9 +901,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add persistent node enrollment and node credential rotation.
-2. Add scheduler-owned metadata execution paths for filename, folder, tag, and watchdog policy defaults.
-3. Add user disable/delete, password reset, and eventually OIDC-backed user sync.
+1. Add scheduler-owned metadata execution paths for filename, folder, tag, and watchdog policy defaults.
+2. Add user disable/delete, password reset, and eventually OIDC-backed user sync.
+3. Add node credential authentication for recorder-agent control-plane endpoints.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 
 Last updated: `2026-06-18`

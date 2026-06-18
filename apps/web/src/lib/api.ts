@@ -89,6 +89,44 @@ export interface LocalUserCreateInput extends UserAccessUpdate {
   password: string;
 }
 
+export interface NodeEnrollmentInput {
+  agentVersion: string;
+  alias: string;
+  hostname: string;
+  interfaces: Array<{
+    alias: string;
+    backend: "alsa" | "jack" | "pipewire" | "unknown";
+    channelCount: number;
+    channels: Array<{
+      alias: string;
+      index: number;
+    }>;
+    sampleRates: number[];
+    systemName: string;
+    systemRef?: string;
+  }>;
+  ipAddresses: string[];
+  location: {
+    building?: string;
+    floor?: string;
+    room: string;
+    site: string;
+  };
+  notes?: string;
+  tags: string[];
+}
+
+export interface NodeEnrollmentResult {
+  credential: {
+    createdAt: string;
+    id: string;
+    nodeId: string;
+    token: string;
+    tokenPrefix: string;
+  };
+  node: RecorderNode;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getAuthToken();
@@ -179,6 +217,14 @@ export const api = {
       method: "POST",
     }),
   meterFrame: (nodeId: string) => fetchJson<{ data: MeterFrame }>(`/api/v1/nodes/${nodeId}/meters`),
+  enrollNode: (input: NodeEnrollmentInput) =>
+    fetchJson<{ data: NodeEnrollmentResult }>("/api/v1/nodes/enroll", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   nodes: () => fetchJson<{ data: RecorderNode[] }>("/api/v1/nodes"),
   prepareRecordingDownload: (recordingId: string) =>
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
@@ -201,6 +247,10 @@ export const api = {
         method: "POST",
       },
     ),
+  rotateNodeCredential: (nodeId: string) =>
+    fetchJson<{ data: NodeEnrollmentResult }>(`/api/v1/nodes/${nodeId}/credentials/rotate`, {
+      method: "POST",
+    }),
   startRecording: () =>
     fetchJson<{ data: RecordingSummary; job: RecordingJob }>("/api/v1/recordings", {
       method: "POST",

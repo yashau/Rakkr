@@ -3,7 +3,6 @@ import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { streamSSE } from "hono/streaming";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
@@ -20,13 +19,16 @@ import {
   type AuditOutcome,
   type CurrentUser,
   type Permission,
+  type RecorderNode,
 } from "@rakkr/shared";
 
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
-import { buildMeterFrame, nodes, prometheusMetrics, recordings, schedules } from "./demo-data.js";
+import { nodes as seedNodes, prometheusMetrics, recordings, schedules } from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
+import { registerNodeRoutes } from "./node-routes.js";
+import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 
@@ -36,8 +38,9 @@ const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
+const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
-type NodeRecord = (typeof nodes)[number];
+type NodeRecord = RecorderNode;
 type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
   email: z.string().email(),
@@ -283,33 +286,34 @@ async function resourceScopeDecision(user: AuthResult["user"], target: AuditTarg
 
 async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]> {
   const targets = [target];
+  const knownNodes = await nodeStore.list();
 
   if (target.type === "recording" && target.id) {
     const recording = await recordingStore.find(target.id);
 
     if (recording?.scheduleId) {
-      addScheduleScopeTargets(targets, recording.scheduleId);
+      addScheduleScopeTargets(targets, recording.scheduleId, knownNodes);
     }
 
     if (recording?.nodeId) {
-      addNodeScopeTargets(targets, recording.nodeId);
+      addNodeScopeTargets(targets, recording.nodeId, knownNodes);
     }
   }
 
   if (target.type === "schedule" && target.id) {
-    addScheduleScopeTargets(targets, target.id);
+    addScheduleScopeTargets(targets, target.id, knownNodes);
   }
 
   if (target.type === "node" && target.id) {
-    addNodeScopeTargets(targets, target.id);
+    addNodeScopeTargets(targets, target.id, knownNodes);
   }
 
   if (target.type === "interface" && target.id) {
-    addInterfaceScopeTargets(targets, target.id);
+    addInterfaceScopeTargets(targets, target.id, knownNodes);
   }
 
   if (target.type === "channel" && target.id) {
-    addChannelScopeTargets(targets, target.id);
+    addChannelScopeTargets(targets, target.id, knownNodes);
   }
 
   return targets.filter(
@@ -321,7 +325,11 @@ async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]>
   );
 }
 
-function addScheduleScopeTargets(targets: AuditTarget[], scheduleId: string) {
+function addScheduleScopeTargets(
+  targets: AuditTarget[],
+  scheduleId: string,
+  knownNodes: NodeRecord[],
+) {
   const schedule = schedules.find((candidate) => candidate.id === scheduleId);
 
   if (!schedule) {
@@ -329,11 +337,11 @@ function addScheduleScopeTargets(targets: AuditTarget[], scheduleId: string) {
   }
 
   targets.push({ id: schedule.id, type: "schedule" }, { id: schedule.room, type: "room" });
-  addNodeScopeTargets(targets, schedule.nodeId);
+  addNodeScopeTargets(targets, schedule.nodeId, knownNodes);
 }
 
-function addNodeScopeTargets(targets: AuditTarget[], nodeId: string) {
-  const node = nodes.find((candidate) => candidate.id === nodeId);
+function addNodeScopeTargets(targets: AuditTarget[], nodeId: string, knownNodes: NodeRecord[]) {
+  const node = knownNodes.find((candidate) => candidate.id === nodeId);
 
   if (!node) {
     return;
@@ -343,26 +351,34 @@ function addNodeScopeTargets(targets: AuditTarget[], nodeId: string) {
   addRoomScopeTargets(targets, node);
 }
 
-function addInterfaceScopeTargets(targets: AuditTarget[], interfaceId: string) {
-  const match = interfaceNode(interfaceId);
+function addInterfaceScopeTargets(
+  targets: AuditTarget[],
+  interfaceId: string,
+  knownNodes: NodeRecord[],
+) {
+  const match = interfaceNode(interfaceId, knownNodes);
 
   if (!match) {
     return;
   }
 
   targets.push({ id: match.audioInterface.id, type: "interface" });
-  addNodeScopeTargets(targets, match.node.id);
+  addNodeScopeTargets(targets, match.node.id, knownNodes);
 }
 
-function addChannelScopeTargets(targets: AuditTarget[], channelId: string) {
-  const match = channelNode(channelId);
+function addChannelScopeTargets(
+  targets: AuditTarget[],
+  channelId: string,
+  knownNodes: NodeRecord[],
+) {
+  const match = channelNode(channelId, knownNodes);
 
   if (!match) {
     return;
   }
 
   targets.push({ id: match.channelId, type: "channel" });
-  addInterfaceScopeTargets(targets, match.audioInterface.id);
+  addInterfaceScopeTargets(targets, match.audioInterface.id, knownNodes);
 }
 
 function addRoomScopeTargets(targets: AuditTarget[], node: NodeRecord) {
@@ -373,8 +389,8 @@ function addRoomScopeTargets(targets: AuditTarget[], node: NodeRecord) {
   }
 }
 
-function interfaceNode(interfaceId: string) {
-  for (const node of nodes) {
+function interfaceNode(interfaceId: string, knownNodes: NodeRecord[]) {
+  for (const node of knownNodes) {
     const audioInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
 
     if (audioInterface) {
@@ -385,8 +401,8 @@ function interfaceNode(interfaceId: string) {
   return undefined;
 }
 
-function channelNode(channelId: string) {
-  for (const node of nodes) {
+function channelNode(channelId: string, knownNodes: NodeRecord[]) {
+  for (const node of knownNodes) {
     for (const audioInterface of node.interfaces) {
       const channel = audioInterface.channels.find((candidate) =>
         channelScopeIds(node, audioInterface, candidate.index).includes(channelId),
@@ -446,9 +462,9 @@ async function recordUserAccessUpdateFailure(
 }
 
 async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
-  const result: typeof nodes = [];
+  const result: NodeRecord[] = [];
 
-  for (const node of nodes) {
+  for (const node of await nodeStore.list()) {
     if (await hasResourceScope(user, { id: node.id, type: "node" })) {
       result.push(node);
     }
@@ -861,106 +877,15 @@ app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.re
   return c.json({ data: await auditStore.list(auditFilters(query.data)) });
 });
 
-app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), async (c) =>
-  c.json({ data: await scopedNodes(currentUser(c)) }),
-);
-app.get(
-  "/api/v1/nodes/:nodeId/meters",
-  requirePermission("node:read", "meters.read", (c) => ({
-    id: c.req.param("nodeId"),
-    type: "node",
-  })),
-  async (c) => {
-    const nodeId = c.req.param("nodeId");
-    const frame = buildMeterFrame();
-
-    if (nodeId !== frame.nodeId) {
-      return c.json({ error: "Node not found" }, 404);
-    }
-
-    return c.json({ data: frame });
-  },
-);
-
-app.post(
-  "/api/v1/nodes/:nodeId/listen",
-  requirePermission("listen:monitor", "listen.monitor.start", (c) => ({
-    id: c.req.param("nodeId"),
-    type: "node",
-  })),
-  async (c) => {
-    const nodeId = c.req.param("nodeId");
-    const node = nodes.find((candidate) => candidate.id === nodeId);
-
-    if (!node) {
-      await recordAuditEvent(c, {
-        action: "listen.monitor.start.failed",
-        auth: currentAuth(c),
-        outcome: "failed",
-        permission: "listen:monitor",
-        reason: "node_not_found",
-        target: {
-          id: nodeId,
-          type: "node",
-        },
-      });
-
-      return c.json({ error: "Node not found" }, 404);
-    }
-
-    const sessionId = `listen_${randomUUID()}`;
-
-    await recordAuditEvent(c, {
-      action: "listen.monitor.start.succeeded",
-      auth: currentAuth(c),
-      correlationIds: {
-        listenSessionId: sessionId,
-      },
-      details: {
-        mode: "stubbed",
-        targetLatencyMs: 1500,
-      },
-      outcome: "succeeded",
-      permission: "listen:monitor",
-      target: {
-        id: node.id,
-        name: node.alias,
-        type: "node",
-      },
-    });
-
-    return c.json(
-      {
-        data: {
-          mode: "stubbed",
-          nodeId: node.id,
-          sessionId,
-          startedAt: new Date().toISOString(),
-          targetLatencyMs: 1500,
-        },
-      },
-      202,
-    );
-  },
-);
-
-app.get("/api/v1/meter-events", requirePermission("node:read", "meters.stream"), (c) => {
-  const user = currentUser(c);
-
-  return streamSSE(c, async (stream) => {
-    while (true) {
-      const frame = buildMeterFrame();
-
-      if (await hasResourceScope(user, { id: frame.nodeId, type: "node" })) {
-        await stream.writeSSE({
-          data: JSON.stringify(frame),
-          event: "meter",
-        });
-      }
-
-      await stream.sleep(1000);
-    }
-  });
+registerNodeRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
+  nodeStore,
+  recordAuditEvent,
+  requirePermission,
+  scopedNodes,
 });
 
 app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
