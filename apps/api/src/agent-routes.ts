@@ -25,6 +25,8 @@ import {
 import { storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
+import { uploadPolicyForCachedRecording, uploadQueueInputForPolicy } from "./upload-policies.js";
+import { enqueueRecordingUpload } from "./upload-queue.js";
 
 interface AgentRouteDependencies {
   app: Hono<AppBindings>;
@@ -461,6 +463,7 @@ export function registerAgentRoutes({
     recording.waveformPreview = stored.waveformPreview;
     await recordingStore.save(recording);
     const job = await completeRecordingJob(recording.id, jobId);
+    const uploadQueueItem = await queueCachedRecordingUpload(c, auth.credential, recording);
 
     await recordAuditEvent(c, {
       action: "recordings.cache_file.attach.succeeded",
@@ -475,6 +478,7 @@ export function registerAgentRoutes({
         jobStatus: job?.status,
         mimeType: stored.mimeType,
         size: stored.size,
+        uploadQueueItemId: uploadQueueItem?.id,
         waveformPeaks: stored.waveformPreview?.peaks.length,
       },
       outcome: "succeeded",
@@ -486,7 +490,7 @@ export function registerAgentRoutes({
       },
     });
 
-    return c.json({ data: { file: stored, recording } }, 201);
+    return c.json({ data: { file: stored, recording, uploadQueueItem } }, 201);
   });
 
   async function authenticateNode(
@@ -649,6 +653,82 @@ export function registerAgentRoutes({
         type: "recording",
       },
     });
+  }
+
+  async function queueCachedRecordingUpload(
+    c: Context<AppBindings>,
+    actor: NodeCredentialAuth,
+    recording: RecordingSummary,
+  ) {
+    const policy = await uploadPolicyForCachedRecording(recording);
+
+    if (!policy) {
+      return undefined;
+    }
+
+    try {
+      const item = await enqueueRecordingUpload(
+        recording,
+        uploadQueueInputForPolicy(policy, "policy_on_recording_cached"),
+      );
+
+      await recordAuditEvent(c, {
+        action: "recordings.upload_queue.auto_enqueue.succeeded",
+        actor: nodeActor(actor),
+        correlationIds: {
+          recordingId: recording.id,
+          uploadQueueItemId: item.id,
+        },
+        details: {
+          provider: item.provider,
+          target: item.target,
+          trigger: policy.trigger,
+          uploadPolicyId: policy.id,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: {
+          id: recording.id,
+          name: recording.name,
+          type: "recording",
+        },
+      });
+
+      return item;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "upload_queue_auto_enqueue_failed";
+      const healthEvent = await healthEventStore.create({
+        details: {
+          reason,
+          source: "cache_file_attach",
+          uploadPolicyId: policy.id,
+        },
+        nodeId: actor.nodeId,
+        recordingId: recording.id,
+        severity: "warning",
+        type: "controller.recording.upload_queue_failed",
+      });
+
+      await syncRecordingHealth(healthEventStore, recordingStore, recording.id);
+      await recordAuditEvent(c, {
+        action: "recordings.upload_queue.auto_enqueue.failed",
+        actor: nodeActor(actor),
+        details: {
+          healthEventId: healthEvent.id,
+          uploadPolicyId: policy.id,
+        },
+        outcome: "failed",
+        permission: "recording:control",
+        reason,
+        target: {
+          id: recording.id,
+          name: recording.name,
+          type: "recording",
+        },
+      });
+
+      return undefined;
+    }
   }
 
   async function recordNodeCredentialFailure(

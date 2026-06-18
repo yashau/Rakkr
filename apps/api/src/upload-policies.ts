@@ -6,6 +6,7 @@ import {
   uploadPolicyInputSchema,
   uploadPolicySchema,
   uploadPolicyUpdateSchema,
+  type RecordingSummary,
   type UploadPolicy,
   type UploadPolicyInput,
   type UploadPolicyUpdate,
@@ -100,6 +101,26 @@ export function updateUploadPolicy(policyId: string, input: UploadPolicyUpdate) 
 
 export async function uploadPolicyForQueue(policyId: string | undefined) {
   return (await findUploadPolicy(policyId)) ?? defaultStubUploadPolicy;
+}
+
+export async function uploadPolicyForCachedRecording(recording: RecordingSummary) {
+  if (!recording.cached || recording.status !== "cached") {
+    return undefined;
+  }
+
+  const policy = await uploadPolicyForQueue(recording.uploadPolicyId);
+
+  return policy.enabled && policy.trigger === "on_recording_cached" ? policy : undefined;
+}
+
+export function uploadQueueInputForPolicy(policy: UploadPolicy, reason?: string) {
+  return {
+    maxAttempts: policy.maxAttempts,
+    policyId: policy.id,
+    provider: policy.provider,
+    reason,
+    target: policy.target,
+  };
 }
 
 function loadUploadPolicies() {

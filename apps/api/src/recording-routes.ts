@@ -18,7 +18,7 @@ import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recor
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
-import { uploadPolicyForQueue } from "./upload-policies.js";
+import { uploadPolicyForQueue, uploadQueueInputForPolicy } from "./upload-policies.js";
 import {
   enqueueRecordingUpload,
   listUploadQueueItems,
@@ -277,12 +277,10 @@ export function registerRecordingRoutes({
       }
 
       const item = await enqueueRecordingUpload(recording, {
-        maxAttempts: policy.maxAttempts,
-        policyId: policy.id,
+        ...uploadQueueInputForPolicy(policy, body.data.reason),
         provider: body.data.provider
           ? uploadProviderFromValue(body.data.provider)
           : policy.provider,
-        reason: body.data.reason,
         target: body.data.target ?? policy.target,
       });
 
