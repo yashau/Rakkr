@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  RecordingProfile,
   RecordingSummary,
   ScheduleOccurrencePreview,
   ScheduleRecurrence,
@@ -22,6 +23,14 @@ interface LocalDate {
   year: number;
 }
 
+export interface ScheduledRecordingTrack {
+  durationSeconds?: number;
+  offsetSeconds: number;
+  trackGroupId?: string;
+  trackIndex?: number;
+  trackTotal?: number;
+}
+
 const dayIndexes = {
   friday: 4,
   monday: 0,
@@ -40,8 +49,11 @@ export function materializeScheduledRecording(
   schedule: ScheduleSummary,
   node: ScheduleNode,
   now = new Date(),
+  track: ScheduledRecordingTrack = { offsetSeconds: 0 },
 ): RecordingSummary {
-  const context = templateContext(schedule, node, now);
+  const trackStart = new Date(now.getTime() + track.offsetSeconds * 1_000);
+  const context = templateContext(schedule, node, trackStart);
+  const baseName = safeText(renderTemplate(schedule.titleTemplate, context));
 
   return {
     cached: false,
@@ -49,17 +61,49 @@ export function materializeScheduledRecording(
     folder: safePath(renderTemplate(schedule.folderTemplate, context)),
     healthStatus: "unknown",
     id: `rec_${randomUUID()}`,
-    name: safeText(renderTemplate(schedule.titleTemplate, context)),
+    name: track.trackTotal
+      ? `${baseName} - Track ${track.trackIndex} of ${track.trackTotal}`
+      : baseName,
     nodeId: schedule.nodeId,
-    recordedAt: now.toISOString(),
+    recordedAt: trackStart.toISOString(),
     recordingProfileId: schedule.recordingProfileId,
     scheduleId: schedule.id,
     source: "schedule",
     status: "recording",
     tags: uniqueTags(schedule.tags),
+    trackGroupId: track.trackGroupId,
+    trackIndex: track.trackIndex,
+    trackTotal: track.trackTotal,
     uploadPolicyId: schedule.uploadPolicyId,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
+}
+
+export function scheduleRecordingTrackPlans(
+  schedule: ScheduleSummary,
+  profile?: RecordingProfile,
+): ScheduledRecordingTrack[] {
+  const durationSeconds = scheduleRecordingDurationSeconds(schedule);
+  const maxTrackSeconds = profile?.maxTrackSeconds;
+
+  if (!durationSeconds || !maxTrackSeconds || durationSeconds <= maxTrackSeconds) {
+    return [{ durationSeconds, offsetSeconds: 0 }];
+  }
+
+  const trackTotal = Math.ceil(durationSeconds / maxTrackSeconds);
+  const trackGroupId = `track_${randomUUID()}`;
+
+  return Array.from({ length: trackTotal }, (_, index) => {
+    const offsetSeconds = index * maxTrackSeconds;
+
+    return {
+      durationSeconds: Math.min(maxTrackSeconds, durationSeconds - offsetSeconds),
+      offsetSeconds,
+      trackGroupId,
+      trackIndex: index + 1,
+      trackTotal,
+    };
+  });
 }
 
 export function scheduleRecordingDurationSeconds(schedule: ScheduleSummary) {
@@ -120,6 +164,9 @@ export function recordingMetadataSnapshot(recording: RecordingSummary) {
     name: recording.name,
     recordingProfileId: recording.recordingProfileId,
     tags: recording.tags,
+    trackGroupId: recording.trackGroupId,
+    trackIndex: recording.trackIndex,
+    trackTotal: recording.trackTotal,
     uploadPolicyId: recording.uploadPolicyId,
     watchdogPolicyId: recording.watchdogPolicyId,
   };

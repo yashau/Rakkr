@@ -261,6 +261,9 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     source: row.source,
     status: row.status,
     tags: stringArray(row.tags),
+    trackGroupId: stringOrUndefined(metadata?.trackGroupId),
+    trackIndex: positiveIntegerOrUndefined(metadata?.trackIndex),
+    trackTotal: positiveIntegerOrUndefined(metadata?.trackTotal),
     uploadPolicyId: stringOrUndefined(metadata?.uploadPolicyId),
     watchdogPolicyId: stringOrUndefined(metadata?.watchdogPolicyId),
     waveformPreview: waveformPreviewOrUndefined(metadata?.waveformPreview),
@@ -271,6 +274,9 @@ function recordingMetadata(recording: RecordingSummary) {
   return {
     cached: recording.cached,
     recordingProfileId: recording.recordingProfileId,
+    trackGroupId: recording.trackGroupId,
+    trackIndex: recording.trackIndex,
+    trackTotal: recording.trackTotal,
     uploadPolicyId: recording.uploadPolicyId,
     watchdogPolicyId: recording.watchdogPolicyId,
     waveformPreview: recording.waveformPreview,
@@ -308,6 +314,10 @@ function stringArray(value: unknown) {
 
 function stringOrUndefined(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function positiveIntegerOrUndefined(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function isRecordingStore(value: unknown): value is { recordings: unknown[] } {

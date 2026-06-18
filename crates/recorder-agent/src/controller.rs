@@ -55,6 +55,9 @@ pub struct ControllerCaptureCommand {
     pub output_codec: Option<String>,
     pub output_file_name: String,
     pub output_vbr: Option<bool>,
+    pub track_group_id: Option<String>,
+    pub track_index: Option<u32>,
+    pub track_total: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -193,6 +196,9 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         job_id = %job.id,
         node_id = %job.node_id,
         recording_id = %job.recording_id,
+        track_group_id = ?job.command.track_group_id,
+        track_index = ?job.command.track_index,
+        track_total = ?job.command.track_total,
         "claimed recording job"
     );
     let channel_maps = if job.command.channel_map.is_some() {

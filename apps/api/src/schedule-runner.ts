@@ -3,20 +3,20 @@ import type { AuditEvent, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
 import type { NodeStore } from "./node-store.js";
-import { recordingJobTargetOptions } from "./recording-job-targets.js";
-import { createRecordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import {
   advanceScheduleAfterRun,
-  materializeScheduledRecording,
   recordingMetadataSnapshot,
   retryScheduleAfterFailure,
   scheduleExecutionSnapshot,
   scheduleIsDue,
   scheduleOccurrenceIsSkipped,
-  scheduleRecordingDurationSeconds,
   skipNextScheduleOccurrence,
 } from "./schedule-engine.js";
+import {
+  queueScheduledRecordings,
+  scheduledRecordingSegmentSnapshot,
+} from "./scheduled-recordings.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
 
@@ -30,10 +30,13 @@ interface ScheduleRunnerDependencies {
 
 export interface DueScheduleRun {
   jobId?: string;
+  jobIds?: string[];
   outcome: "failed" | "skipped" | "succeeded";
   recordingId?: string;
+  recordingIds?: string[];
   reason?: string;
   scheduleId: string;
+  segmentCount?: number;
 }
 
 export function createScheduleRunner(dependencies: ScheduleRunnerDependencies) {
@@ -142,47 +145,54 @@ export async function runDueSchedules(
     }
 
     try {
-      const recording = materializeScheduledRecording(schedule, node, now);
-
-      await recordingStore.create(recording);
-      const job = await createRecordingJob(
-        recording,
-        await recordingJobTargetOptions({
-          durationSeconds: scheduleRecordingDurationSeconds(schedule),
-          node,
-          recordingProfileId: recording.recordingProfileId,
-          settingsStore,
-        }),
-      );
+      const queued = await queueScheduledRecordings({
+        node,
+        now,
+        recordingStore,
+        schedule,
+        settingsStore,
+      });
+      const first = queued[0];
       const updates = advanceScheduleAfterRun(schedule, now);
       const updated = await scheduleStore.update(schedule.id, updates);
+
+      if (!first) {
+        throw new Error("schedule_due_run_created_no_recordings");
+      }
 
       await appendScheduleAudit(auditStore, {
         action: "schedules.due_run.succeeded",
         after: {
-          jobId: job.id,
+          jobId: first.job.id,
+          jobIds: queued.map((segment) => segment.job.id),
           nextSchedule: updated ? scheduleExecutionSnapshot(updated) : updates,
-          recordingId: recording.id,
-          recordingMetadata: recordingMetadataSnapshot(recording),
+          recordingId: first.recording.id,
+          recordingIds: queued.map((segment) => segment.recording.id),
+          recordingMetadata: recordingMetadataSnapshot(first.recording),
+          segments: queued.map(scheduledRecordingSegmentSnapshot),
         },
         before,
         correlationIds: {
-          jobId: job.id,
-          recordingId: recording.id,
+          jobId: first.job.id,
+          recordingId: first.recording.id,
           scheduleId: schedule.id,
         },
         details: {
           nodeId: node.id,
           recurrence: schedule.recurrence,
+          segmentCount: queued.length,
         },
         outcome: "succeeded",
         schedule,
       });
       results.push({
-        jobId: job.id,
+        jobId: first.job.id,
+        jobIds: queued.map((segment) => segment.job.id),
         outcome: "succeeded",
-        recordingId: recording.id,
+        recordingId: first.recording.id,
+        recordingIds: queued.map((segment) => segment.recording.id),
         scheduleId: schedule.id,
+        segmentCount: queued.length,
       });
     } catch (error) {
       const retryAt = retryScheduleAfterFailure(now);

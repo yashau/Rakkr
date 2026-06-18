@@ -27,6 +27,11 @@ import {
   type WatchdogPolicy,
   type WatchdogPolicyUpdate,
 } from "@rakkr/shared";
+import {
+  applyRecordingProfileUpdate,
+  recordingProfileMaxTrackSeconds,
+  recordingProfileSettings,
+} from "./recording-profile-settings.js";
 
 type RecordingProfileInsert = typeof recordingProfilesTable.$inferInsert;
 type RecordingProfileRow = typeof recordingProfilesTable.$inferSelect;
@@ -226,7 +231,7 @@ class JsonSettingsStore implements SettingsStore {
       return undefined;
     }
 
-    const updated = { ...this.profiles[index], ...update, id: profileId };
+    const updated = applyRecordingProfileUpdate(this.profiles[index], update, profileId);
     this.profiles[index] = updated;
     persistSettings(recordingProfileStorePath, "profiles", this.profiles);
 
@@ -533,7 +538,7 @@ class PostgresSettingsStore implements SettingsStore {
         return undefined;
       }
 
-      const updated = { ...existing, ...update, id: profileId };
+      const updated = applyRecordingProfileUpdate(existing, update, profileId);
       await this.writeRecordingProfile(updated);
 
       return updated;
@@ -886,7 +891,7 @@ function recordingProfileToRow(profile: RecordingProfile): RecordingProfileInser
     codec: profile.codec,
     id: profile.id,
     name: profile.name,
-    settings: {},
+    settings: recordingProfileSettings(profile),
     silenceDetectionEnabled: profile.silenceDetectionEnabled,
     silenceSkipEnabled: profile.silenceSkipEnabled,
     vbr: profile.vbr,
@@ -904,11 +909,14 @@ function watchdogPolicyToRow(policy: WatchdogPolicy): WatchdogPolicyInsert {
 }
 
 function recordingProfileFromRow(row: RecordingProfileRow): RecordingProfile {
+  const settings = record(row.settings) ?? {};
+
   return recordingProfileSchema.parse({
     bitrateKbps: row.bitrateKbps,
     channelMode: row.channelMode,
     codec: row.codec,
     id: row.id,
+    maxTrackSeconds: recordingProfileMaxTrackSeconds(settings.maxTrackSeconds),
     name: row.name,
     silenceDetectionEnabled: row.silenceDetectionEnabled,
     silenceSkipEnabled: row.silenceSkipEnabled,

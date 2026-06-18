@@ -65,6 +65,9 @@ export async function createRecordingJob(
       outputCodec: profile.codec,
       outputFileName: `${recording.id}.${profile.codec}`,
       outputVbr: profile.vbr,
+      trackGroupId: recording.trackGroupId,
+      trackIndex: recording.trackIndex,
+      trackTotal: recording.trackTotal,
       type: "alsa_capture",
     },
     createdAt: new Date().toISOString(),
@@ -84,7 +87,11 @@ export async function nextRecordingJob(nodeId: string) {
 
   return jobs
     .filter((job) => job.nodeId === nodeId && job.status === "queued")
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0];
+    .sort((left, right) => {
+      const createdOrder = left.createdAt.localeCompare(right.createdAt);
+
+      return createdOrder || trackOrder(left.command, right.command);
+    })[0];
 }
 
 export async function claimRecordingJob(jobId: string, claimedBy?: string) {
@@ -491,6 +498,9 @@ function commandFromValue(value: unknown): RecordingJobCommand {
     outputCodec: outputCodecFromUnknown(value.outputCodec),
     outputFileName: stringFromUnknown(value.outputFileName, "recording.wav"),
     outputVbr: typeof value.outputVbr === "boolean" ? value.outputVbr : undefined,
+    trackGroupId: stringOrUndefined(value.trackGroupId),
+    trackIndex: optionalPositiveInteger(value.trackIndex),
+    trackTotal: optionalPositiveInteger(value.trackTotal),
     type: "alsa_capture",
   };
 }
@@ -579,6 +589,14 @@ function channelModeFromUnknown(
 
 function outputCodecFromUnknown(value: unknown): RecordingJobCommand["outputCodec"] {
   return value === "mp3" || value === "flac" || value === "wav" ? value : undefined;
+}
+
+function trackOrder(left: RecordingJobCommand, right: RecordingJobCommand) {
+  if (left.trackGroupId && left.trackGroupId === right.trackGroupId) {
+    return (left.trackIndex ?? 0) - (right.trackIndex ?? 0);
+  }
+
+  return 0;
 }
 
 function isRecordingJobStore(value: unknown): value is { jobs: unknown[] } {

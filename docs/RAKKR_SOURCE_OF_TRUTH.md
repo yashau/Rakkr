@@ -160,6 +160,7 @@ Current partial implementation:
 - Channel map revisions, promotion metadata, assignment history, rollback.
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
+- Recording profiles can cap max track length for scheduled auto-splitting.
 
 ## Node Inventory
 
@@ -202,6 +203,7 @@ Current partial implementation:
 - Preview, create, edit, run-now, skip-next, delete.
 - Recurrence tests for buffers, pauses, monthly clamping, overnight duration, and skip-next.
 - Runner creates jobs under `system:scheduler` and audits outcomes.
+- Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
 
 ## Health Watchdog
 
@@ -447,7 +449,8 @@ Examples:
 8. ✅ Add checksum verification for confirmed uploads.
 9. ✅ Add RBAC-gated controller meter-preview listen stream.
 10. ✅ Add controller TLS bootstrap and agent plaintext transport guard.
-11. ⏸️ Return to X32 hardware validation after device is confirmed.
+11. ✅ Add schedule profile max-track splitting.
+12. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

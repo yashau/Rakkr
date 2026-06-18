@@ -7,11 +7,8 @@ import type {
   ChannelMapTemplateUpdate,
   RecorderNode,
   RecordingProfile,
-  RecordingProfileUpdate,
-  UploadProviderConfigUpdate,
   UploadProviderRuntimeStatus,
   WatchdogPolicy,
-  WatchdogPolicyUpdate,
 } from "@rakkr/shared";
 import {
   Cable,
@@ -34,6 +31,12 @@ import { UploadPolicyPanel } from "@/components/upload-policy-panel";
 import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import {
+  optionalPositiveNumber,
+  recordingProfileUpdate,
+  uploadProviderUpdate,
+  watchdogPolicyUpdate,
+} from "@/lib/settings-updates";
 import { uploadProviderStatusClass } from "@/lib/upload-status";
 
 export function SettingsPage() {
@@ -311,6 +314,20 @@ function RecordingProfileCard({ profile }: { profile: RecordingProfile }) {
             }
             type="number"
             value={draft.bitrateKbps}
+          />
+        </Field>
+        <Field label="Max Track Seconds">
+          <Input
+            min={1}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                maxTrackSeconds: optionalPositiveNumber(event.target.value),
+              }))
+            }
+            placeholder="Disabled"
+            type="number"
+            value={draft.maxTrackSeconds ?? ""}
           />
         </Field>
         <Field label="Channel Mode">
@@ -842,47 +859,6 @@ function Toggle({
       {label}
     </label>
   );
-}
-
-function recordingProfileUpdate(profile: RecordingProfile): RecordingProfileUpdate {
-  return {
-    bitrateKbps: profile.bitrateKbps,
-    channelMode: profile.channelMode,
-    codec: profile.codec,
-    name: profile.name,
-    silenceDetectionEnabled: profile.silenceDetectionEnabled,
-    silenceSkipEnabled: profile.silenceSkipEnabled,
-    vbr: profile.vbr,
-  };
-}
-
-function watchdogPolicyUpdate(policy: WatchdogPolicy): WatchdogPolicyUpdate {
-  return {
-    activeDuring: policy.activeDuring,
-    graceSeconds: policy.graceSeconds,
-    metric: policy.metric,
-    minCumulativeSecondsAboveThreshold: policy.minCumulativeSecondsAboveThreshold,
-    name: policy.name,
-    repeatEverySeconds: policy.repeatEverySeconds,
-    severity: policy.severity,
-    thresholdDbfs: policy.thresholdDbfs,
-    windowSeconds: policy.windowSeconds,
-  };
-}
-
-function uploadProviderUpdate(provider: UploadProviderRuntimeStatus): UploadProviderConfigUpdate {
-  return {
-    credentialRef: optionalText(provider.credentialRef),
-    displayName: provider.displayName,
-    enabled: provider.enabled,
-    target: optionalText(provider.target),
-  };
-}
-
-function optionalText(value: string | undefined) {
-  const trimmed = value?.trim();
-
-  return trimmed || undefined;
 }
 
 function defaultChannelMapTemplate() {

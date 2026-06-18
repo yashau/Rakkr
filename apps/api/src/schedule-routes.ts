@@ -12,19 +12,19 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
-import { recordingJobTargetOptions } from "./recording-job-targets.js";
-import { createRecordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import {
-  materializeScheduledRecording,
   nextRunAtForRecurrence,
   previewScheduleOccurrences,
   recordingMetadataSnapshot,
-  scheduleRecordingDurationSeconds,
   scheduleExecutionSnapshot,
   skipNextScheduleOccurrence,
   uniqueTags,
 } from "./schedule-engine.js";
+import {
+  queueScheduledRecordings,
+  scheduledRecordingSegmentSnapshot,
+} from "./scheduled-recordings.js";
 import { ScheduleStoreError, type ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
 
@@ -229,37 +229,41 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule node not found" }, 409);
       }
 
-      const recording = materializeScheduledRecording(schedule, node);
+      const queued = await queueScheduledRecordings({
+        node,
+        recordingStore,
+        schedule,
+        settingsStore,
+      });
+      const first = queued[0];
       const before = scheduleExecutionSnapshot(schedule);
 
-      await recordingStore.create(recording);
-      const job = await createRecordingJob(
-        recording,
-        await recordingJobTargetOptions({
-          durationSeconds: scheduleRecordingDurationSeconds(schedule),
-          node,
-          recordingProfileId: recording.recordingProfileId,
-          settingsStore,
-        }),
-      );
+      if (!first) {
+        await recordScheduleRunFailure(c, scheduleId, "schedule_run_created_no_recordings");
+        return c.json({ error: "Schedule could not create recordings" }, 503);
+      }
 
       await recordAuditEvent(c, {
         action: "schedules.run_now.succeeded",
         after: {
-          jobId: job.id,
-          recordingId: recording.id,
-          recordingMetadata: recordingMetadataSnapshot(recording),
+          jobId: first.job.id,
+          jobIds: queued.map((segment) => segment.job.id),
+          recordingId: first.recording.id,
+          recordingIds: queued.map((segment) => segment.recording.id),
+          recordingMetadata: recordingMetadataSnapshot(first.recording),
+          segments: queued.map(scheduledRecordingSegmentSnapshot),
         },
         auth: currentAuth(c),
         before,
         correlationIds: {
-          jobId: job.id,
-          recordingId: recording.id,
+          jobId: first.job.id,
+          recordingId: first.recording.id,
           scheduleId: schedule.id,
         },
         details: {
           folderTemplate: schedule.folderTemplate,
           recordingProfileId: schedule.recordingProfileId,
+          segmentCount: queued.length,
           titleTemplate: schedule.titleTemplate,
           watchdogPolicyId: schedule.watchdogPolicyId,
         },
@@ -272,7 +276,14 @@ export function registerScheduleRoutes({
         },
       });
 
-      return c.json({ data: recording, job }, 202);
+      return c.json(
+        {
+          data: first.recording,
+          job: first.job,
+          segments: queued.map(scheduledRecordingSegmentSnapshot),
+        },
+        202,
+      );
     },
   );
 

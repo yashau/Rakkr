@@ -3,6 +3,7 @@ import type {
   ChannelMapTemplateAssignment,
   RecorderNode,
   RecordingJobChannelMap,
+  RecordingProfile,
 } from "@rakkr/shared";
 
 import type { SettingsStore } from "./settings-store.js";
@@ -10,6 +11,7 @@ import type { SettingsStore } from "./settings-store.js";
 interface RecordingJobTargetInput {
   durationSeconds?: number;
   node?: RecorderNode;
+  profile?: RecordingProfile;
   recordingProfileId?: string;
   settingsStore: SettingsStore;
 }
@@ -17,14 +19,15 @@ interface RecordingJobTargetInput {
 export async function recordingJobTargetOptions({
   durationSeconds,
   node,
+  profile: providedProfile,
   recordingProfileId,
   settingsStore,
 }: RecordingJobTargetInput) {
   const captureInterfaceId =
     process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ?? node?.interfaces[0]?.id;
-  const profile = recordingProfileId
-    ? await settingsStore.findRecordingProfile(recordingProfileId)
-    : undefined;
+  const profile =
+    providedProfile ??
+    (recordingProfileId ? await settingsStore.findRecordingProfile(recordingProfileId) : undefined);
   const channelMap = node
     ? await activeChannelMapSelection({
         captureInterfaceId,

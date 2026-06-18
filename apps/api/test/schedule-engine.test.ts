@@ -5,6 +5,7 @@ import type { ScheduleRecurrence, ScheduleSummary } from "@rakkr/shared";
 import {
   nextRunAtForRecurrence,
   previewScheduleOccurrences,
+  scheduleRecordingTrackPlans,
   scheduleRecordingDurationSeconds,
   skipNextScheduleOccurrence,
 } from "../src/schedule-engine";
@@ -95,6 +96,44 @@ describe("schedule recurrence engine", () => {
     });
 
     assert.equal(scheduleRecordingDurationSeconds(schedule), 3_600);
+  });
+
+  it("splits scheduled recording windows by profile track length", () => {
+    const schedule = scheduleFixture({
+      recurrence: {
+        endTime: "11:00",
+        interval: 1,
+        mode: "daily",
+        startTime: "09:00",
+      },
+    });
+
+    const tracks = scheduleRecordingTrackPlans(schedule, {
+      bitrateKbps: 128,
+      channelMode: "mono_to_stereo_mix",
+      codec: "mp3",
+      id: "voice-split",
+      maxTrackSeconds: 2_700,
+      name: "Voice Split",
+      silenceDetectionEnabled: false,
+      silenceSkipEnabled: false,
+      vbr: true,
+    });
+
+    assert.deepEqual(
+      tracks.map((track) => ({
+        durationSeconds: track.durationSeconds,
+        offsetSeconds: track.offsetSeconds,
+        trackIndex: track.trackIndex,
+        trackTotal: track.trackTotal,
+      })),
+      [
+        { durationSeconds: 2_700, offsetSeconds: 0, trackIndex: 1, trackTotal: 3 },
+        { durationSeconds: 2_700, offsetSeconds: 2_700, trackIndex: 2, trackTotal: 3 },
+        { durationSeconds: 1_800, offsetSeconds: 5_400, trackIndex: 3, trackTotal: 3 },
+      ],
+    );
+    assert.equal(new Set(tracks.map((track) => track.trackGroupId)).size, 1);
   });
 
   it("adds skip-next exceptions and advances to the next eligible occurrence", () => {

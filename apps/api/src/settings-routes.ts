@@ -608,6 +608,7 @@ function profileSnapshot(profile: RecordingProfile) {
     channelMode: profile.channelMode,
     codec: profile.codec,
     id: profile.id,
+    maxTrackSeconds: profile.maxTrackSeconds,
     name: profile.name,
     silenceDetectionEnabled: profile.silenceDetectionEnabled,
     silenceSkipEnabled: profile.silenceSkipEnabled,
