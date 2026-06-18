@@ -581,16 +581,10 @@ export function registerAgentRoutes({
 
     const recording = await markRecordingJobTerminalRecording(job.recordingId, terminalState);
 
-    await recordJobSuccess(
-      c,
-      `recording_jobs.${terminalState}.succeeded`,
-      auth.credential,
-      job,
-      {
-        reason: job.failureReason,
-        recordingStatus: recording?.status,
-      },
-    );
+    await recordJobSuccess(c, `recording_jobs.${terminalState}.succeeded`, auth.credential, job, {
+      reason: job.failureReason,
+      recordingStatus: recording?.status,
+    });
 
     return c.json({ data: job });
   }

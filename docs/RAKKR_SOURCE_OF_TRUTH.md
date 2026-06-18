@@ -226,7 +226,7 @@ Current scaffold:
 - Lifecycle health events in Postgres plus local node JSONL logs.
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
 - Local meter frames include speech/noise scores; speech-required policies can alert on loud non-speech audio.
-- Agent capture jobs fail and log health events for too-small or stalled output files.
+- Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 
@@ -429,8 +429,9 @@ Examples:
 ## Focus Queue
 
 1. ✅ Add local VAD and noise/speech scoring.
-2. ✅ Harden recording file-growth and encoder-failure detection.
-3. ⏸️ Return to X32 hardware validation after device is confirmed.
+2. ✅ Harden recording file-growth and terminal failure transitions.
+3. 🚧 Add profile-driven encoder output for MP3 VBR/WAV/FLAC.
+4. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
