@@ -104,6 +104,15 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CAPTURE_CHANNELS", default_value_t = 2)]
     pub capture_channels: u16,
 
+    #[arg(long, env = "RAKKR_CAPTURE_MIN_OUTPUT_BYTES", default_value_t = 128)]
+    pub capture_min_output_bytes: u64,
+
+    #[arg(long, env = "RAKKR_CAPTURE_GROWTH_GRACE_SECONDS", default_value_t = 10)]
+    pub capture_growth_grace_seconds: u64,
+
+    #[arg(long, env = "RAKKR_CAPTURE_STALLED_SECONDS", default_value_t = 30)]
+    pub capture_stalled_seconds: u64,
+
     #[arg(long, env = "RAKKR_METER_BACKEND", value_enum, default_value_t = MeterBackend::Alsa)]
     pub meter_backend: MeterBackend,
 

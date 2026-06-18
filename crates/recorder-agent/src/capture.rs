@@ -1,6 +1,7 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use serde::Serialize;
@@ -36,10 +37,13 @@ pub struct CapturePlan {
     pub command: String,
     pub device: String,
     pub format: String,
+    pub growth_grace_seconds: u64,
+    pub min_output_bytes: u64,
     pub output_path: PathBuf,
     pub render_command: String,
     pub sample_rate: u32,
     pub seconds: u64,
+    pub stalled_seconds: u64,
 }
 
 pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CapturePlan> {
@@ -49,10 +53,13 @@ pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CaptureP
         command: config.capture_command.clone(),
         device: config.capture_device.clone(),
         format: config.capture_format.clone(),
+        growth_grace_seconds: config.capture_growth_grace_seconds,
+        min_output_bytes: config.capture_min_output_bytes,
         output_path: capture_output_path(config)?,
         render_command: config.channel_render_command.clone(),
         sample_rate: config.capture_sample_rate,
         seconds: config.capture_seconds,
+        stalled_seconds: config.capture_stalled_seconds,
     })
 }
 
@@ -132,6 +139,12 @@ pub fn spawn_capture_plan(plan: &CapturePlan) -> anyhow::Result<CaptureChild> {
     Ok(CaptureChild {
         child,
         command: plan.command.clone(),
+        min_output_bytes: plan.min_output_bytes,
+        monitor: CaptureGrowthMonitor::new(
+            plan.growth_grace_seconds,
+            plan.stalled_seconds,
+            Instant::now(),
+        ),
         output_path: output_path.clone(),
     })
 }
@@ -139,6 +152,8 @@ pub fn spawn_capture_plan(plan: &CapturePlan) -> anyhow::Result<CaptureChild> {
 pub struct CaptureChild {
     child: Child,
     command: String,
+    min_output_bytes: u64,
+    monitor: CaptureGrowthMonitor,
     output_path: PathBuf,
 }
 
@@ -159,9 +174,17 @@ impl CaptureChild {
             );
         }
 
-        verify_capture_output(&self.output_path)?;
+        verify_capture_output(&self.output_path, self.min_output_bytes)?;
 
         Ok(Some(self.output_path.clone()))
+    }
+
+    pub fn check_growth(&mut self) -> anyhow::Result<CaptureGrowthSnapshot> {
+        let size_bytes = fs::metadata(&self.output_path)
+            .ok()
+            .map(|metadata| metadata.len());
+
+        self.monitor.observe(size_bytes, Instant::now())
     }
 
     pub fn stop(&mut self) -> anyhow::Result<()> {
@@ -186,18 +209,82 @@ impl CaptureChild {
             );
         }
 
-        verify_capture_output(&self.output_path)?;
+        verify_capture_output(&self.output_path, self.min_output_bytes)?;
 
         Ok(self.output_path)
     }
 }
 
-fn verify_capture_output(output_path: &PathBuf) -> anyhow::Result<()> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CaptureGrowthSnapshot {
+    pub age_seconds: u64,
+    pub last_growth_seconds_ago: u64,
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Debug)]
+struct CaptureGrowthMonitor {
+    grace_period: Duration,
+    last_growth_at: Instant,
+    last_size_bytes: Option<u64>,
+    stalled_period: Duration,
+    started_at: Instant,
+}
+
+impl CaptureGrowthMonitor {
+    fn new(grace_seconds: u64, stalled_seconds: u64, started_at: Instant) -> Self {
+        Self {
+            grace_period: Duration::from_secs(grace_seconds),
+            last_growth_at: started_at,
+            last_size_bytes: None,
+            stalled_period: Duration::from_secs(stalled_seconds.max(1)),
+            started_at,
+        }
+    }
+
+    fn observe(
+        &mut self,
+        size_bytes: Option<u64>,
+        now: Instant,
+    ) -> anyhow::Result<CaptureGrowthSnapshot> {
+        if let Some(size) = size_bytes
+            && size > self.last_size_bytes.unwrap_or(0)
+        {
+            self.last_size_bytes = Some(size);
+            self.last_growth_at = now;
+        }
+
+        let age = now.duration_since(self.started_at);
+        let last_growth_age = now.duration_since(self.last_growth_at);
+        let snapshot = CaptureGrowthSnapshot {
+            age_seconds: age.as_secs(),
+            last_growth_seconds_ago: last_growth_age.as_secs(),
+            size_bytes,
+        };
+
+        if age <= self.grace_period {
+            return Ok(snapshot);
+        }
+
+        if last_growth_age >= self.stalled_period {
+            anyhow::bail!(
+                "capture output stalled: size={:?} age={}s unchanged={}s",
+                snapshot.size_bytes,
+                snapshot.age_seconds,
+                snapshot.last_growth_seconds_ago
+            );
+        }
+
+        Ok(snapshot)
+    }
+}
+
+fn verify_capture_output(output_path: &Path, min_output_bytes: u64) -> anyhow::Result<()> {
     let metadata = fs::metadata(output_path)
         .with_context(|| format!("inspect capture output {}", output_path.display()))?;
 
-    if metadata.len() == 0 {
-        anyhow::bail!("capture output is empty: {}", output_path.display());
+    if metadata.len() < min_output_bytes {
+        validate_capture_output_size(output_path, metadata.len(), min_output_bytes)?;
     }
 
     info!(
@@ -205,6 +292,23 @@ fn verify_capture_output(output_path: &PathBuf) -> anyhow::Result<()> {
         size = metadata.len(),
         "recording capture job completed"
     );
+
+    Ok(())
+}
+
+fn validate_capture_output_size(
+    output_path: &Path,
+    size_bytes: u64,
+    min_output_bytes: u64,
+) -> anyhow::Result<()> {
+    if size_bytes < min_output_bytes {
+        anyhow::bail!(
+            "capture output is too small: {} has {} bytes, expected at least {}",
+            output_path.display(),
+            size_bytes,
+            min_output_bytes
+        );
+    }
 
     Ok(())
 }
@@ -248,10 +352,13 @@ mod tests {
             capture_command: "arecord".to_string(),
             capture_device: "hw:2,0".to_string(),
             capture_format: "S16_LE".to_string(),
+            capture_growth_grace_seconds: 10,
+            capture_min_output_bytes: 128,
             capture_output: Some(PathBuf::from("/tmp/rec.wav")),
             capture_recording_id: Some("rec_123".to_string()),
             capture_sample_rate: 48_000,
             capture_seconds: 15,
+            capture_stalled_seconds: 30,
             controller_token: Some("token".to_string()),
             controller_url: "http://localhost:8787".to_string(),
             heartbeat_seconds: 5,
@@ -311,5 +418,28 @@ mod tests {
                 .unwrap()
                 .ends_with("rakkr-capture-rec_with_spaces.wav")
         );
+    }
+
+    #[test]
+    fn rejects_too_small_capture_output() {
+        let error = validate_capture_output_size(&PathBuf::from("small.wav"), 44, 128)
+            .expect_err("small file should fail");
+
+        assert!(error.to_string().contains("too small"));
+    }
+
+    #[test]
+    fn detects_stalled_capture_output_after_grace_period() {
+        let started_at = Instant::now();
+        let mut monitor = CaptureGrowthMonitor::new(5, 10, started_at);
+
+        monitor
+            .observe(None, started_at + Duration::from_secs(6))
+            .expect("inside stalled period");
+        let error = monitor
+            .observe(None, started_at + Duration::from_secs(16))
+            .expect_err("missing output should stall");
+
+        assert!(error.to_string().contains("capture output stalled"));
     }
 }

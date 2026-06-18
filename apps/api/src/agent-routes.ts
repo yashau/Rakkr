@@ -579,11 +579,44 @@ export function registerAgentRoutes({
       return c.json({ error: "Recording job not found" }, 404);
     }
 
-    await recordJobSuccess(c, `recording_jobs.${terminalState}.succeeded`, auth.credential, job, {
-      reason: job.failureReason,
-    });
+    const recording = await markRecordingJobTerminalRecording(job.recordingId, terminalState);
+
+    await recordJobSuccess(
+      c,
+      `recording_jobs.${terminalState}.succeeded`,
+      auth.credential,
+      job,
+      {
+        reason: job.failureReason,
+        recordingStatus: recording?.status,
+      },
+    );
 
     return c.json({ data: job });
+  }
+
+  async function markRecordingJobTerminalRecording(
+    recordingId: string,
+    terminalState: "cancelled" | "failed",
+  ) {
+    const recording = await recordingStore.find(recordingId);
+
+    if (!recording) {
+      return undefined;
+    }
+
+    const updated = {
+      ...recording,
+      status: "failed" as const,
+    };
+
+    await recordingStore.save(updated);
+    await syncRecordingHealth(healthEventStore, recordingStore, recordingId);
+
+    return {
+      ...updated,
+      terminalState,
+    };
   }
 
   async function recordJobSuccess(

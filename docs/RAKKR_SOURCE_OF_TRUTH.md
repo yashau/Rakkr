@@ -59,7 +59,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | Controller API | 🟦 | Auth, RBAC, audit, nodes, recordings, jobs, schedules, settings, metrics |
 | Controller UI | 🟦 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
-| Recorder agent | 🟦 | Inventory, meters, jobs, health log, loopback smoke tasks |
+| Recorder agent | 🟦 | Inventory, meters, jobs, capture growth guards, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟦 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
@@ -226,6 +226,7 @@ Current scaffold:
 - Lifecycle health events in Postgres plus local node JSONL logs.
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
 - Local meter frames include speech/noise scores; speech-required policies can alert on loud non-speech audio.
+- Agent capture jobs fail and log health events for too-small or stalled output files.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 
@@ -428,7 +429,7 @@ Examples:
 ## Focus Queue
 
 1. ✅ Add local VAD and noise/speech scoring.
-2. 🚧 Harden recording file-growth and encoder-failure detection.
+2. ✅ Harden recording file-growth and encoder-failure detection.
 3. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions

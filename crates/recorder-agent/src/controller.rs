@@ -280,7 +280,33 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 write_job_state(config, &job, "captured", Some(&output_path), None)?;
                 break output_path;
             }
-            Ok(None) => {}
+            Ok(None) => {
+                if let Err(error) = capture.check_growth() {
+                    let reason = error.to_string();
+
+                    let _ = capture.stop();
+                    let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+                    append_job_health_event(
+                        config,
+                        token,
+                        &job,
+                        "agent.recording_job.capture_output_stalled",
+                        "critical",
+                        json!({
+                            "device": capture_plan.device.as_str(),
+                            "error": reason.as_str(),
+                            "jobId": job.id.as_str(),
+                            "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
+                            "outputPath": capture_plan.output_path.display().to_string(),
+                            "recordingId": job.recording_id.as_str(),
+                        }),
+                    )
+                    .await?;
+                    write_job_state(config, &job, "failed", None, Some(&reason))?;
+
+                    return Err(error);
+                }
+            }
             Err(error) => {
                 let reason = error.to_string();
 

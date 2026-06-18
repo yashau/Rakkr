@@ -28,10 +28,13 @@ pub fn capture_plan_for_job(
         command: config.capture_command.clone(),
         device: job.command.capture_device.clone(),
         format: job.command.capture_format.clone(),
+        growth_grace_seconds: config.capture_growth_grace_seconds,
+        min_output_bytes: config.capture_min_output_bytes,
         output_path: local_capture_path(&job.command.output_file_name),
         render_command: config.channel_render_command.clone(),
         sample_rate: job.command.capture_sample_rate,
         seconds: job.command.duration_seconds,
+        stalled_seconds: config.capture_stalled_seconds,
     }
 }
 
