@@ -26,6 +26,7 @@ import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js"
 import { buildMeterFrame, nodes, prometheusMetrics, recordings, schedules } from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
+import { createRecordingStore } from "./recording-store.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -33,6 +34,7 @@ const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
+const recordingStore = createRecordingStore(recordings);
 type NodeRecord = (typeof nodes)[number];
 type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
@@ -144,7 +146,7 @@ function requirePermission(
     const auth = await authService.authenticate(c.req.header("authorization"));
     const auditTarget = await target(c);
     const hasPermission = auth.user?.permissions.includes(permission) ?? false;
-    const hasScope = auth.user ? hasResourceScope(auth.user, auditTarget) : false;
+    const hasScope = auth.user ? await hasResourceScope(auth.user, auditTarget) : false;
     const allowed = hasPermission && hasScope;
     const reason = authorizationReason({
       authenticated: Boolean(auth.user),
@@ -220,7 +222,7 @@ function accessSnapshot(user: CurrentUser | undefined) {
   };
 }
 
-function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
+async function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
   if (!user || !target.id) {
     return Boolean(user);
   }
@@ -229,7 +231,9 @@ function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
     return true;
   }
 
-  return resourceScopeTargets(target).some((candidate) =>
+  const targets = await resourceScopeTargets(target);
+
+  return targets.some((candidate) =>
     user.resourceGrants.some(
       (grant) =>
         (grant.resourceType === candidate.type || grant.resourceType === "*") &&
@@ -238,11 +242,11 @@ function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
   );
 }
 
-function resourceScopeTargets(target: AuditTarget): AuditTarget[] {
+async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]> {
   const targets = [target];
 
   if (target.type === "recording" && target.id) {
-    const recording = recordings.find((candidate) => candidate.id === target.id);
+    const recording = await recordingStore.find(target.id);
 
     if (recording?.scheduleId) {
       addScheduleScopeTargets(targets, recording.scheduleId);
@@ -384,20 +388,40 @@ function currentUser(c: Context<AppBindings>) {
   return user;
 }
 
-function scopedNodes(user: NonNullable<AuthResult["user"]>) {
-  return nodes.filter((node) => hasResourceScope(user, { id: node.id, type: "node" }));
+async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
+  const result: typeof nodes = [];
+
+  for (const node of nodes) {
+    if (await hasResourceScope(user, { id: node.id, type: "node" })) {
+      result.push(node);
+    }
+  }
+
+  return result;
 }
 
-function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
-  return schedules.filter((schedule) =>
-    hasResourceScope(user, { id: schedule.id, type: "schedule" }),
-  );
+async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
+  const result: typeof schedules = [];
+
+  for (const schedule of schedules) {
+    if (await hasResourceScope(user, { id: schedule.id, type: "schedule" })) {
+      result.push(schedule);
+    }
+  }
+
+  return result;
 }
 
-function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
-  return recordings.filter((recording) =>
-    hasResourceScope(user, { id: recording.id, type: "recording" }),
-  );
+async function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
+  const result = [];
+
+  for (const recording of await recordingStore.list()) {
+    if (await hasResourceScope(user, { id: recording.id, type: "recording" })) {
+      result.push(recording);
+    }
+  }
+
+  return result;
 }
 
 export const app = new Hono<AppBindings>();
@@ -427,9 +451,9 @@ app.get("/metrics", requirePermission("metrics:read", "metrics.read"), (c) =>
   }),
 );
 
-app.get("/api/v1/status", requirePermission("node:read", "status.read"), (c) => {
-  const visibleNodes = scopedNodes(currentUser(c));
-  const visibleRecordings = scopedRecordings(currentUser(c));
+app.get("/api/v1/status", requirePermission("node:read", "status.read"), async (c) => {
+  const visibleNodes = await scopedNodes(currentUser(c));
+  const visibleRecordings = await scopedRecordings(currentUser(c));
 
   return c.json({
     activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
@@ -628,8 +652,8 @@ app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.re
   return c.json({ data: await auditStore.list(auditFilters(query.data)) });
 });
 
-app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), (c) =>
-  c.json({ data: scopedNodes(currentUser(c)) }),
+app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), async (c) =>
+  c.json({ data: await scopedNodes(currentUser(c)) }),
 );
 app.get(
   "/api/v1/nodes/:nodeId/meters",
@@ -718,7 +742,7 @@ app.get("/api/v1/meter-events", requirePermission("node:read", "meters.stream"),
     while (true) {
       const frame = buildMeterFrame();
 
-      if (hasResourceScope(user, { id: frame.nodeId, type: "node" })) {
+      if (await hasResourceScope(user, { id: frame.nodeId, type: "node" })) {
         await stream.writeSSE({
           data: JSON.stringify(frame),
           event: "meter",
@@ -730,8 +754,8 @@ app.get("/api/v1/meter-events", requirePermission("node:read", "meters.stream"),
   });
 });
 
-app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), (c) =>
-  c.json({ data: scopedSchedules(currentUser(c)) }),
+app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
+  c.json({ data: await scopedSchedules(currentUser(c)) }),
 );
 
 registerRecordingRoutes({
@@ -739,7 +763,7 @@ registerRecordingRoutes({
   currentAuth,
   currentUser,
   recordAuditEvent,
-  recordings,
+  recordingStore,
   requirePermission,
   scopedRecordings,
 });

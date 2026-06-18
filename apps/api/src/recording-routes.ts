@@ -26,15 +26,16 @@ import {
   recordingHasCachedFile,
   storeRecordingFile,
 } from "./recording-cache.js";
+import type { RecordingStore } from "./recording-store.js";
 
 interface RecordingRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   recordAuditEvent: RecordAuditEvent;
-  recordings: RecordingSummary[];
+  recordingStore: RecordingStore;
   requirePermission: RequirePermission;
-  scopedRecordings: (user: NonNullable<AuthResult["user"]>) => RecordingSummary[];
+  scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
 
 export function registerRecordingRoutes({
@@ -42,7 +43,7 @@ export function registerRecordingRoutes({
   currentAuth,
   currentUser,
   recordAuditEvent,
-  recordings,
+  recordingStore,
   requirePermission,
   scopedRecordings,
 }: RecordingRouteDependencies) {
@@ -75,7 +76,7 @@ export function registerRecordingRoutes({
     disposition: "attachment" | "inline",
     permission: Permission,
   ) {
-    const recording = recordings.find((candidate) => candidate.id === recordingId);
+    const recording = await recordingStore.find(recordingId);
     const action =
       disposition === "attachment" ? "recordings.download.file" : "recordings.playback.stream";
 
@@ -132,8 +133,8 @@ export function registerRecordingRoutes({
     }
   }
 
-  app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), (c) =>
-    c.json({ data: scopedRecordings(currentUser(c)) }),
+  app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), async (c) =>
+    c.json({ data: await scopedRecordings(currentUser(c)) }),
   );
 
   app.get(
@@ -141,7 +142,7 @@ export function registerRecordingRoutes({
     requirePermission("recording:read", "recording_jobs.read"),
     async (c) => {
       const visibleRecordingIds = new Set(
-        scopedRecordings(currentUser(c)).map((recording) => recording.id),
+        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
       );
       const jobs = await listRecordingJobs();
 
@@ -193,10 +194,11 @@ export function registerRecordingRoutes({
         return c.json({ error: "Recording job is not claimable" }, 409);
       }
 
-      const recording = recordings.find((candidate) => candidate.id === job.recordingId);
+      const recording = await recordingStore.find(job.recordingId);
 
       if (recording) {
         recording.status = "recording";
+        await recordingStore.save(recording);
       }
 
       await recordAuditEvent(c, {
@@ -360,7 +362,7 @@ export function registerRecordingRoutes({
     })),
     async (c) => {
       const recordingId = c.req.param("recordingId");
-      const recording = recordings.find((candidate) => candidate.id === recordingId);
+      const recording = await recordingStore.find(recordingId);
 
       if (!recording || !recordingHasCachedFile(recording)) {
         await recordRecordingFileFailure(c, {
@@ -422,7 +424,7 @@ export function registerRecordingRoutes({
     })),
     async (c) => {
       const recordingId = c.req.param("recordingId");
-      const recording = recordings.find((candidate) => candidate.id === recordingId);
+      const recording = await recordingStore.find(recordingId);
 
       if (!recording || !recordingHasCachedFile(recording)) {
         await recordRecordingFileFailure(c, {
@@ -519,7 +521,7 @@ export function registerRecordingRoutes({
         tags: ["ad-hoc", "voice"],
       };
 
-      recordings.unshift(recording);
+      await recordingStore.create(recording);
       const job = await createRecordingJob(recording);
 
       await recordAuditEvent(c, {
@@ -556,7 +558,7 @@ export function registerRecordingRoutes({
     })),
     async (c) => {
       const recordingId = c.req.param("recordingId");
-      const recording = recordings.find((candidate) => candidate.id === recordingId);
+      const recording = await recordingStore.find(recordingId);
 
       if (!recording) {
         await recordAuditEvent(c, {
@@ -582,6 +584,7 @@ export function registerRecordingRoutes({
 
       recording.durationSeconds = Math.max(recording.durationSeconds, 1);
       recording.status = "completed";
+      await recordingStore.save(recording);
 
       await recordAuditEvent(c, {
         action: "recordings.stop.succeeded",
@@ -619,7 +622,7 @@ export function registerRecordingRoutes({
     })),
     async (c) => {
       const recordingId = c.req.param("recordingId");
-      const recording = recordings.find((candidate) => candidate.id === recordingId);
+      const recording = await recordingStore.find(recordingId);
 
       if (!recording) {
         await recordRecordingFileFailure(c, {
@@ -687,6 +690,7 @@ export function registerRecordingRoutes({
       recording.cachePath = stored.cachePath;
       recording.durationSeconds = durationSeconds ?? Math.max(recording.durationSeconds, 1);
       recording.status = "cached";
+      await recordingStore.save(recording);
       const job = await completeRecordingJob(recording.id, jobId);
 
       await recordAuditEvent(c, {

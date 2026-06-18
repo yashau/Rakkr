@@ -288,18 +288,14 @@ export const recordings = pgTable(
     durationSeconds: integer("duration_seconds").notNull().default(0),
     folder: text("folder").notNull(),
     healthStatus: varchar("health_status", { length: 32 }).notNull().default("unknown"),
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: varchar("id", { length: 160 }).primaryKey(),
     metadata: jsonb("metadata")
       .notNull()
       .default(sql`'{}'::jsonb`),
     name: text("name").notNull(),
-    nodeId: uuid("node_id").references(() => nodes.id, {
-      onDelete: "set null",
-    }),
+    nodeId: varchar("node_id", { length: 160 }),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
-    scheduleId: uuid("schedule_id").references(() => schedules.id, {
-      onDelete: "set null",
-    }),
+    scheduleId: varchar("schedule_id", { length: 160 }),
     source: recordingSourceEnum("source").notNull(),
     status: recordingStatusEnum("status").notNull(),
     tags: jsonb("tags")
@@ -349,9 +345,7 @@ export const healthEvents = pgTable(
       onDelete: "set null",
     }),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
-    recordingId: uuid("recording_id").references(() => recordings.id, {
-      onDelete: "set null",
-    }),
+    recordingId: varchar("recording_id", { length: 160 }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     scheduleId: uuid("schedule_id").references(() => schedules.id, {
       onDelete: "set null",

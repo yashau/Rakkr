@@ -43,6 +43,13 @@
       "when": 1781750061687,
       "tag": "0005_clumsy_terrax",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781750846230,
+      "tag": "0006_chilly_storm",
+      "breakpoints": true
     }
   ]
 }
