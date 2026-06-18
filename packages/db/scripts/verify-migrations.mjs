@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import postgres from "postgres";
 
 const DEFAULT_DATABASE_URL = "postgres://rakkr:rakkr@127.0.0.1:5432/rakkr";
@@ -17,8 +18,12 @@ function quoteIdentifier(identifier) {
 
 function runMigration(probeUrl) {
   const pnpmEntrypoint = process.env.npm_execpath;
-  const command = pnpmEntrypoint ? process.execPath : "pnpm";
-  const args = pnpmEntrypoint ? [pnpmEntrypoint, "db:migrate"] : ["db:migrate"];
+  const hasNodeEntrypoint =
+    pnpmEntrypoint &&
+    path.isAbsolute(pnpmEntrypoint) &&
+    [".cjs", ".js", ".mjs"].includes(path.extname(pnpmEntrypoint));
+  const command = hasNodeEntrypoint ? process.execPath : "pnpm";
+  const args = hasNodeEntrypoint ? [pnpmEntrypoint, "db:migrate"] : ["db:migrate"];
   const result = spawnSync(command, args, {
     env: { ...process.env, DATABASE_URL: probeUrl.toString() },
     stdio: "inherit",
