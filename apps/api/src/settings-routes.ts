@@ -1,7 +1,12 @@
 import type { Context, Hono } from "hono";
 import {
+  channelMapTemplateAssignmentInputSchema,
+  channelMapTemplateInputSchema,
+  channelMapTemplateUpdateSchema,
   recordingProfileUpdateSchema,
   watchdogPolicyUpdateSchema,
+  type ChannelMapTemplate,
+  type ChannelMapTemplateAssignment,
   type RecordingProfile,
   type WatchdogPolicy,
 } from "@rakkr/shared";
@@ -39,6 +44,22 @@ export function registerSettingsRoutes({
       type: "settings",
     })),
     async (c) => c.json({ data: await settingsStore.listWatchdogPolicies() }),
+  );
+
+  app.get(
+    "/api/v1/settings/channel-map-templates",
+    requirePermission("settings:read", "settings.channel_map_templates.read", () => ({
+      type: "settings",
+    })),
+    async (c) => c.json({ data: await settingsStore.listChannelMapTemplates() }),
+  );
+
+  app.get(
+    "/api/v1/settings/channel-map-assignments",
+    requirePermission("settings:read", "settings.channel_map_assignments.read", () => ({
+      type: "settings",
+    })),
+    async (c) => c.json({ data: await settingsStore.listChannelMapAssignments() }),
   );
 
   app.patch(
@@ -151,6 +172,150 @@ export function registerSettingsRoutes({
     },
   );
 
+  app.post(
+    "/api/v1/settings/channel-map-templates",
+    requirePermission("settings:manage", "settings.channel_map_templates.create", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = channelMapTemplateInputSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_templates.create.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid channel map template", issues: body.error.issues }, 400);
+      }
+
+      const created = await settingsStore.createChannelMapTemplate(body.data);
+
+      await recordAuditEvent(c, {
+        action: "settings.channel_map_templates.create.succeeded",
+        after: channelMapSnapshot(created),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: channelMapAuditTarget(created),
+      });
+
+      return c.json({ data: created }, 201);
+    },
+  );
+
+  app.patch(
+    "/api/v1/settings/channel-map-templates/:templateId",
+    requirePermission("settings:manage", "settings.channel_map_templates.update", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const templateId = c.req.param("templateId");
+      const before = await settingsStore.findChannelMapTemplate(templateId);
+
+      if (!before) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_templates.update.failed",
+          "not_found",
+          {
+            id: templateId,
+            type: "channel_map_template",
+          },
+        );
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const body = channelMapTemplateUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_templates.update.failed",
+          "invalid_request",
+          channelMapAuditTarget(before),
+        );
+        return c.json({ error: "Invalid channel map template", issues: body.error.issues }, 400);
+      }
+
+      const updated = await settingsStore.updateChannelMapTemplate(templateId, body.data);
+
+      if (!updated) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_templates.update.failed",
+          "not_found",
+          channelMapAuditTarget(before),
+        );
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "settings.channel_map_templates.update.succeeded",
+        after: channelMapSnapshot(updated),
+        auth: currentAuth(c),
+        before: channelMapSnapshot(before),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: channelMapAuditTarget(updated),
+      });
+
+      return c.json({ data: updated });
+    },
+  );
+
+  app.put(
+    "/api/v1/settings/channel-map-assignments",
+    requirePermission("settings:manage", "settings.channel_map_assignments.update", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = channelMapTemplateAssignmentInputSchema.safeParse(
+        await c.req.json().catch(() => ({})),
+      );
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignments.update.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid channel map assignment", issues: body.error.issues }, 400);
+      }
+
+      const template = await settingsStore.findChannelMapTemplate(body.data.templateId);
+
+      if (!template) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignments.update.failed",
+          "template_not_found",
+          {
+            id: body.data.templateId,
+            type: "channel_map_template",
+          },
+        );
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const assignment = await settingsStore.assignChannelMapTemplate(
+        body.data,
+        currentAuth(c).user?.id,
+      );
+
+      await recordAuditEvent(c, {
+        action: "settings.channel_map_assignments.update.succeeded",
+        after: assignmentSnapshot(assignment),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: assignmentAuditTarget(assignment),
+      });
+
+      return c.json({ data: assignment });
+    },
+  );
+
   async function recordSettingsFailure(
     c: Context<AppBindings>,
     action: string,
@@ -173,6 +338,42 @@ function profileAuditTarget(profile: RecordingProfile) {
     id: profile.id,
     name: profile.name,
     type: "recording_profile",
+  };
+}
+
+function channelMapAuditTarget(template: ChannelMapTemplate) {
+  return {
+    id: template.id,
+    name: template.name,
+    type: "channel_map_template",
+  };
+}
+
+function channelMapSnapshot(template: ChannelMapTemplate) {
+  return {
+    channelMode: template.channelMode,
+    entries: template.entries,
+    id: template.id,
+    name: template.name,
+    tags: template.tags,
+  };
+}
+
+function assignmentAuditTarget(assignment: ChannelMapTemplateAssignment) {
+  return {
+    id: `${assignment.targetType}:${assignment.targetId}`,
+    name: assignment.templateId,
+    type: "channel_map_assignment",
+  };
+}
+
+function assignmentSnapshot(assignment: ChannelMapTemplateAssignment) {
+  return {
+    assignedAt: assignment.assignedAt,
+    id: assignment.id,
+    targetId: assignment.targetId,
+    targetType: assignment.targetType,
+    templateId: assignment.templateId,
   };
 }
 

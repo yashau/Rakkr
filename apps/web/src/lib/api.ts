@@ -1,6 +1,11 @@
 import type {
   AuditEvent,
   AuditOutcome,
+  ChannelMapTemplate,
+  ChannelMapTemplateAssignment,
+  ChannelMapTemplateAssignmentInput,
+  ChannelMapTemplateInput,
+  ChannelMapTemplateUpdate,
   AccessGroup,
   AccessPolicy,
   AccessPolicyInput,
@@ -296,6 +301,37 @@ export const api = {
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
   watchdogPolicies: () =>
     fetchJson<{ data: WatchdogPolicy[] }>("/api/v1/settings/watchdog-policies"),
+  channelMapTemplates: () =>
+    fetchJson<{ data: ChannelMapTemplate[] }>("/api/v1/settings/channel-map-templates"),
+  channelMapAssignments: () =>
+    fetchJson<{ data: ChannelMapTemplateAssignment[] }>("/api/v1/settings/channel-map-assignments"),
+  createChannelMapTemplate: (input: ChannelMapTemplateInput) =>
+    fetchJson<{ data: ChannelMapTemplate }>("/api/v1/settings/channel-map-templates", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  updateChannelMapTemplate: (templateId: string, input: ChannelMapTemplateUpdate) =>
+    fetchJson<{ data: ChannelMapTemplate }>(
+      `/api/v1/settings/channel-map-templates/${templateId}`,
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      },
+    ),
+  assignChannelMapTemplate: (input: ChannelMapTemplateAssignmentInput) =>
+    fetchJson<{ data: ChannelMapTemplateAssignment }>("/api/v1/settings/channel-map-assignments", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PUT",
+    }),
   updateRecordingProfile: (profileId: string, input: RecordingProfileUpdate) =>
     fetchJson<{ data: RecordingProfile }>(`/api/v1/settings/recording-profiles/${profileId}`, {
       body: JSON.stringify(input),

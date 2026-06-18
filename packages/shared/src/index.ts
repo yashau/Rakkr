@@ -29,6 +29,7 @@ export const recordingJobStatusSchema = z.enum([
 ]);
 
 export const channelModeSchema = z.enum(["mono", "stereo", "mono_to_stereo_mix", "multichannel"]);
+export const templateAssignmentTargetSchema = z.enum(["interface", "node"]);
 
 export const permissions = [
   "audit:read",
@@ -238,6 +239,46 @@ export const recordingProfileUpdateSchema = z
     vbr: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one profile field is required");
+export const channelMapEntrySchema = z.object({
+  included: z.boolean(),
+  label: z.string().trim().min(1).max(160),
+  outputChannelIndex: z.number().int().positive().optional(),
+  sourceChannelIndex: z.number().int().positive(),
+});
+export const channelMapTemplateSchema = z.object({
+  channelMode: channelModeSchema,
+  entries: z.array(channelMapEntrySchema).min(1).max(128),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  tags: z.array(z.string().min(1)).default([]),
+});
+export const channelMapTemplateInputSchema = z.object({
+  channelMode: channelModeSchema.default("mono_to_stereo_mix"),
+  entries: z.array(channelMapEntrySchema).min(1).max(128),
+  id: z.string().trim().min(1).max(160).optional(),
+  name: z.string().trim().min(1).max(160),
+  tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
+});
+export const channelMapTemplateUpdateSchema = z
+  .object({
+    channelMode: channelModeSchema.optional(),
+    entries: z.array(channelMapEntrySchema).min(1).max(128).optional(),
+    name: z.string().trim().min(1).max(160).optional(),
+    tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one channel map field is required");
+export const channelMapTemplateAssignmentSchema = z.object({
+  assignedAt: isoDateTimeSchema,
+  id: z.string().min(1),
+  targetId: z.string().min(1),
+  targetType: templateAssignmentTargetSchema,
+  templateId: z.string().min(1),
+});
+export const channelMapTemplateAssignmentInputSchema = z.object({
+  targetId: z.string().trim().min(1).max(160),
+  targetType: templateAssignmentTargetSchema,
+  templateId: z.string().trim().min(1).max(160),
+});
 export const scheduleDayOfWeekSchema = z.enum([
   "monday",
   "tuesday",
@@ -469,6 +510,14 @@ export const defaultScheduledVoiceWatchdogPolicy = {
 } satisfies WatchdogPolicy;
 
 export type AudioChannel = z.infer<typeof audioChannelSchema>;
+export type ChannelMapEntry = z.infer<typeof channelMapEntrySchema>;
+export type ChannelMapTemplate = z.infer<typeof channelMapTemplateSchema>;
+export type ChannelMapTemplateAssignment = z.infer<typeof channelMapTemplateAssignmentSchema>;
+export type ChannelMapTemplateAssignmentInput = z.infer<
+  typeof channelMapTemplateAssignmentInputSchema
+>;
+export type ChannelMapTemplateInput = z.infer<typeof channelMapTemplateInputSchema>;
+export type ChannelMapTemplateUpdate = z.infer<typeof channelMapTemplateUpdateSchema>;
 export type AuditActorType = z.infer<typeof auditActorTypeSchema>;
 export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AuditOutcome = z.infer<typeof auditOutcomeSchema>;

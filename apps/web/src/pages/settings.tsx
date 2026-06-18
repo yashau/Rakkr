@@ -1,12 +1,16 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  ChannelMapEntry,
+  ChannelMapTemplate,
+  ChannelMapTemplateUpdate,
+  RecorderNode,
   RecordingProfile,
   RecordingProfileUpdate,
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
-import { Save, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { Cable, PlusCircle, Save, ShieldAlert, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +27,25 @@ export function SettingsPage() {
   const watchdogPoliciesQuery = useQuery({
     queryFn: api.watchdogPolicies,
     queryKey: ["watchdog-policies"],
+  });
+  const channelMapsQuery = useQuery({
+    queryFn: api.channelMapTemplates,
+    queryKey: ["channel-map-templates"],
+  });
+  const assignmentsQuery = useQuery({
+    queryFn: api.channelMapAssignments,
+    queryKey: ["channel-map-assignments"],
+  });
+  const nodesQuery = useQuery({
+    queryFn: api.nodes,
+    queryKey: ["nodes"],
+  });
+  const queryClient = useQueryClient();
+  const createChannelMapMutation = useMutation({
+    mutationFn: () => api.createChannelMapTemplate(defaultChannelMapTemplate()),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-templates"] });
+    },
   });
 
   return (
@@ -56,6 +79,37 @@ export function SettingsPage() {
       <div className="grid gap-4">
         {(watchdogPoliciesQuery.data?.data ?? []).map((policy) => (
           <WatchdogPolicyCard key={policy.id} policy={policy} />
+        ))}
+      </div>
+
+      <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Channel Maps</h2>
+          <p className="text-sm text-muted-foreground">Reusable node and interface routing.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
+            {channelMapsQuery.data?.data.length ?? 0} templates
+          </Badge>
+          <Button
+            disabled={createChannelMapMutation.isPending}
+            onClick={() => createChannelMapMutation.mutate()}
+            variant="outline"
+          >
+            <PlusCircle className="size-4" />
+            New
+          </Button>
+        </div>
+      </section>
+
+      <div className="grid gap-4">
+        {(channelMapsQuery.data?.data ?? []).map((template) => (
+          <ChannelMapTemplateCard
+            assignments={assignmentsQuery.data?.data ?? []}
+            key={template.id}
+            nodes={nodesQuery.data?.data ?? []}
+            template={template}
+          />
         ))}
       </div>
     </div>
@@ -331,6 +385,210 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
   );
 }
 
+function ChannelMapTemplateCard({
+  assignments,
+  nodes,
+  template,
+}: {
+  assignments: Array<{ targetId: string; targetType: "interface" | "node"; templateId: string }>;
+  nodes: RecorderNode[];
+  template: ChannelMapTemplate;
+}) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState(template);
+  const targetOptions = channelMapTargets(nodes);
+  const [selectedTarget, setSelectedTarget] = useState(targetOptions[0]?.value ?? "");
+  const assignedTargets = assignments.filter((assignment) => assignment.templateId === template.id);
+  const updateMutation = useMutation({
+    mutationFn: () => api.updateChannelMapTemplate(template.id, channelMapTemplateUpdate(draft)),
+    onSuccess: ({ data }) => {
+      setDraft(data);
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-templates"] });
+    },
+  });
+  const assignMutation = useMutation({
+    mutationFn: () => {
+      const target = parseTargetValue(selectedTarget);
+
+      return api.assignChannelMapTemplate({
+        targetId: target.id,
+        targetType: target.type,
+        templateId: template.id,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-assignments"] });
+    },
+  });
+
+  useEffect(() => {
+    setDraft(template);
+  }, [template]);
+
+  useEffect(() => {
+    if (!selectedTarget && targetOptions[0]) {
+      setSelectedTarget(targetOptions[0].value);
+    }
+  }, [selectedTarget, targetOptions]);
+
+  return (
+    <Card className="rounded-lg p-4 shadow-sm">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Cable className="size-4" />
+            <h3 className="text-base font-semibold">{template.name}</h3>
+            <Badge className="border-sky-200 bg-sky-50 text-sky-700" variant="outline">
+              {assignedTargets.length} targets
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {template.channelMode} / {template.entries.filter((entry) => entry.included).length}{" "}
+            active channels
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
+            <Save className="size-4" />
+            Save
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <Field label="Name">
+          <Input
+            onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+            value={draft.name}
+          />
+        </Field>
+        <Field label="Mode">
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                channelMode: event.target.value as ChannelMapTemplate["channelMode"],
+              }))
+            }
+            value={draft.channelMode}
+          >
+            <option value="mono">Mono</option>
+            <option value="stereo">Stereo</option>
+            <option value="mono_to_stereo_mix">Mono To Stereo Mix</option>
+            <option value="multichannel">Multichannel</option>
+          </select>
+        </Field>
+        <Field label="Tags">
+          <Input
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, tags: parseTags(event.target.value) }))
+            }
+            value={draft.tags.join(", ")}
+          />
+        </Field>
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        {draft.entries.map((entry, index) => (
+          <div
+            className="grid gap-2 rounded-md border border-border bg-muted/20 p-2 md:grid-cols-[90px_90px_1fr_120px_40px]"
+            key={index}
+          >
+            <Input
+              min={1}
+              onChange={(event) =>
+                setDraft((current) =>
+                  updateChannelEntry(current, index, {
+                    sourceChannelIndex: Number(event.target.value),
+                  }),
+                )
+              }
+              type="number"
+              value={entry.sourceChannelIndex}
+            />
+            <Input
+              min={1}
+              onChange={(event) =>
+                setDraft((current) =>
+                  updateChannelEntry(current, index, {
+                    outputChannelIndex: Number(event.target.value),
+                  }),
+                )
+              }
+              type="number"
+              value={entry.outputChannelIndex ?? ""}
+            />
+            <Input
+              onChange={(event) =>
+                setDraft((current) =>
+                  updateChannelEntry(current, index, {
+                    label: event.target.value,
+                  }),
+                )
+              }
+              value={entry.label}
+            />
+            <Toggle
+              checked={entry.included}
+              label="Included"
+              onChange={(checked) =>
+                setDraft((current) => updateChannelEntry(current, index, { included: checked }))
+              }
+            />
+            <Button
+              disabled={draft.entries.length <= 1}
+              onClick={() => setDraft((current) => removeChannelEntry(current, index))}
+              size="icon"
+              type="button"
+              variant="outline"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          className="justify-self-start"
+          onClick={() => setDraft((current) => addChannelEntry(current))}
+          type="button"
+          variant="outline"
+        >
+          <PlusCircle className="size-4" />
+          Add Channel
+        </Button>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-end">
+        <Field label="Assign Target">
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            onChange={(event) => setSelectedTarget(event.target.value)}
+            value={selectedTarget}
+          >
+            {targetOptions.map((target) => (
+              <option key={target.value} value={target.value}>
+                {target.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Button
+          disabled={!selectedTarget || assignMutation.isPending}
+          onClick={() => assignMutation.mutate()}
+          variant="outline"
+        >
+          <Cable className="size-4" />
+          Assign
+        </Button>
+      </div>
+
+      {updateMutation.isError || assignMutation.isError ? (
+        <p className="mt-3 text-sm text-destructive">Save failed.</p>
+      ) : null}
+    </Card>
+  );
+}
+
 function Field({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className="grid gap-1.5">
@@ -386,4 +644,96 @@ function watchdogPolicyUpdate(policy: WatchdogPolicy): WatchdogPolicyUpdate {
     thresholdDbfs: policy.thresholdDbfs,
     windowSeconds: policy.windowSeconds,
   };
+}
+
+function defaultChannelMapTemplate() {
+  return {
+    channelMode: "mono_to_stereo_mix" as const,
+    entries: [
+      {
+        included: true,
+        label: "Voice Channel 1",
+        outputChannelIndex: 1,
+        sourceChannelIndex: 1,
+      },
+    ],
+    name: "Voice Mono To Stereo",
+    tags: ["voice"],
+  };
+}
+
+function channelMapTemplateUpdate(template: ChannelMapTemplate): ChannelMapTemplateUpdate {
+  return {
+    channelMode: template.channelMode,
+    entries: template.entries,
+    name: template.name,
+    tags: template.tags,
+  };
+}
+
+function updateChannelEntry(
+  template: ChannelMapTemplate,
+  index: number,
+  patch: Partial<ChannelMapEntry>,
+) {
+  return {
+    ...template,
+    entries: template.entries.map((entry, entryIndex) =>
+      entryIndex === index ? { ...entry, ...patch } : entry,
+    ),
+  };
+}
+
+function addChannelEntry(template: ChannelMapTemplate) {
+  const nextIndex = template.entries.length + 1;
+
+  return {
+    ...template,
+    entries: [
+      ...template.entries,
+      {
+        included: true,
+        label: `Channel ${nextIndex}`,
+        outputChannelIndex: nextIndex,
+        sourceChannelIndex: nextIndex,
+      },
+    ],
+  };
+}
+
+function removeChannelEntry(template: ChannelMapTemplate, index: number) {
+  return {
+    ...template,
+    entries: template.entries.filter((_, entryIndex) => entryIndex !== index),
+  };
+}
+
+function parseTags(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function channelMapTargets(nodes: RecorderNode[]) {
+  return nodes.flatMap((node) => [
+    {
+      label: `${node.alias} / node`,
+      value: `node:${node.id}`,
+    },
+    ...node.interfaces.map((audioInterface) => ({
+      label: `${node.alias} / ${audioInterface.alias}`,
+      value: `interface:${audioInterface.id}`,
+    })),
+  ]);
+}
+
+function parseTargetValue(value: string): { id: string; type: "interface" | "node" } {
+  const [type, ...idParts] = value.split(":");
+
+  if (type !== "interface" && type !== "node") {
+    return { id: value, type: "node" as const };
+  }
+
+  return { id: idParts.join(":"), type };
 }

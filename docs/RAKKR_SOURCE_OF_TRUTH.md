@@ -261,7 +261,7 @@ Rakkr must support central settings for all recorders:
 - staged rollout and rollback;
 - en-masse deployment to similar recorders.
 
-Current scaffold status: recording profiles and watchdog policies now have a central settings store with JSON fallback and Postgres support through the existing `recording_profiles` and `watchdog_policies` tables. The default `voice-mp3-vbr` profile and `scheduled-voice-watchdog` policy are seeded from shared configuration, can be edited through RBAC-gated `settings:read` and `settings:manage` controller routes, and write before/after audit events for updates. The Settings UI exposes profile name, codec, bitrate, channel mode, VBR, silence detection, silence skip, watchdog active period, metric, threshold, window, grace, repeat cadence, minimum signal duration, and severity controls. The dashboard status reads the active profile and watchdog policy from the central store. Channel map templates, rollout/rollback, and node/interface assignment flows remain pending.
+Current scaffold status: recording profiles, watchdog policies, channel map templates, and channel-map assignments now have a central settings store with JSON fallback and Postgres support through the `recording_profiles`, `watchdog_policies`, `channel_map_templates`, and `template_assignments` tables. The default `voice-mp3-vbr` profile and `scheduled-voice-watchdog` policy are seeded from shared configuration, can be edited through RBAC-gated `settings:read` and `settings:manage` controller routes, and write before/after audit events for updates. The Settings UI exposes profile name, codec, bitrate, channel mode, VBR, silence detection, silence skip, watchdog active period, metric, threshold, window, grace, repeat cadence, minimum signal duration, severity, reusable channel-map entries, tags, and node/interface assignment controls. The dashboard status reads the active profile and watchdog policy from the central store. Rollout/rollback history and agent-side assignment application remain pending.
 
 ## Node Inventory
 
@@ -915,7 +915,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add channel map and node/interface assignment template settings foundations.
+1. Add settings rollout/rollback history and agent-side assignment application foundations.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 
