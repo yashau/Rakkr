@@ -8,6 +8,8 @@ import {
   Repeat2,
   RotateCcw,
   Save,
+  SkipForward,
+  Trash2,
 } from "lucide-react";
 import {
   defaultScheduledVoiceWatchdogPolicy,
@@ -33,6 +35,7 @@ interface ScheduleDraft {
   daysOfWeek: ScheduleDayOfWeek[];
   enabled: boolean;
   endTime: string;
+  exceptions: NonNullable<ScheduleRecurrence["exceptions"]>;
   folderTemplate: string;
   interval: number;
   name: string;
@@ -43,6 +46,8 @@ interface ScheduleDraft {
   recordingProfileId: string;
   room: string;
   startTime: string;
+  startEarlyMinutes: number;
+  stopLateMinutes: number;
   tags: string;
   timezone: string;
   titleTemplate: string;
@@ -89,6 +94,21 @@ export function SchedulesPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["recordings"] });
       void queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+    },
+  });
+  const skipNextMutation = useMutation({
+    mutationFn: api.skipScheduleNext,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+    },
+  });
+  const deleteScheduleMutation = useMutation({
+    mutationFn: api.deleteSchedule,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      setEditingId(undefined);
+      resetDraft(firstNode);
     },
   });
 
@@ -314,6 +334,32 @@ export function SchedulesPage() {
               </>
             ) : null}
 
+            {draft.recurrenceMode !== "manual" && draft.recurrenceMode !== "always_on" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-start-early">Start Early Minutes</Label>
+                <Input
+                  id="schedule-start-early"
+                  min={0}
+                  onChange={(event) => updateDraft("startEarlyMinutes", Number(event.target.value))}
+                  type="number"
+                  value={draft.startEarlyMinutes}
+                />
+              </div>
+            ) : null}
+
+            {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-stop-late">Stop Late Minutes</Label>
+                <Input
+                  id="schedule-stop-late"
+                  min={0}
+                  onChange={(event) => updateDraft("stopLateMinutes", Number(event.target.value))}
+                  type="number"
+                  value={draft.stopLateMinutes}
+                />
+              </div>
+            ) : null}
+
             {draft.recurrenceMode === "monthly" ? (
               <div className="grid gap-2">
                 <Label htmlFor="schedule-day-of-month">Day Of Month</Label>
@@ -456,6 +502,14 @@ export function SchedulesPage() {
                   <dt className="font-medium text-foreground">Watchdog</dt>
                   <dd>{schedule.watchdogPolicyId}</dd>
                 </div>
+                <div>
+                  <dt className="font-medium text-foreground">Buffers</dt>
+                  <dd>{bufferSummary(schedule.recurrence)}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-foreground">Skipped Dates</dt>
+                  <dd>{exceptionSummary(schedule.recurrence)}</dd>
+                </div>
               </dl>
             </div>
             <div className="grid gap-3 md:justify-items-end">
@@ -472,6 +526,28 @@ export function SchedulesPage() {
                 >
                   <CalendarPlus className="size-4" />
                   Run Now
+                </Button>
+                <Button
+                  disabled={skipNextMutation.isPending || !schedule.enabled || !schedule.nextRunAt}
+                  onClick={() => skipNextMutation.mutate(schedule.id)}
+                  type="button"
+                  variant="outline"
+                >
+                  <SkipForward className="size-4" />
+                  Skip Next
+                </Button>
+                <Button
+                  disabled={deleteScheduleMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Delete schedule "${schedule.name}"?`)) {
+                      deleteScheduleMutation.mutate(schedule.id);
+                    }
+                  }}
+                  type="button"
+                  variant="outline"
+                >
+                  <Trash2 className="size-4" />
+                  Delete
                 </Button>
               </div>
               <div className="flex flex-wrap gap-2 md:justify-end">
@@ -495,6 +571,12 @@ export function SchedulesPage() {
       {runNowMutation.isError ? (
         <p className="text-sm text-destructive">Schedule run failed.</p>
       ) : null}
+      {skipNextMutation.isError ? (
+        <p className="text-sm text-destructive">Schedule skip failed.</p>
+      ) : null}
+      {deleteScheduleMutation.isError ? (
+        <p className="text-sm text-destructive">Schedule delete failed.</p>
+      ) : null}
     </div>
   );
 }
@@ -505,6 +587,7 @@ function defaultDraft(node?: RecorderNode): ScheduleDraft {
     daysOfWeek: ["monday"],
     enabled: true,
     endTime: "10:00",
+    exceptions: [],
     folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
     interval: 1,
     name: "",
@@ -515,6 +598,8 @@ function defaultDraft(node?: RecorderNode): ScheduleDraft {
     recordingProfileId: defaultVoiceRecordingProfile.id,
     room: node?.location.room ?? "",
     startTime: "09:00",
+    startEarlyMinutes: 0,
+    stopLateMinutes: 0,
     tags: "voice, scheduled",
     timezone: fallbackTimezone,
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
@@ -562,15 +647,17 @@ function draftToInput(draft: ScheduleDraft): ScheduleInput {
 
 function recurrenceFromDraft(draft: ScheduleDraft): ScheduleRecurrence {
   const interval = Math.max(1, Math.floor(draft.interval || 1));
+  const options = recurrenceOptionsFromDraft(draft);
 
   if (draft.recurrenceMode === "manual") {
-    return { mode: "manual" };
+    return { mode: "manual", ...options };
   }
 
   if (draft.recurrenceMode === "once") {
     return {
       mode: "once",
       startsAt: isoFromLocalDateTime(draft.recurrenceStartAt) ?? new Date().toISOString(),
+      ...options,
     };
   }
 
@@ -580,6 +667,7 @@ function recurrenceFromDraft(draft: ScheduleDraft): ScheduleRecurrence {
       interval,
       mode: "daily",
       startTime: draft.startTime,
+      ...options,
     };
   }
 
@@ -590,6 +678,7 @@ function recurrenceFromDraft(draft: ScheduleDraft): ScheduleRecurrence {
       interval,
       mode: "weekly",
       startTime: draft.startTime,
+      ...options,
     };
   }
 
@@ -600,10 +689,22 @@ function recurrenceFromDraft(draft: ScheduleDraft): ScheduleRecurrence {
       interval,
       mode: "monthly",
       startTime: draft.startTime,
+      ...options,
     };
   }
 
-  return { mode: "always_on" };
+  return { mode: "always_on", ...options };
+}
+
+function recurrenceOptionsFromDraft(draft: ScheduleDraft) {
+  const startEarlySeconds = positiveMinutes(draft.startEarlyMinutes) * 60;
+  const stopLateSeconds = positiveMinutes(draft.stopLateMinutes) * 60;
+
+  return {
+    ...(draft.exceptions.length > 0 ? { exceptions: draft.exceptions } : {}),
+    ...(startEarlySeconds > 0 ? { startEarlySeconds } : {}),
+    ...(stopLateSeconds > 0 ? { stopLateSeconds } : {}),
+  };
 }
 
 function nextRunAtFromDraft(draft: ScheduleDraft, recurrence: ScheduleRecurrence) {
@@ -620,6 +721,10 @@ function nextRunAtFromDraft(draft: ScheduleDraft, recurrence: ScheduleRecurrence
 
 function applyRecurrenceToDraft(draft: ScheduleDraft, recurrence: ScheduleRecurrence) {
   const nextDraft = { ...draft, recurrenceMode: recurrence.mode };
+
+  nextDraft.exceptions = recurrence.exceptions ?? [];
+  nextDraft.startEarlyMinutes = secondsToMinutes(recurrence.startEarlySeconds);
+  nextDraft.stopLateMinutes = secondsToMinutes(recurrence.stopLateSeconds);
 
   if (recurrence.mode === "once") {
     return {
@@ -675,6 +780,14 @@ function uniqueTags(value: string) {
   ];
 }
 
+function positiveMinutes(value: number) {
+  return Math.max(0, Math.floor(value || 0));
+}
+
+function secondsToMinutes(value: number | undefined) {
+  return value ? Math.floor(value / 60) : 0;
+}
+
 function recurrenceSummary(recurrence: ScheduleRecurrence) {
   if (recurrence.mode === "manual") {
     return "Manual next run";
@@ -697,6 +810,23 @@ function recurrenceSummary(recurrence: ScheduleRecurrence) {
   }
 
   return "Always on";
+}
+
+function bufferSummary(recurrence: ScheduleRecurrence) {
+  const startEarly = secondsToMinutes(recurrence.startEarlySeconds);
+  const stopLate = secondsToMinutes(recurrence.stopLateSeconds);
+
+  if (startEarly === 0 && stopLate === 0) {
+    return "None";
+  }
+
+  return `Start ${startEarly}m early / stop ${stopLate}m late`;
+}
+
+function exceptionSummary(recurrence: ScheduleRecurrence) {
+  const exceptions = recurrence.exceptions ?? [];
+
+  return exceptions.length > 0 ? exceptions.map((exception) => exception.date).join(", ") : "None";
 }
 
 function intervalLabel(interval: number, unit: string) {

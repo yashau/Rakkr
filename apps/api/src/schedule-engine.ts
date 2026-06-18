@@ -56,6 +56,24 @@ export function materializeScheduledRecording(
   };
 }
 
+export function scheduleRecordingDurationSeconds(schedule: ScheduleSummary) {
+  const recurrence = schedule.recurrence;
+
+  if (
+    recurrence.mode !== "daily" &&
+    recurrence.mode !== "weekly" &&
+    recurrence.mode !== "monthly"
+  ) {
+    return undefined;
+  }
+
+  return (
+    timeRangeSeconds(recurrence.startTime, recurrence.endTime) +
+    recurrenceStartEarlySeconds(recurrence) +
+    recurrenceStopLateSeconds(recurrence)
+  );
+}
+
 export function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
   return {
     folderTemplate: schedule.folderTemplate,
@@ -84,6 +102,34 @@ export function scheduleIsDue(schedule: ScheduleSummary, now = new Date()) {
     Boolean(schedule.nextRunAt) &&
     Date.parse(schedule.nextRunAt ?? "") <= now.getTime()
   );
+}
+
+export function scheduleOccurrenceIsSkipped(schedule: ScheduleSummary) {
+  const occurrenceDate = scheduleOccurrenceDate(schedule);
+
+  return occurrenceDate ? skippedDates(schedule.recurrence).has(occurrenceDate) : false;
+}
+
+export function skipNextScheduleOccurrence(schedule: ScheduleSummary) {
+  const occurrenceDate = scheduleOccurrenceDate(schedule);
+
+  if (!schedule.nextRunAt || !occurrenceDate) {
+    return undefined;
+  }
+
+  const recurrence = recurrenceWithSkip(schedule.recurrence, occurrenceDate);
+  const updates = {
+    recurrence,
+    ...advanceScheduleAfterRun(
+      { ...schedule, recurrence },
+      new Date(Date.parse(schedule.nextRunAt)),
+    ),
+  };
+
+  return {
+    occurrenceDate,
+    updates,
+  };
 }
 
 export function advanceScheduleAfterRun(schedule: ScheduleSummary, now = new Date()) {
@@ -131,7 +177,7 @@ export function nextRunAtForRecurrence(
   }
 
   if (recurrence.mode === "once") {
-    return validIsoOrUndefined(recurrence.startsAt);
+    return runAtForCandidate(new Date(recurrence.startsAt), recurrence).toISOString();
   }
 
   if (recurrence.mode === "always_on") {
@@ -160,7 +206,7 @@ function nextDailyRunAt(
   previousRunAt?: string,
 ) {
   const anchor = previousRunAt
-    ? localDate(new Date(previousRunAt), timeZone)
+    ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
     : localDate(after, timeZone);
   const start = previousRunAt ? addDays(anchor, 1) : anchor;
 
@@ -171,10 +217,17 @@ function nextDailyRunAt(
       continue;
     }
 
-    const candidate = localDateTimeToUtc(candidateDate, recurrence.startTime, timeZone);
+    if (isSkippedDate(recurrence, candidateDate)) {
+      continue;
+    }
 
-    if (candidate.getTime() > after.getTime()) {
-      return candidate.toISOString();
+    const runAt = runAtForCandidate(
+      localDateTimeToUtc(candidateDate, recurrence.startTime, timeZone),
+      recurrence,
+    );
+
+    if (runAt.getTime() > after.getTime()) {
+      return runAt.toISOString();
     }
   }
 
@@ -188,7 +241,7 @@ function nextWeeklyRunAt(
   previousRunAt?: string,
 ) {
   const afterDate = previousRunAt
-    ? localDate(new Date(previousRunAt), timeZone)
+    ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
     : localDate(after, timeZone);
   const anchorWeek = weekStart(afterDate);
   const start = previousRunAt ? addDays(afterDate, 1) : afterDate;
@@ -205,10 +258,17 @@ function nextWeeklyRunAt(
       continue;
     }
 
-    const candidate = localDateTimeToUtc(candidateDate, recurrence.startTime, timeZone);
+    if (isSkippedDate(recurrence, candidateDate)) {
+      continue;
+    }
 
-    if (candidate.getTime() > after.getTime()) {
-      return candidate.toISOString();
+    const runAt = runAtForCandidate(
+      localDateTimeToUtc(candidateDate, recurrence.startTime, timeZone),
+      recurrence,
+    );
+
+    if (runAt.getTime() > after.getTime()) {
+      return runAt.toISOString();
     }
   }
 
@@ -222,7 +282,7 @@ function nextMonthlyRunAt(
   previousRunAt?: string,
 ) {
   const anchorDate = previousRunAt
-    ? localDate(new Date(previousRunAt), timeZone)
+    ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
     : localDate(after, timeZone);
   const anchorMonth = monthIndex(anchorDate);
   const firstOffset = previousRunAt ? recurrence.interval : 0;
@@ -241,7 +301,14 @@ function nextMonthlyRunAt(
       month,
       year,
     };
-    const candidate = localDateTimeToUtc(candidateDate, recurrence.startTime, timeZone);
+    if (isSkippedDate(recurrence, candidateDate)) {
+      continue;
+    }
+
+    const candidate = runAtForCandidate(
+      localDateTimeToUtc(candidateDate, recurrence.startTime, timeZone),
+      recurrence,
+    );
 
     if (candidate.getTime() > after.getTime()) {
       return candidate.toISOString();
@@ -266,6 +333,86 @@ function templateContext(schedule: ScheduleSummary, node: ScheduleNode, now: Dat
     ["time", clock.time],
     ["timestamp", now.toISOString()],
   ]);
+}
+
+function scheduleOccurrenceDate(schedule: ScheduleSummary) {
+  if (!schedule.nextRunAt) {
+    return undefined;
+  }
+
+  const scheduledDate = scheduledLocalDateFromRunAt(
+    schedule.nextRunAt,
+    schedule.recurrence,
+    schedule.timezone,
+  );
+
+  return localDateIso(scheduledDate);
+}
+
+function scheduledLocalDateFromRunAt(
+  runAt: string,
+  recurrence: ScheduleRecurrence,
+  timeZone: string,
+) {
+  const scheduledAt = new Date(Date.parse(runAt) + recurrenceStartEarlySeconds(recurrence) * 1_000);
+
+  return localDate(scheduledAt, timeZone);
+}
+
+function recurrenceWithSkip(recurrence: ScheduleRecurrence, date: string): ScheduleRecurrence {
+  const exceptions = [
+    ...exceptionList(recurrence).filter(
+      (exception) => !(exception.action === "skip" && exception.date === date),
+    ),
+    { action: "skip" as const, date },
+  ].sort((left, right) => left.date.localeCompare(right.date));
+
+  return {
+    ...recurrence,
+    exceptions,
+  };
+}
+
+function exceptionList(recurrence: ScheduleRecurrence) {
+  return recurrence.exceptions ?? [];
+}
+
+function skippedDates(recurrence: ScheduleRecurrence) {
+  return new Set(
+    exceptionList(recurrence)
+      .filter((exception) => exception.action === "skip")
+      .map((exception) => exception.date),
+  );
+}
+
+function isSkippedDate(recurrence: ScheduleRecurrence, date: LocalDate) {
+  return skippedDates(recurrence).has(localDateIso(date));
+}
+
+function runAtForCandidate(candidate: Date, recurrence: ScheduleRecurrence) {
+  return new Date(candidate.getTime() - recurrenceStartEarlySeconds(recurrence) * 1_000);
+}
+
+function recurrenceStartEarlySeconds(recurrence: ScheduleRecurrence) {
+  return recurrence.startEarlySeconds ?? 0;
+}
+
+function recurrenceStopLateSeconds(recurrence: ScheduleRecurrence) {
+  return recurrence.stopLateSeconds ?? 0;
+}
+
+function timeRangeSeconds(startTime: string, endTime: string) {
+  const start = secondsFromTime(startTime);
+  const end = secondsFromTime(endTime);
+  const duration = end > start ? end - start : end + 86_400 - start;
+
+  return Math.max(1, duration);
+}
+
+function secondsFromTime(value: string) {
+  const [hours = 0, minutes = 0] = value.split(":").map(Number);
+
+  return hours * 3_600 + minutes * 60;
 }
 
 function renderTemplate(template: string, values: Map<string, string>) {
@@ -409,6 +556,10 @@ function dayIndex(date: LocalDate) {
 
 function monthIndex(date: LocalDate) {
   return date.year * 12 + date.month - 1;
+}
+
+function localDateIso(date: LocalDate) {
+  return `${date.year}-${pad(date.month)}-${pad(date.day)}`;
 }
 
 function daysInMonth(year: number, month: number) {

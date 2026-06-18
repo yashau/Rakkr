@@ -7,6 +7,9 @@ import type { RecordingJob, RecordingJobStatus, RecordingSummary } from "@rakkr/
 type RecordingJobCommand = RecordingJob["command"];
 type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
 type RecordingJobRow = typeof recordingJobsTable.$inferSelect;
+interface RecordingJobOptions {
+  durationSeconds?: number;
+}
 
 interface RecordingJobStore {
   create(job: RecordingJob): Promise<void>;
@@ -31,14 +34,18 @@ export async function listRecordingJobs() {
   return expireRecordingJobLeases();
 }
 
-export async function createRecordingJob(recording: RecordingSummary): Promise<RecordingJob> {
+export async function createRecordingJob(
+  recording: RecordingSummary,
+  options: RecordingJobOptions = {},
+): Promise<RecordingJob> {
   const job: RecordingJob = {
     command: {
       captureChannels: positiveInteger(process.env.RAKKR_AGENT_CAPTURE_CHANNELS, 2),
       captureDevice: process.env.RAKKR_AGENT_CAPTURE_DEVICE ?? "default",
       captureFormat: process.env.RAKKR_AGENT_CAPTURE_FORMAT ?? "S16_LE",
       captureSampleRate: positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SAMPLE_RATE, 48_000),
-      durationSeconds: positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SECONDS, 3_600),
+      durationSeconds:
+        options.durationSeconds ?? positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SECONDS, 3_600),
       outputFileName: `${recording.id}.wav`,
       type: "alsa_capture",
     },

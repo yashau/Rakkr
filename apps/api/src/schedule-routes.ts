@@ -18,7 +18,9 @@ import {
   materializeScheduledRecording,
   nextRunAtForRecurrence,
   recordingMetadataSnapshot,
+  scheduleRecordingDurationSeconds,
   scheduleExecutionSnapshot,
+  skipNextScheduleOccurrence,
   uniqueTags,
 } from "./schedule-engine.js";
 import { ScheduleStoreError, type ScheduleStore } from "./schedule-store.js";
@@ -207,7 +209,9 @@ export function registerScheduleRoutes({
       const before = scheduleExecutionSnapshot(schedule);
 
       await recordingStore.create(recording);
-      const job = await createRecordingJob(recording);
+      const job = await createRecordingJob(recording, {
+        durationSeconds: scheduleRecordingDurationSeconds(schedule),
+      });
 
       await recordAuditEvent(c, {
         action: "schedules.run_now.succeeded",
@@ -239,6 +243,102 @@ export function registerScheduleRoutes({
       });
 
       return c.json({ data: recording, job }, 202);
+    },
+  );
+
+  app.post(
+    "/api/v1/schedules/:scheduleId/skip-next",
+    requirePermission("schedule:manage", "schedules.skip_next", (c) => ({
+      id: c.req.param("scheduleId"),
+      type: "schedule",
+    })),
+    async (c) => {
+      const scheduleId = c.req.param("scheduleId");
+      const before = await scheduleStore.find(scheduleId);
+
+      if (!before) {
+        await recordScheduleWriteFailure(c, "schedules.skip_next.failed", "schedule_not_found", {
+          id: scheduleId,
+        });
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      const skipped = skipNextScheduleOccurrence(before);
+
+      if (!skipped) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.skip_next.failed",
+          "no_next_occurrence",
+          before,
+        );
+        return c.json({ error: "Schedule has no next occurrence to skip" }, 409);
+      }
+
+      const updated = await scheduleStore.update(scheduleId, skipped.updates);
+
+      if (!updated) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.skip_next.failed",
+          "schedule_not_found",
+          before,
+        );
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "schedules.skip_next.succeeded",
+        after: scheduleExecutionSnapshot(updated),
+        auth: currentAuth(c),
+        before: scheduleExecutionSnapshot(before),
+        details: {
+          skippedDate: skipped.occurrenceDate,
+        },
+        outcome: "succeeded",
+        permission: "schedule:manage",
+        target: {
+          id: updated.id,
+          name: updated.name,
+          type: "schedule",
+        },
+      });
+
+      return c.json({ data: updated });
+    },
+  );
+
+  app.delete(
+    "/api/v1/schedules/:scheduleId",
+    requirePermission("schedule:manage", "schedules.delete", (c) => ({
+      id: c.req.param("scheduleId"),
+      type: "schedule",
+    })),
+    async (c) => {
+      const scheduleId = c.req.param("scheduleId");
+      const deleted = await scheduleStore.delete(scheduleId);
+
+      if (!deleted) {
+        await recordScheduleWriteFailure(c, "schedules.delete.failed", "schedule_not_found", {
+          id: scheduleId,
+        });
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "schedules.delete.succeeded",
+        auth: currentAuth(c),
+        before: scheduleExecutionSnapshot(deleted),
+        outcome: "succeeded",
+        permission: "schedule:manage",
+        target: {
+          id: deleted.id,
+          name: deleted.name,
+          type: "schedule",
+        },
+      });
+
+      return c.body(null, 204);
     },
   );
 

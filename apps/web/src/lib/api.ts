@@ -252,6 +252,10 @@ export const api = {
         method: "POST",
       },
     ),
+  skipScheduleNext: (scheduleId: string) =>
+    fetchJson<{ data: ScheduleSummary }>(`/api/v1/schedules/${scheduleId}/skip-next`, {
+      method: "POST",
+    }),
   schedules: () => fetchJson<{ data: ScheduleSummary[] }>("/api/v1/schedules"),
   startPlayback: (recordingId: string) =>
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
@@ -275,6 +279,10 @@ export const api = {
         "Content-Type": "application/json",
       },
       method: "POST",
+    }),
+  deleteSchedule: (scheduleId: string) =>
+    fetchJson<void>(`/api/v1/schedules/${scheduleId}`, {
+      method: "DELETE",
     }),
   startRecording: () =>
     fetchJson<{ data: RecordingSummary; job: RecordingJob }>("/api/v1/recordings", {

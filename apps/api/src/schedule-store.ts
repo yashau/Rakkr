@@ -25,6 +25,7 @@ export class ScheduleStoreError extends Error {
 
 export interface ScheduleStore {
   create(schedule: ScheduleSummary): Promise<ScheduleSummary>;
+  delete(scheduleId: string): Promise<ScheduleSummary | undefined>;
   find(scheduleId: string): Promise<ScheduleSummary | undefined>;
   list(): Promise<ScheduleSummary[]>;
   update(scheduleId: string, updates: ScheduleUpdate): Promise<ScheduleSummary | undefined>;
@@ -57,6 +58,19 @@ class JsonScheduleStore implements ScheduleStore {
     this.persist();
 
     return schedule;
+  }
+
+  async delete(scheduleId: string) {
+    const index = this.schedules.findIndex((schedule) => schedule.id === scheduleId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    const [deleted] = this.schedules.splice(index, 1);
+    this.persist();
+
+    return deleted;
   }
 
   async find(scheduleId: string) {
@@ -135,6 +149,28 @@ class PostgresScheduleStore implements ScheduleStore {
 
       await this.failover("schedule persistence unavailable; using JSON store", error);
       return this.fallback.create(schedule);
+    }
+  }
+
+  async delete(scheduleId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.delete(scheduleId);
+    }
+
+    try {
+      await this.seedIfEmpty();
+      const existing = await this.findRow(scheduleId);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      await this.db.delete(schedulesTable).where(eq(schedulesTable.id, scheduleId));
+
+      return scheduleFromRow(existing);
+    } catch (error) {
+      await this.failover("schedule delete unavailable; using JSON store", error);
+      return this.fallback.delete(scheduleId);
     }
   }
 

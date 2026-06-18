@@ -235,19 +235,32 @@ export const scheduleDayOfWeekSchema = z.enum([
   "saturday",
   "sunday",
 ]);
+export const scheduleExceptionSchema = z.object({
+  action: z.enum(["skip"]),
+  date: isoDateSchema,
+  reason: z.string().trim().max(240).optional(),
+});
+const scheduleRecurrenceOptions = {
+  exceptions: z.array(scheduleExceptionSchema).max(366).optional(),
+  startEarlySeconds: z.number().int().nonnegative().max(86_400).optional(),
+  stopLateSeconds: z.number().int().nonnegative().max(86_400).optional(),
+};
 export const scheduleRecurrenceSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("manual"),
+    ...scheduleRecurrenceOptions,
   }),
   z.object({
     mode: z.literal("once"),
     startsAt: isoDateTimeSchema,
+    ...scheduleRecurrenceOptions,
   }),
   z.object({
     endTime: timeOfDaySchema,
     interval: z.number().int().positive(),
     mode: z.literal("daily"),
     startTime: timeOfDaySchema,
+    ...scheduleRecurrenceOptions,
   }),
   z.object({
     daysOfWeek: z.array(scheduleDayOfWeekSchema).min(1).max(7),
@@ -255,6 +268,7 @@ export const scheduleRecurrenceSchema = z.discriminatedUnion("mode", [
     interval: z.number().int().positive(),
     mode: z.literal("weekly"),
     startTime: timeOfDaySchema,
+    ...scheduleRecurrenceOptions,
   }),
   z.object({
     dayOfMonth: z.number().int().min(1).max(31),
@@ -262,9 +276,11 @@ export const scheduleRecurrenceSchema = z.discriminatedUnion("mode", [
     interval: z.number().int().positive(),
     mode: z.literal("monthly"),
     startTime: timeOfDaySchema,
+    ...scheduleRecurrenceOptions,
   }),
   z.object({
     mode: z.literal("always_on"),
+    ...scheduleRecurrenceOptions,
   }),
 ]);
 
@@ -429,6 +445,7 @@ export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;
 export type ResourceGrant = z.infer<typeof resourceGrantSchema>;
 export type ScheduleDayOfWeek = z.infer<typeof scheduleDayOfWeekSchema>;
+export type ScheduleException = z.infer<typeof scheduleExceptionSchema>;
 export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
 export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;

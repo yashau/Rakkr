@@ -12,6 +12,9 @@ import {
   retryScheduleAfterFailure,
   scheduleExecutionSnapshot,
   scheduleIsDue,
+  scheduleOccurrenceIsSkipped,
+  scheduleRecordingDurationSeconds,
+  skipNextScheduleOccurrence,
 } from "./schedule-engine.js";
 import type { ScheduleStore } from "./schedule-store.js";
 
@@ -24,7 +27,7 @@ interface ScheduleRunnerDependencies {
 
 export interface DueScheduleRun {
   jobId?: string;
-  outcome: "failed" | "succeeded";
+  outcome: "failed" | "skipped" | "succeeded";
   recordingId?: string;
   reason?: string;
   scheduleId: string;
@@ -83,6 +86,32 @@ export async function runDueSchedules(
     }
 
     const before = scheduleExecutionSnapshot(schedule);
+
+    if (scheduleOccurrenceIsSkipped(schedule)) {
+      const skipped = skipNextScheduleOccurrence(schedule);
+      const updated = skipped
+        ? await scheduleStore.update(schedule.id, skipped.updates)
+        : undefined;
+
+      await appendScheduleAudit(auditStore, {
+        action: "schedules.due_run.skipped",
+        after: updated ? scheduleExecutionSnapshot(updated) : skipped?.updates,
+        before,
+        details: {
+          skippedDate: skipped?.occurrenceDate,
+        },
+        outcome: "succeeded",
+        reason: "schedule_occurrence_skipped",
+        schedule,
+      });
+      results.push({
+        outcome: "skipped",
+        reason: "schedule_occurrence_skipped",
+        scheduleId: schedule.id,
+      });
+      continue;
+    }
+
     const node = await nodeStore.find(schedule.nodeId);
 
     if (!node) {
@@ -107,7 +136,9 @@ export async function runDueSchedules(
       const recording = materializeScheduledRecording(schedule, node, now);
 
       await recordingStore.create(recording);
-      const job = await createRecordingJob(recording);
+      const job = await createRecordingJob(recording, {
+        durationSeconds: scheduleRecordingDurationSeconds(schedule),
+      });
       const updates = advanceScheduleAfterRun(schedule, now);
       const updated = await scheduleStore.update(schedule.id, updates);
 
