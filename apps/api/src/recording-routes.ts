@@ -5,6 +5,7 @@ import {
   defaultVoiceRecordingProfile,
   type Permission,
   type RecordingSummary,
+  recordingStatusSchema,
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
@@ -50,6 +51,29 @@ const recordingMetadataUpdateSchema = z
     (value) => value.folder !== undefined || value.name !== undefined || value.tags !== undefined,
     "Expected at least one metadata field",
   );
+
+const optionalTextFilterSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() ? value : undefined),
+  z.string().trim().max(240).optional(),
+);
+
+const recordingsQuerySchema = z.object({
+  folder: optionalTextFilterSchema,
+  healthStatus: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.enum(["healthy", "warning", "critical", "unknown"]).optional(),
+  ),
+  nodeId: optionalTextFilterSchema,
+  scheduleId: optionalTextFilterSchema,
+  search: optionalTextFilterSchema,
+  status: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    recordingStatusSchema.optional(),
+  ),
+  tag: optionalTextFilterSchema,
+});
+
+type RecordingsQuery = z.infer<typeof recordingsQuerySchema>;
 
 export function registerRecordingRoutes({
   app,
@@ -146,8 +170,20 @@ export function registerRecordingRoutes({
     }
   }
 
-  app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), async (c) =>
-    c.json({ data: await scopedRecordings(currentUser(c)) }),
+  app.get(
+    "/api/v1/recordings",
+    requirePermission("recording:read", "recordings.read"),
+    async (c) => {
+      const query = recordingsQuerySchema.safeParse(c.req.query());
+
+      if (!query.success) {
+        return c.json({ error: "Invalid recording filters", issues: query.error.issues }, 400);
+      }
+
+      return c.json({
+        data: filterRecordings(await scopedRecordings(currentUser(c)), query.data),
+      });
+    },
   );
 
   app.get(
@@ -843,6 +879,58 @@ function recordingMetadataSnapshot(recording: RecordingSummary) {
     name: recording.name,
     tags: recording.tags,
   };
+}
+
+function filterRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
+  return recordings.filter((recording) => {
+    if (filters.folder && !includesText(recording.folder, filters.folder)) {
+      return false;
+    }
+
+    if (filters.healthStatus && recording.healthStatus !== filters.healthStatus) {
+      return false;
+    }
+
+    if (filters.nodeId && recording.nodeId !== filters.nodeId) {
+      return false;
+    }
+
+    if (filters.scheduleId && recording.scheduleId !== filters.scheduleId) {
+      return false;
+    }
+
+    if (filters.search && !recordingMatchesSearch(recording, filters.search)) {
+      return false;
+    }
+
+    if (filters.status && recording.status !== filters.status) {
+      return false;
+    }
+
+    return (
+      !filters.tag ||
+      recording.tags.some((tag) => tag.toLocaleLowerCase() === filters.tag?.toLocaleLowerCase())
+    );
+  });
+}
+
+function recordingMatchesSearch(recording: RecordingSummary, search: string) {
+  const searchableValues = [
+    recording.folder,
+    recording.id,
+    recording.name,
+    recording.nodeId,
+    recording.scheduleId,
+    recording.source,
+    recording.status,
+    ...recording.tags,
+  ];
+
+  return searchableValues.some((value) => value && includesText(value, search));
+}
+
+function includesText(value: string, search: string) {
+  return value.toLocaleLowerCase().includes(search.toLocaleLowerCase());
 }
 
 function uniqueTags(tags: string[]) {

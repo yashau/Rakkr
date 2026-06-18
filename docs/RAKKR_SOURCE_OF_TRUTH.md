@@ -53,7 +53,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
 | Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, Postgres-backed recordings/jobs/edits |
-| Controller UI        | 🟦 Scaffold  | Dashboard plus recording/job status and metadata editing         |
+| Controller UI        | 🟦 Scaffold  | Dashboard plus recording/job status, metadata editing, and filters |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, telemetry   |
 | Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
 | Health watchdog      | 🟨 Designed  | Core non-AI checks first, AI quality analysis later            |
@@ -545,7 +545,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Recording metadata now flows through a controller store that uses the Drizzle/Postgres `recordings` table when `DATABASE_URL` is configured and falls back to `RAKKR_RECORDING_METADATA_STORE_PATH`, defaulting to `data/recordings-metadata.json`. The recordings UI exposes permission-aware inline editing for name, folder, and tags; the controller validates `PATCH /api/v1/recordings/:recordingId/metadata`, requires `recording:edit`, persists the update, and writes before/after audit events for success and failure. Controller start creates a persisted recording metadata row and a queued recording job. Recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs are modeled in Drizzle/Postgres via `recording_jobs` and `recording_job_status`; the controller uses Postgres as the primary job store and falls back to the JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`. Claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`, and the recordings UI surfaces each recording's job status, claimant, lease expiry, and terminal failure reason. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording persists metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Recording metadata now flows through a controller store that uses the Drizzle/Postgres `recordings` table when `DATABASE_URL` is configured and falls back to `RAKKR_RECORDING_METADATA_STORE_PATH`, defaulting to `data/recordings-metadata.json`. The recordings UI exposes permission-aware inline editing for name, folder, and tags; the controller validates `PATCH /api/v1/recordings/:recordingId/metadata`, requires `recording:edit`, persists the update, and writes before/after audit events for success and failure. The recording list now has RBAC-scoped API and UI filters for search text, folder, tag, node, schedule, status, and health, with invalid filter requests rejected before query execution. Controller start creates a persisted recording metadata row and a queued recording job. Recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs are modeled in Drizzle/Postgres via `recording_jobs` and `recording_job_status`; the controller uses Postgres as the primary job store and falls back to the JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`. Claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`, and the recordings UI surfaces each recording's job status, claimant, lease expiry, and terminal failure reason. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording persists metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
 
 ---
 
@@ -766,7 +766,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] ⏳ Auto file splitting by length.
 - [ ] 🟦 Playback controls.
 - [ ] 🟦 Download recordings.
-- [ ] 🟦 Tags/folders/search filters.
+- [x] ✅ Tags/folders/search filters.
 - [ ] 🟦 Node health dashboard.
 - [ ] ⏳ Disk/CPU/audio backend health.
 - [ ] ⏳ Xrun and device disconnect tracking.
@@ -896,9 +896,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add recording library search/filter views for folders, tags, schedule, node, status, and health.
-2. Add first-class local group membership management, then multi-user local auth or OIDC-backed user sync.
-3. Add persistent node enrollment and node credential rotation.
+1. Add first-class local group membership management, then multi-user local auth or OIDC-backed user sync.
+2. Add persistent node enrollment and node credential rotation.
+3. Add scheduler-owned metadata execution paths for filename, folder, tag, and watchdog policy defaults.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 
 Last updated: `2026-06-18`

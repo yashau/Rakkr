@@ -66,6 +66,16 @@ export interface RecordingMetadataUpdate {
   tags?: string[];
 }
 
+export interface RecordingFilters {
+  folder?: string;
+  healthStatus?: RecordingSummary["healthStatus"];
+  nodeId?: string;
+  scheduleId?: string;
+  search?: string;
+  status?: RecordingSummary["status"];
+  tag?: string;
+}
+
 export interface UserAccessUpdate {
   resourceGrants: ResourceGrant[];
   roles: Role[];
@@ -158,7 +168,8 @@ export const api = {
       method: "POST",
     }),
   recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
-  recordings: () => fetchJson<{ data: RecordingSummary[] }>("/api/v1/recordings"),
+  recordings: (filters: RecordingFilters = {}) =>
+    fetchJson<{ data: RecordingSummary[] }>(withQuery("/api/v1/recordings", filters)),
   recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),
   recordingStream: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/stream`),
   schedules: () => fetchJson<{ data: ScheduleSummary[] }>("/api/v1/schedules"),
@@ -208,10 +219,10 @@ export const api = {
     }),
 };
 
-function withQuery(path: string, filters: AuditEventFilters) {
+function withQuery(path: string, filters: object) {
   const params = new URLSearchParams();
 
-  for (const [key, value] of Object.entries(filters)) {
+  for (const [key, value] of Object.entries(filters) as Array<[string, string | undefined]>) {
     if (value) {
       params.set(key, value);
     }

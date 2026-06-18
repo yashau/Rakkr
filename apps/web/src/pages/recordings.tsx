@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, Pencil, Play, Radio, Square, X } from "lucide-react";
+import { Check, Download, Pencil, Play, Radio, RotateCcw, Search, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { RecordingJob, RecordingSummary } from "@rakkr/shared";
 
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api, type RecordingMetadataUpdate } from "@/lib/api";
+import { api, type RecordingFilters, type RecordingMetadataUpdate } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
 
 interface RecordingMetadataDraft {
@@ -17,9 +17,50 @@ interface RecordingMetadataDraft {
   tags: string;
 }
 
+interface RecordingFilterDraft {
+  folder: string;
+  healthStatus: "" | RecordingSummary["healthStatus"];
+  nodeId: string;
+  scheduleId: string;
+  search: string;
+  status: "" | RecordingSummary["status"];
+  tag: string;
+}
+
+const emptyRecordingFilterDraft: RecordingFilterDraft = {
+  folder: "",
+  healthStatus: "",
+  nodeId: "",
+  scheduleId: "",
+  search: "",
+  status: "",
+  tag: "",
+};
+
+const healthStatuses: Array<RecordingSummary["healthStatus"]> = [
+  "healthy",
+  "warning",
+  "critical",
+  "unknown",
+];
+
+const recordingStatuses: Array<RecordingSummary["status"]> = [
+  "queued",
+  "recording",
+  "completed",
+  "failed",
+  "cached",
+  "uploaded",
+];
+
+const selectClassName =
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
 export function RecordingsPage() {
   const queryClient = useQueryClient();
   const [audioPreview, setAudioPreview] = useState<{ name: string; url: string }>();
+  const [filterDraft, setFilterDraft] = useState<RecordingFilterDraft>(emptyRecordingFilterDraft);
+  const [recordingFilters, setRecordingFilters] = useState<RecordingFilters>({});
   const [notice, setNotice] = useState<{ detail: string; title: string }>();
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -27,8 +68,8 @@ export function RecordingsPage() {
     staleTime: 30_000,
   });
   const recordingsQuery = useQuery({
-    queryFn: api.recordings,
-    queryKey: ["recordings"],
+    queryFn: () => api.recordings(recordingFilters),
+    queryKey: ["recordings", recordingFilters],
   });
   const recordingJobsQuery = useQuery({
     queryFn: api.recordingJobs,
@@ -119,6 +160,8 @@ export function RecordingsPage() {
 
   const canEditRecordings =
     currentUserQuery.data?.data.permissions.includes("recording:edit") ?? false;
+  const recordings = recordingsQuery.data?.data ?? [];
+  const activeFilterCount = Object.values(recordingFilters).filter(Boolean).length;
 
   useEffect(
     () => () => {
@@ -155,7 +198,143 @@ export function RecordingsPage() {
         </section>
       ) : null}
 
-      {recordingsQuery.data?.data.map((recording) => {
+      <form
+        className="grid gap-3 rounded-lg border border-border bg-panel p-4 shadow-sm"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setRecordingFilters(filtersFromDraft(filterDraft));
+        }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold">Library filters</h3>
+            <p className="text-xs text-muted-foreground">
+              {recordings.length} result{recordings.length === 1 ? "" : "s"}
+              {activeFilterCount > 0 ? `, ${activeFilterCount} filter active` : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit">
+              <Search className="size-4" />
+              Search
+            </Button>
+            <Button
+              onClick={() => {
+                setFilterDraft(emptyRecordingFilterDraft);
+                setRecordingFilters({});
+              }}
+              type="button"
+              variant="outline"
+            >
+              <RotateCcw className="size-4" />
+              Clear
+            </Button>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-1.5 md:col-span-2">
+            <Label htmlFor="recording-search">Search</Label>
+            <Input
+              id="recording-search"
+              onChange={(event) =>
+                setFilterDraft((current) => ({ ...current, search: event.target.value }))
+              }
+              placeholder="Name, folder, tag, ID, node, schedule"
+              value={filterDraft.search}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-folder-filter">Folder</Label>
+            <Input
+              id="recording-folder-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({ ...current, folder: event.target.value }))
+              }
+              value={filterDraft.folder}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-tag-filter">Tag</Label>
+            <Input
+              id="recording-tag-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({ ...current, tag: event.target.value }))
+              }
+              value={filterDraft.tag}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-node-filter">Node</Label>
+            <Input
+              id="recording-node-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({ ...current, nodeId: event.target.value }))
+              }
+              value={filterDraft.nodeId}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-schedule-filter">Schedule</Label>
+            <Input
+              id="recording-schedule-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({ ...current, scheduleId: event.target.value }))
+              }
+              value={filterDraft.scheduleId}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-status-filter">Status</Label>
+            <select
+              className={selectClassName}
+              id="recording-status-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  status: event.target.value as RecordingFilterDraft["status"],
+                }))
+              }
+              value={filterDraft.status}
+            >
+              <option value="">Any status</option>
+              {recordingStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-health-filter">Health</Label>
+            <select
+              className={selectClassName}
+              id="recording-health-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  healthStatus: event.target.value as RecordingFilterDraft["healthStatus"],
+                }))
+              }
+              value={filterDraft.healthStatus}
+            >
+              <option value="">Any health</option>
+              {healthStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </form>
+
+      {!recordingsQuery.isPending && recordings.length === 0 ? (
+        <section className="rounded-lg border border-border bg-panel px-4 py-8 text-center text-sm text-muted-foreground">
+          No recordings match the current filters.
+        </section>
+      ) : null}
+
+      {recordings.map((recording) => {
         const jobs =
           recordingJobsQuery.data?.data.filter((job) => job.recordingId === recording.id) ?? [];
 
@@ -193,6 +372,24 @@ function downloadBlob(file: Awaited<ReturnType<typeof api.recordingFile>>) {
   link.download = file.fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
+  return {
+    folder: textOrUndefined(draft.folder),
+    healthStatus: draft.healthStatus || undefined,
+    nodeId: textOrUndefined(draft.nodeId),
+    scheduleId: textOrUndefined(draft.scheduleId),
+    search: textOrUndefined(draft.search),
+    status: draft.status || undefined,
+    tag: textOrUndefined(draft.tag),
+  };
+}
+
+function textOrUndefined(value: string) {
+  const trimmed = value.trim();
+
+  return trimmed || undefined;
 }
 
 function RecordingCard({
