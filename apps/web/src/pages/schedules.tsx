@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
   CalendarPlus,
@@ -14,9 +14,11 @@ import {
 import {
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
+  type AuditEvent,
   type RecorderNode,
   type ScheduleDayOfWeek,
   type ScheduleInput,
+  type ScheduleOccurrencePreview,
   type ScheduleRecurrence,
   type ScheduleSummary,
 } from "@rakkr/shared";
@@ -75,6 +77,30 @@ export function SchedulesPage() {
     queryFn: api.schedules,
     queryKey: ["schedules"],
   });
+  const schedules = useMemo(() => schedulesQuery.data?.data ?? [], [schedulesQuery.data?.data]);
+  const occurrenceQueries = useQueries({
+    queries: schedules.map((schedule) => ({
+      queryFn: () => api.scheduleOccurrences(schedule.id, 4),
+      queryKey: ["schedule-occurrences", schedule.id],
+      refetchInterval: 5000,
+    })),
+  });
+  const occurrencesBySchedule = useMemo(
+    () =>
+      new Map(
+        schedules.map((schedule, index) => [
+          schedule.id,
+          occurrenceQueries[index]?.data?.data ?? [],
+        ]),
+      ),
+    [occurrenceQueries, schedules],
+  );
+  const scheduleAuditQuery = useQuery({
+    queryFn: () => api.auditEvents({ action: "schedules.", limit: 100 }),
+    queryKey: ["audit-events", "schedules-timeline"],
+    refetchInterval: 5000,
+  });
+  const scheduleAuditEvents = scheduleAuditQuery.data?.data ?? [];
   const nodesQuery = useQuery({
     queryFn: api.nodes,
     queryKey: ["nodes"],
@@ -85,6 +111,8 @@ export function SchedulesPage() {
     mutationFn: ({ input, scheduleId }: { input: ScheduleInput; scheduleId?: string }) =>
       scheduleId ? api.updateSchedule(scheduleId, input) : api.createSchedule(input),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["schedule-occurrences"] });
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       resetDraft(firstNode);
     },
@@ -92,6 +120,7 @@ export function SchedulesPage() {
   const runNowMutation = useMutation({
     mutationFn: api.runScheduleNow,
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
       void queryClient.invalidateQueries({ queryKey: ["recordings"] });
       void queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
     },
@@ -100,12 +129,14 @@ export function SchedulesPage() {
     mutationFn: api.skipScheduleNext,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["schedule-occurrences"] });
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
   const deleteScheduleMutation = useMutation({
     mutationFn: api.deleteSchedule,
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       setEditingId(undefined);
       resetDraft(firstNode);
@@ -462,105 +493,148 @@ export function SchedulesPage() {
         </form>
       </Card>
 
-      {schedulesQuery.data?.data.map((schedule) => (
-        <Card className="rounded-lg p-4 shadow-sm" key={schedule.id}>
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <CalendarClock className="size-5 text-teal-700" />
-                <h2 className="text-base font-semibold">{schedule.name}</h2>
-                <Badge variant={schedule.enabled ? "secondary" : "outline"}>
-                  {schedule.enabled ? "enabled" : "disabled"}
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {schedule.room} / {schedule.timezone}
-              </p>
-              <div className="mt-1 flex items-center gap-2 text-sm">
-                <Repeat2 className="size-4 text-teal-700" />
-                <span>{recurrenceSummary(schedule.recurrence)}</span>
-              </div>
-              {schedule.nextRunAt ? (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Next: {formatDateTime(schedule.nextRunAt)}
-                </p>
-              ) : null}
-              <dl className="mt-3 grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
-                <div>
-                  <dt className="font-medium text-foreground">Title</dt>
-                  <dd>{schedule.titleTemplate}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-foreground">Folder</dt>
-                  <dd>{schedule.folderTemplate}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-foreground">Profile</dt>
-                  <dd>{schedule.recordingProfileId}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-foreground">Watchdog</dt>
-                  <dd>{schedule.watchdogPolicyId}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-foreground">Buffers</dt>
-                  <dd>{bufferSummary(schedule.recurrence)}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-foreground">Skipped Dates</dt>
-                  <dd>{exceptionSummary(schedule.recurrence)}</dd>
-                </div>
-              </dl>
-            </div>
-            <div className="grid gap-3 md:justify-items-end">
-              <div className="flex flex-wrap gap-2 md:justify-end">
-                <Button onClick={() => editSchedule(schedule)} type="button" variant="outline">
-                  <Pencil className="size-4" />
-                  Edit
-                </Button>
-                <Button
-                  disabled={runNowMutation.isPending || !schedule.enabled}
-                  onClick={() => runNowMutation.mutate(schedule.id)}
-                  type="button"
-                  variant="outline"
-                >
-                  <CalendarPlus className="size-4" />
-                  Run Now
-                </Button>
-                <Button
-                  disabled={skipNextMutation.isPending || !schedule.enabled || !schedule.nextRunAt}
-                  onClick={() => skipNextMutation.mutate(schedule.id)}
-                  type="button"
-                  variant="outline"
-                >
-                  <SkipForward className="size-4" />
-                  Skip Next
-                </Button>
-                <Button
-                  disabled={deleteScheduleMutation.isPending}
-                  onClick={() => {
-                    if (window.confirm(`Delete schedule "${schedule.name}"?`)) {
-                      deleteScheduleMutation.mutate(schedule.id);
-                    }
-                  }}
-                  type="button"
-                  variant="outline"
-                >
-                  <Trash2 className="size-4" />
-                  Delete
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 md:justify-end">
-                {schedule.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">
-                    {tag}
+      {schedules.map((schedule) => {
+        const occurrences = occurrencesBySchedule.get(schedule.id) ?? [];
+        const timelineEvents = scheduleTimelineEvents(schedule.id, scheduleAuditEvents);
+
+        return (
+          <Card className="rounded-lg p-4 shadow-sm" key={schedule.id}>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <CalendarClock className="size-5 text-teal-700" />
+                  <h2 className="text-base font-semibold">{schedule.name}</h2>
+                  <Badge variant={schedule.enabled ? "secondary" : "outline"}>
+                    {schedule.enabled ? "enabled" : "disabled"}
                   </Badge>
-                ))}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {schedule.room} / {schedule.timezone}
+                </p>
+                <div className="mt-1 flex items-center gap-2 text-sm">
+                  <Repeat2 className="size-4 text-teal-700" />
+                  <span>{recurrenceSummary(schedule.recurrence)}</span>
+                </div>
+                {schedule.nextRunAt ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Next: {formatDateTime(schedule.nextRunAt)}
+                  </p>
+                ) : null}
+                <dl className="mt-3 grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
+                  <div>
+                    <dt className="font-medium text-foreground">Title</dt>
+                    <dd>{schedule.titleTemplate}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Folder</dt>
+                    <dd>{schedule.folderTemplate}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Profile</dt>
+                    <dd>{schedule.recordingProfileId}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Watchdog</dt>
+                    <dd>{schedule.watchdogPolicyId}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Buffers</dt>
+                    <dd>{bufferSummary(schedule.recurrence)}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Skipped Dates</dt>
+                    <dd>{exceptionSummary(schedule.recurrence)}</dd>
+                  </div>
+                </dl>
+                <div className="mt-4 grid gap-4 text-xs md:grid-cols-2">
+                  <div className="grid gap-2">
+                    <h3 className="font-medium text-foreground">Upcoming Runs</h3>
+                    <ol className="grid gap-2 border-l border-border pl-3 text-muted-foreground">
+                      {occurrences.length > 0 ? (
+                        occurrences.map((occurrence) => (
+                          <li key={occurrence.recordingStartAt}>
+                            <div className="font-medium text-foreground">
+                              {formatDateTime(occurrence.recordingStartAt)}
+                            </div>
+                            <div>{occurrenceWindow(occurrence)}</div>
+                          </li>
+                        ))
+                      ) : (
+                        <li>No scheduled occurrences.</li>
+                      )}
+                    </ol>
+                  </div>
+                  <div className="grid gap-2">
+                    <h3 className="font-medium text-foreground">Recent Timeline</h3>
+                    <ol className="grid gap-2 border-l border-border pl-3 text-muted-foreground">
+                      {timelineEvents.length > 0 ? (
+                        timelineEvents.map((event) => (
+                          <li key={event.id}>
+                            <div className="font-mono text-foreground">{timelineAction(event)}</div>
+                            <div>
+                              {formatDateTime(event.createdAt)} / {event.outcome}
+                            </div>
+                          </li>
+                        ))
+                      ) : (
+                        <li>No recent schedule events.</li>
+                      )}
+                    </ol>
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-3 md:justify-items-end">
+                <div className="flex flex-wrap gap-2 md:justify-end">
+                  <Button onClick={() => editSchedule(schedule)} type="button" variant="outline">
+                    <Pencil className="size-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    disabled={runNowMutation.isPending || !schedule.enabled}
+                    onClick={() => runNowMutation.mutate(schedule.id)}
+                    type="button"
+                    variant="outline"
+                  >
+                    <CalendarPlus className="size-4" />
+                    Run Now
+                  </Button>
+                  <Button
+                    disabled={
+                      skipNextMutation.isPending || !schedule.enabled || !schedule.nextRunAt
+                    }
+                    onClick={() => skipNextMutation.mutate(schedule.id)}
+                    type="button"
+                    variant="outline"
+                  >
+                    <SkipForward className="size-4" />
+                    Skip Next
+                  </Button>
+                  <Button
+                    disabled={deleteScheduleMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Delete schedule "${schedule.name}"?`)) {
+                        deleteScheduleMutation.mutate(schedule.id);
+                      }
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Trash2 className="size-4" />
+                    Delete
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 md:justify-end">
+                  {schedule.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </Card>
-      ))}
+          </Card>
+        );
+      })}
 
       {schedulesQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading schedules.</p>
@@ -827,6 +901,29 @@ function exceptionSummary(recurrence: ScheduleRecurrence) {
   const exceptions = recurrence.exceptions ?? [];
 
   return exceptions.length > 0 ? exceptions.map((exception) => exception.date).join(", ") : "None";
+}
+
+function occurrenceWindow(occurrence: ScheduleOccurrencePreview) {
+  const scheduledStart = occurrence.scheduledStartAt
+    ? `scheduled ${formatDateTime(occurrence.scheduledStartAt)}`
+    : "manual start";
+  const recordingEnd = occurrence.recordingEndAt
+    ? `, records until ${formatDateTime(occurrence.recordingEndAt)}`
+    : "";
+
+  return `${scheduledStart}${recordingEnd}`;
+}
+
+function scheduleTimelineEvents(scheduleId: string, events: AuditEvent[]) {
+  return events
+    .filter(
+      (event) => event.target.id === scheduleId || event.correlationIds?.scheduleId === scheduleId,
+    )
+    .slice(0, 4);
+}
+
+function timelineAction(event: AuditEvent) {
+  return event.action.replace(/^schedules\./, "").replaceAll("_", " ");
 }
 
 function intervalLabel(interval: number, unit: string) {

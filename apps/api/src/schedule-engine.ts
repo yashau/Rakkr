@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { RecordingSummary, ScheduleRecurrence, ScheduleSummary } from "@rakkr/shared";
+import type {
+  RecordingSummary,
+  ScheduleOccurrencePreview,
+  ScheduleRecurrence,
+  ScheduleSummary,
+} from "@rakkr/shared";
 
 type ScheduleNode = {
   alias: string;
@@ -72,6 +77,27 @@ export function scheduleRecordingDurationSeconds(schedule: ScheduleSummary) {
     recurrenceStartEarlySeconds(recurrence) +
     recurrenceStopLateSeconds(recurrence)
   );
+}
+
+export function previewScheduleOccurrences(schedule: ScheduleSummary, limit = 5, now = new Date()) {
+  const occurrences: ScheduleOccurrencePreview[] = [];
+  const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+  let nextRunAt =
+    schedule.nextRunAt ??
+    nextRunAtForRecurrence(schedule.recurrence, schedule.timezone, undefined, now);
+
+  while (nextRunAt && occurrences.length < safeLimit) {
+    occurrences.push(scheduleOccurrencePreview(schedule, nextRunAt));
+
+    const updates = advanceScheduleAfterRun(
+      { ...schedule, nextRunAt },
+      new Date(Date.parse(nextRunAt)),
+    );
+
+    nextRunAt = updates.nextRunAt;
+  }
+
+  return occurrences;
 }
 
 export function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
@@ -347,6 +373,39 @@ function scheduleOccurrenceDate(schedule: ScheduleSummary) {
   );
 
   return localDateIso(scheduledDate);
+}
+
+function scheduleOccurrencePreview(
+  schedule: ScheduleSummary,
+  recordingStartAt: string,
+): ScheduleOccurrencePreview {
+  const scheduledStartAt = new Date(
+    Date.parse(recordingStartAt) + recurrenceStartEarlySeconds(schedule.recurrence) * 1_000,
+  );
+  const recordingEndAt = scheduleRecordingEndAt(schedule.recurrence, scheduledStartAt);
+
+  return {
+    ...(recordingEndAt ? { recordingEndAt: recordingEndAt.toISOString() } : {}),
+    recordingStartAt,
+    scheduledStartAt: scheduledStartAt.toISOString(),
+  };
+}
+
+function scheduleRecordingEndAt(recurrence: ScheduleRecurrence, scheduledStartAt: Date) {
+  if (
+    recurrence.mode !== "daily" &&
+    recurrence.mode !== "weekly" &&
+    recurrence.mode !== "monthly"
+  ) {
+    return undefined;
+  }
+
+  return new Date(
+    scheduledStartAt.getTime() +
+      (timeRangeSeconds(recurrence.startTime, recurrence.endTime) +
+        recurrenceStopLateSeconds(recurrence)) *
+        1_000,
+  );
 }
 
 function scheduledLocalDateFromRunAt(

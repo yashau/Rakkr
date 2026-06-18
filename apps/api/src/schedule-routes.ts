@@ -17,6 +17,7 @@ import type { RecordingStore } from "./recording-store.js";
 import {
   materializeScheduledRecording,
   nextRunAtForRecurrence,
+  previewScheduleOccurrences,
   recordingMetadataSnapshot,
   scheduleRecordingDurationSeconds,
   scheduleExecutionSnapshot,
@@ -50,6 +51,25 @@ export function registerScheduleRoutes({
 }: ScheduleRouteDependencies) {
   app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
     c.json({ data: await scopedSchedules(currentUser(c)) }),
+  );
+
+  app.get(
+    "/api/v1/schedules/:scheduleId/occurrences",
+    requirePermission("schedule:read", "schedules.occurrences.read", (c) => ({
+      id: c.req.param("scheduleId"),
+      type: "schedule",
+    })),
+    async (c) => {
+      const schedule = await scheduleStore.find(c.req.param("scheduleId"));
+
+      if (!schedule) {
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      return c.json({
+        data: previewScheduleOccurrences(schedule, occurrenceLimit(c.req.query("limit"))),
+      });
+    },
   );
 
   app.post(
@@ -438,6 +458,12 @@ function isValidOptionalDate(value: string | undefined) {
 
 function validIsoOrUndefined(value: string | undefined) {
   return value ? new Date(value).toISOString() : undefined;
+}
+
+function occurrenceLimit(value: string | undefined) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) ? parsed : 5;
 }
 
 function recurrenceFromNextRun(nextRunAt: string | undefined): ScheduleRecurrence {

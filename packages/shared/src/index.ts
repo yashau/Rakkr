@@ -343,6 +343,11 @@ export const scheduleUpdateSchema = z
     watchdogPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one schedule field is required");
+export const scheduleOccurrencePreviewSchema = z.object({
+  recordingEndAt: isoDateTimeSchema.optional(),
+  recordingStartAt: isoDateTimeSchema,
+  scheduledStartAt: isoDateTimeSchema.optional(),
+});
 
 export const recordingSummarySchema = z.object({
   cached: z.boolean(),
@@ -447,6 +452,7 @@ export type ResourceGrant = z.infer<typeof resourceGrantSchema>;
 export type ScheduleDayOfWeek = z.infer<typeof scheduleDayOfWeekSchema>;
 export type ScheduleException = z.infer<typeof scheduleExceptionSchema>;
 export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
+export type ScheduleOccurrencePreview = z.infer<typeof scheduleOccurrencePreviewSchema>;
 export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
 export type ScheduleUpdate = z.infer<typeof scheduleUpdateSchema>;

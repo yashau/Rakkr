@@ -13,6 +13,7 @@ import type {
   ResourceGrant,
   Role,
   ScheduleInput,
+  ScheduleOccurrencePreview,
   ScheduleSummary,
   ScheduleUpdate,
   WatchdogPolicy,
@@ -36,6 +37,7 @@ export interface AuditEventFilters {
   action?: string;
   actor?: string;
   from?: string;
+  limit?: number;
   outcome?: AuditOutcome;
   target?: string;
   to?: string;
@@ -256,6 +258,10 @@ export const api = {
     fetchJson<{ data: ScheduleSummary }>(`/api/v1/schedules/${scheduleId}/skip-next`, {
       method: "POST",
     }),
+  scheduleOccurrences: (scheduleId: string, limit = 5) =>
+    fetchJson<{ data: ScheduleOccurrencePreview[] }>(
+      withQuery(`/api/v1/schedules/${scheduleId}/occurrences`, { limit }),
+    ),
   schedules: () => fetchJson<{ data: ScheduleSummary[] }>("/api/v1/schedules"),
   startPlayback: (recordingId: string) =>
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
@@ -346,9 +352,11 @@ export const api = {
 function withQuery(path: string, filters: object) {
   const params = new URLSearchParams();
 
-  for (const [key, value] of Object.entries(filters) as Array<[string, string | undefined]>) {
-    if (value) {
-      params.set(key, value);
+  for (const [key, value] of Object.entries(filters) as Array<
+    [string, number | string | undefined]
+  >) {
+    if (value !== undefined && value !== "") {
+      params.set(key, String(value));
     }
   }
 
