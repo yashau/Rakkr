@@ -5,16 +5,20 @@ import {
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
   recordingProfileUpdateSchema,
+  uploadProviderConfigUpdateSchema,
+  uploadProviderSchema,
   watchdogPolicyUpdateSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
   type RecordingProfile,
+  type UploadProviderRuntimeStatus,
   type WatchdogPolicy,
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
+import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
@@ -22,6 +26,7 @@ interface SettingsRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
+  uploadProviderStore?: UploadProviderStore;
 }
 
 export function registerSettingsRoutes({
@@ -30,6 +35,7 @@ export function registerSettingsRoutes({
   recordAuditEvent,
   requirePermission,
   settingsStore,
+  uploadProviderStore = createUploadProviderStore(),
 }: SettingsRouteDependencies) {
   app.get(
     "/api/v1/settings/recording-profiles",
@@ -61,6 +67,14 @@ export function registerSettingsRoutes({
       type: "settings",
     })),
     async (c) => c.json({ data: await settingsStore.listChannelMapAssignments() }),
+  );
+
+  app.get(
+    "/api/v1/settings/upload-providers",
+    requirePermission("settings:read", "settings.upload_providers.read", () => ({
+      type: "settings",
+    })),
+    async (c) => c.json({ data: await uploadProviderStore.listStatuses() }),
   );
 
   app.patch(
@@ -167,6 +181,63 @@ export function registerSettingsRoutes({
         outcome: "succeeded",
         permission: "settings:manage",
         target: watchdogAuditTarget(updated),
+      });
+
+      return c.json({ data: updated });
+    },
+  );
+
+  app.patch(
+    "/api/v1/settings/upload-providers/:provider",
+    requirePermission("settings:manage", "settings.upload_providers.update", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
+
+      if (!provider.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.upload_providers.update.failed",
+          "provider_not_found",
+          { id: c.req.param("provider"), type: "upload_provider" },
+        );
+        return c.json({ error: "Upload provider not found" }, 404);
+      }
+
+      const before = await uploadProviderStore.findStatus(provider.data);
+      const body = uploadProviderConfigUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.upload_providers.update.failed",
+          "invalid_request",
+          uploadProviderAuditTarget(before),
+        );
+        return c.json({ error: "Invalid upload provider", issues: body.error.issues }, 400);
+      }
+
+      const updated = await uploadProviderStore.update(provider.data, body.data);
+
+      if (!updated) {
+        await recordSettingsFailure(
+          c,
+          "settings.upload_providers.update.failed",
+          "provider_not_found",
+          uploadProviderAuditTarget(before),
+        );
+        return c.json({ error: "Upload provider not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "settings.upload_providers.update.succeeded",
+        after: uploadProviderSnapshot(updated),
+        auth: currentAuth(c),
+        before: uploadProviderSnapshot(before),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: uploadProviderAuditTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -454,6 +525,28 @@ function watchdogAuditTarget(policy: WatchdogPolicy) {
     id: policy.id,
     name: policy.name,
     type: "watchdog_policy",
+  };
+}
+
+function uploadProviderAuditTarget(provider: UploadProviderRuntimeStatus) {
+  return {
+    id: provider.provider,
+    name: provider.displayName,
+    type: "upload_provider",
+  };
+}
+
+function uploadProviderSnapshot(provider: UploadProviderRuntimeStatus) {
+  return {
+    configured: provider.configured,
+    credentialRef: provider.credentialRef,
+    displayName: provider.displayName,
+    enabled: provider.enabled,
+    implemented: provider.implemented,
+    missingFields: provider.missingFields,
+    provider: provider.provider,
+    status: provider.status,
+    target: provider.target,
   };
 }
 

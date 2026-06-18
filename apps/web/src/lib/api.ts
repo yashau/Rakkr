@@ -25,6 +25,8 @@ import type {
   ScheduleSummary,
   ScheduleUpdate,
   UploadProvider,
+  UploadProviderConfigUpdate,
+  UploadProviderRuntimeStatus,
   UploadQueueItem,
   WatchdogPolicy,
   WatchdogPolicyUpdate,
@@ -308,6 +310,8 @@ export const api = {
   recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
+  uploadProviders: () =>
+    fetchJson<{ data: UploadProviderRuntimeStatus[] }>("/api/v1/settings/upload-providers"),
   watchdogPolicies: () =>
     fetchJson<{ data: WatchdogPolicy[] }>("/api/v1/settings/watchdog-policies"),
   channelMapTemplates: () =>
@@ -360,6 +364,17 @@ export const api = {
       },
       method: "PATCH",
     }),
+  updateUploadProvider: (provider: UploadProvider, input: UploadProviderConfigUpdate) =>
+    fetchJson<{ data: UploadProviderRuntimeStatus }>(
+      `/api/v1/settings/upload-providers/${provider}`,
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      },
+    ),
   updateWatchdogPolicy: (policyId: string, input: WatchdogPolicyUpdate) =>
     fetchJson<{ data: WatchdogPolicy }>(`/api/v1/settings/watchdog-policies/${policyId}`, {
       body: JSON.stringify(input),

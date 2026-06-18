@@ -8,6 +8,8 @@ import type {
   RecorderNode,
   RecordingProfile,
   RecordingProfileUpdate,
+  UploadProviderConfigUpdate,
+  UploadProviderRuntimeStatus,
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
@@ -20,6 +22,7 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Trash2,
+  UploadCloud,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +45,10 @@ export function SettingsPage() {
   const channelMapsQuery = useQuery({
     queryFn: api.channelMapTemplates,
     queryKey: ["channel-map-templates"],
+  });
+  const uploadProvidersQuery = useQuery({
+    queryFn: api.uploadProviders,
+    queryKey: ["upload-providers"],
   });
   const assignmentsQuery = useQuery({
     queryFn: api.channelMapAssignments,
@@ -95,6 +102,25 @@ export function SettingsPage() {
 
       <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
+          <h2 className="text-lg font-semibold">Upload Providers</h2>
+          <p className="text-sm text-muted-foreground">
+            Storage targets and credential references.
+          </p>
+        </div>
+        <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
+          {(uploadProvidersQuery.data?.data ?? []).filter((provider) => provider.enabled).length}{" "}
+          enabled
+        </Badge>
+      </section>
+
+      <div className="grid gap-4">
+        {(uploadProvidersQuery.data?.data ?? []).map((provider) => (
+          <UploadProviderCard key={provider.provider} provider={provider} />
+        ))}
+      </div>
+
+      <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
           <h2 className="text-lg font-semibold">Channel Maps</h2>
           <p className="text-sm text-muted-foreground">Reusable node and interface routing.</p>
         </div>
@@ -124,6 +150,89 @@ export function SettingsPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+function UploadProviderCard({ provider }: { provider: UploadProviderRuntimeStatus }) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState(provider);
+  const mutation = useMutation({
+    mutationFn: () => api.updateUploadProvider(provider.provider, uploadProviderUpdate(draft)),
+    onSuccess: ({ data }) => {
+      setDraft(data);
+      void queryClient.invalidateQueries({ queryKey: ["upload-providers"] });
+    },
+  });
+
+  useEffect(() => {
+    setDraft(provider);
+  }, [provider]);
+
+  return (
+    <Card className="rounded-lg p-4 shadow-sm">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <UploadCloud className="size-4" />
+            <h3 className="text-base font-semibold">{provider.displayName}</h3>
+            <Badge className={uploadProviderStatusClass(provider.status)} variant="outline">
+              {provider.status}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {provider.provider} / {provider.implemented ? "driver scaffolded" : "driver pending"}
+          </p>
+        </div>
+        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+          <Save className="size-4" />
+          Save
+        </Button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <Field label="Name">
+          <Input
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, displayName: event.target.value }))
+            }
+            value={draft.displayName}
+          />
+        </Field>
+        <Field label="Target">
+          <Input
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, target: event.target.value }))
+            }
+            value={draft.target ?? ""}
+          />
+        </Field>
+        <Field label="Credential Ref">
+          <Input
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, credentialRef: event.target.value }))
+            }
+            value={draft.credentialRef ?? ""}
+          />
+        </Field>
+        <Toggle
+          checked={draft.enabled}
+          label="Enabled"
+          onChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <span>
+          Required {provider.requiredFields.length ? provider.requiredFields.join(", ") : "none"}
+        </span>
+        {provider.missingFields.length > 0 ? (
+          <span>Missing {provider.missingFields.join(", ")}</span>
+        ) : null}
+        {provider.reason ? <span>{provider.reason}</span> : null}
+      </div>
+
+      {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}
+    </Card>
   );
 }
 
@@ -754,6 +863,21 @@ function watchdogPolicyUpdate(policy: WatchdogPolicy): WatchdogPolicyUpdate {
   };
 }
 
+function uploadProviderUpdate(provider: UploadProviderRuntimeStatus): UploadProviderConfigUpdate {
+  return {
+    credentialRef: optionalText(provider.credentialRef),
+    displayName: provider.displayName,
+    enabled: provider.enabled,
+    target: optionalText(provider.target),
+  };
+}
+
+function optionalText(value: string | undefined) {
+  const trimmed = value?.trim();
+
+  return trimmed || undefined;
+}
+
 function defaultChannelMapTemplate() {
   return {
     channelMode: "mono_to_stereo_mix" as const,
@@ -851,4 +975,20 @@ function parseTargetValue(value: string): { id: string; type: "interface" | "nod
   }
 
   return { id: idParts.join(":"), type };
+}
+
+function uploadProviderStatusClass(status: UploadProviderRuntimeStatus["status"]) {
+  if (status === "ready") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "disabled") {
+    return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+
+  if (status === "not_configured") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-rose-200 bg-rose-50 text-rose-700";
 }

@@ -20,6 +20,12 @@ export const recordingStatusSchema = z.enum([
   "uploaded",
 ]);
 export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
+export const uploadProviderStatusSchema = z.enum([
+  "disabled",
+  "not_configured",
+  "not_implemented",
+  "ready",
+]);
 export const uploadQueueStatusSchema = z.enum([
   "queued",
   "retrying",
@@ -528,6 +534,32 @@ export const uploadQueueItemSchema = z.object({
   target: z.string().min(1).optional(),
   updatedAt: isoDateTimeSchema,
 });
+export const uploadProviderConfigSchema = z.object({
+  credentialRef: z.string().trim().min(1).max(240).optional(),
+  displayName: z.string().trim().min(1).max(160),
+  enabled: z.boolean(),
+  provider: uploadProviderSchema,
+  target: z.string().trim().min(1).max(500).optional(),
+  updatedAt: isoDateTimeSchema,
+});
+export const uploadProviderConfigUpdateSchema = uploadProviderConfigSchema
+  .omit({ provider: true, updatedAt: true })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "At least one provider field is required");
+export const uploadProviderRuntimeStatusSchema = z.object({
+  configured: z.boolean(),
+  credentialRef: z.string().optional(),
+  displayName: z.string(),
+  enabled: z.boolean(),
+  implemented: z.boolean(),
+  missingFields: z.array(z.string()),
+  provider: uploadProviderSchema,
+  reason: z.string().optional(),
+  requiredFields: z.array(z.string()),
+  status: uploadProviderStatusSchema,
+  target: z.string().optional(),
+  updatedAt: isoDateTimeSchema,
+});
 
 export const healthEventSchema = z.object({
   acknowledgedAt: isoDateTimeSchema.nullable(),
@@ -619,6 +651,10 @@ export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
 export type ScheduleUpdate = z.infer<typeof scheduleUpdateSchema>;
 export type UploadProvider = z.infer<typeof uploadProviderSchema>;
+export type UploadProviderConfig = z.infer<typeof uploadProviderConfigSchema>;
+export type UploadProviderConfigUpdate = z.infer<typeof uploadProviderConfigUpdateSchema>;
+export type UploadProviderRuntimeStatus = z.infer<typeof uploadProviderRuntimeStatusSchema>;
+export type UploadProviderStatus = z.infer<typeof uploadProviderStatusSchema>;
 export type UploadQueueItem = z.infer<typeof uploadQueueItemSchema>;
 export type UploadQueueStatus = z.infer<typeof uploadQueueStatusSchema>;
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;
