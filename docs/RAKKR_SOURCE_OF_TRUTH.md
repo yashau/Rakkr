@@ -1,590 +1,326 @@
 # Rakkr Source Of Truth
 
 ![Project](https://img.shields.io/badge/project-Rakkr-2563eb)
-![Status](https://img.shields.io/badge/status-discovery%20complete-f59e0b)
+![Status](https://img.shields.io/badge/status-active%20scaffold-f59e0b)
 ![Runtime](https://img.shields.io/badge/runtime-Linux%20%2B%20Docker-111827)
-![Recorder](https://img.shields.io/badge/recorder-Rust-7c2d12)
+![Agent](https://img.shields.io/badge/agent-Rust-7c2d12)
 ![Controller](https://img.shields.io/badge/controller-Hono%20%2B%20React-16a34a)
 
-> Rakkr is a centrally managed, Linux/Docker based audio recorder platform for reliable voice recording across managed recorder nodes.
+Rakkr is a centrally managed Linux/Docker audio recorder platform for reliable voice capture across managed recorder nodes.
 
-This document is the living source of truth for Rakkr. It combines executive status, product requirements, architecture decisions, implementation phases, and progress tracking.
+This document is the short source of truth: product intent, non-negotiables, current status, and next work.
 
 ---
 
 ## Executive Snapshot
 
-| Area                       | Current Decision                                                               |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| Primary use case           | Reliable voice recording for meetings and long-running room audio              |
-| Deployment target          | Linux hosts, Dockerized controller services, Rust recorder agents              |
-| First test rig             | Debian recorder node at `172.22.145.152`, Behringer X32 Rack via USB           |
-| Hardware support stance    | X32 is only the first fixture; support generic Linux audio interfaces          |
-| Controller UI              | Hono API, React, TanStack Router, TanStack Query, shadcn/ui                    |
-| Auth                       | Local auth first, Azure AD OIDC-ready architecture                             |
-| Database                   | Postgres                                                                       |
-| ORM                        | Drizzle                                                                        |
-| Access control             | Default-deny RBAC for every user, node, recording, listen, and admin action    |
-| Recorder agent             | Rust                                                                           |
-| Network model              | Trusted LAN first, with encrypted controller/node transport                    |
-| Future remote connectivity | Iroh preferred over libp2p if NAT traversal is needed later                    |
-| Default recording profile  | Voice, `128kbps MP3 VBR`, configurable                                         |
-| Storage uploads            | Stubbed initially, future SMB/S3 providers                                     |
-| Scheduler                  | Human-friendly scheduling, no cron exposed to users                            |
-| Health monitoring          | First-class watchdog, local event log, central events, Prometheus/Mimir export |
-| Date format rule           | ISO-style year-first display in browser timezone                               |
+| Area | Decision |
+| ---- | -------- |
+| Primary use | Reliable voice recording for meetings and long-running rooms |
+| Controller | Hono API, React, TanStack Router, TanStack Query, shadcn/ui |
+| Agent | Rust recorder node service |
+| Database | Postgres with Drizzle |
+| Auth | Local auth first; Azure AD OIDC-ready |
+| Access | Default-deny RBAC plus resource-scoped allow/deny policies |
+| Audit | Required for privileged reads, writes, denied attempts, and service actions |
+| Transport | Encrypted controller/node HTTP/WebSocket on trusted LAN |
+| Future remote | Prefer Iroh over libp2p for known-node QUIC dialing and relay fallback |
+| Audio devices | Generic Linux audio interfaces; X32 Rack is only the first test fixture |
+| Default profile | Voice, MP3 VBR, 128kbps target, fully configurable |
+| Scheduling | Human-friendly rules; no cron language exposed |
+| Storage | Local node cache now; SMB/S3 providers later |
+| Observability | Local lifecycle log, central events, Prometheus/Mimir path |
+| Dates | Store UTC ISO 8601; display browser timezone in year-first format |
+
+## Work Discipline
+
+- One active implementation area at a time.
+- Finish the slice: code, tests/checks, docs, commit, push.
+- Do not expand scope mid-slice unless the current task is blocked.
+- Keep this document concise; move deep design notes into separate docs when needed.
 
 ## Status Legend
 
-| Emoji | Meaning                               |
-| ----- | ------------------------------------- |
-| ✅    | Complete and checked in               |
-| 🟦    | Scaffolded and ready to build on      |
-| 🟨    | Designed or partially implemented     |
-| 🚧    | Current or next active focus          |
-| ⏸️    | Paused or waiting on external state   |
-| ⏳    | Not started                           |
-| 🧊    | Deferred intentionally                |
+| Mark | Meaning |
+| ---- | ------- |
+| ✅ | Complete and checked in |
+| 🟦 | Scaffolded and usable foundation exists |
+| 🟨 | Partially implemented or designed |
+| 🚧 | Current focus |
+| ⏸️ | Paused on external state |
+| ⏳ | Not started |
+| 🧊 | Deferred intentionally |
 
 ## Progress Dashboard
 
-| Workstream           | Status      | Notes                                                          |
-| -------------------- | ----------- | -------------------------------------------------------------- |
-| Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
-| Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
-| Controller API       | 🟦 Scaffold  | RBAC, audit, health, nodes, jobs, schedules, settings, pinned channel maps |
-| Controller UI        | 🟦 Scaffold  | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
-| Recorder agent       | 🟦 Scaffold  | Inventory, capture jobs, meters, health log, channel-map render foundation |
-| Test rig integration | 🟨 Partial   | Debian node reachable; ALSA loopback meter/render smoke validated; X32 validation waits for device check |
-| Health watchdog      | 🟦 Scaffold  | Health events, lifecycle actions, meter ingest, low-signal runner, timelines |
-| Scheduler            | 🟦 Scaffold  | Persistent schedules, recurrence, buffers, metadata ownership, due runner |
-| Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
-| OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
-| RBAC                 | 🟦 Scaffold  | Durable grants, groups, allow/deny policies, scoped middleware |
-| Audit trail          | 🟦 Scaffold  | Postgres-backed store, filters, high-value action events |
-| Observability        | 🟦 Scaffold  | Local log, central events, Prometheus endpoint; OTel/Mimir later |
-
-## North Star
-
-Rakkr should make audio recording boringly reliable. A user should know:
-
-- which room/node/interface/channel is recording;
-- whether meaningful audio is entering the system;
-- whether a scheduled recording is healthy while it is happening;
-- where every recording is stored;
-- what metadata, tags, and schedule produced it;
-- who accessed, controlled, listened to, or changed anything;
-- whether anything suspicious happened during capture.
-
-The system must favor reliability, observability, and recoverability over cleverness.
+| Workstream | Status | Current State |
+| ---------- | ------ | ------------- |
+| Product scope | ✅ | Requirements and technical direction captured |
+| Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
+| Controller API | 🟦 | Auth, RBAC, audit, nodes, recordings, jobs, schedules, settings, metrics |
+| Controller UI | 🟦 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
+| Recorder agent | 🟦 | Inventory, meters, jobs, health log, loopback smoke tasks |
+| Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
+| Generic devices | 🟦 | ALSA loopback path validates fake capture/rendering |
+| Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
+| Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
+| Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
+| Storage upload | 🚧 | Next slice: failed upload retry queue skeleton |
+| OIDC | 🧊 | Azure AD-ready boundary; local auth first |
+| Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
 ---
 
-## System Overview
+## Product Invariants
 
-```mermaid
-flowchart LR
-  subgraph Rooms["Recorder Locations"]
-    X32["Debian Node\nBehringer X32 Rack USB"]
-    N2["Future Node\nMultiple Interfaces"]
-  end
-
-  subgraph Agent["Rust Recorder Agent"]
-    Capture["Capture Pipelines"]
-    Meters["Realtime Meters"]
-    Watchdog["Health Watchdog"]
-    Cache["Local Cache"]
-    Log["Lifecycle Event Log"]
-  end
-
-  subgraph Controller["Central Controller"]
-    API["Hono API"]
-    UI["React UI\nTanStack + shadcn"]
-    DB["Postgres"]
-    Events["Central Event Store"]
-    Metrics["OTel / Prometheus Export"]
-  end
-
-  subgraph Future["Future Integrations"]
-    S3["S3 Upload"]
-    SMB["SMB Upload"]
-    AI["Voice Quality AI"]
-    Iroh["Iroh Remote Transport"]
-    OIDC["Azure AD OIDC"]
-  end
-
-  X32 --> Agent
-  N2 --> Agent
-  Agent <--> API
-  API <--> UI
-  API <--> DB
-  Watchdog --> Log
-  Log --> Events
-  Events --> DB
-  Metrics --> Controller
-  Cache -. later .-> S3
-  Cache -. later .-> SMB
-  Watchdog -. later .-> AI
-  Agent -. later .-> Iroh
-  API -. later .-> OIDC
-```
+- Recording reliability beats cleverness.
+- UI state never replaces server-side authorization.
+- Every privileged action is RBAC-gated and audited.
+- Live listening is privileged.
+- Recording control is privileged.
+- Recorder-level deny blocks node access, recordings, meters, live listen, and controls.
+- Transport between controller and recorder nodes is encrypted.
+- Defaults are profiles/templates, not hard-coded engine behavior.
+- Nodes must be identifiable by alias, location, network, devices, channels, status, and notes.
+- X32 support must not make Rakkr X32-specific.
 
 ## Core Architecture
 
-### Controller
+```mermaid
+flowchart LR
+  Nodes["Recorder Nodes\nLinux + audio interfaces"] --> Agent["Rust Agent\ncapture + meters + cache + health log"]
+  Agent <--> Transport["Encrypted LAN Transport\nHTTP/WebSocket first"]
+  Transport <--> API["Hono Controller API"]
+  API <--> DB["Postgres + Drizzle"]
+  API <--> UI["React UI\nTanStack + shadcn/ui"]
+  Agent --> Cache["Local Recording Cache"]
+  API --> Events["Audit + Health Events"]
+  API --> Metrics["Prometheus / future OTel"]
+  Cache -. later .-> Storage["SMB / S3 Upload Providers"]
+  Agent -. later .-> AI["VAD / noise / speech scoring"]
+  Transport -. later .-> Iroh["Iroh Remote Mode"]
+```
 
-- Provides the web UI, REST/RPC API, realtime streams, auth, settings, schedules, inventory, recording library, health events, and metrics export.
-- Runs locally in Docker for development and production-friendly deployment.
-- Uses Postgres as the central system of record.
-- Uses local auth first while keeping an OIDC boundary ready for Azure AD.
-- Enforces RBAC server-side for all routes, streams, and commands.
-- Writes a proper audit trail for allowed and denied user, node, and service actions.
+## Technology Stack
 
-### Recorder Node Agent
-
-- Runs on Linux recorder hosts.
-- Captures audio from one or more audio interfaces.
-- Supports many simultaneous recording jobs per node.
-- Reports live meter data even when not recording.
-- Executes scheduled and ad hoc recording jobs.
-- Maintains a lifecycle-managed local event log.
-- Caches completed recordings locally.
-- Exposes health, recording, and device telemetry to the controller.
-
-### Storage
-
-- Initial implementation: local recorder-node cache and central metadata tracking.
-- Upload providers are stubbed behind an interface.
-- Future providers: SMB and S3.
-- Uploads must be retryable, auditable, and checksum verified.
-
----
-
-## Technology Decisions
-
-| Decision             | Choice                          | Rationale                                                                             |
-| -------------------- | ------------------------------- | ------------------------------------------------------------------------------------- |
-| Monorepo setup       | `mise`                          | Canonical setup and command entrypoint for all developers and CI                      |
-| Node workspace       | `mise` task-managed dependencies | Keep setup, checks, builds, and local development behind one canonical entrypoint      |
-| API framework        | Hono                            | Small, fast, TypeScript-friendly, suitable for API + realtime endpoints               |
-| UI framework         | React + Vite                    | Fast iteration and strong ecosystem                                                   |
-| Routing              | TanStack Router                 | Typed routes and app-scale routing                                                    |
-| Server state         | TanStack Query                  | Excellent async/cache model                                                           |
-| UI components        | shadcn/ui                       | Components installed from the shadcn registry                                         |
-| CSS engine           | Tailwind 4                      | Matches `oxlint-tailwindcss` canonical class rules                                    |
-| Database             | Postgres                        | Strong relational model for schedules, events, recordings, and metadata               |
-| ORM/query layer      | Drizzle                         | SQL-first schema ownership, migrations, and strong TypeScript ergonomics              |
-| Recorder agent       | Rust                            | Good fit for audio IO, long-running agents, reliability, and native Linux integration |
-| Initial transport    | Encrypted HTTP/WebSocket over trusted LAN | Simple, observable, debuggable, confidential                                |
-| Future NAT traversal | Iroh                            | Better fit than libp2p for keyed device dialing and direct QUIC connections           |
-| AI quality analysis  | Pluggable future provider       | Keep core recorder independent from AI availability                                   |
-
-## Transport Decision
-
-Start with direct LAN connectivity:
-
-- node enrollment over encrypted trusted LAN;
-- node-originated heartbeat/control channel where practical;
-- controller commands over authenticated, encrypted HTTP/WebSocket;
-- realtime meter streaming over encrypted WebSocket;
-- live monitor stream with modest latency tolerance over encrypted transport.
-
-Trusting the LAN only means Rakkr can assume direct routability during early development.
-It must not mean plaintext controller/node traffic.
-All controller-to-node and node-to-controller communication should use transport-layer encryption for confidentiality and integrity.
-
-Required encrypted flows:
-
-- node enrollment and credential bootstrap;
-- heartbeats and node status;
-- recorder commands and command acknowledgements;
-- realtime meter frames;
-- live monitor/listen audio;
-- recording/job metadata;
-- local event log sync;
-- health events and alert updates.
-
-Initial development can use locally trusted certificates or a development CA.
-Production should support managed controller/node certificates, certificate rotation, and a path toward mutual TLS or equivalent node identity.
-
-Keep the transport boundary abstract:
-
-- `NodeTransport`
-- `CommandChannel`
-- `MeterStream`
-- `MonitorAudioStream`
-
-Future remote mode should use Iroh before libp2p.
-libp2p is powerful, but Rakkr is a centrally managed recorder platform, not a decentralized mesh.
-Iroh better matches the later need: dial a known node by key, attempt direct QUIC, and fall back to relay if needed.
+| Layer | Choice |
+| ----- | ------ |
+| Workspace | `mise` is the canonical setup and task runner |
+| Node | Node 24 in CI and local `mise` runtime |
+| API | Hono |
+| UI | React + Vite |
+| Routing | TanStack Router |
+| Server state | TanStack Query |
+| Components | shadcn/ui components installed from the registry |
+| Styling | Tailwind 4, oxlint-tailwindcss-compatible classes |
+| TS lint/format | oxlint, oxlint-tailwindcss, oxfmt |
+| Rust checks | clippy and miri via `mise` |
+| Database | Postgres |
+| ORM | Drizzle |
+| Dev stack | Docker Compose |
+| File limit | 1000 LOC per file enforced by `mise run check` |
 
 ---
 
-## Product Requirements
+## Recorder Requirements
 
-## Recorder Capabilities
-
-- Multiple recorder nodes.
-- Multiple well-supported Linux audio interfaces per node.
-- Multiple simultaneous recording jobs per node.
-- Configurable channel maps.
-- Mono, stereo, mono-to-stereo-mix, and grouped-channel recordings.
-- Audio meters available even when not recording.
-- Recording controls from central UI.
-- Ad hoc and scheduled recordings.
-- Auto track/file splitting by length.
-- Local node cache for recordings.
-- Future upload to SMB/S3 after completion.
-- Recording file health tracking while writing.
-- Download and browser playback from recording library.
-
-## Default Voice Profile
-
-| Setting           | Default                           |
-| ----------------- | --------------------------------- |
-| Purpose           | Voice recording                   |
-| Codec             | MP3                               |
-| Mode              | VBR                               |
-| Bitrate target    | `128kbps`                         |
-| Silence skip      | Disabled                          |
-| Silence detection | Available but disabled by default |
-| Health policy     | Scheduled voice watchdog          |
-
-Defaults must never be hard-coded into the recorder engine. They belong in configurable recording profiles/templates.
+- Multiple nodes.
+- Multiple audio interfaces per node.
+- Multiple simultaneous recordings per node.
+- Configurable mono, stereo, grouped channel, and mono-to-stereo-mix output.
+- Realtime meters even while idle.
+- Central recording controls.
+- Ad hoc and scheduled jobs.
+- Auto file splitting by length.
+- Local node cache with future upload.
+- Playback, download, metadata editing, tags, folders, search.
+- Silence detection/skip optional and disabled by default.
 
 ## Settings And Templates
 
-Rakkr must support central settings for all recorders:
+Central settings must cover:
 
 - recording profiles;
-- channel map templates;
-- watchdog policy templates;
-- scheduler templates;
-- cache/retention templates;
-- upload policy templates later;
+- channel maps;
+- watchdog policies;
+- schedule templates;
+- cache/retention policies;
+- future upload policies;
 - node/interface/channel aliases;
 - staged rollout and rollback;
-- en-masse deployment to similar recorders.
+- bulk deployment to similar recorders.
 
-Current:
+Current scaffold:
 
-- Store: JSON fallback plus Drizzle/Postgres tables for profiles, watchdog policies, channel maps, and assignments.
-- UI/API: RBAC-gated settings management with before/after audit events.
-- Channel maps: revisions, promotion metadata, assignment history, rollback, and agent fetch.
-- Jobs: pin target, template, channel entries, channel mode, and source width when created.
-- Agent: pinned-map first, live-assignment fallback, ffmpeg render foundation.
-- UI: rollout band shows current revision, pending draft promotion, target count, and reset/promote controls.
-- Validation: ALSA loopback mapped/rendered output passed on Debian node `recorder` on `2026-06-18`.
-- Pending: multi-target rollout preview and bulk assignment ergonomics.
+- Drizzle/Postgres plus JSON fallback stores.
+- Profile, watchdog, channel map, and assignment APIs.
+- Channel map revisions, promotion metadata, assignment history, rollback.
+- Jobs pin target/template/channel entries at creation.
+- Agent fetches pinned maps first, live assignments second.
 
 ## Node Inventory
 
-Nodes need rich identity, not just IDs.
+Nodes need:
 
-| Field    | Requirement                                  |
-| -------- | -------------------------------------------- |
-| Node ID  | Stable generated identity                    |
-| Alias    | Human-friendly display name                  |
-| Location | Site, building, floor, room                  |
-| Network  | IP addresses, hostname                       |
-| Agent    | Version, uptime, last seen                   |
-| OS       | Distribution, kernel, audio backend          |
-| Devices  | Interfaces, serials/USB path where available |
-| Channels | Channel aliases and mapping                  |
-| Status   | Online/offline/recording/alerting            |
-| Metadata | Tags and notes                               |
+- stable ID;
+- alias;
+- site/building/floor/room;
+- hostname and IP addresses;
+- agent version, uptime, last seen;
+- OS/kernel/audio backend;
+- interfaces, USB paths, serials when available;
+- channel aliases;
+- tags and notes;
+- online/offline/recording/alert status.
 
-The UI should make it obvious which physical room and device a node represents.
+Current scaffold:
 
-The Behringer X32 Rack is only the current physical fixture. Rakkr must support generic ALSA/JACK/PipeWire capture devices.
-
-Current:
-
-- Nodes list/enroll/rotate credentials through RBAC-gated routes.
-- Node IDs use readable domain identifiers in Drizzle/Postgres.
-- Credentials, interfaces, recordings, jobs, schedules, and health events correlate by node ID.
-- `snd-aloop` can fake a Linux capture device before X32 validation resumes.
-- ALSA loopback render smoke passed on Debian node `recorder` on `2026-06-18`.
-
-- `mise run agent:loopback-smoke`: raw WAV capture through ALSA loopback.
-- `mise run agent:loopback-meter-smoke`: Rakkr meter frame from ALSA loopback.
-- `mise run agent:loopback-render-smoke`: mapped/rendered output validation.
+- RBAC-gated node list, enroll, credential rotation, status, and health routes.
+- Node credentials scoped to their own node/jobs/recordings/meters/events.
+- ALSA loopback tasks can fake capture/meter/render before X32 validation resumes.
 
 ---
 
 ## Scheduler
 
-Scheduler is a first-class domain feature. Users must never need to write cron syntax.
+Scheduler rules:
 
-Supported concepts:
+- Human-friendly UI; no cron language.
+- One-off, daily, weekly, monthly, interval, always-on, paused ranges, exceptions.
+- Explicit timezone per schedule.
+- Start-early and stop-late buffers.
+- No arbitrary product limit on schedule count.
+- Scheduled recordings inherit schedule-owned filename, folder, tags, profile, targets, watchdog, retention, and future upload policy.
 
-- one-off recordings;
-- daily/weekly/monthly recurring schedules;
-- specific days of week;
-- intervals such as every 2 weeks;
-- first/last weekday style rules;
-- always-on schedules;
-- start early / stop late buffers;
-- exceptions and paused date ranges;
-- timezone-aware schedule definitions;
-- unlimited schedules in principle, with validation for impossible rules.
+Current scaffold:
 
-Example structured schedule:
-
-```json
-{
-  "timezone": "Indian/Maldives",
-  "recurrence": {
-    "type": "weekly",
-    "daysOfWeek": ["monday", "wednesday", "friday"],
-    "interval": 1
-  },
-  "startTime": "09:00",
-  "endTime": "11:30",
-  "exceptions": [{ "date": "2026-07-01", "action": "skip" }]
-}
-```
-
-## Schedule-Owned Metadata
-
-If a recording is created by a schedule, the schedule owns its initial metadata:
-
-- filename template;
-- folder/path template;
-- tags;
-- target node/interface/channel map;
-- recording profile;
-- watchdog policy;
-- retention/cache policy;
-- upload policy later.
-
-Example:
-
-```json
-{
-  "name": "Council Meeting",
-  "folderTemplate": "Meetings/{yyyy}/{MM}/{scheduleName}",
-  "filenameTemplate": "{yyyy}-{MM}-{dd}_{HHmm}_{scheduleName}_{nodeName}",
-  "tags": ["council", "scheduled", "voice"],
-  "recordingProfileId": "voice-mp3-vbr",
-  "watchdogPolicyId": "scheduled-voice-watchdog"
-}
-```
-
-Ad hoc recordings can use ad hoc defaults or user-provided metadata.
-
-Current:
-
-- Store: Drizzle/Postgres with JSON fallback and readable domain IDs.
-- API: read, preview, create, edit, run-now, skip-next, and delete are RBAC/resource scoped.
-- Model: recurrence, timezone, room, profile, watchdog policy, tags, buffers, pauses, and metadata templates.
-- Runner: due schedules create recordings/jobs under `system:scheduler` and audit outcomes.
-- UI: one-off, daily, weekly, monthly, always-on, buffers, pauses, quick helpers, and execution detail.
-- Tests: recurrence previews, buffers, skip/pause, monthly clamping, overnight duration, and skip-next.
-- Pending: deeper natural-language scheduling beyond current helper patterns.
-
----
+- Drizzle/Postgres schedule store.
+- Preview, create, edit, run-now, skip-next, delete.
+- Recurrence tests for buffers, pauses, monthly clamping, overnight duration, and skip-next.
+- Runner creates jobs under `system:scheduler` and audits outcomes.
 
 ## Health Watchdog
 
-Health monitoring is a core product pillar.
+Health monitoring must catch bad recordings while they are happening.
 
-Rakkr must detect likely failure modes before users discover bad recordings later:
+Required signals:
 
-- no meaningful signal;
+- no meaningful signal during scheduled window;
 - input too quiet;
-- digital flatline;
-- stuck samples;
-- excessive noise;
-- hum/static likelihood;
+- digital flatline or stuck samples;
 - clipping;
-- device disconnects;
-- ALSA/JACK/PipeWire xruns;
+- excessive noise, hum, static likelihood;
+- device disconnects and audio backend xruns;
 - encoder/file writer failure;
 - recording file not growing;
-- channel correlation and mapping issues;
-- upload queue failures later.
-
-## Scheduled Signal Activity Rule
-
-Preflight checks are not enough because recorders may be started long before meetings begin. Scheduled watchdog rules should evaluate during the scheduled period.
+- channel mapping/correlation issues;
+- future upload failures.
 
 Default scheduled voice rule:
 
-```json
-{
-  "activeDuring": "scheduled_recording",
-  "windowSeconds": 900,
-  "thresholdDbfs": -45,
-  "metric": "rms",
-  "minCumulativeSecondsAboveThreshold": 10,
-  "graceSeconds": 300,
-  "severity": "critical",
-  "repeatEverySeconds": 900
-}
-```
+- During the scheduled recording window, after a grace period, alert if the signal does not exceed a configurable dBFS threshold for enough cumulative time.
+- This is not simple silence detection and not a preflight check.
 
-Meaning:
+Current scaffold:
 
-> During a scheduled recording, after the grace period, alert if the input has not produced at least 10 cumulative seconds above -45 dBFS in the last 15 minutes.
+- Lifecycle health events in Postgres plus local node JSONL logs.
+- Scheduled low-signal alerts open, repeat, and auto-resolve.
+- Node health summaries, recent events, trends, and recording/schedule quality timelines.
+- Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 
-This is intentionally stronger than simple silence detection and less easily fooled by one short click or bump.
+## Future Voice Quality AI
 
-## Alert Lifecycle
+Keep AI optional and pluggable.
 
-Alerts should support:
+Future analysis targets:
 
-- open;
-- repeated/updated;
-- acknowledged;
-- suppressed;
-- resolved automatically;
-- resolved manually;
-- attached to node, interface, channel, recording, and schedule where possible.
+- voice presence;
+- noise vs speech ratio;
+- estimated SNR;
+- static/hum/broadband noise;
+- intelligibility score;
+- optional transcription snippets for search.
 
-Recordings should show a quality timeline with:
-
-- healthy regions;
-- low-activity regions;
-- clipping markers;
-- flatline markers;
-- device/dropout events;
-- AI quality markers later.
-
-Current:
-
-- Store/API: lifecycle health events in Drizzle/Postgres with RBAC/resource-scoped lifecycle actions.
-- Agents: post meter frames, sync local health events, and maintain size-rotated JSONL logs.
-- Watchdog: scheduled low-signal alerts open, repeat, and auto-resolve.
-- UI: node health summaries, trends, recent events, and recording/schedule quality timelines.
-- Coverage: ALSA loopback meter smoke passed on Debian node `zenith` on `2026-06-18`.
-- Pending: JACK/PipeWire meters, noise/speech classification, and richer quality scoring.
+Likely path: DSP metrics, local VAD, noise classifier, optional cloud/commercial provider.
 
 ---
 
-## AI Voice Quality Analysis
+## RBAC And Audit
 
-AI/ML analysis is a future integration, not a dependency for core recording.
+RBAC rules:
 
-Desired future capability:
+- Default deny.
+- Exact permission plus resource-scope check for targeted actions.
+- Allow and deny policies for user, group, and everyone subjects.
+- Explicit deny wins over role grants and inherited visibility.
+- UI mirrors permissions, but the API enforces them.
+- Service identities, including scheduler actions, are audited.
 
-- sample chunks during or after scheduled recordings;
-- estimate voice presence;
-- estimate noise vs speech;
-- estimate speech-to-noise ratio;
-- detect static, hum, or broadband noise;
-- estimate intelligibility;
-- optionally produce transcription snippets for search.
+Scope model:
 
-Example chunk analysis:
+| Scope | Examples |
+| ----- | -------- |
+| Global | auth settings, roles, system settings |
+| Site | site-wide inventory and policies |
+| Room | room health, live listen |
+| Node | enroll, rename, configure, control |
+| Interface | meters, channel maps, templates |
+| Channel | listen, record, rename |
+| Schedule | create, edit, pause, run-now, delete |
+| Recording | playback, download, rename, tag, delete |
+| Alert | acknowledge, suppress, resolve |
 
-```json
-{
-  "speechRatio": 0.72,
-  "silenceRatio": 0.18,
-  "noiseRatio": 0.1,
-  "estimatedSnrDb": 21.4,
-  "intelligibilityScore": 0.86,
-  "clippingRatio": 0.002,
-  "verdict": "good_voice"
-}
-```
+Required permission families:
 
-Potential implementation path:
+- node inventory;
+- metering;
+- live listening;
+- recording control;
+- recording library;
+- schedules;
+- templates/settings;
+- alerts;
+- audit;
+- administration.
 
-1. Basic DSP health metrics.
-2. Local VAD such as WebRTC VAD or Silero VAD.
-3. Noise classifier and SNR/quality estimator.
-4. Optional cloud/commercial provider for deeper analysis.
+Audit events must capture actor, permission, target, outcome, reason, timestamp, correlation IDs, and before/after values where relevant.
 
-Important policy:
+Current scaffold:
 
-- Preserve original raw/master recording.
-- Use cleaned/enhanced audio only for monitoring, previews, or optional derived files.
-- Never make AI required for recording correctness.
+- Local users, groups, roles, scopes, access policies, passwords, status.
+- Access UI manages users, groups, policies, and scopes.
+- Disabled/deleted/password-reset users lose active sessions.
+- Audit API/UI filters by actor, action, target, outcome, and time.
+- User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
 
----
+## Security And Transport
 
-## Observability And Logs
+- Local auth uses hashed passwords and bearer sessions.
+- Azure AD OIDC remains a future integration.
+- Node enrollment uses one-time tokens and stores only hashes.
+- Controller/node traffic must be transport-layer encrypted.
+- Development can use a local CA or trusted dev certificates.
+- Production should support certificate rotation and a path to mutual TLS or equivalent node identity.
 
-Health events must be operational telemetry, not transient UI state.
+Required encrypted flows:
 
-## Local Node Event Log
-
-Each recorder node should maintain a lifecycle-managed local log:
-
-- durable local SQLite or append-only event store;
-- survives controller outages;
-- retains events by age and size policy;
-- syncs to controller when available;
-- records device, recording, watchdog, cache, and upload events.
-
-Example event:
-
-```json
-{
-  "type": "watchdog.signal_below_threshold",
-  "severity": "warning",
-  "nodeId": "x32-node-01",
-  "inputId": "x32-usb-ch03",
-  "scheduleId": "council-meeting",
-  "recordingId": "rec_123",
-  "openedAt": "2026-06-17T09:15:00Z",
-  "resolvedAt": null,
-  "details": {
-    "windowSeconds": 900,
-    "thresholdDbfs": -45,
-    "secondsAboveThreshold": 2.4
-  }
-}
-```
-
-## Central Event Store
-
-The controller stores normalized events in Postgres:
-
-- node events;
-- health alerts;
-- recording events;
-- schedule execution events;
-- upload events later;
-- audit events for user/admin actions.
-
-## Metrics Export
-
-Support OpenTelemetry-friendly metrics and Prometheus/Mimir export.
-
-Candidate metrics:
-
-- `rakkr_node_online`
-- `rakkr_input_rms_dbfs`
-- `rakkr_input_peak_dbfs`
-- `rakkr_input_clipping_ratio`
-- `rakkr_input_flatline_seconds`
-- `rakkr_recording_active`
-- `rakkr_recording_duration_seconds`
-- `rakkr_recording_bytes_written`
-- `rakkr_recording_watchdog_alerts_total`
-- `rakkr_upload_queue_depth`
-- `rakkr_upload_failures_total`
-- `rakkr_device_xruns_total`
-
-Current:
-
-- `/metrics` is protected by `metrics:read`, audited, and backed by scoped stores.
-- Export covers node state, recordings, jobs, meters, health events, watchdog alerts, and xruns.
-- Pending: full OpenTelemetry instrumentation and Mimir deployment guidance.
+- enrollment;
+- heartbeat/status;
+- commands and acknowledgements;
+- meter frames;
+- live monitor audio;
+- recording/job metadata;
+- local event log sync;
+- health and alert updates.
 
 ---
 
 ## Recording Library
 
-The central server must track cached and uploaded recordings.
+Required features:
 
-Required organization features:
-
-- rename recordings;
-- folder/path organization;
+- rename;
+- folders;
 - tags;
 - schedule relationship;
 - node/interface/channel relationship;
@@ -593,397 +329,107 @@ Required organization features:
 - playback controls;
 - download;
 - waveform preview;
-- search and filtering;
+- search/filtering;
 - checksums;
-- upload/cache status;
-- derived preview/transcode assets later.
+- cache/upload status;
+- future preview/transcode assets.
 
-Current:
+Current scaffold:
 
-- Store: recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
-- UI/API: scoped filters, metadata editing, playback, download, cache files, and audit events.
-- Schedules: run-now materializes schedule-owned name, folder, tags, profile, and watchdog policy.
-- Agent: claim, capture, heartbeat, stop handling, cache upload, local job state, and job leasing.
-- Integrity: cache-file attach computes SHA-256 checksums and WAV PCM waveform preview peaks.
-- UI: recording cards show checksum fingerprints and compact waveform previews when available.
-- Pending: upload retry queue and real SMB/S3 providers.
+- Recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
+- Scoped filters, metadata editing, playback, download, cache attach, and audit events.
+- Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
+- Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
+- Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
 
----
+## Storage Upload
+
+Current rule:
+
+- Local cache is the reliable source for now.
+- Upload providers stay stubbed until basics are stable.
+
+Next slice:
+
+- Failed upload retry queue skeleton for future SMB/S3 providers.
+- Queue entries should be auditable, visible, retryable, and metric-exported.
+
+Later:
+
+- SMB provider.
+- S3 provider.
+- checksum verification after upload.
+- retention policy after confirmed upload.
+
+## Observability
+
+Telemetry surfaces:
+
+- local node lifecycle log;
+- central health events;
+- central audit events;
+- Prometheus `/metrics`;
+- future OpenTelemetry/Mimir guidance.
+
+Important metric names:
+
+- `rakkr_node_online`
+- `rakkr_input_rms_dbfs`
+- `rakkr_input_peak_dbfs`
+- `rakkr_input_clipping_ratio`
+- `rakkr_recording_active`
+- `rakkr_recording_duration_seconds`
+- `rakkr_recording_bytes_written`
+- `rakkr_recording_watchdog_alerts_total`
+- `rakkr_upload_queue_depth`
+- `rakkr_upload_failures_total`
+- `rakkr_device_xruns_total`
 
 ## Date And Time Rules
 
-Product-wide rule:
+- Store timestamps as UTC ISO 8601.
+- API timestamps are ISO 8601 strings.
+- Display in browser/user timezone.
+- Display format is year-first.
+- Schedule definitions include explicit timezone.
+- Filenames default to year-first.
 
-- Stored timestamps: UTC ISO 8601, for example `2026-06-17T10:45:00.000Z`.
-- API timestamps: ISO 8601 strings.
-- Displayed dates: browser/user timezone.
-- Displayed date format: year-first ISO-style.
-- Schedule definitions: explicit timezone.
-- Filenames: year-first by default.
+Examples:
 
-Display examples:
-
-| Purpose                 | Format                     |
-| ----------------------- | -------------------------- |
-| Date                    | `2026-06-17`               |
-| Date/time               | `2026-06-17 14:45`         |
-| Date/time with seconds  | `2026-06-17 14:45:03`      |
-| Exact timestamp tooltip | `2026-06-17T10:45:03.123Z` |
-
----
-
-## Security And Auth
-
-Initial:
-
-- local auth with password hashing and session tokens;
-- default-deny RBAC roles and permissions;
-- trusted LAN for reachability only;
-- encrypted transport for all controller/node communication;
-- authenticated node enrollment;
-- hashed node tokens/keys with credential rotation;
-- permission-gated controller routes, streams, and commands;
-- audit trail for security-sensitive allowed and denied actions.
-
-Future:
-
-- Azure AD OIDC;
-- optional remote node mode using Iroh;
-- stronger node identity and key rotation.
-
-Current:
-
-- Local auth uses scrypt password hashing, bearer sessions, login/logout audit, and Postgres-backed sessions.
-- Access UI manages local users, roles, groups, scopes, passwords, status, and global access policies.
-- Disabled/deleted/password-reset users lose active sessions.
-- Node enrollment issues one-time tokens and stores only token hashes.
-- Recorder-agent routes require node credentials and audit node actors.
-- `mise run db:verify` replays Drizzle migrations in `mise run check` and CI.
-- Pending: Azure AD OIDC user sync.
-
----
-
-## RBAC And Audit Trail
-
-RBAC is a product invariant, not just a UI feature. Hiding a button is useful, but the controller must enforce permissions server-side before any action runs.
-
-Core rules:
-
-- default deny unless a role grants the exact permission;
-- targeted actions must also pass a resource-scope check;
-- resource-scope policies support `allow` and `deny` effects;
-- policy subjects can be a user, group, or everyone;
-- explicit deny wins over allow, inherited grants, and broad admin/operator visibility for the targeted resource;
-- every API route, realtime stream, live monitor stream, and node command requires authorization;
-- every privileged read and write action records an audit event;
-- denied authorization attempts are audit events too;
-- UI state should mirror permissions, but never replace server checks;
-- scheduled and automated node actions run under service identities and are audited.
-
-## Permission Scope Model
-
-Permissions should be scoped to the smallest practical resource:
-
-| Scope     | Examples                                      |
-| --------- | --------------------------------------------- |
-| Global    | system settings, auth settings, role editing  |
-| Site      | site-wide node inventory and policies         |
-| Room      | listen to a room, view room health            |
-| Node      | enroll, rename, control, restart, configure   |
-| Interface | view meters, map channels, assign templates   |
-| Channel   | listen, record, rename, include in profiles   |
-| Schedule  | create, edit, pause, run now, delete          |
-| Recording | playback, download, edit metadata, delete     |
-| Alert     | acknowledge, suppress, resolve, comment       |
-
-Scopes can be broad for administrators and narrow for operators.
-For example, a user may be allowed to listen to `Room A` but not `Room B`, or allowed to start scheduled recordings but not edit recording profiles.
-
-Access policies must support:
-
-- allow one user access to exactly one recorder, room, schedule, or recording;
-- allow one group access to exactly one recorder, room, schedule, or recording;
-- deny one user, one group, or everyone from a recorder;
-- recorder-level deny inheritance so that blocked recorder recordings, meter streams, live listen, and control actions are also blocked;
-- audit events that show `access_policy_denied` instead of a generic missing scope.
-
-Current scaffold grant IDs:
-
-- Site: `site:Main Office`
-- Room: `room:Council Chamber` or `room:Main Office/Council Chamber`
-- Node: `node:node_x32_test`
-- Interface: `interface:iface_x32_usb`
-- Channel: `channel:iface_x32_usb:1` or `channel:node_x32_test:iface_x32_usb:1`
-- Schedule: `schedule:sched_council_weekly`
-- Recording: `recording:rec_demo_001`
-
-Current:
-
-- Controller actions check both permission and resource scope.
-- Explicit deny wins over role grants, inherited grants, and admin/operator visibility.
-- Local users can have independent passwords, roles, groups, and scopes.
-- Access policies support `allow` and `deny` for user, group, and everyone subjects.
-- Groups and memberships persist in Drizzle/Postgres and are editable in Access UI.
-- Node, schedule, recording, health-event, status, and meter collections are scope-filtered.
-- Schedules inherit schedule, room, and node scope.
-- Nodes inherit site, room, interface, and channel scope.
-- Recorder-level deny blocks recordings, live streams, linked health events, and control actions.
-- Node credentials can only act for their own node, jobs, recordings, meters, and health events.
-- Schedule, health, and recording metadata actions are permission-gated and scoped.
-- Automated schedule runs use `system:scheduler` and are audited.
-
-- Smoke coverage: auth, users, credentials, policies, groups, schedules, jobs, health events, meter ingest, and node health sync.
-
-## Required Permission Families
-
-| Family             | Example Actions                                                      |
-| ------------------ | -------------------------------------------------------------------- |
-| Node inventory     | view node, edit alias/location/IP notes, enroll, disable             |
-| Metering           | view live meters, view channel details, view health timeline         |
-| Live listening     | start monitor stream, stop monitor stream, list active listeners     |
-| Recording control  | start, stop, pause, resume, cancel, retry failed job                 |
-| Recording library  | browse, playback, download, rename, tag, move folder, delete         |
-| Schedules          | create, edit, enable, disable, run now, skip occurrence, delete      |
-| Templates/settings | create, edit, deploy, rollback, assign to nodes/interfaces/channels  |
-| Alerts             | view, acknowledge, suppress, unsuppress, resolve, reopen             |
-| Audit              | view audit log, export audit log, configure retention                |
-| Administration     | manage users, roles, OIDC config, node credentials, system settings  |
-
-Listening to a room is always privileged.
-It must require an explicit `listen` style permission for the target room/node/interface/channel and must never be treated as a harmless read-only action.
-
-Recording controls are also privileged.
-Starting, stopping, pausing, resuming, or canceling a recording can affect legal, operational, and archival outcomes.
-These actions require explicit permissions and audit events.
-
-## Audit Event Requirements
-
-The audit trail should answer who did what, to which resource, when, from where, whether it succeeded, and what changed.
-
-Minimum audit fields:
-
-| Field              | Requirement                                                 |
-| ------------------ | ----------------------------------------------------------- |
-| Event ID           | Stable unique ID                                            |
-| Timestamp          | UTC ISO 8601                                                |
-| Actor              | User ID or service identity                                 |
-| Actor context      | Roles, session ID, IP address, user agent where available   |
-| Permission checked | Permission string and evaluated scope                       |
-| Action             | Canonical action name                                       |
-| Target             | Resource type and ID, plus friendly alias/name when known   |
-| Outcome            | allowed, denied, failed, partial, or succeeded              |
-| Reason             | Denial reason or failure message when applicable            |
-| Correlation IDs    | Request ID, command ID, schedule ID, recording ID as needed |
-| Before/after       | For settings, templates, metadata, roles, and schedules     |
-
-High-value audited actions:
-
-- login, logout, failed login, password/auth changes;
-- role and permission changes;
-- node enrollment, node credential rotation, node disable/delete;
-- live listening start, stop, failure, and denied attempts;
-- recording start, stop, pause, resume, cancel, and denied attempts;
-- schedule create, edit, enable, disable, skip, run-now, and delete;
-- recording playback, download, delete, rename, folder move, and tag changes;
-- template deployment and rollback;
-- alert acknowledge, suppress, unsuppress, resolve, and reopen;
-- export of recordings, metadata, logs, or audit records.
-
-Live listen audit events should include listener, target room/node/channel, start time, end time, duration, outcome, and a reason field when the UI collects one.
-
-Recording-control audit events should include actor, command, schedule/ad hoc source, target node/interface/channel map, profile, timestamp, and final command result.
-
-Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range.
-Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
-
-Current:
-
-- Audit events persist through Postgres with an in-memory local fallback.
-- Authorization decisions carry actor/session context.
-- User, access, password, status, node credential, schedule, watchdog, health, and recording metadata actions are audited.
-- Password reset, disable, and delete revoke active sessions.
-- Node token audit entries store credential prefixes only.
-- Schedule and recording metadata audits include before/after values.
-- Watchdog audit events include health event, recording, schedule, and node correlations.
-- Audit API and UI filter by actor, action, target, outcome, and time range.
-
----
-
-## Backlog
-
-## Must Have
-
-- [x] ✅ `mise` monorepo scaffold.
-- [x] ✅ Docker Compose for local controller stack.
-- [x] ✅ Postgres schema baseline.
-- [x] ✅ Hono API service.
-- [x] ✅ React/TanStack/shadcn UI shell.
-- [ ] 🟦 Local auth.
-- [ ] 🟦 Default-deny RBAC permission enforcement.
-- [ ] 🟦 User/group allow-deny access policies.
-- [ ] 🟦 Audit event model and audit log UI.
-- [ ] 🟦 Live listen permission checks and audit trail.
-- [ ] 🟦 Recording control permission checks and audit trail.
-- [ ] 🟦 Node enrollment model.
-- [x] ✅ Rust recorder agent skeleton.
-- [ ] 🟦 Generic Linux audio device discovery.
-- [ ] ⏸️ X32 test-rig validation.
-- [ ] 🟦 Realtime meters.
-- [ ] 🟦 Recording job model.
-- [ ] 🟦 Voice MP3 VBR default profile.
-- [ ] 🟦 Local recording cache.
-- [ ] 🟦 Recording library metadata.
-- [ ] 🟦 Scheduler data model.
-- [ ] 🟦 Human-friendly schedule UI.
-- [ ] 🟦 Schedule-owned filename/folder/tag templates.
-- [ ] 🟦 Watchdog event model.
-- [ ] 🟦 Scheduled low-signal alert rule.
-- [ ] 🟦 Local node event log.
-- [ ] 🟦 Central event store.
-- [ ] 🟦 Prometheus metrics endpoint.
-
-## Should Have
-
-- [ ] 🟨 Multiple simultaneous recording jobs per node.
-- [ ] 🟦 Multiple interfaces per node.
-- [ ] 🟦 Channel aliases and groups.
-- [ ] 🟦 Mono-to-stereo-mix channel mode.
-- [ ] ⏳ Auto file splitting by length.
-- [ ] 🟦 Playback controls.
-- [ ] 🟦 Download recordings.
-- [x] ✅ Tags/folders/search filters.
-- [ ] 🟦 Node health dashboard summaries, trends, and event drilldown.
-- [ ] 🟦 Disk/CPU/audio backend health.
-- [ ] 🟦 Meter xrun and device-unavailable tracking.
-- [ ] 🧊 Failed upload retry queue skeleton.
-- [ ] 🟦 Checksum verification foundation.
-- [ ] 🟦 Waveform preview foundation.
-- [ ] 🟦 Template revisions, rollback history, pinned job targeting, and loopback-validated DSP render foundation.
-
-## Later
-
-- [ ] 🧊 SMB upload provider.
-- [ ] 🧊 S3 upload provider.
-- [ ] 🧊 Azure AD OIDC.
-- [ ] 🧊 Iroh remote transport.
-- [ ] 🧊 Live monitor audio enhancement.
-- [ ] 🧊 Local VAD.
-- [ ] 🧊 Noise vs speech scoring.
-- [ ] 🧊 AI voice quality analysis.
-- [ ] 🧊 Transcription snippets.
-- [ ] 🧊 Notification integrations.
-- [ ] 🧊 Public holiday calendars.
-- [ ] 🧊 Derived MP3/AAC browser playback assets.
+- Date: `2026-06-18`
+- Date/time: `2026-06-18 14:45`
+- Exact timestamp: `2026-06-18T10:45:03.123Z`
 
 ---
 
 ## Milestones
 
-## Milestone 0 - Project Foundation
+| Milestone | Goal | Status |
+| --------- | ---- | ------ |
+| 0. Foundation | Monorepo, Docker, API/UI shells, shared types | ✅ |
+| 1. Test rig visibility | Agent identity, meters, loopback validation, node UI | 🟦 |
+| 2. First reliable recording | Start/stop, cache, metadata, playback, download, health | 🟦 |
+| 3. Scheduling | Human scheduler, metadata ownership, execution events | 🟦 |
+| 4. Watchdog reliability | Scheduled health alerts, timelines, metrics | 🟦 |
+| 5. Operations | Organization, templates, audit search/export, upload stubs | 🚧 |
+| 6. Integrations | SMB/S3, Azure AD OIDC, Iroh, AI quality | 🧊 |
 
-Goal: create the monorepo and make local development pleasant.
+## Focus Queue
 
-Exit criteria:
-
-- `mise` installs required runtimes.
-- `mise`-managed Node workspace exists.
-- Controller API starts locally.
-- UI starts locally.
-- Docker Compose starts Postgres.
-- Shared config/types package exists.
-
-## Milestone 1 - Test Rig Visibility
-
-Goal: prove the Debian/X32 node can be discovered and monitored.
-
-Exit criteria:
-
-- 🟦 Rust agent runs on Debian test node.
-- 🟦 Agent reports node identity and network details.
-- ⏸️ Agent discovers X32 USB audio interface and channel count.
-- 🟦 Controller shows node online/offline state.
-- 🟦 Controller shows live meters while not recording.
-- 🟦 ALSA loopback fake-interface meter and render smoke tests pass on Debian node.
-- 🟦 Basic local node event log exists.
-- 🟦 Meter visibility is permission-gated.
-
-## Milestone 2 - First Reliable Recording
-
-Goal: create and retrieve recordings with metadata.
-
-Exit criteria:
-
-- Start/stop ad hoc recording from UI.
-- Configurable channel mapping.
-- Default voice MP3 VBR recording profile.
-- Local cache stores output.
-- Controller tracks cached recording metadata.
-- Playback and download work.
-- Recording file health events are captured.
-- Ad hoc recording controls are RBAC-gated and audited.
-- Playback and download are RBAC-gated and audited.
-
-## Milestone 3 - Scheduling And Metadata Ownership
-
-Goal: scheduled recordings become first-class.
-
-Exit criteria:
-
-- Human-friendly scheduler UI.
-- Schedule creates recording jobs.
-- Schedule owns filename/folder/tag defaults.
-- Schedule exceptions and buffers work.
-- Schedule execution events appear in timeline.
-- Schedule create/edit/enable/disable/run-now/delete actions are RBAC-gated and audited.
-
-## Milestone 4 - Watchdog Reliability
-
-Goal: alert while recordings are happening, not after users complain.
-
-Exit criteria:
-
-- 🟦 Scheduled low-signal activity rule.
-- 🟦 Clipping alerts.
-- 🟦 Flatline alerts.
-- 🟦 Device disconnect/xrun events.
-- 🟦 Auto-resolving alert lifecycle.
-- 🟦 Recording quality timeline in UI.
-- 🟦 Prometheus metrics exported.
-- 🟦 Alert acknowledge/suppress/resolve actions are RBAC-gated and audited.
-
-## Milestone 5 - Organization And Operations
-
-Goal: make Rakkr usable as a real archive and operations surface.
-
-Exit criteria:
-
-- Folder/tag/search organization.
-- Waveform previews.
-- Node inventory editing.
-- Template deployment.
-- Audit log search, filters, and export.
-- Upload provider stubs ready for SMB/S3.
-
----
+1. 🚧 Finish failed upload retry queue skeleton.
+2. ⏸️ Return to X32 hardware validation after device is confirmed.
+3. 🧊 Add Azure AD OIDC user sync.
+4. 🧊 Add SMB/S3 providers.
+5. 🧊 Add local VAD and noise/speech scoring.
 
 ## Open Questions
 
-| Question                             | Current Lean                                                       |
-| ------------------------------------ | ------------------------------------------------------------------ |
-| ALSA, JACK, or PipeWire first?       | Start with generic ALSA discovery; add JACK/PipeWire adapters next |
-| MP3 encoder choice in Rust pipeline? | To evaluate during agent prototype                                 |
-| Central live monitor protocol?       | Start simple; WebSocket/chunked stream, revisit if latency suffers |
-| Node local log storage               | SQLite likely                                                      |
-| Metrics path                         | OTel-friendly internals with Prometheus scrape endpoint            |
-
----
-
-## Current Next Action
-
-Continue controller trust and operations foundations while X32 validation is paused:
-
-1. Add failed upload retry queue skeleton for future SMB/S3 providers.
-2. Add OIDC-backed user sync when Azure AD work starts.
-3. Return to the Debian recorder node when the X32 connection is confirmed.
+| Question | Current Lean |
+| -------- | ------------ |
+| ALSA/JACK/PipeWire order | ALSA first, then JACK/PipeWire adapters |
+| Rust MP3 encoder path | Evaluate during agent recording pipeline hardening |
+| Live monitor protocol | Start with encrypted WebSocket/chunk stream |
+| Node local log store | JSONL now; SQLite likely later |
+| Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 
 Last updated: `2026-06-18`
