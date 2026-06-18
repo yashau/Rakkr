@@ -7,7 +7,7 @@ rust = "1.95.0"
 _.file = ".env"
 
 [tasks.install]
-description = "Install workspace dependencies with mise-managed pnpm"
+description = "Install workspace dependencies"
 run = "pnpm install"
 
 [tasks."install:ci"]
@@ -15,8 +15,9 @@ description = "Install workspace dependencies in CI with the locked dependency g
 run = "pnpm install --frozen-lockfile"
 
 [tasks.dev]
+depends = ["node:build-libs"]
 description = "Run the API and web UI"
-run = "pnpm dev"
+run = "pnpm -r --parallel --filter @rakkr/api --filter @rakkr/web dev"
 
 [tasks.check]
 depends = [
@@ -32,16 +33,25 @@ depends = [
 description = "Run all repository checks"
 
 [tasks.build]
+depends = ["node:build", "rust:build"]
 description = "Build the workspace"
-run = "pnpm build"
 
 [tasks."check:loc"]
 description = "Enforce the 1000 LOC per file budget"
 run = "node scripts/check-loc.mjs"
 
+[tasks."node:build-libs"]
+description = "Build shared Node workspace libraries"
+run = "pnpm --filter @rakkr/shared --filter @rakkr/db build"
+
+[tasks."node:build"]
+description = "Build Node workspace packages and apps"
+run = "pnpm -r --if-present build"
+
 [tasks."node:check"]
+depends = ["node:build-libs"]
 description = "Run TypeScript checks"
-run = "pnpm check:ts"
+run = "pnpm -r --if-present check"
 
 [tasks."node:lint"]
 description = "Run Oxlint with Tailwind CSS rules"

@@ -6,9 +6,9 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "pnpm --filter @rakkr/shared build && pnpm --filter @rakkr/db build && tsc -p tsconfig.json",
-    "check": "pnpm --filter @rakkr/shared build && pnpm --filter @rakkr/db build && tsc -p tsconfig.json --noEmit",
-    "dev": "pnpm --filter @rakkr/shared build && pnpm --filter @rakkr/db build && tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {

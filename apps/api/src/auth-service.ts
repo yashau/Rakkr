@@ -7,10 +7,21 @@ import {
   eq,
   gt,
   isNull,
+  permissions as permissionRows,
+  rolePermissions as rolePermissionRows,
+  roles as roleRows,
   userResourceGrants,
+  userRoles,
   users,
 } from "@rakkr/db";
-import { rolePermissions, type CurrentUser, type ResourceGrant, type Role } from "@rakkr/shared";
+import {
+  permissions,
+  rolePermissions,
+  roles,
+  type CurrentUser,
+  type ResourceGrant,
+  type Role,
+} from "@rakkr/shared";
 
 const passwordHashVersion = "scrypt";
 const passwordKeyLength = 64;
@@ -26,6 +37,11 @@ interface AuthSession {
   expiresAt: Date;
   tokenHash: string;
   user: CurrentUser;
+}
+
+export interface LocalAccess {
+  resourceGrants: ResourceGrant[];
+  roles: Role[];
 }
 
 export interface AuthResult {
@@ -55,6 +71,7 @@ export class AuthError extends Error {
 }
 
 export class LocalAuthService {
+  private readonly localAccessOverrides = new Map<string, LocalAccess>();
   private readonly sessions = new Map<string, AuthSession>();
   private readonly db?: ReturnType<typeof createDatabase>;
   private dbAvailable: boolean;
@@ -139,18 +156,53 @@ export class LocalAuthService {
     }
   }
 
+  async localUsers(): Promise<CurrentUser[]> {
+    return [await this.localAdmin()];
+  }
+
+  async localUser(userId: string): Promise<CurrentUser | undefined> {
+    return userId === localAdminId() ? this.localAdmin() : undefined;
+  }
+
+  async updateLocalUserAccess(
+    userId: string,
+    access: LocalAccess,
+  ): Promise<CurrentUser | undefined> {
+    if (userId !== localAdminId()) {
+      return undefined;
+    }
+
+    const nextAccess = {
+      resourceGrants: uniqueResourceGrants(access.resourceGrants),
+      roles: uniqueRoles(access.roles),
+    };
+
+    this.localAccessOverrides.set(userId, nextAccess);
+    await this.persistLocalUserAccess(userId, nextAccess);
+
+    const user = await this.localAdmin();
+
+    for (const session of this.sessions.values()) {
+      if (session.user.id === userId) {
+        session.user = user;
+      }
+    }
+
+    return user;
+  }
+
   async localAdmin(): Promise<CurrentUser> {
-    const role = localRole();
     const userId = localAdminId();
+    const access = await this.localAccessForUser(userId);
 
     return {
       email: process.env.RAKKR_LOCAL_ADMIN_EMAIL ?? "admin@rakkr.local",
       id: userId,
       name: process.env.RAKKR_LOCAL_ADMIN_NAME ?? "Local Admin",
-      permissions: [...rolePermissions[role]],
+      permissions: permissionsForRoles(access.roles),
       provider: "local",
-      resourceGrants: await this.resourceGrantsForUser(userId),
-      roles: [role],
+      resourceGrants: access.resourceGrants,
+      roles: access.roles,
     };
   }
 
@@ -238,8 +290,7 @@ export class LocalAuthService {
         .set({ lastSeenAt: new Date() })
         .where(eq(authSessions.tokenHash, tokenHash));
 
-      const role = localRole();
-      const resourceGrants = await this.resourceGrantsForUser(row.userId);
+      const access = await this.localAccessForUser(row.userId);
 
       return {
         sessionId: row.sessionId,
@@ -247,10 +298,10 @@ export class LocalAuthService {
           email: row.userEmail,
           id: row.userId,
           name: row.userName,
-          permissions: [...rolePermissions[role]],
+          permissions: permissionsForRoles(access.roles),
           provider: "local",
-          resourceGrants,
-          roles: [role],
+          resourceGrants: access.resourceGrants,
+          roles: access.roles,
         },
       };
     } catch (error) {
@@ -299,28 +350,115 @@ export class LocalAuthService {
     }
   }
 
-  private async resourceGrantsForUser(userId: string): Promise<ResourceGrant[]> {
+  private async localAccessForUser(userId: string): Promise<LocalAccess> {
+    const override = this.localAccessOverrides.get(userId);
+
+    if (override) {
+      return override;
+    }
+
     const db = this.availableDatabase();
 
     if (db) {
       try {
-        const rows = await db
+        const grantRows = await db
           .select({
             resourceId: userResourceGrants.resourceId,
             resourceType: userResourceGrants.resourceType,
           })
           .from(userResourceGrants)
           .where(eq(userResourceGrants.userId, userId));
+        const roleResult = await db
+          .select({
+            roleId: userRoles.roleId,
+          })
+          .from(userRoles)
+          .where(eq(userRoles.userId, userId));
 
-        if (rows.length > 0) {
-          return rows;
+        if (grantRows.length > 0 || roleResult.length > 0) {
+          return {
+            resourceGrants: grantRows,
+            roles: uniqueRoles(roleResult.map((row) => row.roleId)).length
+              ? uniqueRoles(roleResult.map((row) => row.roleId))
+              : [localRole()],
+          };
         }
       } catch (error) {
         this.markDatabaseUnavailable(error);
       }
     }
 
-    return userId === localAdminId() ? localResourceGrantsFromEnv() : [];
+    return userId === localAdminId()
+      ? {
+          resourceGrants: localResourceGrantsFromEnv(),
+          roles: [localRole()],
+        }
+      : {
+          resourceGrants: [],
+          roles: [],
+        };
+  }
+
+  private async persistLocalUserAccess(userId: string, access: LocalAccess) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return;
+    }
+
+    try {
+      await this.ensureSecurityCatalog();
+
+      await db.delete(userRoles).where(eq(userRoles.userId, userId));
+      await db.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
+
+      await db.insert(userRoles).values(
+        access.roles.map((roleId) => ({
+          roleId,
+          userId,
+        })),
+      );
+
+      if (access.resourceGrants.length > 0) {
+        await db.insert(userResourceGrants).values(
+          access.resourceGrants.map((grant) => ({
+            resourceId: grant.resourceId,
+            resourceType: grant.resourceType,
+            userId,
+          })),
+        );
+      }
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+    }
+  }
+
+  private async ensureSecurityCatalog() {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return;
+    }
+
+    await db
+      .insert(roleRows)
+      .values(roles.map((id) => ({ id, name: roleName(id) })))
+      .onConflictDoNothing();
+    await db
+      .insert(permissionRows)
+      .values(permissions.map((id) => ({ id, name: permissionName(id) })))
+      .onConflictDoNothing();
+    await db
+      .insert(rolePermissionRows)
+      .values(
+        roles.flatMap((roleId) =>
+          rolePermissions[roleId].map((permissionId) => ({
+            permissionId,
+            roleId,
+          })),
+        ),
+      )
+      .onConflictDoNothing();
   }
 
   private availableDatabase() {
@@ -450,6 +588,35 @@ function localResourceGrantsFromEnv(): ResourceGrant[] {
     console.warn("invalid RAKKR_LOCAL_RESOURCE_GRANTS JSON; ignoring scoped grants", error);
     return [];
   }
+}
+
+function uniqueRoles(values: readonly string[]): Role[] {
+  const result = values.filter((role): role is Role => roles.includes(role as Role));
+
+  return [...new Set(result)];
+}
+
+function uniqueResourceGrants(values: readonly ResourceGrant[]) {
+  return [
+    ...new Map(
+      values.map((grant) => [`${grant.resourceType}:${grant.resourceId}`, grant] as const),
+    ).values(),
+  ];
+}
+
+function permissionsForRoles(values: readonly Role[]) {
+  return [...new Set(values.flatMap((role) => rolePermissions[role]))];
+}
+
+function roleName(role: Role) {
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function permissionName(permission: string) {
+  return permission
+    .split(":")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function isUuid(value: string) {

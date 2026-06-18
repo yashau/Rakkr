@@ -12,8 +12,12 @@ import {
   auditOutcomeSchema,
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
+  resourceGrantSchema,
+  rolePermissions,
+  roleSchema,
   type AuditEvent,
   type AuditOutcome,
+  type CurrentUser,
   type Permission,
   type RecordingSummary,
 } from "@rakkr/shared";
@@ -63,6 +67,15 @@ const auditEventsQuerySchema = z.object({
   target: optionalTextFilterSchema,
   to: optionalDateFilterSchema,
 });
+const userAccessRequestSchema = z
+  .object({
+    resourceGrants: z.array(resourceGrantSchema).default([]),
+    roles: z.array(roleSchema).min(1),
+  })
+  .refine((value) => value.roles.some((role) => rolePermissions[role].includes("auth:manage")), {
+    message: "Local access manager must keep auth:manage",
+    path: ["roles"],
+  });
 
 function requestContext(c: Context<AppBindings>, sessionId?: string) {
   return {
@@ -200,6 +213,13 @@ function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEvent
     outcome: input.outcome,
     target: input.target,
     to: input.to ? new Date(input.to) : undefined,
+  };
+}
+
+function accessSnapshot(user: CurrentUser | undefined) {
+  return {
+    resourceGrants: user?.resourceGrants ?? [],
+    roles: user?.roles ?? [],
   };
 }
 
@@ -489,6 +509,92 @@ app.get("/api/v1/auth/me", async (c) => {
     data: auth.user,
   });
 });
+
+app.get(
+  "/api/v1/auth/users",
+  requirePermission("auth:manage", "auth.users.read", () => ({ type: "auth" })),
+  async (c) => {
+    const users = await authService.localUsers();
+
+    await recordAuditEvent(c, {
+      action: "auth.users.read.succeeded",
+      auth: currentAuth(c),
+      details: {
+        count: users.length,
+      },
+      outcome: "succeeded",
+      permission: "auth:manage",
+      target: {
+        type: "auth",
+      },
+    });
+
+    return c.json({ data: users });
+  },
+);
+
+app.patch(
+  "/api/v1/auth/users/:userId/access",
+  requirePermission("auth:manage", "auth.users.access.update", (c) => ({
+    id: c.req.param("userId"),
+    type: "user",
+  })),
+  async (c) => {
+    const userId = c.req.param("userId");
+    const body = userAccessRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+
+    if (!body.success) {
+      await recordAuditEvent(c, {
+        action: "auth.users.access.update.failed",
+        auth: currentAuth(c),
+        outcome: "failed",
+        permission: "auth:manage",
+        reason: "invalid_request",
+        target: {
+          id: userId,
+          type: "user",
+        },
+      });
+
+      return c.json({ error: "Invalid access update", issues: body.error.issues }, 400);
+    }
+
+    const before = await authService.localUser(userId);
+    const updated = await authService.updateLocalUserAccess(userId, body.data);
+
+    if (!updated) {
+      await recordAuditEvent(c, {
+        action: "auth.users.access.update.failed",
+        auth: currentAuth(c),
+        outcome: "failed",
+        permission: "auth:manage",
+        reason: "user_not_found",
+        target: {
+          id: userId,
+          type: "user",
+        },
+      });
+
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    await recordAuditEvent(c, {
+      action: "auth.users.access.update.succeeded",
+      after: accessSnapshot(updated),
+      auth: currentAuth(c),
+      before: accessSnapshot(before),
+      outcome: "succeeded",
+      permission: "auth:manage",
+      target: {
+        id: updated.id,
+        name: updated.email,
+        type: "user",
+      },
+    });
+
+    return c.json({ data: updated });
+  },
+);
 
 app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), async (c) => {
   const query = auditEventsQuerySchema.safeParse(c.req.query());

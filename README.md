@@ -10,12 +10,12 @@ The project source of truth lives in [docs/RAKKR_SOURCE_OF_TRUTH.md](docs/RAKKR_
 | ----------------- | --------------------------------------------------------------- |
 | Tooling           | `mise` as the canonical entrypoint for setup, checks, and builds |
 | Controller API    | Hono on Node.js                                                 |
-| Controller UI     | React, TanStack Router, TanStack Query, shadcn-style components |
+| Controller UI     | React, TanStack Router, TanStack Query, shadcn/ui components    |
 | Database          | Postgres, Drizzle schema package                                |
 | Recorder agent    | Rust                                                            |
 | Initial transport | Encrypted HTTP/WebSocket-ready boundary over trusted LAN        |
 
-`mise` owns workspace setup and repository commands. Install runtimes, dependencies, checks, formatting, builds, and local development through mise tasks.
+`mise` owns workspace setup and repository commands. Install runtimes, dependencies, checks, formatting, builds, and local development through mise tasks. Package-manager commands are an internal implementation detail of `.mise.toml`, not the canonical developer interface.
 
 ## Quick Start
 

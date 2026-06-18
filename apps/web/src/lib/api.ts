@@ -6,6 +6,8 @@ import type {
   RecorderNode,
   RecordingProfile,
   RecordingSummary,
+  ResourceGrant,
+  Role,
   ScheduleSummary,
   WatchdogPolicy,
 } from "@rakkr/shared";
@@ -53,6 +55,11 @@ export interface RecordingPlaybackSession {
 export interface RecordingFileBlob {
   blob: Blob;
   fileName: string;
+}
+
+export interface UserAccessUpdate {
+  resourceGrants: ResourceGrant[];
+  roles: Role[];
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -117,6 +124,7 @@ export function clearAuthToken() {
 export const api = {
   auditEvents: (filters: AuditEventFilters = {}) =>
     fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
+  accessUsers: () => fetchJson<{ data: CurrentUser[] }>("/api/v1/auth/users"),
   currentUser: () => fetchJson<{ data: CurrentUser }>("/api/v1/auth/me"),
   login: (email: string, password: string) =>
     fetchJson<{ data: { expiresAt: string; token: string; user: CurrentUser } }>(
@@ -162,6 +170,14 @@ export const api = {
   stopRecording: (recordingId: string) =>
     fetchJson<{ data: RecordingSummary }>(`/api/v1/recordings/${recordingId}/stop`, {
       method: "POST",
+    }),
+  updateUserAccess: (userId: string, access: UserAccessUpdate) =>
+    fetchJson<{ data: CurrentUser }>(`/api/v1/auth/users/${userId}/access`, {
+      body: JSON.stringify(access),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
     }),
 };
 

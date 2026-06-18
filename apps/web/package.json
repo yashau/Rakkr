@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @rakkr/shared build && tsc -p tsconfig.json && vite build",
-    "check": "pnpm --filter @rakkr/shared build && tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && vite build",
+    "check": "tsc -p tsconfig.json --noEmit",
     "dev": "vite --host 0.0.0.0",
     "preview": "vite preview"
   },

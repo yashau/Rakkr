@@ -165,7 +165,7 @@ flowchart LR
 | Decision             | Choice                          | Rationale                                                                             |
 | -------------------- | ------------------------------- | ------------------------------------------------------------------------------------- |
 | Monorepo setup       | `mise`                          | Canonical setup and command entrypoint for all developers and CI                      |
-| JS package manager   | `pnpm` through `mise`           | Good monorepo ergonomics while keeping `mise` as the user-facing tool                 |
+| Node workspace       | `mise` task-managed dependencies | Keep setup, checks, builds, and local development behind one canonical entrypoint      |
 | API framework        | Hono                            | Small, fast, TypeScript-friendly, suitable for API + realtime endpoints               |
 | UI framework         | React + Vite                    | Fast iteration and strong ecosystem                                                   |
 | Routing              | TanStack Router                 | Typed routes and app-scale routing                                                    |
@@ -597,8 +597,9 @@ Current scaffold status:
 - login and logout are audited;
 - auth sessions persist through Postgres when `DATABASE_URL` and migrations are available;
 - user resource grants persist through Postgres and can be bootstrapped from local dev env;
+- Access UI can edit local roles and resource scopes for the local account;
 - in-memory auth session fallback keeps local development usable before Postgres is ready;
-- user management UI is still pending.
+- multi-user local auth and OIDC-backed user sync are still pending.
 
 ---
 
@@ -634,7 +635,7 @@ Permissions should be scoped to the smallest practical resource:
 
 Scopes can be broad for administrators and narrow for operators. For example, a user may be allowed to listen to `Room A` but not `Room B`, or allowed to start scheduled recordings but not edit recording profiles.
 
-Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access; narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope.
+Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access; narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local role/scope changes.
 
 ## Required Permission Families
 
@@ -774,7 +775,7 @@ Goal: create the monorepo and make local development pleasant.
 Exit criteria:
 
 - `mise` installs required runtimes.
-- `mise`-managed pnpm workspace exists.
+- `mise`-managed Node workspace exists.
 - Controller API starts locally.
 - UI starts locally.
 - Docker Compose starts Postgres.
@@ -869,10 +870,10 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add user management UI for local auth roles and scopes.
-2. Replace demo cache placeholders with recorder-agent-produced local cache files.
-3. Add durable room/interface/channel scope inheritance beyond node and schedule relationships.
+1. Replace demo cache placeholders with recorder-agent-produced local cache files.
+2. Add durable room/interface/channel scope inheritance beyond node and schedule relationships.
+3. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
 
-Last updated: `2026-06-17`
+Last updated: `2026-06-18`

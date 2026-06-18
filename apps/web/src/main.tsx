@@ -13,12 +13,22 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { CalendarDays, Database, Gauge, LogOut, Radio, Settings, ShieldCheck } from "lucide-react";
+import {
+  CalendarDays,
+  Database,
+  Gauge,
+  LogOut,
+  Radio,
+  Settings,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { Button } from "@/components/ui/button";
 import { api, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/api";
+import { AccessPage } from "@/pages/access";
 import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
 import { NodesPage } from "@/pages/nodes";
@@ -52,6 +62,7 @@ function RootLayout() {
     { icon: CalendarDays, label: "Schedules", to: "/schedules" },
     { icon: Database, label: "Recordings", to: "/recordings" },
     { icon: ShieldCheck, label: "Audit", to: "/audit" },
+    { icon: Users, label: "Access", to: "/access" },
   ] as const;
 
   if (!authToken || currentUserQuery.isError) {
@@ -118,9 +129,11 @@ function RootLayout() {
                 <div className="font-medium">{currentUser.name}</div>
                 <div className="text-xs text-muted-foreground">{currentUser.roles.join(", ")}</div>
               </div>
-              <Button variant="outline">
-                <Settings className="size-4" />
-                Settings
+              <Button asChild variant="outline">
+                <Link to="/access">
+                  <Settings className="size-4" />
+                  Settings
+                </Link>
               </Button>
               <Button
                 disabled={logoutMutation.isPending}
@@ -242,12 +255,19 @@ const auditRoute = createRoute({
   path: "/audit",
 });
 
+const accessRoute = createRoute({
+  component: AccessPage,
+  getParentRoute: () => rootRoute,
+  path: "/access",
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   nodesRoute,
   schedulesRoute,
   recordingsRoute,
   auditRoute,
+  accessRoute,
 ]);
 
 const router = createRouter({ routeTree });
