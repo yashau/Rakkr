@@ -201,6 +201,7 @@ export function accessKeepsAuthManage(values: readonly string[]) {
 
 export function accessSnapshot(user: CurrentUser | undefined) {
   return {
+    disabledAt: user?.disabledAt,
     groups: user?.groups ?? [],
     resourceGrants: user?.resourceGrants ?? [],
     roles: user?.roles ?? [],

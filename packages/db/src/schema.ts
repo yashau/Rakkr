@@ -87,6 +87,7 @@ export const users = pgTable(
   "users",
   {
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
     email: varchar("email", { length: 320 }).notNull().unique(),
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 160 }).notNull(),

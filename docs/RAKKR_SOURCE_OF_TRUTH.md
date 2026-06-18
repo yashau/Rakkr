@@ -605,12 +605,14 @@ Current scaffold status:
 - Access UI can edit local roles and resource scopes for the local account;
 - Access UI can create local users with initial roles, groups, and scopes;
 - Access UI can edit local group memberships and show known local groups;
+- Access UI can reset local passwords, enable/disable local users, and delete local users;
 - Access UI can edit global access policies for user, group, or everyone subjects;
+- disabled local users cannot log in, and disable/delete/password-reset actions revoke active sessions;
 - Nodes UI can enroll persisted recorder nodes and display one-time node tokens;
 - node credentials persist as token hashes in Postgres and rotation revokes active credentials before issuing a new one-time token;
 - Drizzle migrations are verified against local Docker Postgres using the canonical `127.0.0.1` connection string;
 - in-memory auth session fallback keeps local development usable before Postgres is ready;
-- password reset, user disable/delete, and OIDC-backed user sync are still pending.
+- OIDC-backed user sync is still pending.
 
 ---
 
@@ -667,7 +669,7 @@ Current scaffold grant IDs:
 - Schedule: `schedule:sched_council_weekly`
 - Recording: `recording:rec_demo_001`
 
-Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access unless an explicit access policy deny matches the target. Narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Persisted local users can be created with independent password hashes, roles, groups, and scopes. Global access policies live in `access_policies`, support `allow` and `deny`, and target `user`, `group`, or `everyone` subjects. Access groups and memberships persist through `access_groups` and `user_access_groups`; local bootstrap can attach groups to the local admin with `RAKKR_LOCAL_ADMIN_GROUPS`, and Access UI can now edit local group membership alongside roles and scopes. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Persisted schedules now participate in schedule, room, and node scope inheritance, including newly-created schedules from the Schedules UI. Persisted enrolled nodes participate in node, site, room, interface, and channel scope inheritance. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist, so a recorder-level deny also blocks its recordings and live streams. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local user/role/scope/policy/group changes. Node enrollment and credential rotation are RBAC-gated by `node:manage`, write audit events, and store only hashed node tokens. Schedule create/edit/run-now actions are guarded by `schedule:manage` and scoped to the target schedule plus inherited room/node targets. Recording metadata edits are guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants. Live Docker/Postgres smoke coverage verifies migration, multi-user local login, node enrollment/credential rotation, access-policy deny behavior, group-policy membership behavior, recording metadata persistence, schedule create/edit/run-now persistence, and recording job persistence.
+Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access unless an explicit access policy deny matches the target. Narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Persisted local users can be created with independent password hashes, roles, groups, and scopes. Global access policies live in `access_policies`, support `allow` and `deny`, and target `user`, `group`, or `everyone` subjects. Access groups and memberships persist through `access_groups` and `user_access_groups`; local bootstrap can attach groups to the local admin with `RAKKR_LOCAL_ADMIN_GROUPS`, and Access UI can now edit local group membership alongside roles and scopes. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Persisted schedules now participate in schedule, room, and node scope inheritance, including newly-created schedules from the Schedules UI. Persisted enrolled nodes participate in node, site, room, interface, and channel scope inheritance. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist, so a recorder-level deny also blocks its recordings and live streams. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local user/role/scope/policy/group/password/status/delete changes. Node enrollment and credential rotation are RBAC-gated by `node:manage`, write audit events, and store only hashed node tokens. Schedule create/edit/run-now actions are guarded by `schedule:manage` and scoped to the target schedule plus inherited room/node targets. Recording metadata edits are guarded by `recording:edit` and scoped to the target recording and inherited node/schedule/room grants. Live Docker/Postgres smoke coverage verifies migration, multi-user local login, local user password reset/disable/enable/delete, node enrollment/credential rotation, access-policy deny behavior, group-policy membership behavior, recording metadata persistence, schedule create/edit/run-now persistence, and recording job persistence.
 
 ## Required Permission Families
 
@@ -727,7 +729,7 @@ Recording-control audit events should include actor, command, schedule/ad hoc so
 
 Audit records must be queryable from the controller UI by actor, action, target, room, node, schedule, recording, outcome, and time range. Audit retention should be lifecycle managed, exportable, and eventually compatible with external SIEM/log pipelines.
 
-Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Node enrollment and node credential rotation write security audit events with node snapshots and credential prefixes only. Schedule create/update writes target schedule audit events with before/after template, tag, profile, watchdog, room, and next-run metadata. Schedule run-now writes before/after audit metadata showing schedule templates, materialized recording metadata, job ID, recording ID, recording profile, and watchdog policy. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
+Current scaffold status: controller audit events persist through Postgres when `DATABASE_URL` is available, with an in-memory fallback for local development before migrations or Postgres are running. Authorization decisions and follow-up controller actions carry actor/session context. Local user create/access/password/status/delete actions write audit events, and password reset, disable, and delete revoke active sessions. Node enrollment and node credential rotation write security audit events with node snapshots and credential prefixes only. Schedule create/update writes target schedule audit events with before/after template, tag, profile, watchdog, room, and next-run metadata. Schedule run-now writes before/after audit metadata showing schedule templates, materialized recording metadata, job ID, recording ID, recording profile, and watchdog policy. Recording metadata updates write before/after values for name, folder, and tags. The audit API and UI filter by actor, action, target, outcome, and time range.
 
 ---
 
@@ -903,9 +905,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add user disable/delete, password reset, and eventually OIDC-backed user sync.
-2. Add node credential authentication for recorder-agent control-plane endpoints.
-3. Expand scheduler recurrence editing beyond the current manual/next-run scaffold.
+1. Add node credential authentication for recorder-agent control-plane endpoints.
+2. Expand scheduler recurrence editing beyond the current manual/next-run scaffold.
+3. Add OIDC-backed user sync when Azure AD work starts.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 
 Last updated: `2026-06-18`

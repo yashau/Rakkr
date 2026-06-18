@@ -24,6 +24,7 @@ import {
 } from "@rakkr/shared";
 
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
+import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
 import {
@@ -875,6 +876,15 @@ app.patch(
     return c.json({ data: updated });
   },
 );
+
+registerAuthLifecycleRoutes({
+  app,
+  authService,
+  currentAuth,
+  currentUser,
+  recordAuditEvent,
+  requirePermission,
+});
 
 app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), async (c) => {
   const query = auditEventsQuerySchema.safeParse(c.req.query());

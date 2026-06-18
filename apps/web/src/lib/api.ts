@@ -91,6 +91,10 @@ export interface LocalUserCreateInput extends UserAccessUpdate {
   password: string;
 }
 
+export interface UserPasswordResetInput {
+  password: string;
+}
+
 export interface NodeEnrollmentInput {
   agentVersion: string;
   alias: string;
@@ -202,6 +206,10 @@ export const api = {
       },
       method: "POST",
     }),
+  deleteLocalUser: (userId: string) =>
+    fetchJson<void>(`/api/v1/auth/users/${userId}`, {
+      method: "DELETE",
+    }),
   currentUser: () => fetchJson<{ data: CurrentUser }>("/api/v1/auth/me"),
   login: (email: string, password: string) =>
     fetchJson<{ data: { expiresAt: string; token: string; user: CurrentUser } }>(
@@ -304,6 +312,22 @@ export const api = {
   updateUserAccess: (userId: string, access: UserAccessUpdate) =>
     fetchJson<{ data: CurrentUser }>(`/api/v1/auth/users/${userId}/access`, {
       body: JSON.stringify(access),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
+  resetUserPassword: (userId: string, input: UserPasswordResetInput) =>
+    fetchJson<{ data: CurrentUser }>(`/api/v1/auth/users/${userId}/password`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
+  updateUserStatus: (userId: string, disabled: boolean) =>
+    fetchJson<{ data: CurrentUser }>(`/api/v1/auth/users/${userId}/status`, {
+      body: JSON.stringify({ disabled }),
       headers: {
         "Content-Type": "application/json",
       },

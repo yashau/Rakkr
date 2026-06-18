@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save, ShieldCheck, UserPlus } from "lucide-react";
+import { KeyRound, Save, ShieldCheck, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
@@ -47,8 +47,13 @@ export function AccessPage() {
   const queryClient = useQueryClient();
   const [createDraft, setCreateDraft] = useState<CreateUserDraft>(emptyCreateUserDraft);
   const [drafts, setDrafts] = useState<Record<string, AccessDraft>>({});
+  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [policyError, setPolicyError] = useState<string>();
   const [policiesText, setPoliciesText] = useState("");
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+  });
   const usersQuery = useQuery({
     queryFn: api.accessUsers,
     queryKey: ["access-users"],
@@ -68,6 +73,29 @@ export function AccessPage() {
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ password, userId }: { password: string; userId: string }) =>
+      api.resetUserPassword(userId, { password }),
+    onSuccess: (_result, input) => {
+      queryClient.invalidateQueries({ queryKey: ["access-users"] });
+      setPasswordDrafts((current) => ({ ...current, [input.userId]: "" }));
+    },
+  });
+  const statusMutation = useMutation({
+    mutationFn: ({ disabled, userId }: { disabled: boolean; userId: string }) =>
+      api.updateUserStatus(userId, disabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["access-users"] });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+  const deleteUserMutation = useMutation({
+    mutationFn: api.deleteLocalUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["access-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["access-users"] });
     },
   });
   const createUserMutation = useMutation({
@@ -269,6 +297,8 @@ export function AccessPage() {
           grantsText: grantsToText(user.resourceGrants),
           roles: user.roles,
         };
+        const passwordDraft = passwordDrafts[user.id] ?? "";
+        const isSelf = user.id === currentUserQuery.data?.data.id;
 
         return (
           <Card className="rounded-lg p-4 shadow-sm" key={user.id}>
@@ -277,6 +307,7 @@ export function AccessPage() {
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <h3 className="text-base font-semibold">{user.name}</h3>
                   <Badge variant="secondary">{user.provider}</Badge>
+                  {user.disabledAt ? <Badge variant="outline">disabled</Badge> : null}
                 </div>
                 <div className="font-mono text-xs text-muted-foreground">{user.email}</div>
                 {user.groups.length > 0 ? (
@@ -348,11 +379,79 @@ export function AccessPage() {
                   <Save className="size-4" />
                   Save
                 </Button>
+                <div className="grid gap-2 border-t pt-3">
+                  <Label htmlFor={`${user.id}-password`}>Reset Password</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id={`${user.id}-password`}
+                      onChange={(event) =>
+                        setPasswordDrafts((current) => ({
+                          ...current,
+                          [user.id]: event.target.value,
+                        }))
+                      }
+                      type="password"
+                      value={passwordDraft}
+                    />
+                    <Button
+                      disabled={resetPasswordMutation.isPending || passwordDraft.length < 8}
+                      onClick={() =>
+                        resetPasswordMutation.mutate({
+                          password: passwordDraft,
+                          userId: user.id,
+                        })
+                      }
+                      type="button"
+                      variant="outline"
+                    >
+                      <KeyRound className="size-4" />
+                      Reset
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      disabled={statusMutation.isPending || (isSelf && !user.disabledAt)}
+                      onClick={() =>
+                        statusMutation.mutate({
+                          disabled: !user.disabledAt,
+                          userId: user.id,
+                        })
+                      }
+                      type="button"
+                      variant="outline"
+                    >
+                      {user.disabledAt ? (
+                        <UserCheck className="size-4" />
+                      ) : (
+                        <UserX className="size-4" />
+                      )}
+                      {user.disabledAt ? "Enable" : "Disable"}
+                    </Button>
+                    <Button
+                      disabled={deleteUserMutation.isPending || isSelf}
+                      onClick={() => deleteUserMutation.mutate(user.id)}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Trash2 className="size-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
               </form>
             </div>
           </Card>
         );
       })}
+      {resetPasswordMutation.isError ? (
+        <p className="text-sm text-destructive">Password reset failed.</p>
+      ) : null}
+      {statusMutation.isError ? (
+        <p className="text-sm text-destructive">User status update failed.</p>
+      ) : null}
+      {deleteUserMutation.isError ? (
+        <p className="text-sm text-destructive">User delete failed.</p>
+      ) : null}
     </div>
   );
 }

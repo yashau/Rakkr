@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual, scrypt as scryptCallback } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import {
   accessGroups,
@@ -52,13 +52,15 @@ import {
   uniqueResourceGrants,
   uniqueRoles,
 } from "./auth-utils.js";
-
-const passwordHashVersion = "scrypt";
-const passwordKeyLength = 64;
-const scryptCost = 16_384;
-const scryptBlockSize = 8;
-const scryptParallelization = 1;
-const scryptMaxMemory = 64 * 1024 * 1024;
+import {
+  deleteLocalUser as deleteLocalUserRecord,
+  localUserReturning,
+  resetLocalUserPassword as resetLocalUserPasswordHash,
+  revokeUserSessions,
+  updateLocalUserDisabled as updateLocalUserDisabledRecord,
+  type LocalUserRecord,
+} from "./auth-user-lifecycle.js";
+import { hashPassword, verifyPassword } from "./password.js";
 const sessionTtlMs = 12 * 60 * 60 * 1000;
 
 interface AuthSession {
@@ -109,6 +111,7 @@ export class AuthError extends Error {
       | "database_unavailable"
       | "invalid_credentials"
       | "missing_local_password"
+      | "user_disabled"
       | "user_exists",
   ) {
     super(message);
@@ -133,6 +136,10 @@ export class LocalAuthService {
     const persistedUser = await this.localUserRecordByEmail(email);
 
     if (persistedUser) {
+      if (persistedUser.disabledAt) {
+        throw new AuthError("Local user is disabled", "user_disabled");
+      }
+
       const valid =
         Boolean(persistedUser.passwordHash) &&
         (await verifyPassword(password, persistedUser.passwordHash ?? ""));
@@ -203,6 +210,11 @@ export class LocalAuthService {
       return {};
     }
 
+    if (session.user.disabledAt) {
+      this.sessions.delete(tokenHash);
+      return {};
+    }
+
     return {
       sessionId: tokenHash.slice(0, 16),
       user: session.user,
@@ -228,14 +240,7 @@ export class LocalAuthService {
     }
 
     try {
-      const rows = await db
-        .select({
-          email: users.email,
-          id: users.id,
-          name: users.name,
-          passwordHash: users.passwordHash,
-        })
-        .from(users);
+      const rows = await db.select(localUserReturning).from(users);
       const result: CurrentUser[] = [];
 
       for (const row of rows) {
@@ -304,14 +309,7 @@ export class LocalAuthService {
       throw new AuthError("Local user storage is unavailable", "database_unavailable");
     }
 
-    let row:
-      | {
-          email: string;
-          id: string;
-          name: string;
-          passwordHash: string | null;
-        }
-      | undefined;
+    let row: LocalUserRecord | undefined;
 
     try {
       [row] = await db
@@ -321,12 +319,7 @@ export class LocalAuthService {
           name: input.name,
           passwordHash: await hashPassword(input.password),
         })
-        .returning({
-          email: users.email,
-          id: users.id,
-          name: users.name,
-          passwordHash: users.passwordHash,
-        });
+        .returning(localUserReturning);
 
       await this.persistLocalUserAccess(row.id, input, groupsFromIds(input.groupIds ?? []));
 
@@ -386,6 +379,53 @@ export class LocalAuthService {
     }
 
     return user;
+  }
+
+  async resetLocalUserPassword(userId: string, password: string): Promise<CurrentUser | undefined> {
+    const db = this.requiredDatabase();
+    const before = await this.localUserRecordById(userId);
+
+    if (!before) {
+      return undefined;
+    }
+
+    await resetLocalUserPasswordHash(db, userId, password);
+    await revokeUserSessions(db, this.sessions, userId);
+
+    return this.localUser(userId);
+  }
+
+  async updateLocalUserDisabled(userId: string, disabled: boolean) {
+    const db = this.requiredDatabase();
+    const row = await updateLocalUserDisabledRecord(db, userId, disabled);
+
+    if (!row) {
+      return undefined;
+    }
+
+    if (disabled) {
+      await revokeUserSessions(db, this.sessions, userId);
+    }
+
+    return this.currentUserFromRecord(row);
+  }
+
+  async deleteLocalUser(userId: string) {
+    const db = this.requiredDatabase();
+    const before = await this.localUserRecordById(userId);
+
+    if (!before) {
+      return undefined;
+    }
+
+    const deleted = await this.currentUserFromRecord(before);
+
+    await revokeUserSessions(db, this.sessions, userId);
+    await deleteLocalUserRecord(db, userId);
+    this.localAccessOverrides.delete(userId);
+    this.localGroupOverrides.delete(userId);
+
+    return deleted;
   }
 
   async accessPolicies(): Promise<AccessPolicy[]> {
@@ -505,12 +545,7 @@ export class LocalAuthService {
 
     try {
       const [row] = await db
-        .select({
-          email: users.email,
-          id: users.id,
-          name: users.name,
-          passwordHash: users.passwordHash,
-        })
+        .select(localUserReturning)
         .from(users)
         .where(eq(users.email, email.toLowerCase()))
         .limit(1);
@@ -531,12 +566,7 @@ export class LocalAuthService {
 
     try {
       const [row] = await db
-        .select({
-          email: users.email,
-          id: users.id,
-          name: users.name,
-          passwordHash: users.passwordHash,
-        })
+        .select(localUserReturning)
         .from(users)
         .where(eq(users.id, userId))
         .limit(1);
@@ -548,15 +578,11 @@ export class LocalAuthService {
     }
   }
 
-  private async currentUserFromRecord(record: {
-    email: string;
-    id: string;
-    name: string;
-    passwordHash: string | null;
-  }): Promise<CurrentUser> {
+  private async currentUserFromRecord(record: LocalUserRecord): Promise<CurrentUser> {
     const access = await this.localAccessForUser(record.id);
 
     return {
+      disabledAt: record.disabledAt?.toISOString(),
       email: record.email,
       groups: await this.localGroupsForUser(record.id),
       id: record.id,
@@ -623,6 +649,7 @@ export class LocalAuthService {
       const [row] = await db
         .select({
           sessionId: authSessions.id,
+          userDisabledAt: users.disabledAt,
           userEmail: users.email,
           userId: users.id,
           userName: users.name,
@@ -638,7 +665,7 @@ export class LocalAuthService {
         )
         .limit(1);
 
-      if (!row) {
+      if (!row || row.userDisabledAt) {
         return undefined;
       }
 
@@ -920,65 +947,20 @@ export class LocalAuthService {
     return this.dbAvailable ? this.db : undefined;
   }
 
+  private requiredDatabase() {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      throw new AuthError("Local user storage is unavailable", "database_unavailable");
+    }
+
+    return db;
+  }
+
   private markDatabaseUnavailable(error: unknown) {
     this.dbAvailable = false;
     console.warn("auth session persistence unavailable; using memory store", error);
   }
-}
-
-export async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("base64url");
-  const key = await scrypt(password, salt, passwordKeyLength, {
-    N: scryptCost,
-    maxmem: scryptMaxMemory,
-    p: scryptParallelization,
-    r: scryptBlockSize,
-  });
-
-  return [
-    passwordHashVersion,
-    scryptCost,
-    scryptBlockSize,
-    scryptParallelization,
-    salt,
-    key.toString("base64url"),
-  ].join("$");
-}
-
-export async function verifyPassword(password: string, encodedHash: string) {
-  const [version, cost, blockSize, parallelization, salt, expectedHash] = encodedHash.split("$");
-
-  if (version !== passwordHashVersion || !salt || !expectedHash) {
-    return false;
-  }
-
-  const key = await scrypt(password, salt, passwordKeyLength, {
-    N: Number(cost),
-    maxmem: scryptMaxMemory,
-    p: Number(parallelization),
-    r: Number(blockSize),
-  });
-  const expected = Buffer.from(expectedHash, "base64url");
-
-  return expected.length === key.length && timingSafeEqual(expected, key);
-}
-
-function scrypt(
-  password: string,
-  salt: string,
-  keyLength: number,
-  options: Parameters<typeof scryptCallback>[3],
-) {
-  return new Promise<Buffer>((resolve, reject) => {
-    scryptCallback(password, salt, keyLength, options, (error, derivedKey) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve(derivedKey);
-    });
-  });
 }
 
 function defaultLocalPassword() {

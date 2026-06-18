@@ -126,6 +126,7 @@ export const auditOutcomeSchema = z.enum(["allowed", "denied", "failed", "partia
 export const auditActorTypeSchema = z.enum(["node", "system", "user"]);
 
 export const currentUserSchema = z.object({
+  disabledAt: isoDateTimeSchema.optional(),
   email: z.string().email(),
   groups: z.array(accessGroupSchema),
   id: z.string().min(1),
