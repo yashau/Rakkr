@@ -11,6 +11,7 @@ import {
   MapPin,
   Network,
   PlusCircle,
+  TrendingUp,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -282,6 +283,7 @@ export function NodesPage() {
                   />
                 </div>
 
+                <NodeHealthTrend events={healthEvents} />
                 <NodeHealthEvents events={healthEvents} />
               </div>
 
@@ -455,6 +457,54 @@ function NodeHealthEvents({ events }: { events: HealthEvent[] }) {
   );
 }
 
+function NodeHealthTrend({ events }: { events: HealthEvent[] }) {
+  const buckets = healthTrendBuckets(events);
+  const maxCount = Math.max(1, ...buckets.map((bucket) => bucket.count));
+  const totalCount = buckets.reduce((total, bucket) => total + bucket.count, 0);
+  const tone = buckets.reduce<HealthTone>(
+    (current, bucket) => highestTone(current, bucket.tone),
+    totalCount > 0 ? "healthy" : "unknown",
+  );
+
+  return (
+    <div className="rounded-md border border-border bg-background p-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <TrendingUp className="size-4" />
+          7-Day Health Trend
+        </div>
+        <Badge className={healthBadgeClass(tone)} variant="outline">
+          {totalCount} events
+        </Badge>
+      </div>
+      <div className="grid gap-2 md:grid-cols-7">
+        {buckets.map((bucket) => {
+          const percent = bucket.count === 0 ? 0 : Math.max(8, (bucket.count / maxCount) * 100);
+
+          return (
+            <div
+              className="grid gap-1 rounded-md border border-border bg-muted/20 p-2"
+              key={bucket.date}
+              title={`${bucket.date}: ${bucket.count} health events`}
+            >
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-medium tabular-nums">{bucket.date}</span>
+                <span className="text-muted-foreground tabular-nums">{bucket.count}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full ${healthBarClass(bucket.tone)}`}
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function nodeHealthSummary(events: HealthEvent[]) {
   const disk = latestHealthEvent(events, [
     "agent.system.disk_pressure",
@@ -482,6 +532,61 @@ function nodeHealthSummary(events: HealthEvent[]) {
   };
 }
 
+type HealthTone = "critical" | "healthy" | "unknown" | "warning";
+
+interface HealthTrendBucket {
+  count: number;
+  date: string;
+  tone: HealthTone;
+}
+
+function healthTrendBuckets(events: HealthEvent[]) {
+  const today = startOfLocalDay(new Date());
+  const buckets: HealthTrendBucket[] = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+
+    return {
+      count: 0,
+      date: localIsoDate(date),
+      tone: "unknown",
+    };
+  });
+  const bucketByDate = new Map(buckets.map((bucket) => [bucket.date, bucket]));
+
+  for (const event of events) {
+    const eventDate = new Date(event.openedAt);
+
+    if (Number.isNaN(eventDate.getTime())) {
+      continue;
+    }
+
+    const bucket = bucketByDate.get(localIsoDate(eventDate));
+
+    if (!bucket) {
+      continue;
+    }
+
+    const eventTone = healthTone(event);
+    bucket.tone = bucket.count === 0 ? eventTone : highestTone(bucket.tone, eventTone);
+    bucket.count += 1;
+  }
+
+  return buckets;
+}
+
+function startOfLocalDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function localIsoDate(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function latestHealthEvent(events: HealthEvent[], types: string[]) {
   const candidates = events.filter((event) => types.includes(event.type));
 
@@ -502,16 +607,13 @@ function healthTone(event: HealthEvent | undefined) {
   return event.severity;
 }
 
-function highestTone(
-  current: "critical" | "healthy" | "unknown" | "warning",
-  next: "critical" | "healthy" | "unknown" | "warning",
-) {
+function highestTone(current: HealthTone, next: HealthTone) {
   const order = { critical: 3, warning: 2, unknown: 1, healthy: 0 };
 
   return order[next] > order[current] ? next : current;
 }
 
-function healthSummaryLabel(tone: "critical" | "healthy" | "unknown" | "warning") {
+function healthSummaryLabel(tone: HealthTone) {
   if (tone === "critical") {
     return "Critical";
   }
@@ -589,7 +691,7 @@ function readableHealthType(type: string) {
     .replaceAll(".", " ");
 }
 
-function healthBadgeClass(tone: "critical" | "healthy" | "unknown" | "warning") {
+function healthBadgeClass(tone: HealthTone) {
   if (tone === "critical") {
     return "border-rose-200 bg-rose-50 text-rose-700";
   }
@@ -603,6 +705,22 @@ function healthBadgeClass(tone: "critical" | "healthy" | "unknown" | "warning") 
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function healthBarClass(tone: HealthTone) {
+  if (tone === "critical") {
+    return "bg-rose-500";
+  }
+
+  if (tone === "warning") {
+    return "bg-amber-500";
+  }
+
+  if (tone === "healthy") {
+    return "bg-emerald-500";
+  }
+
+  return "bg-slate-300";
 }
 
 function numericDetail(value: unknown) {
