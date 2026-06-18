@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
+use anyhow::{Context, bail};
 use clap::{Parser, ValueEnum};
+use reqwest::Url;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum MeterBackend {
@@ -26,6 +28,9 @@ pub struct AgentConfig {
         default_value = "http://localhost:8787"
     )]
     pub controller_url: String,
+
+    #[arg(long, env = "RAKKR_ALLOW_INSECURE_CONTROLLER", default_value_t = false)]
+    pub allow_insecure_controller: bool,
 
     #[arg(long, env = "RAKKR_NODE_ID", default_value = "node_local_dev")]
     pub node_id: String,
@@ -185,4 +190,65 @@ pub struct AgentConfig {
         default_value_t = 4.0
     )]
     pub system_health_load_critical_per_core: f32,
+}
+
+impl AgentConfig {
+    pub fn validate_controller_transport(&self) -> anyhow::Result<()> {
+        validate_controller_transport(&self.controller_url, self.allow_insecure_controller)
+    }
+}
+
+pub fn validate_controller_transport(
+    controller_url: &str,
+    allow_insecure_controller: bool,
+) -> anyhow::Result<()> {
+    let url = Url::parse(controller_url).context("parse controller URL")?;
+
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if allow_insecure_controller || is_loopback_host(url.host_str()) => Ok(()),
+        "http" => bail!(
+            "controller URL must use HTTPS for non-loopback hosts; set --allow-insecure-controller only for explicit development exceptions"
+        ),
+        _ => bail!("controller URL must use http or https"),
+    }
+}
+
+fn is_loopback_host(host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    let host = host.trim_matches(['[', ']']);
+
+    host.eq_ignore_ascii_case("localhost") || host == "::1" || host.starts_with("127.")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_https_controller_urls() {
+        validate_controller_transport("https://controller.local:8787", false).unwrap();
+    }
+
+    #[test]
+    fn accepts_loopback_http_for_local_development() {
+        validate_controller_transport("http://localhost:8787", false).unwrap();
+        validate_controller_transport("http://127.0.0.1:8787", false).unwrap();
+        validate_controller_transport("http://[::1]:8787", false).unwrap();
+    }
+
+    #[test]
+    fn rejects_non_loopback_http_by_default() {
+        let error = validate_controller_transport("http://172.22.145.10:8787", false)
+            .expect_err("plaintext LAN controller URL should fail");
+
+        assert!(error.to_string().contains("must use HTTPS"));
+    }
+
+    #[test]
+    fn can_explicitly_allow_insecure_controller_transport() {
+        validate_controller_transport("http://172.22.145.10:8787", true).unwrap();
+    }
 }

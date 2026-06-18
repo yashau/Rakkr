@@ -32,6 +32,8 @@ Useful URLs:
 - API health: <http://localhost:8787/healthz>
 - Prometheus metrics stub: <http://localhost:8787/metrics>
 
+Set `RAKKR_API_TLS_CERT_PATH` and `RAKKR_API_TLS_KEY_PATH` to run the controller API over HTTPS. Recorder agents reject non-loopback `http://` controller URLs unless `RAKKR_ALLOW_INSECURE_CONTROLLER=1` is set for an explicit development exception.
+
 Local dev sign-in defaults come from `.env.example`:
 
 - Email: `admin@rakkr.local`

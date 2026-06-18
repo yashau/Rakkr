@@ -77,6 +77,7 @@ async fn main() -> anyhow::Result<()> {
         let output_path = capture::run_capture_job(&config)?;
 
         controller::upload_cache_file(controller::CacheFileUpload {
+            allow_insecure_controller: config.allow_insecure_controller,
             content_type: "audio/wav",
             controller_url: &config.controller_url,
             duration_seconds: Some(config.capture_seconds),

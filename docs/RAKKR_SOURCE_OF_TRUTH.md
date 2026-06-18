@@ -69,6 +69,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
 | Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | 🟨 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |
+| Transport security | 🟨 | Optional controller HTTPS; agent blocks non-loopback plaintext unless explicitly allowed |
 | Observability | 🟨 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
 ---
@@ -319,6 +320,12 @@ Required encrypted flows:
 - local event log sync;
 - health and alert updates.
 
+Current partial implementation:
+
+- Controller can start HTTPS when TLS cert/key paths are configured.
+- Agent rejects non-loopback `http://` controller URLs unless explicitly allowed for development.
+- Localhost HTTP remains available for local development.
+
 ---
 
 ## Recording Library
@@ -439,7 +446,8 @@ Examples:
 7. ✅ Add request-driven ad-hoc recording start.
 8. ✅ Add checksum verification for confirmed uploads.
 9. ✅ Add RBAC-gated controller meter-preview listen stream.
-10. ⏸️ Return to X32 hardware validation after device is confirmed.
+10. ✅ Add controller TLS bootstrap and agent plaintext transport guard.
+11. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

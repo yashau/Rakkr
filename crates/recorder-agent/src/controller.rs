@@ -19,6 +19,7 @@ const AGENT_ID_HEADER: &str = "x-rakkr-agent-id";
 const JOB_ID_HEADER: &str = "x-rakkr-recording-job-id";
 
 pub struct CacheFileUpload<'a> {
+    pub allow_insecure_controller: bool,
     pub content_type: &'a str,
     pub controller_url: &'a str,
     pub duration_seconds: Option<u64>,
@@ -114,6 +115,7 @@ pub async fn fetch_channel_map_assignments(
     config: &AgentConfig,
     token: &str,
 ) -> anyhow::Result<Vec<ControllerChannelMapBundle>> {
+    config.validate_controller_transport()?;
     let url = node_url(
         &config.controller_url,
         &config.node_id,
@@ -162,6 +164,7 @@ pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {
     });
 
     upload_cache_file(CacheFileUpload {
+        allow_insecure_controller: config.allow_insecure_controller,
         content_type: &config.attach_cache_content_type,
         controller_url: &config.controller_url,
         duration_seconds: config.attach_cache_duration_seconds,
@@ -175,6 +178,7 @@ pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {
 }
 
 pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> {
+    config.validate_controller_transport()?;
     let token = config
         .controller_token
         .as_deref()
@@ -483,6 +487,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     };
 
     let upload_result = upload_cache_file(CacheFileUpload {
+        allow_insecure_controller: config.allow_insecure_controller,
         content_type: content_type_for_codec(job.command.output_codec.as_deref(), &output_path),
         controller_url: &config.controller_url,
         duration_seconds: Some(job.command.duration_seconds),
@@ -546,6 +551,10 @@ fn content_type_for_path(path: &std::path::Path) -> &'static str {
 }
 
 pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()> {
+    crate::config::validate_controller_transport(
+        input.controller_url,
+        input.allow_insecure_controller,
+    )?;
     let bytes = fs::read(input.file_path)
         .with_context(|| format!("read recording cache file {}", input.file_path.display()))?;
 
@@ -610,6 +619,7 @@ pub async fn post_meter_frame(
     token: &str,
     frame: &MeterFrame,
 ) -> anyhow::Result<()> {
+    config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "meter-frame");
     let response = reqwest::Client::new()
         .post(&url)
@@ -634,6 +644,7 @@ pub async fn sync_health_event(
     token: &str,
     event: &AgentHealthEvent,
 ) -> anyhow::Result<()> {
+    config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "health-events");
     let response = reqwest::Client::new()
         .post(&url)

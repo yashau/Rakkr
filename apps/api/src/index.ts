@@ -41,6 +41,7 @@ import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { createSettingsStore } from "./settings-store.js";
 import { registerStatusRoutes } from "./status-routes.js";
+import { apiListenConfig } from "./transport-security.js";
 import { createUploadProviderStore } from "./upload-providers.js";
 import { registerUploadRunnerRoutes } from "./upload-runner-routes.js";
 
@@ -942,14 +943,9 @@ registerUploadRunnerRoutes({
 
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {
   startApiRunners({ scheduleRunner, uploadRunner, watchdogRunner });
+  const listenConfig = apiListenConfig(app.fetch, port);
 
-  serve(
-    {
-      fetch: app.fetch,
-      port,
-    },
-    (info) => {
-      console.log(`Rakkr API listening on http://localhost:${info.port}`);
-    },
-  );
+  serve(listenConfig.options, (info) => {
+    console.log(`Rakkr API listening on ${listenConfig.protocol}://localhost:${info.port}`);
+  });
 }

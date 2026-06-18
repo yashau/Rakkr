@@ -753,6 +753,7 @@ mod tests {
             agent_health_log_file: PathBuf::from("health-events.jsonl"),
             agent_health_log_max_bytes: 1_048_576,
             agent_state_file: PathBuf::from("state.json"),
+            allow_insecure_controller: false,
             alias: "Node".to_string(),
             attach_cache_content_type: "audio/mpeg".to_string(),
             attach_cache_duration_seconds: None,
