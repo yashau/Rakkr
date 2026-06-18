@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual, scrypt as scryptCallback } from "node:crypto";
+import { randomBytes, timingSafeEqual, scrypt as scryptCallback } from "node:crypto";
 
 import {
   accessGroups,
@@ -18,7 +18,6 @@ import {
   users,
 } from "@rakkr/db";
 import {
-  accessPolicyInputSchema,
   permissions,
   rolePermissions,
   roles,
@@ -31,6 +30,29 @@ import {
   type Role,
 } from "@rakkr/shared";
 
+import {
+  accessPoliciesWithIds,
+  bearerToken,
+  groupsFromIds,
+  hashToken,
+  isPgErrorCode,
+  isUuid,
+  localAccessPoliciesFromEnv,
+  localAdminId,
+  localGroupsFromEnv,
+  localResourceGrantsFromEnv,
+  localRole,
+  permissionName,
+  permissionsForRoles,
+  policyMatchesSubject,
+  policyMatchesTarget,
+  roleName,
+  uniqueAccessPolicyInputs,
+  uniqueGroups,
+  uniqueResourceGrants,
+  uniqueRoles,
+} from "./auth-utils.js";
+
 const passwordHashVersion = "scrypt";
 const passwordKeyLength = 64;
 const scryptCost = 16_384;
@@ -38,7 +60,6 @@ const scryptBlockSize = 8;
 const scryptParallelization = 1;
 const scryptMaxMemory = 64 * 1024 * 1024;
 const sessionTtlMs = 12 * 60 * 60 * 1000;
-const defaultLocalAdminId = "00000000-0000-4000-8000-000000000001";
 
 interface AuthSession {
   createdAt: Date;
@@ -51,6 +72,12 @@ export interface LocalAccess {
   groupIds?: string[];
   resourceGrants: ResourceGrant[];
   roles: Role[];
+}
+
+export interface LocalUserCreateInput extends LocalAccess {
+  email: string;
+  name: string;
+  password: string;
 }
 
 export interface AccessPolicyDecision {
@@ -78,7 +105,11 @@ export interface LoginResult {
 export class AuthError extends Error {
   constructor(
     message: string,
-    readonly code: "invalid_credentials" | "missing_local_password",
+    readonly code:
+      | "database_unavailable"
+      | "invalid_credentials"
+      | "missing_local_password"
+      | "user_exists",
   ) {
     super(message);
   }
@@ -99,19 +130,36 @@ export class LocalAuthService {
   }
 
   async login(email: string, password: string, context: SessionContext = {}): Promise<LoginResult> {
+    const persistedUser = await this.localUserRecordByEmail(email);
+
+    if (persistedUser) {
+      const valid =
+        Boolean(persistedUser.passwordHash) &&
+        (await verifyPassword(password, persistedUser.passwordHash ?? ""));
+
+      if (!valid) {
+        throw new AuthError("Invalid credentials", "invalid_credentials");
+      }
+
+      return this.createSession(await this.currentUserFromRecord(persistedUser), context);
+    }
+
     const user = await this.localAdmin();
 
-    if (email.toLowerCase() !== user.email.toLowerCase()) {
+    if (
+      email.toLowerCase() !== user.email.toLowerCase() ||
+      !(await verifyPassword(password, await this.localAdminHash()))
+    ) {
       throw new AuthError("Invalid credentials", "invalid_credentials");
     }
 
-    const passwordHash = await this.localAdminHash();
-    const valid = await verifyPassword(password, passwordHash);
+    return this.createSession(user, context);
+  }
 
-    if (!valid) {
-      throw new AuthError("Invalid credentials", "invalid_credentials");
-    }
-
+  private async createSession(
+    user: CurrentUser,
+    context: SessionContext = {},
+  ): Promise<LoginResult> {
     const token = `rakkr_${randomBytes(32).toString("base64url")}`;
     const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + sessionTtlMs);
@@ -173,7 +221,36 @@ export class LocalAuthService {
   }
 
   async localUsers(): Promise<CurrentUser[]> {
-    return [await this.localAdmin()];
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return [await this.localAdmin()];
+    }
+
+    try {
+      const rows = await db
+        .select({
+          email: users.email,
+          id: users.id,
+          name: users.name,
+          passwordHash: users.passwordHash,
+        })
+        .from(users);
+      const result: CurrentUser[] = [];
+
+      for (const row of rows) {
+        result.push(await this.currentUserFromRecord(row));
+      }
+
+      if (!result.some((user) => user.id === localAdminId())) {
+        result.unshift(await this.localAdmin());
+      }
+
+      return result;
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+      return [await this.localAdmin()];
+    }
   }
 
   async localGroups(): Promise<AccessGroup[]> {
@@ -201,14 +278,87 @@ export class LocalAuthService {
   }
 
   async localUser(userId: string): Promise<CurrentUser | undefined> {
+    const record = await this.localUserRecordById(userId);
+
+    if (record) {
+      return this.currentUserFromRecord(record);
+    }
+
     return userId === localAdminId() ? this.localAdmin() : undefined;
+  }
+
+  async createLocalUser(input: LocalUserCreateInput): Promise<CurrentUser> {
+    let db = this.availableDatabase();
+
+    if (!db) {
+      throw new AuthError("Local user storage is unavailable", "database_unavailable");
+    }
+
+    if (await this.localUserRecordByEmail(input.email)) {
+      throw new AuthError("Local user already exists", "user_exists");
+    }
+
+    db = this.availableDatabase();
+
+    if (!db) {
+      throw new AuthError("Local user storage is unavailable", "database_unavailable");
+    }
+
+    let row:
+      | {
+          email: string;
+          id: string;
+          name: string;
+          passwordHash: string | null;
+        }
+      | undefined;
+
+    try {
+      [row] = await db
+        .insert(users)
+        .values({
+          email: input.email,
+          name: input.name,
+          passwordHash: await hashPassword(input.password),
+        })
+        .returning({
+          email: users.email,
+          id: users.id,
+          name: users.name,
+          passwordHash: users.passwordHash,
+        });
+
+      await this.persistLocalUserAccess(row.id, input, groupsFromIds(input.groupIds ?? []));
+
+      return this.currentUserFromRecord(row);
+    } catch (error) {
+      if (isPgErrorCode(error, "23505")) {
+        throw new AuthError("Local user already exists", "user_exists");
+      }
+
+      if (row) {
+        await db
+          .delete(users)
+          .where(eq(users.id, row.id))
+          .catch(() => undefined);
+      }
+
+      if (error instanceof AuthError) {
+        throw error;
+      }
+
+      this.markDatabaseUnavailable(error);
+      throw new AuthError("Local user storage is unavailable", "database_unavailable");
+    }
   }
 
   async updateLocalUserAccess(
     userId: string,
     access: LocalAccess,
   ): Promise<CurrentUser | undefined> {
-    if (userId !== localAdminId()) {
+    const before = await this.localUser(userId);
+
+    if (!before) {
       return undefined;
     }
 
@@ -218,14 +368,19 @@ export class LocalAuthService {
     };
     const nextGroups = groupsFromIds(access.groupIds ?? []);
 
-    this.localAccessOverrides.set(userId, nextAccess);
-    this.localGroupOverrides.set(userId, nextGroups);
     await this.persistLocalUserAccess(userId, nextAccess, nextGroups);
 
-    const user = await this.localAdmin();
+    this.localAccessOverrides.set(userId, nextAccess);
+    this.localGroupOverrides.set(userId, nextGroups);
+
+    const user = await this.localUser(userId);
+
+    if (!user) {
+      return undefined;
+    }
 
     for (const session of this.sessions.values()) {
-      if (session.user.id === userId) {
+      if (session.user.id === user.id) {
         session.user = user;
       }
     }
@@ -341,6 +496,78 @@ export class LocalAuthService {
     return this.localAdminPasswordHash;
   }
 
+  private async localUserRecordByEmail(email: string) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return undefined;
+    }
+
+    try {
+      const [row] = await db
+        .select({
+          email: users.email,
+          id: users.id,
+          name: users.name,
+          passwordHash: users.passwordHash,
+        })
+        .from(users)
+        .where(eq(users.email, email.toLowerCase()))
+        .limit(1);
+
+      return row;
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+      return undefined;
+    }
+  }
+
+  private async localUserRecordById(userId: string) {
+    const db = this.availableDatabase();
+
+    if (!db || !isUuid(userId)) {
+      return undefined;
+    }
+
+    try {
+      const [row] = await db
+        .select({
+          email: users.email,
+          id: users.id,
+          name: users.name,
+          passwordHash: users.passwordHash,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      return row;
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+      return undefined;
+    }
+  }
+
+  private async currentUserFromRecord(record: {
+    email: string;
+    id: string;
+    name: string;
+    passwordHash: string | null;
+  }): Promise<CurrentUser> {
+    const access = await this.localAccessForUser(record.id);
+
+    return {
+      email: record.email,
+      groups: await this.localGroupsForUser(record.id),
+      id: record.id,
+      name: record.name,
+      permissions: permissionsForRoles(access.roles),
+      provider: "local",
+      resourceGrants: access.resourceGrants,
+      roles: access.roles,
+    };
+  }
+
   private async persistLoginSession(session: AuthSession, context: SessionContext) {
     const db = this.availableDatabase();
 
@@ -349,19 +576,22 @@ export class LocalAuthService {
     }
 
     try {
+      const passwordHash =
+        session.user.id === localAdminId() ? await this.localAdminHash() : undefined;
+
       await db
         .insert(users)
         .values({
           email: session.user.email,
           id: session.user.id,
           name: session.user.name,
-          passwordHash: await this.localAdminHash(),
+          passwordHash,
         })
         .onConflictDoUpdate({
           set: {
             email: session.user.email,
             name: session.user.name,
-            passwordHash: await this.localAdminHash(),
+            ...(passwordHash ? { passwordHash } : {}),
             updatedAt: new Date(),
           },
           target: users.id,
@@ -635,6 +865,7 @@ export class LocalAuthService {
       }
     } catch (error) {
       this.markDatabaseUnavailable(error);
+      throw new AuthError("Local user access storage is unavailable", "database_unavailable");
     }
   }
 
@@ -732,12 +963,6 @@ export async function verifyPassword(password: string, encodedHash: string) {
   return expected.length === key.length && timingSafeEqual(expected, key);
 }
 
-function bearerToken(authorizationHeader?: string) {
-  const [scheme, token] = authorizationHeader?.split(" ") ?? [];
-
-  return scheme?.toLowerCase() === "bearer" ? token : undefined;
-}
-
 function scrypt(
   password: string,
   salt: string,
@@ -754,212 +979,6 @@ function scrypt(
       resolve(derivedKey);
     });
   });
-}
-
-function hashToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function localRole(): Role {
-  const role = process.env.RAKKR_LOCAL_ADMIN_ROLE;
-
-  if (
-    role === "owner" ||
-    role === "admin" ||
-    role === "operator" ||
-    role === "viewer" ||
-    role === "auditor"
-  ) {
-    return role;
-  }
-
-  return "owner";
-}
-
-function localAdminId() {
-  const id = process.env.RAKKR_LOCAL_ADMIN_ID;
-
-  if (id && isUuid(id)) {
-    return id;
-  }
-
-  return defaultLocalAdminId;
-}
-
-function localResourceGrantsFromEnv(): ResourceGrant[] {
-  const raw = process.env.RAKKR_LOCAL_RESOURCE_GRANTS;
-
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-
-    return Object.entries(parsed).flatMap(([resourceType, values]) => {
-      if (!Array.isArray(values)) {
-        return [];
-      }
-
-      return values
-        .filter((resourceId): resourceId is string => typeof resourceId === "string")
-        .map((resourceId) => ({
-          resourceId,
-          resourceType,
-        }));
-    });
-  } catch (error) {
-    console.warn("invalid RAKKR_LOCAL_RESOURCE_GRANTS JSON; ignoring scoped grants", error);
-    return [];
-  }
-}
-
-function localGroupsFromEnv(): AccessGroup[] {
-  const raw = process.env.RAKKR_LOCAL_ADMIN_GROUPS;
-
-  if (!raw) {
-    return [];
-  }
-
-  const values = raw.trim().startsWith("[")
-    ? jsonStringArray(raw, "RAKKR_LOCAL_ADMIN_GROUPS")
-    : raw.split(",");
-
-  return groupsFromIds(values);
-}
-
-function groupsFromIds(values: readonly string[]) {
-  return uniqueGroups(
-    values
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .map((value) => ({
-        id: value,
-        name: value,
-      })),
-  );
-}
-
-function uniqueGroups(values: readonly AccessGroup[]) {
-  return [
-    ...new Map(
-      values
-        .map((group) => ({
-          id: group.id.trim(),
-          name: group.name.trim() || group.id.trim(),
-        }))
-        .filter((group) => group.id)
-        .map((group) => [group.id, group] as const),
-    ).values(),
-  ];
-}
-
-function localAccessPoliciesFromEnv(): AccessPolicy[] {
-  const raw = process.env.RAKKR_LOCAL_ACCESS_POLICIES;
-
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = accessPolicyInputSchema.array().parse(JSON.parse(raw));
-
-    return accessPoliciesWithIds(parsed);
-  } catch (error) {
-    console.warn("invalid RAKKR_LOCAL_ACCESS_POLICIES JSON; ignoring access policies", error);
-    return [];
-  }
-}
-
-function accessPoliciesWithIds(policies: readonly AccessPolicyInput[]): AccessPolicy[] {
-  return policies.map((policy, index) => ({
-    ...policy,
-    id: `policy_${hashToken(JSON.stringify(policy)).slice(0, 16)}_${index}`,
-  }));
-}
-
-function policyMatchesSubject(policy: AccessPolicy, user: CurrentUser) {
-  if (policy.subjectType === "everyone") {
-    return true;
-  }
-
-  if (policy.subjectType === "user") {
-    return policy.subjectId === user.id || policy.subjectId === user.email;
-  }
-
-  return Boolean(policy.subjectId && user.groups.some((group) => group.id === policy.subjectId));
-}
-
-function policyMatchesTarget(policy: AccessPolicy, targets: Array<{ id?: string; type: string }>) {
-  return targets.some(
-    (target) =>
-      target.id &&
-      (policy.resourceType === target.type || policy.resourceType === "*") &&
-      (policy.resourceId === target.id || policy.resourceId === "*"),
-  );
-}
-
-function uniqueAccessPolicyInputs(values: readonly AccessPolicyInput[]) {
-  return [
-    ...new Map(
-      values.map((policy) => [
-        [
-          policy.effect,
-          policy.subjectType,
-          policy.subjectId ?? "",
-          policy.resourceType,
-          policy.resourceId,
-        ].join(":"),
-        policy,
-      ]),
-    ).values(),
-  ];
-}
-
-function jsonStringArray(raw: string, name: string) {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-
-    return Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === "string")
-      : [];
-  } catch (error) {
-    console.warn(`invalid ${name} JSON; ignoring groups`, error);
-    return [];
-  }
-}
-
-function uniqueRoles(values: readonly string[]): Role[] {
-  const result = values.filter((role): role is Role => roles.includes(role as Role));
-
-  return [...new Set(result)];
-}
-
-function uniqueResourceGrants(values: readonly ResourceGrant[]) {
-  return [
-    ...new Map(
-      values.map((grant) => [`${grant.resourceType}:${grant.resourceId}`, grant] as const),
-    ).values(),
-  ];
-}
-
-function permissionsForRoles(values: readonly Role[]) {
-  return [...new Set(values.flatMap((role) => rolePermissions[role]))];
-}
-
-function roleName(role: Role) {
-  return role.charAt(0).toUpperCase() + role.slice(1);
-}
-
-function permissionName(permission: string) {
-  return permission
-    .split(":")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function isUuid(value: string) {
-  return /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
 }
 
 function defaultLocalPassword() {

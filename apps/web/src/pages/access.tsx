@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save, ShieldCheck } from "lucide-react";
+import { Save, ShieldCheck, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
@@ -14,9 +14,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api, type UserAccessUpdate } from "@/lib/api";
+import { api, type LocalUserCreateInput, type UserAccessUpdate } from "@/lib/api";
 
 interface AccessDraft {
   groupsText: string;
@@ -24,8 +25,27 @@ interface AccessDraft {
   roles: Role[];
 }
 
+interface CreateUserDraft {
+  email: string;
+  groupsText: string;
+  grantsText: string;
+  name: string;
+  password: string;
+  roles: Role[];
+}
+
+const emptyCreateUserDraft: CreateUserDraft = {
+  email: "",
+  groupsText: "",
+  grantsText: "",
+  name: "",
+  password: "",
+  roles: ["viewer"],
+};
+
 export function AccessPage() {
   const queryClient = useQueryClient();
+  const [createDraft, setCreateDraft] = useState<CreateUserDraft>(emptyCreateUserDraft);
   const [drafts, setDrafts] = useState<Record<string, AccessDraft>>({});
   const [policyError, setPolicyError] = useState<string>();
   const [policiesText, setPoliciesText] = useState("");
@@ -48,6 +68,14 @@ export function AccessPage() {
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+  const createUserMutation = useMutation({
+    mutationFn: api.createLocalUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["access-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["access-users"] });
+      setCreateDraft(emptyCreateUserDraft);
     },
   });
   const updatePoliciesMutation = useMutation({
@@ -139,6 +167,102 @@ export function AccessPage() {
         </form>
       </Card>
 
+      <Card className="rounded-lg p-4 shadow-sm">
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            createUserMutation.mutate(createInputFromDraft(createDraft));
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <UserPlus className="size-4 text-teal-700" />
+            <h3 className="text-sm font-semibold">Local User</h3>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-2">
+              <Label htmlFor="new-user-email">Email</Label>
+              <Input
+                id="new-user-email"
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, email: event.target.value }))
+                }
+                type="email"
+                value={createDraft.email}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-user-name">Name</Label>
+              <Input
+                id="new-user-name"
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, name: event.target.value }))
+                }
+                value={createDraft.name}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-user-password">Password</Label>
+              <Input
+                id="new-user-password"
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, password: event.target.value }))
+                }
+                type="password"
+                value={createDraft.password}
+              />
+            </div>
+          </div>
+          <RolePicker
+            rolesValue={createDraft.roles}
+            onChange={(nextRoles) =>
+              setCreateDraft((current) => ({
+                ...current,
+                roles: nextRoles,
+              }))
+            }
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="new-user-groups">Groups</Label>
+              <Textarea
+                className="min-h-20 bg-background font-mono text-xs"
+                id="new-user-groups"
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, groupsText: event.target.value }))
+                }
+                placeholder="operators"
+                value={createDraft.groupsText}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-user-scopes">Scopes</Label>
+              <Textarea
+                className="min-h-20 bg-background font-mono text-xs"
+                id="new-user-scopes"
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, grantsText: event.target.value }))
+                }
+                placeholder="node:node_x32_test"
+                value={createDraft.grantsText}
+              />
+            </div>
+          </div>
+          <Button
+            disabled={
+              createUserMutation.isPending ||
+              !createDraft.email.trim() ||
+              !createDraft.name.trim() ||
+              createDraft.password.length < 8
+            }
+            type="submit"
+          >
+            <UserPlus className="size-4" />
+            Create
+          </Button>
+        </form>
+      </Card>
+
       {(users ?? []).map((user) => {
         const draft = drafts[user.id] ?? {
           groupsText: groupsToText(user.groups),
@@ -165,26 +289,15 @@ export function AccessPage() {
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {roles.map((role) => (
-                    <label
-                      className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm"
-                      key={role}
-                    >
-                      <input
-                        checked={draft.roles.includes(role)}
-                        onChange={(event) =>
-                          updateDraft(user.id, setDrafts, {
-                            ...draft,
-                            roles: event.target.checked
-                              ? [...draft.roles, role]
-                              : draft.roles.filter((value) => value !== role),
-                          })
-                        }
-                        type="checkbox"
-                      />
-                      {role}
-                    </label>
-                  ))}
+                  <RolePicker
+                    rolesValue={draft.roles}
+                    onChange={(nextRoles) =>
+                      updateDraft(user.id, setDrafts, {
+                        ...draft,
+                        roles: nextRoles,
+                      })
+                    }
+                  />
                 </div>
               </div>
 
@@ -240,6 +353,38 @@ export function AccessPage() {
           </Card>
         );
       })}
+    </div>
+  );
+}
+
+function RolePicker({
+  onChange,
+  rolesValue,
+}: {
+  onChange: (rolesValue: Role[]) => void;
+  rolesValue: Role[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {roles.map((role) => (
+        <label
+          className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm"
+          key={role}
+        >
+          <input
+            checked={rolesValue.includes(role)}
+            onChange={(event) =>
+              onChange(
+                event.target.checked
+                  ? [...rolesValue, role]
+                  : rolesValue.filter((value) => value !== role),
+              )
+            }
+            type="checkbox"
+          />
+          {role}
+        </label>
+      ))}
     </div>
   );
 }
@@ -375,6 +520,17 @@ function groupsToText(groups: AccessGroup[]) {
 
 function groupIdsFromText(value: string) {
   return uniqueTextValues(value);
+}
+
+function createInputFromDraft(draft: CreateUserDraft): LocalUserCreateInput {
+  return {
+    email: draft.email.trim(),
+    groupIds: groupIdsFromText(draft.groupsText),
+    name: draft.name.trim(),
+    password: draft.password,
+    resourceGrants: grantsFromText(draft.grantsText),
+    roles: draft.roles.length > 0 ? draft.roles : ["viewer"],
+  };
 }
 
 function grantsFromText(value: string): ResourceGrant[] {

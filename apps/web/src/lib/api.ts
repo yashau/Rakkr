@@ -83,6 +83,12 @@ export interface UserAccessUpdate {
   roles: Role[];
 }
 
+export interface LocalUserCreateInput extends UserAccessUpdate {
+  email: string;
+  name: string;
+  password: string;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getAuthToken();
@@ -148,6 +154,14 @@ export const api = {
   auditEvents: (filters: AuditEventFilters = {}) =>
     fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
   accessUsers: () => fetchJson<{ data: CurrentUser[] }>("/api/v1/auth/users"),
+  createLocalUser: (input: LocalUserCreateInput) =>
+    fetchJson<{ data: CurrentUser }>("/api/v1/auth/users", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   currentUser: () => fetchJson<{ data: CurrentUser }>("/api/v1/auth/me"),
   login: (email: string, password: string) =>
     fetchJson<{ data: { expiresAt: string; token: string; user: CurrentUser } }>(
