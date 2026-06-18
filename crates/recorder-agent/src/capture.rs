@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command};
 
 use anyhow::Context;
 use tracing::info;
@@ -76,6 +76,10 @@ pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
 }
 
 pub fn run_capture_plan(plan: &CapturePlan) -> anyhow::Result<PathBuf> {
+    spawn_capture_plan(plan)?.wait()
+}
+
+pub fn spawn_capture_plan(plan: &CapturePlan) -> anyhow::Result<CaptureChild> {
     if plan.seconds == 0 {
         anyhow::bail!("capture duration must be greater than zero");
     }
@@ -93,18 +97,75 @@ pub fn run_capture_plan(plan: &CapturePlan) -> anyhow::Result<PathBuf> {
 
     let output_text = output_path.to_string_lossy().to_string();
     let args = capture_command_args(plan, &output_text);
-    let status = Command::new(&plan.command)
+    let child = Command::new(&plan.command)
         .args(&args)
-        .status()
+        .spawn()
         .with_context(|| format!("run capture command {}", plan.command))?;
 
-    if !status.success() {
-        anyhow::bail!(
-            "capture command {} failed with status {status}",
-            plan.command
-        );
+    Ok(CaptureChild {
+        child,
+        command: plan.command.clone(),
+        output_path: output_path.clone(),
+    })
+}
+
+pub struct CaptureChild {
+    child: Child,
+    command: String,
+    output_path: PathBuf,
+}
+
+impl CaptureChild {
+    pub fn try_complete(&mut self) -> anyhow::Result<Option<PathBuf>> {
+        let Some(status) = self
+            .child
+            .try_wait()
+            .with_context(|| format!("poll capture command {}", self.command))?
+        else {
+            return Ok(None);
+        };
+
+        if !status.success() {
+            anyhow::bail!(
+                "capture command {} failed with status {status}",
+                self.command
+            );
+        }
+
+        verify_capture_output(&self.output_path)?;
+
+        Ok(Some(self.output_path.clone()))
     }
 
+    pub fn stop(&mut self) -> anyhow::Result<()> {
+        self.child
+            .kill()
+            .with_context(|| format!("stop capture command {}", self.command))?;
+        let _ = self.child.wait();
+
+        Ok(())
+    }
+
+    fn wait(mut self) -> anyhow::Result<PathBuf> {
+        let status = self
+            .child
+            .wait()
+            .with_context(|| format!("wait for capture command {}", self.command))?;
+
+        if !status.success() {
+            anyhow::bail!(
+                "capture command {} failed with status {status}",
+                self.command
+            );
+        }
+
+        verify_capture_output(&self.output_path)?;
+
+        Ok(self.output_path)
+    }
+}
+
+fn verify_capture_output(output_path: &PathBuf) -> anyhow::Result<()> {
     let metadata = fs::metadata(output_path)
         .with_context(|| format!("inspect capture output {}", output_path.display()))?;
 
@@ -118,7 +179,7 @@ pub fn run_capture_plan(plan: &CapturePlan) -> anyhow::Result<PathBuf> {
         "recording capture job completed"
     );
 
-    Ok(output_path.clone())
+    Ok(())
 }
 
 fn safe_file_stem(value: &str) -> String {
@@ -152,6 +213,7 @@ mod tests {
             attach_cache_file: None,
             attach_cache_file_name: None,
             attach_cache_recording_id: None,
+            agent_state_file: PathBuf::from("state.json"),
             capture_channels: 1,
             capture_command: "arecord".to_string(),
             capture_device: "hw:2,0".to_string(),
@@ -163,6 +225,7 @@ mod tests {
             controller_token: Some("token".to_string()),
             controller_url: "http://localhost:8787".to_string(),
             heartbeat_seconds: 5,
+            job_poll_seconds: 2,
             node_id: "node".to_string(),
             print_inventory: false,
             run_next_job: false,

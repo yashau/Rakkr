@@ -545,7 +545,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Controller start now creates a queued recording job, recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording marks metadata `completed` and marks active jobs stop-requested, but live process signaling is still pending.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Controller start now creates a queued recording job, recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording marks metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
 
 ---
 
@@ -737,7 +737,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🟨 Schedule-owned filename/folder/tag templates.
 - [ ] 🟨 Watchdog event model.
 - [ ] 🟨 Scheduled low-signal alert rule.
-- [ ] ⏳ Local node event log.
+- [ ] 🟨 Local node event log.
 - [ ] 🟦 Central event store.
 - [ ] 🟦 Prometheus metrics endpoint.
 
@@ -880,7 +880,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add durable agent job execution state with process stop/cancel signaling.
+1. Persist controller recording jobs beyond the in-memory scaffold and add job heartbeat/lease expiry.
 2. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
 3. Add persistent node enrollment and node credential rotation.
 4. Return to the Debian recorder node when the X32 connection is confirmed.

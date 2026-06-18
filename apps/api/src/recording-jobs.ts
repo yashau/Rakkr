@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { RecordingSummary } from "@rakkr/shared";
 
-export type RecordingJobStatus = "queued" | "running" | "stop_requested" | "completed" | "failed";
+export type RecordingJobStatus =
+  | "queued"
+  | "running"
+  | "stop_requested"
+  | "cancelled"
+  | "completed"
+  | "failed";
 
 export interface RecordingJob {
   command: {
@@ -16,6 +22,7 @@ export interface RecordingJob {
   completedAt?: string;
   createdAt: string;
   id: string;
+  failureReason?: string;
   nodeId: string;
   recordingId: string;
   startedAt?: string;
@@ -95,6 +102,34 @@ export function completeRecordingJob(recordingId: string, jobId?: string) {
 
   job.completedAt = new Date().toISOString();
   job.status = "completed";
+
+  return job;
+}
+
+export function cancelRecordingJob(jobId: string, reason?: string) {
+  const job = recordingJobs.find((candidate) => candidate.id === jobId);
+
+  if (!job) {
+    return undefined;
+  }
+
+  job.completedAt = new Date().toISOString();
+  job.failureReason = reason;
+  job.status = "cancelled";
+
+  return job;
+}
+
+export function failRecordingJob(jobId: string, reason?: string) {
+  const job = recordingJobs.find((candidate) => candidate.id === jobId);
+
+  if (!job) {
+    return undefined;
+  }
+
+  job.completedAt = new Date().toISOString();
+  job.failureReason = reason;
+  job.status = "failed";
 
   return job;
 }

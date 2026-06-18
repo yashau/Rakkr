@@ -11,7 +11,9 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-ty
 import {
   claimRecordingJob,
   completeRecordingJob,
+  cancelRecordingJob,
   createRecordingJob,
+  failRecordingJob,
   nextRecordingJob,
   recordingJob,
   recordingJobs,
@@ -201,6 +203,87 @@ export function registerRecordingRoutes({
         details: {
           command: job.command,
           nodeId: job.nodeId,
+          recordingId: job.recordingId,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: {
+          id: job.id,
+          type: "recording_job",
+        },
+      });
+
+      return c.json({ data: job });
+    },
+  );
+
+  app.get(
+    "/api/v1/recording-jobs/:jobId",
+    requirePermission("recording:control", "recording_jobs.read_one", (c) =>
+      recordingJobTarget(c.req.param("jobId")),
+    ),
+    (c) => {
+      const jobId = c.req.param("jobId");
+      const job = recordingJob(jobId);
+
+      if (!job) {
+        return c.json({ error: "Recording job not found" }, 404);
+      }
+
+      return c.json({ data: job });
+    },
+  );
+
+  app.post(
+    "/api/v1/recording-jobs/:jobId/cancelled",
+    requirePermission("recording:control", "recording_jobs.cancelled", (c) =>
+      recordingJobTarget(c.req.param("jobId")),
+    ),
+    async (c) => {
+      const jobId = c.req.param("jobId");
+      const job = cancelRecordingJob(jobId, c.req.header("x-rakkr-reason") ?? "agent_cancelled");
+
+      if (!job) {
+        return c.json({ error: "Recording job not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.cancelled.succeeded",
+        auth: currentAuth(c),
+        details: {
+          reason: job.failureReason,
+          recordingId: job.recordingId,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: {
+          id: job.id,
+          type: "recording_job",
+        },
+      });
+
+      return c.json({ data: job });
+    },
+  );
+
+  app.post(
+    "/api/v1/recording-jobs/:jobId/failed",
+    requirePermission("recording:control", "recording_jobs.failed", (c) =>
+      recordingJobTarget(c.req.param("jobId")),
+    ),
+    async (c) => {
+      const jobId = c.req.param("jobId");
+      const job = failRecordingJob(jobId, c.req.header("x-rakkr-reason") ?? "agent_failed");
+
+      if (!job) {
+        return c.json({ error: "Recording job not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.failed.succeeded",
+        auth: currentAuth(c),
+        details: {
+          reason: job.failureReason,
           recordingId: job.recordingId,
         },
         outcome: "succeeded",

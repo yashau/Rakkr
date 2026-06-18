@@ -78,4 +78,14 @@ pub struct AgentConfig {
 
     #[arg(long, env = "RAKKR_RUN_NEXT_JOB", default_value_t = false)]
     pub run_next_job: bool,
+
+    #[arg(
+        long,
+        env = "RAKKR_AGENT_STATE_FILE",
+        default_value = "data/agent/job-state.json"
+    )]
+    pub agent_state_file: PathBuf,
+
+    #[arg(long, env = "RAKKR_JOB_POLL_SECONDS", default_value_t = 2)]
+    pub job_poll_seconds: u64,
 }

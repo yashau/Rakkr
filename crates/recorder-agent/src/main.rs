@@ -2,6 +2,7 @@ mod capture;
 mod config;
 mod controller;
 mod inventory;
+mod state;
 mod telemetry;
 
 use std::time::Duration;
