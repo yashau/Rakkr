@@ -41,6 +41,17 @@ Override them with `RAKKR_LOCAL_ADMIN_EMAIL`, `RAKKR_LOCAL_ADMIN_ID`, `RAKKR_LOC
 
 For non-admin local roles, scoped resource access can be seeded with `RAKKR_LOCAL_RESOURCE_GRANTS`, for example `{"node":["node_x32_test"]}`.
 
+## Azure AD OIDC
+
+OIDC is disabled by default. To test Azure AD sign-in:
+
+- In Microsoft Entra App registrations, create a Rakkr app and copy the Application (client) ID and Directory (tenant) ID.
+- Add a Web redirect URI matching `RAKKR_OIDC_REDIRECT_URI`, for example `http://localhost:8787/api/v1/auth/oidc/callback` in local dev or the HTTPS controller URL in production.
+- Set `RAKKR_OIDC_ENABLED=1`, `RAKKR_OIDC_AZURE_TENANT_ID`, `RAKKR_OIDC_CLIENT_ID`, and optionally `RAKKR_OIDC_CLIENT_SECRET`.
+- Keep scopes at `openid profile email` unless group or app-role claims are configured for RBAC sync.
+
+References: [Microsoft identity platform auth code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow), [redirect URI configuration](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-redirect-uri).
+
 Local cached recording files are served from `RAKKR_RECORDING_CACHE_DIR`, defaulting to `data/recordings`.
 
 Recorder agents authenticate with node credentials, sample ALSA S16_LE PCM for live meter frames by default, post those frames to the controller, and keep a local JSONL health log. Meter behavior is controlled by `RAKKR_METER_BACKEND` (`alsa` or `synthetic`), `RAKKR_METER_SAMPLE_SECONDS`, `RAKKR_METER_CLIP_DBFS`, and `RAKKR_METER_FLATLINE_DBFS`. System health sampling is controlled by `RAKKR_SYSTEM_HEALTH_ENABLED`, `RAKKR_SYSTEM_HEALTH_DISK_PATH`, disk warning/critical percentages, and load warning/critical per-core thresholds. The default log path is `RAKKR_AGENT_HEALTH_LOG_FILE=data/agent/health-events.jsonl`, with size rotation controlled by `RAKKR_AGENT_HEALTH_LOG_MAX_BYTES`.

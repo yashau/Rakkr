@@ -1,5 +1,5 @@
-import type { Hono } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import type { Context, Hono } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
 
 import type { LocalAuthService, LoginResult, SessionContext } from "./auth-service.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
@@ -35,6 +35,16 @@ interface AuthOidcRouteDependencies {
 
 const stateCookie = "rakkr_oidc_state";
 const stateMaxAgeSeconds = 10 * 60;
+
+export function clearOidcLoginStateCookie(c: Context<AppBindings>) {
+  c.header(
+    "Set-Cookie",
+    `${stateCookie}=; Max-Age=0; Path=/api/v1/auth/oidc/callback; HttpOnly; SameSite=Lax`,
+    {
+      append: true,
+    },
+  );
+}
 
 export function registerAuthOidcRoutes({
   app,
@@ -91,7 +101,7 @@ export function registerAuthOidcRoutes({
     const state = c.req.query("state");
     const cookieState = getCookie(c, stateCookie);
 
-    deleteCookie(c, stateCookie, { path: "/api/v1/auth/oidc/callback" });
+    clearOidcLoginStateCookie(c);
 
     if (!state || state !== cookieState) {
       await recordCallbackFailure(c, recordAuditEvent, "oidc_state_invalid");

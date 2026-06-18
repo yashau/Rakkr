@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
 
-const { registerAuthOidcRoutes } = await import("../src/auth-oidc-routes.js");
+const { clearOidcLoginStateCookie, registerAuthOidcRoutes } =
+  await import("../src/auth-oidc-routes.js");
 const { LocalAuthService } = await import("../src/auth-service.js");
 const { fetchOidcDiscovery, oidcConfigFromEnv, publicOidcConfig } =
   await import("../src/oidc-config.js");
@@ -245,6 +246,23 @@ test("rejects OIDC callbacks that are not tied to the browser state cookie", asy
 
   assert.equal(response.status, 400);
   assert.equal(body.reason, "oidc_state_invalid");
+});
+
+test("clears pending OIDC login state cookies during logout cleanup", async () => {
+  const app = new Hono();
+
+  app.post("/logout", (c) => {
+    clearOidcLoginStateCookie(c);
+
+    return c.body(null, 204);
+  });
+
+  const response = await app.request("/logout", { method: "POST" });
+  const cookie = response.headers.get("set-cookie") ?? "";
+
+  assert.match(cookie, /rakkr_oidc_state=/);
+  assert.match(cookie, /Max-Age=0/);
+  assert.match(cookie, /Path=\/api\/v1\/auth\/oidc\/callback/);
 });
 
 test("expires OIDC login state after the configured state TTL", async () => {

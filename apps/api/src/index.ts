@@ -22,7 +22,7 @@ import {
 } from "@rakkr/shared";
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
-import { registerAuthOidcRoutes } from "./auth-oidc-routes.js";
+import { clearOidcLoginStateCookie, registerAuthOidcRoutes } from "./auth-oidc-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
 import { registerHealthRoutes } from "./health-routes.js";
@@ -628,6 +628,7 @@ app.post("/api/v1/auth/logout", async (c) => {
   const auth = await authService.authenticate(c.req.header("authorization"));
 
   await authService.logout(c.req.header("authorization"));
+  clearOidcLoginStateCookie(c);
 
   await recordAuditEvent(c, {
     action: "auth.logout.succeeded",
