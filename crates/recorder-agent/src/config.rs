@@ -76,6 +76,18 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CAPTURE_CHANNELS", default_value_t = 2)]
     pub capture_channels: u16,
 
+    #[arg(long, env = "RAKKR_METER_BACKEND", default_value = "alsa")]
+    pub meter_backend: String,
+
+    #[arg(long, env = "RAKKR_METER_SAMPLE_SECONDS", default_value_t = 1)]
+    pub meter_sample_seconds: u64,
+
+    #[arg(long, env = "RAKKR_METER_CLIP_DBFS", default_value_t = -1.0)]
+    pub meter_clip_dbfs: f32,
+
+    #[arg(long, env = "RAKKR_METER_FLATLINE_DBFS", default_value_t = -120.0)]
+    pub meter_flatline_dbfs: f32,
+
     #[arg(long, env = "RAKKR_RUN_NEXT_JOB", default_value_t = false)]
     pub run_next_job: bool,
 
