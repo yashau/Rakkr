@@ -635,7 +635,17 @@ Permissions should be scoped to the smallest practical resource:
 
 Scopes can be broad for administrators and narrow for operators. For example, a user may be allowed to listen to `Room A` but not `Room B`, or allowed to start scheduled recordings but not edit recording profiles.
 
-Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access; narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local role/scope changes.
+Current scaffold grant IDs:
+
+- Site: `site:Main Office`
+- Room: `room:Council Chamber` or `room:Main Office/Council Chamber`
+- Node: `node:node_x32_test`
+- Interface: `interface:iface_x32_usb`
+- Channel: `channel:iface_x32_usb:1` or `channel:node_x32_test:iface_x32_usb:1`
+- Schedule: `schedule:sched_council_weekly`
+- Recording: `recording:rec_demo_001`
+
+Current scaffold status: targeted controller actions evaluate both permission and resource scope. Owners/admins have global access; narrower local roles can use durable per-user resource grants, with `RAKKR_LOCAL_RESOURCE_GRANTS` as a local bootstrap path. Node, schedule, recording, status, and meter stream collections filter by the evaluated scope. Site, room, node, schedule, recording, interface, and channel targets inherit from their practical parent scopes where relationships exist. Access management endpoints and UI are RBAC-gated by `auth:manage` and audit local role/scope changes.
 
 ## Required Permission Families
 
@@ -870,9 +880,9 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add durable room/interface/channel scope inheritance beyond node and schedule relationships.
-2. Wire recorder-agent capture output into the cache-file attach endpoint.
-3. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
+1. Wire recorder-agent capture output into the cache-file attach endpoint.
+2. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
+3. Add persistent node enrollment and node credential rotation.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
 5. Install recorder-node packages such as `alsa-utils` when hardware validation resumes.
 

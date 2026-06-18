@@ -33,6 +33,8 @@ const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
+type NodeRecord = (typeof nodes)[number];
+type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -240,21 +242,29 @@ function resourceScopeTargets(target: AuditTarget): AuditTarget[] {
   if (target.type === "recording" && target.id) {
     const recording = recordings.find((candidate) => candidate.id === target.id);
 
-    if (recording?.nodeId) {
-      targets.push({ id: recording.nodeId, type: "node" });
+    if (recording?.scheduleId) {
+      addScheduleScopeTargets(targets, recording.scheduleId);
     }
 
-    if (recording?.scheduleId) {
-      targets.push({ id: recording.scheduleId, type: "schedule" });
+    if (recording?.nodeId) {
+      addNodeScopeTargets(targets, recording.nodeId);
     }
   }
 
   if (target.type === "schedule" && target.id) {
-    const schedule = schedules.find((candidate) => candidate.id === target.id);
+    addScheduleScopeTargets(targets, target.id);
+  }
 
-    if (schedule?.nodeId) {
-      targets.push({ id: schedule.nodeId, type: "node" });
-    }
+  if (target.type === "node" && target.id) {
+    addNodeScopeTargets(targets, target.id);
+  }
+
+  if (target.type === "interface" && target.id) {
+    addInterfaceScopeTargets(targets, target.id);
+  }
+
+  if (target.type === "channel" && target.id) {
+    addChannelScopeTargets(targets, target.id);
   }
 
   return targets.filter(
@@ -264,6 +274,98 @@ function resourceScopeTargets(target: AuditTarget): AuditTarget[] {
         (other) => other.type === candidate.type && other.id === candidate.id,
       ) === index,
   );
+}
+
+function addScheduleScopeTargets(targets: AuditTarget[], scheduleId: string) {
+  const schedule = schedules.find((candidate) => candidate.id === scheduleId);
+
+  if (!schedule) {
+    return;
+  }
+
+  targets.push({ id: schedule.id, type: "schedule" }, { id: schedule.room, type: "room" });
+  addNodeScopeTargets(targets, schedule.nodeId);
+}
+
+function addNodeScopeTargets(targets: AuditTarget[], nodeId: string) {
+  const node = nodes.find((candidate) => candidate.id === nodeId);
+
+  if (!node) {
+    return;
+  }
+
+  targets.push({ id: node.id, type: "node" });
+  addRoomScopeTargets(targets, node);
+}
+
+function addInterfaceScopeTargets(targets: AuditTarget[], interfaceId: string) {
+  const match = interfaceNode(interfaceId);
+
+  if (!match) {
+    return;
+  }
+
+  targets.push({ id: match.audioInterface.id, type: "interface" });
+  addNodeScopeTargets(targets, match.node.id);
+}
+
+function addChannelScopeTargets(targets: AuditTarget[], channelId: string) {
+  const match = channelNode(channelId);
+
+  if (!match) {
+    return;
+  }
+
+  targets.push({ id: match.channelId, type: "channel" });
+  addInterfaceScopeTargets(targets, match.audioInterface.id);
+}
+
+function addRoomScopeTargets(targets: AuditTarget[], node: NodeRecord) {
+  targets.push({ id: node.location.site, type: "site" }, { id: node.location.room, type: "room" });
+
+  if (node.location.site && node.location.room) {
+    targets.push({ id: `${node.location.site}/${node.location.room}`, type: "room" });
+  }
+}
+
+function interfaceNode(interfaceId: string) {
+  for (const node of nodes) {
+    const audioInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
+
+    if (audioInterface) {
+      return { audioInterface, node };
+    }
+  }
+
+  return undefined;
+}
+
+function channelNode(channelId: string) {
+  for (const node of nodes) {
+    for (const audioInterface of node.interfaces) {
+      const channel = audioInterface.channels.find((candidate) =>
+        channelScopeIds(node, audioInterface, candidate.index).includes(channelId),
+      );
+
+      if (channel) {
+        return {
+          audioInterface,
+          channel,
+          channelId: `${audioInterface.id}:${channel.index}`,
+          node,
+        };
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function channelScopeIds(node: NodeRecord, audioInterface: InterfaceRecord, channelIndex: number) {
+  return [
+    `${audioInterface.id}:${channelIndex}`,
+    `${node.id}:${audioInterface.id}:${channelIndex}`,
+  ];
 }
 
 function currentAuth(c: Context<AppBindings>) {
