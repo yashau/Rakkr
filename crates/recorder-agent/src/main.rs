@@ -1,3 +1,4 @@
+mod capture;
 mod config;
 mod controller;
 mod inventory;
@@ -28,6 +29,32 @@ async fn main() -> anyhow::Result<()> {
 
     if config.attach_cache_file.is_some() || config.attach_cache_recording_id.is_some() {
         controller::attach_cache_file(&config).await?;
+        return Ok(());
+    }
+
+    if config.capture_recording_id.is_some() {
+        let token = config
+            .controller_token
+            .as_deref()
+            .context("missing --controller-token or RAKKR_CONTROLLER_TOKEN")?;
+        let output_path = capture::run_capture_job(&config)?;
+
+        controller::upload_cache_file(controller::CacheFileUpload {
+            content_type: "audio/wav",
+            controller_url: &config.controller_url,
+            duration_seconds: Some(config.capture_seconds),
+            file_name: output_path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(str::to_string),
+            file_path: &output_path,
+            recording_id: config
+                .capture_recording_id
+                .as_deref()
+                .context("missing --capture-recording-id")?,
+            token,
+        })
+        .await?;
         return Ok(());
     }
 

@@ -545,7 +545,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. The controller can attach recorder-produced cache files through `PUT /api/v1/recordings/:recordingId/cache-file`, store those bytes under `RAKKR_RECORDING_CACHE_DIR`, and serve only files that actually exist. The Rust agent can upload a completed local file into that endpoint with `--attach-cache-recording-id` and `--attach-cache-file`. Stopping a recording now marks metadata `completed`; it does not claim the recording is cached until a recorder artifact is attached.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. The controller can attach recorder-produced cache files through `PUT /api/v1/recordings/:recordingId/cache-file`, store those bytes under `RAKKR_RECORDING_CACHE_DIR`, and serve only files that actually exist. The Rust agent can upload a completed local file into that endpoint with `--attach-cache-recording-id` and `--attach-cache-file`, or run an ALSA `arecord` capture job with `--capture-recording-id` and upload the resulting WAV artifact. Stopping a recording now marks metadata `completed`; it does not claim the recording is cached until a recorder artifact is attached.
 
 ---
 
@@ -728,7 +728,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🟦 Generic Linux audio device discovery.
 - [ ] ⏸️ X32 test-rig validation.
 - [ ] 🟦 Realtime meters.
-- [ ] ⏳ Recording job model.
+- [ ] 🟨 Recording job model.
 - [ ] 🟦 Voice MP3 VBR default profile.
 - [ ] 🟦 Local recording cache.
 - [ ] 🟦 Recording library metadata.
@@ -880,7 +880,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Replace the recorder-agent cache attach command's manual file input with real capture output from recorder jobs.
+1. Connect controller recording start/stop actions to recorder-agent capture jobs instead of local-only metadata updates.
 2. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
 3. Add persistent node enrollment and node credential rotation.
 4. Return to the Debian recorder node when the X32 connection is confirmed.
