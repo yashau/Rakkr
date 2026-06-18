@@ -303,7 +303,7 @@ export const recordingProfiles = pgTable("recording_profiles", {
   channelMode: varchar("channel_mode", { length: 64 }).notNull(),
   codec: varchar("codec", { length: 32 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: varchar("id", { length: 160 }).primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
   settings: jsonb("settings")
     .notNull()
@@ -315,7 +315,7 @@ export const recordingProfiles = pgTable("recording_profiles", {
 
 export const watchdogPolicies = pgTable("watchdog_policies", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: varchar("id", { length: 160 }).primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
   rules: jsonb("rules")
     .notNull()
@@ -328,23 +328,17 @@ export const schedules = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     enabled: boolean("enabled").notNull().default(true),
     folderTemplate: text("folder_template").notNull(),
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: varchar("id", { length: 160 }).primaryKey(),
     name: varchar("name", { length: 160 }).notNull(),
-    nodeId: uuid("node_id").references(() => nodes.id, {
-      onDelete: "set null",
-    }),
+    nodeId: varchar("node_id", { length: 160 }),
     recurrence: jsonb("recurrence").notNull(),
-    recordingProfileId: uuid("recording_profile_id").references(() => recordingProfiles.id, {
-      onDelete: "set null",
-    }),
+    recordingProfileId: varchar("recording_profile_id", { length: 160 }),
     tags: jsonb("tags")
       .notNull()
       .default(sql`'[]'::jsonb`),
     timezone: varchar("timezone", { length: 80 }).notNull(),
     titleTemplate: text("title_template").notNull(),
-    watchdogPolicyId: uuid("watchdog_policy_id").references(() => watchdogPolicies.id, {
-      onDelete: "set null",
-    }),
+    watchdogPolicyId: varchar("watchdog_policy_id", { length: 160 }),
   },
   (table) => ({
     enabledIdx: index("schedules_enabled_idx").on(table.enabled),
@@ -420,9 +414,7 @@ export const healthEvents = pgTable(
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     recordingId: varchar("recording_id", { length: 160 }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-    scheduleId: uuid("schedule_id").references(() => schedules.id, {
-      onDelete: "set null",
-    }),
+    scheduleId: varchar("schedule_id", { length: 160 }),
     severity: healthSeverityEnum("severity").notNull(),
     type: varchar("type", { length: 160 }).notNull(),
   },

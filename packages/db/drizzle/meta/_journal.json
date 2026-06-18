@@ -64,6 +64,13 @@
       "when": 1781763041608,
       "tag": "0008_damp_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781764549553,
+      "tag": "0009_hard_jubilee",
+      "breakpoints": true
     }
   ]
 }
