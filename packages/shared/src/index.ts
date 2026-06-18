@@ -318,6 +318,19 @@ export const watchdogPolicySchema = z.object({
   thresholdDbfs: dbfsSchema,
   windowSeconds: z.number().int().positive(),
 });
+export const watchdogPolicyUpdateSchema = z
+  .object({
+    activeDuring: z.enum(["always", "scheduled_recording", "recording"]).optional(),
+    graceSeconds: z.number().int().nonnegative().max(86_400).optional(),
+    metric: z.enum(["peak", "rms", "percentile_95"]).optional(),
+    minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400).optional(),
+    name: z.string().trim().min(1).max(160).optional(),
+    repeatEverySeconds: z.number().int().positive().max(86_400).optional(),
+    severity: healthSeveritySchema.optional(),
+    thresholdDbfs: dbfsSchema.optional(),
+    windowSeconds: z.number().int().positive().max(86_400).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one watchdog field is required");
 
 export const scheduleSummarySchema = z.object({
   enabled: z.boolean(),
@@ -488,3 +501,4 @@ export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
 export type ScheduleUpdate = z.infer<typeof scheduleUpdateSchema>;
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;
+export type WatchdogPolicyUpdate = z.infer<typeof watchdogPolicyUpdateSchema>;

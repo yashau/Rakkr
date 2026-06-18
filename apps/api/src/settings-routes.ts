@@ -1,5 +1,10 @@
 import type { Context, Hono } from "hono";
-import { recordingProfileUpdateSchema, type RecordingProfile } from "@rakkr/shared";
+import {
+  recordingProfileUpdateSchema,
+  watchdogPolicyUpdateSchema,
+  type RecordingProfile,
+  type WatchdogPolicy,
+} from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
@@ -26,6 +31,14 @@ export function registerSettingsRoutes({
       type: "settings",
     })),
     async (c) => c.json({ data: await settingsStore.listRecordingProfiles() }),
+  );
+
+  app.get(
+    "/api/v1/settings/watchdog-policies",
+    requirePermission("settings:read", "settings.watchdog_policies.read", () => ({
+      type: "settings",
+    })),
+    async (c) => c.json({ data: await settingsStore.listWatchdogPolicies() }),
   );
 
   app.patch(
@@ -83,6 +96,61 @@ export function registerSettingsRoutes({
     },
   );
 
+  app.patch(
+    "/api/v1/settings/watchdog-policies/:policyId",
+    requirePermission("settings:manage", "settings.watchdog_policies.update", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const policyId = c.req.param("policyId");
+      const before = await settingsStore.findWatchdogPolicy(policyId);
+
+      if (!before) {
+        await recordSettingsFailure(c, "settings.watchdog_policies.update.failed", "not_found", {
+          id: policyId,
+          type: "watchdog_policy",
+        });
+        return c.json({ error: "Watchdog policy not found" }, 404);
+      }
+
+      const body = watchdogPolicyUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.watchdog_policies.update.failed",
+          "invalid_request",
+          watchdogAuditTarget(before),
+        );
+        return c.json({ error: "Invalid watchdog policy", issues: body.error.issues }, 400);
+      }
+
+      const updated = await settingsStore.updateWatchdogPolicy(policyId, body.data);
+
+      if (!updated) {
+        await recordSettingsFailure(
+          c,
+          "settings.watchdog_policies.update.failed",
+          "not_found",
+          watchdogAuditTarget(before),
+        );
+        return c.json({ error: "Watchdog policy not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "settings.watchdog_policies.update.succeeded",
+        after: watchdogSnapshot(updated),
+        auth: currentAuth(c),
+        before: watchdogSnapshot(before),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: watchdogAuditTarget(updated),
+      });
+
+      return c.json({ data: updated });
+    },
+  );
+
   async function recordSettingsFailure(
     c: Context<AppBindings>,
     action: string,
@@ -118,5 +186,28 @@ function profileSnapshot(profile: RecordingProfile) {
     silenceDetectionEnabled: profile.silenceDetectionEnabled,
     silenceSkipEnabled: profile.silenceSkipEnabled,
     vbr: profile.vbr,
+  };
+}
+
+function watchdogAuditTarget(policy: WatchdogPolicy) {
+  return {
+    id: policy.id,
+    name: policy.name,
+    type: "watchdog_policy",
+  };
+}
+
+function watchdogSnapshot(policy: WatchdogPolicy) {
+  return {
+    activeDuring: policy.activeDuring,
+    graceSeconds: policy.graceSeconds,
+    id: policy.id,
+    metric: policy.metric,
+    minCumulativeSecondsAboveThreshold: policy.minCumulativeSecondsAboveThreshold,
+    name: policy.name,
+    repeatEverySeconds: policy.repeatEverySeconds,
+    severity: policy.severity,
+    thresholdDbfs: policy.thresholdDbfs,
+    windowSeconds: policy.windowSeconds,
   };
 }

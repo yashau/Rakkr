@@ -52,6 +52,11 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
         profiles.find((profile) => profile.id === defaultVoiceRecordingProfile.id) ??
         profiles[0] ??
         defaultVoiceRecordingProfile;
+      const watchdogPolicies = await dependencies.settingsStore.listWatchdogPolicies();
+      const watchdogPolicy =
+        watchdogPolicies.find((policy) => policy.id === defaultScheduledVoiceWatchdogPolicy.id) ??
+        watchdogPolicies[0] ??
+        defaultScheduledVoiceWatchdogPolicy;
 
       return c.json({
         activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
@@ -64,7 +69,7 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
         onlineNodes: visibleNodes.filter((node) => node.status === "online").length,
         recordingProfile,
         startedAt: dependencies.startedAt.toISOString(),
-        watchdogPolicy: defaultScheduledVoiceWatchdogPolicy,
+        watchdogPolicy,
       });
     },
   );

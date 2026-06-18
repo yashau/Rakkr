@@ -1,43 +1,69 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createDatabase, desc, eq, recordingProfiles as recordingProfilesTable } from "@rakkr/db";
 import {
+  createDatabase,
+  desc,
+  eq,
+  recordingProfiles as recordingProfilesTable,
+  watchdogPolicies as watchdogPoliciesTable,
+} from "@rakkr/db";
+import {
+  defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
   recordingProfileSchema,
+  watchdogPolicySchema,
   type RecordingProfile,
   type RecordingProfileUpdate,
+  type WatchdogPolicy,
+  type WatchdogPolicyUpdate,
 } from "@rakkr/shared";
 
 type RecordingProfileInsert = typeof recordingProfilesTable.$inferInsert;
 type RecordingProfileRow = typeof recordingProfilesTable.$inferSelect;
+type WatchdogPolicyInsert = typeof watchdogPoliciesTable.$inferInsert;
+type WatchdogPolicyRow = typeof watchdogPoliciesTable.$inferSelect;
 
 export interface SettingsStore {
   findRecordingProfile(profileId: string): Promise<RecordingProfile | undefined>;
+  findWatchdogPolicy(policyId: string): Promise<WatchdogPolicy | undefined>;
   listRecordingProfiles(): Promise<RecordingProfile[]>;
+  listWatchdogPolicies(): Promise<WatchdogPolicy[]>;
   updateRecordingProfile(
     profileId: string,
     update: RecordingProfileUpdate,
   ): Promise<RecordingProfile | undefined>;
+  updateWatchdogPolicy(
+    policyId: string,
+    update: WatchdogPolicyUpdate,
+  ): Promise<WatchdogPolicy | undefined>;
 }
 
 const recordingProfileStorePath = path.resolve(
   process.env.RAKKR_RECORDING_PROFILE_STORE_PATH ?? "data/recording-profiles.json",
 );
+const watchdogPolicyStorePath = path.resolve(
+  process.env.RAKKR_WATCHDOG_POLICY_STORE_PATH ?? "data/watchdog-policies.json",
+);
 
 export function createSettingsStore(
   seedProfiles: RecordingProfile[] = [defaultVoiceRecordingProfile],
+  seedWatchdogPolicies: WatchdogPolicy[] = [defaultScheduledVoiceWatchdogPolicy],
 ) {
-  const fallback = new JsonSettingsStore(seedProfiles);
+  const fallback = new JsonSettingsStore(seedProfiles, seedWatchdogPolicies);
   const databaseUrl = process.env.DATABASE_URL;
 
-  return databaseUrl ? new PostgresSettingsStore(databaseUrl, fallback, seedProfiles) : fallback;
+  return databaseUrl
+    ? new PostgresSettingsStore(databaseUrl, fallback, seedProfiles, seedWatchdogPolicies)
+    : fallback;
 }
 
 class JsonSettingsStore implements SettingsStore {
   private readonly profiles: RecordingProfile[];
+  private readonly watchdogPolicies: WatchdogPolicy[];
 
-  constructor(seedProfiles: RecordingProfile[]) {
+  constructor(seedProfiles: RecordingProfile[], seedWatchdogPolicies: WatchdogPolicy[]) {
     this.profiles = loadRecordingProfiles(seedProfiles);
+    this.watchdogPolicies = loadWatchdogPolicies(seedWatchdogPolicies);
   }
 
   async findRecordingProfile(profileId: string) {
@@ -46,6 +72,14 @@ class JsonSettingsStore implements SettingsStore {
 
   async listRecordingProfiles() {
     return this.profiles;
+  }
+
+  async findWatchdogPolicy(policyId: string) {
+    return this.watchdogPolicies.find((policy) => policy.id === policyId);
+  }
+
+  async listWatchdogPolicies() {
+    return this.watchdogPolicies;
   }
 
   async updateRecordingProfile(profileId: string, update: RecordingProfileUpdate) {
@@ -57,38 +91,37 @@ class JsonSettingsStore implements SettingsStore {
 
     const updated = { ...this.profiles[index], ...update, id: profileId };
     this.profiles[index] = updated;
-    this.persist();
+    persistSettings(recordingProfileStorePath, "profiles", this.profiles);
 
     return updated;
   }
 
-  private persist() {
-    mkdirSync(path.dirname(recordingProfileStorePath), { recursive: true });
-    const tempPath = `${recordingProfileStorePath}.${process.pid}.tmp`;
-    const payload = JSON.stringify(
-      {
-        profiles: this.profiles,
-        updatedAt: new Date().toISOString(),
-        version: 1,
-      },
-      null,
-      2,
-    );
+  async updateWatchdogPolicy(policyId: string, update: WatchdogPolicyUpdate) {
+    const index = this.watchdogPolicies.findIndex((policy) => policy.id === policyId);
 
-    writeFileSync(tempPath, `${payload}\n`);
-    renameSync(tempPath, recordingProfileStorePath);
+    if (index < 0) {
+      return undefined;
+    }
+
+    const updated = { ...this.watchdogPolicies[index], ...update, id: policyId };
+    this.watchdogPolicies[index] = updated;
+    persistSettings(watchdogPolicyStorePath, "policies", this.watchdogPolicies);
+
+    return updated;
   }
 }
 
 class PostgresSettingsStore implements SettingsStore {
   private dbAvailable = true;
-  private hasSeeded = false;
+  private hasSeededProfiles = false;
+  private hasSeededWatchdogPolicies = false;
   private readonly db;
 
   constructor(
     databaseUrl: string,
     private readonly fallback: SettingsStore,
     private readonly seedProfiles: RecordingProfile[],
+    private readonly seedWatchdogPolicies: WatchdogPolicy[],
   ) {
     this.db = createDatabase(databaseUrl);
   }
@@ -99,7 +132,7 @@ class PostgresSettingsStore implements SettingsStore {
     }
 
     try {
-      await this.seedIfEmpty();
+      await this.seedProfilesIfEmpty();
       const [row] = await this.db
         .select()
         .from(recordingProfilesTable)
@@ -113,13 +146,33 @@ class PostgresSettingsStore implements SettingsStore {
     }
   }
 
+  async findWatchdogPolicy(policyId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.findWatchdogPolicy(policyId);
+    }
+
+    try {
+      await this.seedWatchdogPoliciesIfEmpty();
+      const [row] = await this.db
+        .select()
+        .from(watchdogPoliciesTable)
+        .where(eq(watchdogPoliciesTable.id, policyId))
+        .limit(1);
+
+      return row ? watchdogPolicyFromRow(row) : undefined;
+    } catch (error) {
+      await this.failover("watchdog policy lookup unavailable; using JSON store", error);
+      return this.fallback.findWatchdogPolicy(policyId);
+    }
+  }
+
   async listRecordingProfiles() {
     if (!this.dbAvailable) {
       return this.fallback.listRecordingProfiles();
     }
 
     try {
-      await this.seedIfEmpty();
+      await this.seedProfilesIfEmpty();
       const rows = await this.db
         .select()
         .from(recordingProfilesTable)
@@ -132,13 +185,32 @@ class PostgresSettingsStore implements SettingsStore {
     }
   }
 
+  async listWatchdogPolicies() {
+    if (!this.dbAvailable) {
+      return this.fallback.listWatchdogPolicies();
+    }
+
+    try {
+      await this.seedWatchdogPoliciesIfEmpty();
+      const rows = await this.db
+        .select()
+        .from(watchdogPoliciesTable)
+        .orderBy(desc(watchdogPoliciesTable.createdAt));
+
+      return rows.map(watchdogPolicyFromRow);
+    } catch (error) {
+      await this.failover("watchdog policy query unavailable; using JSON store", error);
+      return this.fallback.listWatchdogPolicies();
+    }
+  }
+
   async updateRecordingProfile(profileId: string, update: RecordingProfileUpdate) {
     if (!this.dbAvailable) {
       return this.fallback.updateRecordingProfile(profileId, update);
     }
 
     try {
-      await this.seedIfEmpty();
+      await this.seedProfilesIfEmpty();
       const existing = await this.findRecordingProfile(profileId);
 
       if (!existing) {
@@ -146,7 +218,7 @@ class PostgresSettingsStore implements SettingsStore {
       }
 
       const updated = { ...existing, ...update, id: profileId };
-      await this.write(updated);
+      await this.writeRecordingProfile(updated);
 
       return updated;
     } catch (error) {
@@ -155,12 +227,31 @@ class PostgresSettingsStore implements SettingsStore {
     }
   }
 
-  private async seedIfEmpty() {
-    if (
-      this.hasSeeded ||
-      this.seedProfiles.length === 0 ||
-      process.env.RAKKR_SEED_DEMO_DATA === "0"
-    ) {
+  async updateWatchdogPolicy(policyId: string, update: WatchdogPolicyUpdate) {
+    if (!this.dbAvailable) {
+      return this.fallback.updateWatchdogPolicy(policyId, update);
+    }
+
+    try {
+      await this.seedWatchdogPoliciesIfEmpty();
+      const existing = await this.findWatchdogPolicy(policyId);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      const updated = { ...existing, ...update, id: policyId };
+      await this.writeWatchdogPolicy(updated);
+
+      return updated;
+    } catch (error) {
+      await this.failover("watchdog policy update unavailable; using JSON store", error);
+      return this.fallback.updateWatchdogPolicy(policyId, update);
+    }
+  }
+
+  private async seedProfilesIfEmpty() {
+    if (this.hasSeededProfiles || this.seedProfiles.length === 0 || demoSeedDisabled()) {
       return;
     }
 
@@ -170,13 +261,36 @@ class PostgresSettingsStore implements SettingsStore {
       .limit(1);
 
     if (existing.length === 0) {
-      await Promise.all(this.seedProfiles.map((profile) => this.write(profile)));
+      await Promise.all(this.seedProfiles.map((profile) => this.writeRecordingProfile(profile)));
     }
 
-    this.hasSeeded = true;
+    this.hasSeededProfiles = true;
   }
 
-  private async write(profile: RecordingProfile) {
+  private async seedWatchdogPoliciesIfEmpty() {
+    if (
+      this.hasSeededWatchdogPolicies ||
+      this.seedWatchdogPolicies.length === 0 ||
+      demoSeedDisabled()
+    ) {
+      return;
+    }
+
+    const existing = await this.db
+      .select({ id: watchdogPoliciesTable.id })
+      .from(watchdogPoliciesTable)
+      .limit(1);
+
+    if (existing.length === 0) {
+      await Promise.all(
+        this.seedWatchdogPolicies.map((policy) => this.writeWatchdogPolicy(policy)),
+      );
+    }
+
+    this.hasSeededWatchdogPolicies = true;
+  }
+
+  private async writeRecordingProfile(profile: RecordingProfile) {
     const row = recordingProfileToRow(profile);
 
     await this.db
@@ -194,6 +308,21 @@ class PostgresSettingsStore implements SettingsStore {
           vbr: row.vbr,
         },
         target: recordingProfilesTable.id,
+      });
+  }
+
+  private async writeWatchdogPolicy(policy: WatchdogPolicy) {
+    const row = watchdogPolicyToRow(policy);
+
+    await this.db
+      .insert(watchdogPoliciesTable)
+      .values(row)
+      .onConflictDoUpdate({
+        set: {
+          name: row.name,
+          rules: row.rules,
+        },
+        target: watchdogPoliciesTable.id,
       });
   }
 
@@ -219,6 +348,39 @@ function loadRecordingProfiles(seedProfiles: RecordingProfile[]) {
   return profiles.map((profile) => recordingProfileSchema.parse(profile));
 }
 
+function loadWatchdogPolicies(seedPolicies: WatchdogPolicy[]) {
+  if (!existsSync(watchdogPolicyStorePath)) {
+    return seedPolicies.map((policy) => ({ ...policy }));
+  }
+
+  const raw = readFileSync(watchdogPolicyStorePath, "utf8");
+  const parsed: unknown = JSON.parse(raw);
+  const policies = isWatchdogPolicyStore(parsed) ? parsed.policies : parsed;
+
+  if (!Array.isArray(policies)) {
+    throw new Error("watchdog_policy_store_invalid");
+  }
+
+  return policies.map((policy) => watchdogPolicySchema.parse(policy));
+}
+
+function persistSettings<T>(filePath: string, key: string, values: T[]) {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  const payload = JSON.stringify(
+    {
+      [key]: values,
+      updatedAt: new Date().toISOString(),
+      version: 1,
+    },
+    null,
+    2,
+  );
+
+  writeFileSync(tempPath, `${payload}\n`);
+  renameSync(tempPath, filePath);
+}
+
 function recordingProfileToRow(profile: RecordingProfile): RecordingProfileInsert {
   return {
     bitrateKbps: profile.bitrateKbps,
@@ -230,6 +392,23 @@ function recordingProfileToRow(profile: RecordingProfile): RecordingProfileInser
     silenceDetectionEnabled: profile.silenceDetectionEnabled,
     silenceSkipEnabled: profile.silenceSkipEnabled,
     vbr: profile.vbr,
+  };
+}
+
+function watchdogPolicyToRow(policy: WatchdogPolicy): WatchdogPolicyInsert {
+  return {
+    id: policy.id,
+    name: policy.name,
+    rules: {
+      activeDuring: policy.activeDuring,
+      graceSeconds: policy.graceSeconds,
+      metric: policy.metric,
+      minCumulativeSecondsAboveThreshold: policy.minCumulativeSecondsAboveThreshold,
+      repeatEverySeconds: policy.repeatEverySeconds,
+      severity: policy.severity,
+      thresholdDbfs: policy.thresholdDbfs,
+      windowSeconds: policy.windowSeconds,
+    },
   };
 }
 
@@ -246,10 +425,39 @@ function recordingProfileFromRow(row: RecordingProfileRow): RecordingProfile {
   });
 }
 
+function watchdogPolicyFromRow(row: WatchdogPolicyRow): WatchdogPolicy {
+  const rules = record(row.rules) ?? {};
+
+  return watchdogPolicySchema.parse({
+    ...defaultScheduledVoiceWatchdogPolicy,
+    ...rules,
+    id: row.id,
+    name: row.name,
+  });
+}
+
 function isRecordingProfileStore(value: unknown): value is { profiles: unknown[] } {
   return (
     typeof value === "object" &&
     value !== null &&
     Array.isArray((value as { profiles?: unknown }).profiles)
   );
+}
+
+function isWatchdogPolicyStore(value: unknown): value is { policies: unknown[] } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { policies?: unknown }).policies)
+  );
+}
+
+function demoSeedDisabled() {
+  return process.env.RAKKR_SEED_DEMO_DATA === "0";
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }

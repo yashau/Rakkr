@@ -19,6 +19,7 @@ import type {
   ScheduleSummary,
   ScheduleUpdate,
   WatchdogPolicy,
+  WatchdogPolicyUpdate,
 } from "@rakkr/shared";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
@@ -293,8 +294,18 @@ export const api = {
   recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
+  watchdogPolicies: () =>
+    fetchJson<{ data: WatchdogPolicy[] }>("/api/v1/settings/watchdog-policies"),
   updateRecordingProfile: (profileId: string, input: RecordingProfileUpdate) =>
     fetchJson<{ data: RecordingProfile }>(`/api/v1/settings/recording-profiles/${profileId}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
+  updateWatchdogPolicy: (policyId: string, input: WatchdogPolicyUpdate) =>
+    fetchJson<{ data: WatchdogPolicy }>(`/api/v1/settings/watchdog-policies/${policyId}`, {
       body: JSON.stringify(input),
       headers: {
         "Content-Type": "application/json",
