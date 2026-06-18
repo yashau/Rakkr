@@ -134,6 +134,13 @@
       "when": 1781795612492,
       "tag": "0018_quick_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781802327974,
+      "tag": "0019_vengeful_triathlon",
+      "breakpoints": true
     }
   ]
 }

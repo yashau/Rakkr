@@ -247,6 +247,19 @@ test("rejects OIDC callbacks that are not tied to the browser state cookie", asy
   assert.equal(body.reason, "oidc_state_invalid");
 });
 
+test("expires OIDC login state after the configured state TTL", async () => {
+  const store = createOidcLoginStore(1);
+
+  await store.save({
+    codeVerifier: "verifier",
+    createdAt: new Date(Date.now() - 10_000),
+    nonce: "nonce",
+    state: "expired-state",
+  });
+
+  assert.equal(await store.consume("expired-state"), undefined);
+});
+
 function configuredOidcConfig() {
   return oidcConfigFromEnv({
     RAKKR_OIDC_AZURE_TENANT_ID: "tenant-id",

@@ -9,7 +9,9 @@ import {
   randomState,
   type Configuration,
 } from "openid-client";
+import { createDatabase, eq, lte, oidcLoginStates } from "@rakkr/db";
 
+import { hashToken } from "./auth-utils.js";
 import { azureAdOidcClaimsSchema, type AzureAdOidcClaims } from "./oidc-sync.js";
 import { OidcConfigError, type OidcRuntimeConfig } from "./oidc-config.js";
 
@@ -38,8 +40,8 @@ export interface OidcLoginFlow {
 }
 
 export interface OidcLoginStore {
-  consume(state: string): OidcLoginSession | undefined;
-  save(session: OidcLoginSession): void;
+  consume(state: string): Promise<OidcLoginSession | undefined>;
+  save(session: OidcLoginSession): Promise<void>;
 }
 
 export class OidcLoginError extends Error {
@@ -121,7 +123,7 @@ export function createOidcLoginStore(ttlMs = defaultStateTtlMs): OidcLoginStore 
   const sessions = new Map<string, OidcLoginSession>();
 
   return {
-    consume(state) {
+    async consume(state) {
       const session = sessions.get(state);
 
       sessions.delete(state);
@@ -133,9 +135,91 @@ export function createOidcLoginStore(ttlMs = defaultStateTtlMs): OidcLoginStore 
 
       return session;
     },
-    save(session) {
+    async save(session) {
       pruneExpiredSessions(sessions, ttlMs);
       sessions.set(session.state, session);
+    },
+  };
+}
+
+export function createPersistentOidcLoginStore(
+  databaseUrl = process.env.DATABASE_URL,
+  ttlMs = defaultStateTtlMs,
+): OidcLoginStore {
+  const memory = createOidcLoginStore(ttlMs);
+
+  if (!databaseUrl) {
+    return memory;
+  }
+
+  const db = createDatabase(databaseUrl);
+  let dbAvailable = true;
+
+  return {
+    async consume(state) {
+      if (!dbAvailable) {
+        return memory.consume(state);
+      }
+
+      try {
+        const [row] = await db
+          .delete(oidcLoginStates)
+          .where(eq(oidcLoginStates.stateHash, hashToken(state)))
+          .returning();
+
+        await prunePersistentSessions(db).catch(() => undefined);
+
+        if (!row || row.consumedAt || row.expiresAt.getTime() <= Date.now()) {
+          return undefined;
+        }
+
+        return {
+          codeVerifier: row.codeVerifier,
+          createdAt: row.createdAt,
+          nonce: row.nonce,
+          returnTo: row.returnTo ?? undefined,
+          state,
+        };
+      } catch (error) {
+        dbAvailable = false;
+        console.warn("OIDC state persistence unavailable; using memory store", error);
+        return memory.consume(state);
+      }
+    },
+    async save(session) {
+      await memory.save(session);
+
+      if (!dbAvailable) {
+        return;
+      }
+
+      try {
+        await prunePersistentSessions(db).catch(() => undefined);
+        await db
+          .insert(oidcLoginStates)
+          .values({
+            codeVerifier: session.codeVerifier,
+            createdAt: session.createdAt,
+            expiresAt: new Date(session.createdAt.getTime() + ttlMs),
+            nonce: session.nonce,
+            returnTo: session.returnTo,
+            stateHash: hashToken(session.state),
+          })
+          .onConflictDoUpdate({
+            set: {
+              codeVerifier: session.codeVerifier,
+              consumedAt: null,
+              createdAt: session.createdAt,
+              expiresAt: new Date(session.createdAt.getTime() + ttlMs),
+              nonce: session.nonce,
+              returnTo: session.returnTo,
+            },
+            target: oidcLoginStates.stateHash,
+          });
+      } catch (error) {
+        dbAvailable = false;
+        console.warn("OIDC state persistence unavailable; using memory store", error);
+      }
     },
   };
 }
@@ -152,6 +236,10 @@ async function discoveredClient(config: OidcRuntimeConfig) {
         client_secret: config.clientSecret,
       })
     : discovery(new URL(config.issuer ?? ""), config.clientId ?? "", metadata, None());
+}
+
+async function prunePersistentSessions(db: ReturnType<typeof createDatabase>) {
+  await db.delete(oidcLoginStates).where(lte(oidcLoginStates.expiresAt, new Date()));
 }
 
 function pruneExpiredSessions(sessions: Map<string, OidcLoginSession>, ttlMs: number) {

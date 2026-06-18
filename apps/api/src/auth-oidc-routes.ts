@@ -14,7 +14,7 @@ import {
 } from "./oidc-config.js";
 import {
   createOidcLoginFlow,
-  createOidcLoginStore,
+  createPersistentOidcLoginStore,
   OidcLoginError,
   type OidcLoginFlow,
   type OidcLoginStore,
@@ -42,7 +42,7 @@ export function registerAuthOidcRoutes({
   configProvider = oidcConfigFromEnv,
   discoveryFetcher,
   loginFlow = createOidcLoginFlow(),
-  loginStore = createOidcLoginStore(),
+  loginStore = createPersistentOidcLoginStore(),
   recordAuditEvent,
   requirePermission,
   sessionContext,
@@ -56,7 +56,7 @@ export function registerAuthOidcRoutes({
     try {
       const start = await loginFlow.start(config, safeReturnTo(c.req.query("returnTo"), webOrigin));
 
-      loginStore.save(start.session);
+      await loginStore.save(start.session);
       setCookie(c, stateCookie, start.session.state, {
         httpOnly: true,
         maxAge: stateMaxAgeSeconds,
@@ -99,7 +99,7 @@ export function registerAuthOidcRoutes({
       return c.json({ error: "OIDC callback state is invalid", reason: "oidc_state_invalid" }, 400);
     }
 
-    const session = loginStore.consume(state);
+    const session = await loginStore.consume(state);
 
     if (!session) {
       await recordCallbackFailure(c, recordAuditEvent, "oidc_state_invalid");

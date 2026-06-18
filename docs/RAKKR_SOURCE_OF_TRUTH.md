@@ -66,7 +66,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
 | Storage upload | 🟦 | Stub queue, provider config/status, policy templates, auto-queue, audited runner, API/UI control, metrics |
-| OIDC | 🟦 | Azure AD user sync, config/discovery, and login/callback scaffold; local auth first |
+| OIDC | 🟦 | Azure AD login/callback with persistent PKCE state; local auth first |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
 ---
@@ -425,7 +425,7 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Add OIDC hardening: persistent state store, logout cleanup, and Azure app setup docs.
+1. 🚧 Finish OIDC hardening: logout cleanup and Azure app setup docs.
 2. ⏸️ Return to X32 hardware validation after device is confirmed.
 3. 🧊 Add SMB/S3 providers.
 4. 🧊 Add local VAD and noise/speech scoring.

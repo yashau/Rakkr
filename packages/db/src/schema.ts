@@ -206,6 +206,22 @@ export const authSessions = pgTable(
   }),
 );
 
+export const oidcLoginStates = pgTable(
+  "oidc_login_states",
+  {
+    codeVerifier: text("code_verifier").notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    nonce: text("nonce").notNull(),
+    returnTo: text("return_to"),
+    stateHash: text("state_hash").primaryKey(),
+  },
+  (table) => ({
+    expiresAtIdx: index("oidc_login_states_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
 export const nodes = pgTable(
   "nodes",
   {
