@@ -22,6 +22,7 @@ const queuePath = path.resolve(
   process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH ?? "data/upload-queue.json",
 );
 const activeStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying", "failed"]);
+const dueStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying"]);
 
 class UploadQueueStore {
   private readonly items: UploadQueueItem[] = loadQueueItems();
@@ -70,6 +71,72 @@ class UploadQueueStore {
     );
   }
 
+  async due(now = new Date()) {
+    const nowIso = now.toISOString();
+
+    return this.items
+      .filter((item) => dueStatuses.has(item.status) && item.nextAttemptAt <= nowIso)
+      .sort((left, right) => left.nextAttemptAt.localeCompare(right.nextAttemptAt));
+  }
+
+  async start(itemId: string) {
+    const item = this.items.find(
+      (candidate) => candidate.id === itemId && dueStatuses.has(candidate.status),
+    );
+
+    if (!item) {
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
+
+    item.attemptCount += 1;
+    item.lastError = undefined;
+    item.nextAttemptAt = now;
+    item.status = "retrying";
+    item.updatedAt = now;
+    this.persist();
+
+    return item;
+  }
+
+  async succeed(itemId: string) {
+    const item = this.items.find((candidate) => candidate.id === itemId);
+
+    if (!item) {
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
+
+    item.lastError = undefined;
+    item.nextAttemptAt = now;
+    item.status = "succeeded";
+    item.updatedAt = now;
+    this.persist();
+
+    return item;
+  }
+
+  async fail(itemId: string, reason: string) {
+    const item = this.items.find((candidate) => candidate.id === itemId);
+
+    if (!item) {
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
+    const failed = item.attemptCount >= item.maxAttempts;
+
+    item.lastError = reason;
+    item.nextAttemptAt = failed ? now : retryAt(item.attemptCount);
+    item.status = failed ? "failed" : "retrying";
+    item.updatedAt = now;
+    this.persist();
+
+    return item;
+  }
+
   async retry(itemId: string) {
     const item = this.items.find((candidate) => candidate.id === itemId);
 
@@ -116,6 +183,22 @@ export function enqueueRecordingUpload(recording: RecordingSummary, input?: Enqu
 
 export function listUploadQueueItems() {
   return uploadQueueStore.list();
+}
+
+export function listDueUploadQueueItems(now?: Date) {
+  return uploadQueueStore.due(now);
+}
+
+export function startUploadQueueItem(itemId: string) {
+  return uploadQueueStore.start(itemId);
+}
+
+export function succeedUploadQueueItem(itemId: string) {
+  return uploadQueueStore.succeed(itemId);
+}
+
+export function failUploadQueueItem(itemId: string, reason: string) {
+  return uploadQueueStore.fail(itemId, reason);
 }
 
 export function retryUploadQueueItem(itemId: string) {
