@@ -30,5 +30,5 @@ export type RecordAuditEvent = (
 export type RequirePermission = (
   permission: Permission,
   action: string,
-  target?: (c: Context<AppBindings>) => AuditTarget,
+  target?: (c: Context<AppBindings>) => AuditTarget | Promise<AuditTarget>,
 ) => MiddlewareHandler<AppBindings>;

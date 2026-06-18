@@ -139,13 +139,14 @@ export function registerRecordingRoutes({
   app.get(
     "/api/v1/recording-jobs",
     requirePermission("recording:read", "recording_jobs.read"),
-    (c) => {
+    async (c) => {
       const visibleRecordingIds = new Set(
         scopedRecordings(currentUser(c)).map((recording) => recording.id),
       );
+      const jobs = await listRecordingJobs();
 
       return c.json({
-        data: listRecordingJobs().filter((job) => visibleRecordingIds.has(job.recordingId)),
+        data: jobs.filter((job) => visibleRecordingIds.has(job.recordingId)),
       });
     },
   );
@@ -156,8 +157,8 @@ export function registerRecordingRoutes({
       id: c.req.param("nodeId"),
       type: "node",
     })),
-    (c) => {
-      const job = nextRecordingJob(c.req.param("nodeId"));
+    async (c) => {
+      const job = await nextRecordingJob(c.req.param("nodeId"));
 
       if (!job) {
         return c.body(null, 204);
@@ -174,7 +175,7 @@ export function registerRecordingRoutes({
     ),
     async (c) => {
       const jobId = c.req.param("jobId");
-      const job = claimRecordingJob(jobId, c.req.header("x-rakkr-agent-id"));
+      const job = await claimRecordingJob(jobId, c.req.header("x-rakkr-agent-id"));
 
       if (!job) {
         await recordAuditEvent(c, {
@@ -227,7 +228,7 @@ export function registerRecordingRoutes({
     ),
     async (c) => {
       const jobId = c.req.param("jobId");
-      const job = heartbeatRecordingJob(jobId, c.req.header("x-rakkr-agent-id"));
+      const job = await heartbeatRecordingJob(jobId, c.req.header("x-rakkr-agent-id"));
 
       if (!job) {
         await recordAuditEvent(c, {
@@ -272,9 +273,9 @@ export function registerRecordingRoutes({
     requirePermission("recording:control", "recording_jobs.read_one", (c) =>
       recordingJobTarget(c.req.param("jobId")),
     ),
-    (c) => {
+    async (c) => {
       const jobId = c.req.param("jobId");
-      const job = recordingJob(jobId);
+      const job = await recordingJob(jobId);
 
       if (!job) {
         return c.json({ error: "Recording job not found" }, 404);
@@ -291,7 +292,10 @@ export function registerRecordingRoutes({
     ),
     async (c) => {
       const jobId = c.req.param("jobId");
-      const job = cancelRecordingJob(jobId, c.req.header("x-rakkr-reason") ?? "agent_cancelled");
+      const job = await cancelRecordingJob(
+        jobId,
+        c.req.header("x-rakkr-reason") ?? "agent_cancelled",
+      );
 
       if (!job) {
         return c.json({ error: "Recording job not found" }, 404);
@@ -323,7 +327,7 @@ export function registerRecordingRoutes({
     ),
     async (c) => {
       const jobId = c.req.param("jobId");
-      const job = failRecordingJob(jobId, c.req.header("x-rakkr-reason") ?? "agent_failed");
+      const job = await failRecordingJob(jobId, c.req.header("x-rakkr-reason") ?? "agent_failed");
 
       if (!job) {
         return c.json({ error: "Recording job not found" }, 404);
@@ -516,7 +520,7 @@ export function registerRecordingRoutes({
       };
 
       recordings.unshift(recording);
-      const job = createRecordingJob(recording);
+      const job = await createRecordingJob(recording);
 
       await recordAuditEvent(c, {
         action: "recordings.start.succeeded",
@@ -574,7 +578,7 @@ export function registerRecordingRoutes({
         cached: recording.cached,
         status: recording.status,
       };
-      const job = stopRecordingJob(recording.id);
+      const job = await stopRecordingJob(recording.id);
 
       recording.durationSeconds = Math.max(recording.durationSeconds, 1);
       recording.status = "completed";
@@ -683,7 +687,7 @@ export function registerRecordingRoutes({
       recording.cachePath = stored.cachePath;
       recording.durationSeconds = durationSeconds ?? Math.max(recording.durationSeconds, 1);
       recording.status = "cached";
-      const job = completeRecordingJob(recording.id, jobId);
+      const job = await completeRecordingJob(recording.id, jobId);
 
       await recordAuditEvent(c, {
         action: "recordings.cache_file.attach.succeeded",
@@ -717,12 +721,12 @@ export function registerRecordingRoutes({
   );
 }
 
-function recordingJobTarget(jobId: string | undefined) {
+async function recordingJobTarget(jobId: string | undefined) {
   if (!jobId) {
     return { type: "recording_job" };
   }
 
-  const job = recordingJob(jobId);
+  const job = await recordingJob(jobId);
 
   return job ? { id: job.nodeId, type: "node" } : { id: jobId, type: "recording_job" };
 }

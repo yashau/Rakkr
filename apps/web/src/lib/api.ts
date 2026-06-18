@@ -5,6 +5,7 @@ import type {
   MeterFrame,
   RecorderNode,
   RecordingProfile,
+  RecordingJob,
   RecordingSummary,
   ResourceGrant,
   Role,
@@ -147,6 +148,7 @@ export const api = {
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
       method: "POST",
     }),
+  recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
   recordings: () => fetchJson<{ data: RecordingSummary[] }>("/api/v1/recordings"),
   recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),
   recordingStream: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/stream`),
@@ -163,7 +165,7 @@ export const api = {
       },
     ),
   startRecording: () =>
-    fetchJson<{ data: RecordingSummary }>("/api/v1/recordings", {
+    fetchJson<{ data: RecordingSummary; job: RecordingJob }>("/api/v1/recordings", {
       method: "POST",
     }),
   status: () => fetchJson<ControllerStatus>("/api/v1/status"),

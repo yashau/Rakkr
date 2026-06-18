@@ -1,38 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { RecordingSummary } from "@rakkr/shared";
+import { createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
+import type { RecordingJob, RecordingJobStatus, RecordingSummary } from "@rakkr/shared";
 
-export type RecordingJobStatus =
-  | "queued"
-  | "running"
-  | "stop_requested"
-  | "cancelled"
-  | "completed"
-  | "failed";
+type RecordingJobCommand = RecordingJob["command"];
+type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
+type RecordingJobRow = typeof recordingJobsTable.$inferSelect;
 
-export interface RecordingJob {
-  claimedBy?: string;
-  command: {
-    captureChannels: number;
-    captureDevice: string;
-    captureFormat: string;
-    captureSampleRate: number;
-    durationSeconds: number;
-    outputFileName: string;
-    type: "alsa_capture";
-  };
-  completedAt?: string;
-  createdAt: string;
-  id: string;
-  failureReason?: string;
-  nodeId: string;
-  lastHeartbeatAt?: string;
-  leaseExpiresAt?: string;
-  recordingId: string;
-  startedAt?: string;
-  status: RecordingJobStatus;
-  stopRequestedAt?: string;
+interface RecordingJobStore {
+  create(job: RecordingJob): Promise<void>;
+  find(jobId: string): Promise<RecordingJob | undefined>;
+  list(): Promise<RecordingJob[]>;
+  save(job: RecordingJob): Promise<void>;
 }
 
 const jobStorePath = path.resolve(
@@ -47,15 +27,11 @@ const recordingJobStatuses = new Set<RecordingJobStatus>([
   "failed",
 ]);
 
-export const recordingJobs: RecordingJob[] = loadRecordingJobs();
-
-export function listRecordingJobs() {
-  expireRecordingJobLeases();
-
-  return recordingJobs;
+export async function listRecordingJobs() {
+  return expireRecordingJobLeases();
 }
 
-export function createRecordingJob(recording: RecordingSummary): RecordingJob {
+export async function createRecordingJob(recording: RecordingSummary): Promise<RecordingJob> {
   const job: RecordingJob = {
     command: {
       captureChannels: positiveInteger(process.env.RAKKR_AGENT_CAPTURE_CHANNELS, 2),
@@ -73,23 +49,22 @@ export function createRecordingJob(recording: RecordingSummary): RecordingJob {
     status: "queued",
   };
 
-  recordingJobs.unshift(job);
-  persistRecordingJobs();
+  await recordingJobStore.create(job);
 
   return job;
 }
 
-export function nextRecordingJob(nodeId: string) {
-  expireRecordingJobLeases();
+export async function nextRecordingJob(nodeId: string) {
+  const jobs = await expireRecordingJobLeases();
 
-  return recordingJobs
+  return jobs
     .filter((job) => job.nodeId === nodeId && job.status === "queued")
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0];
 }
 
-export function claimRecordingJob(jobId: string, claimedBy?: string) {
-  expireRecordingJobLeases();
-  const job = recordingJobs.find((candidate) => candidate.id === jobId);
+export async function claimRecordingJob(jobId: string, claimedBy?: string) {
+  await expireRecordingJobLeases();
+  const job = await recordingJobStore.find(jobId);
 
   if (!job || job.status !== "queued") {
     return undefined;
@@ -102,14 +77,14 @@ export function claimRecordingJob(jobId: string, claimedBy?: string) {
   job.leaseExpiresAt = leaseExpiry(now).toISOString();
   job.startedAt = now.toISOString();
   job.status = "running";
-  persistRecordingJobs();
+  await recordingJobStore.save(job);
 
   return job;
 }
 
-export function stopRecordingJob(recordingId: string) {
-  expireRecordingJobLeases();
-  const job = recordingJobs.find(
+export async function stopRecordingJob(recordingId: string) {
+  const jobs = await expireRecordingJobLeases();
+  const job = jobs.find(
     (candidate) =>
       candidate.recordingId === recordingId &&
       (candidate.status === "queued" || candidate.status === "running"),
@@ -121,14 +96,14 @@ export function stopRecordingJob(recordingId: string) {
 
   job.status = "stop_requested";
   job.stopRequestedAt = new Date().toISOString();
-  persistRecordingJobs();
+  await recordingJobStore.save(job);
 
   return job;
 }
 
-export function completeRecordingJob(recordingId: string, jobId?: string) {
-  expireRecordingJobLeases();
-  const job = recordingJobs.find(
+export async function completeRecordingJob(recordingId: string, jobId?: string) {
+  const jobs = await expireRecordingJobLeases();
+  const job = jobs.find(
     (candidate) => candidate.recordingId === recordingId && (!jobId || candidate.id === jobId),
   );
 
@@ -138,13 +113,13 @@ export function completeRecordingJob(recordingId: string, jobId?: string) {
 
   job.completedAt = new Date().toISOString();
   job.status = "completed";
-  persistRecordingJobs();
+  await recordingJobStore.save(job);
 
   return job;
 }
 
-export function cancelRecordingJob(jobId: string, reason?: string) {
-  const job = recordingJobs.find((candidate) => candidate.id === jobId);
+export async function cancelRecordingJob(jobId: string, reason?: string) {
+  const job = await recordingJobStore.find(jobId);
 
   if (!job) {
     return undefined;
@@ -153,13 +128,13 @@ export function cancelRecordingJob(jobId: string, reason?: string) {
   job.completedAt = new Date().toISOString();
   job.failureReason = reason;
   job.status = "cancelled";
-  persistRecordingJobs();
+  await recordingJobStore.save(job);
 
   return job;
 }
 
-export function failRecordingJob(jobId: string, reason?: string) {
-  const job = recordingJobs.find((candidate) => candidate.id === jobId);
+export async function failRecordingJob(jobId: string, reason?: string) {
+  const job = await recordingJobStore.find(jobId);
 
   if (!job) {
     return undefined;
@@ -168,20 +143,20 @@ export function failRecordingJob(jobId: string, reason?: string) {
   job.completedAt = new Date().toISOString();
   job.failureReason = reason;
   job.status = "failed";
-  persistRecordingJobs();
+  await recordingJobStore.save(job);
 
   return job;
 }
 
-export function recordingJob(jobId: string) {
-  expireRecordingJobLeases();
+export async function recordingJob(jobId: string) {
+  await expireRecordingJobLeases();
 
-  return recordingJobs.find((candidate) => candidate.id === jobId);
+  return recordingJobStore.find(jobId);
 }
 
-export function heartbeatRecordingJob(jobId: string, claimedBy?: string) {
-  expireRecordingJobLeases();
-  const job = recordingJobs.find((candidate) => candidate.id === jobId);
+export async function heartbeatRecordingJob(jobId: string, claimedBy?: string) {
+  await expireRecordingJobLeases();
+  const job = await recordingJobStore.find(jobId);
 
   if (!job || job.status !== "running") {
     return undefined;
@@ -196,37 +171,198 @@ export function heartbeatRecordingJob(jobId: string, claimedBy?: string) {
   job.claimedBy = claimedBy ?? job.claimedBy;
   job.lastHeartbeatAt = now.toISOString();
   job.leaseExpiresAt = leaseExpiry(now).toISOString();
-  persistRecordingJobs();
+  await recordingJobStore.save(job);
 
   return job;
 }
 
-export function expireRecordingJobLeases(now = new Date()) {
+export async function expireRecordingJobLeases(now = new Date()) {
+  const jobs = await recordingJobStore.list();
   const expiredAt = now.toISOString();
-  let changed = false;
+  const changedJobs: RecordingJob[] = [];
 
-  for (const job of recordingJobs) {
+  for (const job of jobs) {
     if (job.status === "running" && isExpired(job, now)) {
       job.completedAt = expiredAt;
       job.failureReason = "lease_expired";
       job.status = "failed";
-      changed = true;
+      changedJobs.push(job);
     }
 
     if (job.status === "stop_requested" && isStopRequestExpired(job, now)) {
       job.completedAt = expiredAt;
       job.failureReason = "stop_request_lease_expired";
       job.status = "cancelled";
-      changed = true;
+      changedJobs.push(job);
     }
   }
 
-  if (changed) {
-    persistRecordingJobs();
+  await Promise.all(changedJobs.map((job) => recordingJobStore.save(job)));
+
+  return jobs;
+}
+
+class JsonRecordingJobStore implements RecordingJobStore {
+  private readonly jobs: RecordingJob[] = loadRecordingJobs();
+
+  async create(job: RecordingJob) {
+    this.jobs.unshift(job);
+    this.persist();
   }
 
-  return recordingJobs;
+  async find(jobId: string) {
+    return this.jobs.find((candidate) => candidate.id === jobId);
+  }
+
+  async list() {
+    return this.jobs;
+  }
+
+  async save(job: RecordingJob) {
+    const index = this.jobs.findIndex((candidate) => candidate.id === job.id);
+
+    if (index >= 0) {
+      this.jobs[index] = job;
+    } else {
+      this.jobs.unshift(job);
+    }
+
+    this.persist();
+  }
+
+  private persist() {
+    mkdirSync(path.dirname(jobStorePath), { recursive: true });
+    const tempPath = `${jobStorePath}.${process.pid}.tmp`;
+    const payload = JSON.stringify(
+      {
+        jobs: this.jobs,
+        updatedAt: new Date().toISOString(),
+        version: 1,
+      },
+      null,
+      2,
+    );
+
+    writeFileSync(tempPath, `${payload}\n`);
+    renameSync(tempPath, jobStorePath);
+  }
 }
+
+class PostgresRecordingJobStore implements RecordingJobStore {
+  private dbAvailable = true;
+  private readonly db;
+
+  constructor(
+    databaseUrl: string,
+    private readonly fallback: RecordingJobStore,
+  ) {
+    this.db = createDatabase(databaseUrl);
+  }
+
+  async create(job: RecordingJob) {
+    if (!this.dbAvailable) {
+      await this.fallback.create(job);
+      return;
+    }
+
+    try {
+      await this.write(job);
+    } catch (error) {
+      await this.failover("recording job persistence unavailable; using JSON store", error);
+      await this.fallback.create(job);
+    }
+  }
+
+  async find(jobId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.find(jobId);
+    }
+
+    try {
+      const [row] = await this.db
+        .select()
+        .from(recordingJobsTable)
+        .where(eq(recordingJobsTable.id, jobId))
+        .limit(1);
+
+      return row ? recordingJobFromRow(row) : undefined;
+    } catch (error) {
+      await this.failover("recording job lookup unavailable; using JSON store", error);
+      return this.fallback.find(jobId);
+    }
+  }
+
+  async list() {
+    if (!this.dbAvailable) {
+      return this.fallback.list();
+    }
+
+    try {
+      const rows = await this.db
+        .select()
+        .from(recordingJobsTable)
+        .orderBy(desc(recordingJobsTable.createdAt));
+
+      return rows.map(recordingJobFromRow);
+    } catch (error) {
+      await this.failover("recording job query unavailable; using JSON store", error);
+      return this.fallback.list();
+    }
+  }
+
+  async save(job: RecordingJob) {
+    if (!this.dbAvailable) {
+      await this.fallback.save(job);
+      return;
+    }
+
+    try {
+      await this.write(job);
+    } catch (error) {
+      await this.failover("recording job update unavailable; using JSON store", error);
+      await this.fallback.save(job);
+    }
+  }
+
+  private async failover(message: string, error: unknown) {
+    this.dbAvailable = false;
+    console.warn(message, error);
+  }
+
+  private async write(job: RecordingJob) {
+    const row = recordingJobToRow(job);
+
+    await this.db
+      .insert(recordingJobsTable)
+      .values(row)
+      .onConflictDoUpdate({
+        set: {
+          claimedBy: row.claimedBy,
+          command: row.command,
+          completedAt: row.completedAt,
+          failureReason: row.failureReason,
+          lastHeartbeatAt: row.lastHeartbeatAt,
+          leaseExpiresAt: row.leaseExpiresAt,
+          nodeId: row.nodeId,
+          recordingId: row.recordingId,
+          startedAt: row.startedAt,
+          status: row.status,
+          stopRequestedAt: row.stopRequestedAt,
+          updatedAt: new Date(),
+        },
+        target: recordingJobsTable.id,
+      });
+  }
+}
+
+function createRecordingJobStore(): RecordingJobStore {
+  const fallback = new JsonRecordingJobStore();
+  const databaseUrl = process.env.DATABASE_URL;
+
+  return databaseUrl ? new PostgresRecordingJobStore(databaseUrl, fallback) : fallback;
+}
+
+const recordingJobStore = createRecordingJobStore();
 
 function positiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number(value);
@@ -276,21 +412,73 @@ function loadRecordingJobs(): RecordingJob[] {
   return jobs.filter(isRecordingJob);
 }
 
-function persistRecordingJobs() {
-  mkdirSync(path.dirname(jobStorePath), { recursive: true });
-  const tempPath = `${jobStorePath}.${process.pid}.tmp`;
-  const payload = JSON.stringify(
-    {
-      jobs: recordingJobs,
-      updatedAt: new Date().toISOString(),
-      version: 1,
-    },
-    null,
-    2,
-  );
+function recordingJobToRow(job: RecordingJob): RecordingJobInsert {
+  return {
+    claimedBy: job.claimedBy ?? null,
+    command: job.command,
+    completedAt: dateOrNull(job.completedAt),
+    createdAt: new Date(job.createdAt),
+    failureReason: job.failureReason ?? null,
+    id: job.id,
+    lastHeartbeatAt: dateOrNull(job.lastHeartbeatAt),
+    leaseExpiresAt: dateOrNull(job.leaseExpiresAt),
+    nodeId: job.nodeId,
+    recordingId: job.recordingId,
+    startedAt: dateOrNull(job.startedAt),
+    status: job.status,
+    stopRequestedAt: dateOrNull(job.stopRequestedAt),
+    updatedAt: new Date(),
+  };
+}
 
-  writeFileSync(tempPath, `${payload}\n`);
-  renameSync(tempPath, jobStorePath);
+function recordingJobFromRow(row: RecordingJobRow): RecordingJob {
+  return {
+    claimedBy: row.claimedBy ?? undefined,
+    command: commandFromValue(row.command),
+    completedAt: isoOrUndefined(row.completedAt),
+    createdAt: row.createdAt.toISOString(),
+    failureReason: row.failureReason ?? undefined,
+    id: row.id,
+    lastHeartbeatAt: isoOrUndefined(row.lastHeartbeatAt),
+    leaseExpiresAt: isoOrUndefined(row.leaseExpiresAt),
+    nodeId: row.nodeId,
+    recordingId: row.recordingId,
+    startedAt: isoOrUndefined(row.startedAt),
+    status: row.status,
+    stopRequestedAt: isoOrUndefined(row.stopRequestedAt),
+  };
+}
+
+function commandFromValue(value: unknown): RecordingJobCommand {
+  if (!isRecord(value) || value.type !== "alsa_capture") {
+    throw new Error("recording_job_command_invalid");
+  }
+
+  return {
+    captureChannels: positiveIntegerFromUnknown(value.captureChannels, 2),
+    captureDevice: stringFromUnknown(value.captureDevice, "default"),
+    captureFormat: stringFromUnknown(value.captureFormat, "S16_LE"),
+    captureSampleRate: positiveIntegerFromUnknown(value.captureSampleRate, 48_000),
+    durationSeconds: positiveIntegerFromUnknown(value.durationSeconds, 3_600),
+    outputFileName: stringFromUnknown(value.outputFileName, "recording.wav"),
+    type: "alsa_capture",
+  };
+}
+
+function dateOrNull(value: string | undefined) {
+  return value ? new Date(value) : null;
+}
+
+function isoOrUndefined(value: Date | null) {
+  return value?.toISOString();
+}
+
+function positiveIntegerFromUnknown(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function stringFromUnknown(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value : fallback;
 }
 
 function isRecordingJobStore(value: unknown): value is { jobs: unknown[] } {

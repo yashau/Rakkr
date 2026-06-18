@@ -17,6 +17,14 @@ export const recordingStatusSchema = z.enum([
   "cached",
   "uploaded",
 ]);
+export const recordingJobStatusSchema = z.enum([
+  "queued",
+  "running",
+  "stop_requested",
+  "cancelled",
+  "completed",
+  "failed",
+]);
 
 export const channelModeSchema = z.enum(["mono", "stereo", "mono_to_stereo_mix", "multichannel"]);
 
@@ -235,6 +243,29 @@ export const recordingSummarySchema = z.object({
   status: recordingStatusSchema,
   tags: z.array(z.string().min(1)),
 });
+export const recordingJobSchema = z.object({
+  claimedBy: z.string().min(1).optional(),
+  command: z.object({
+    captureChannels: z.number().int().positive(),
+    captureDevice: z.string().min(1),
+    captureFormat: z.string().min(1),
+    captureSampleRate: z.number().int().positive(),
+    durationSeconds: z.number().int().positive(),
+    outputFileName: z.string().min(1),
+    type: z.literal("alsa_capture"),
+  }),
+  completedAt: isoDateTimeSchema.optional(),
+  createdAt: isoDateTimeSchema,
+  failureReason: z.string().optional(),
+  id: z.string().min(1),
+  lastHeartbeatAt: isoDateTimeSchema.optional(),
+  leaseExpiresAt: isoDateTimeSchema.optional(),
+  nodeId: z.string().min(1),
+  recordingId: z.string().min(1),
+  startedAt: isoDateTimeSchema.optional(),
+  status: recordingJobStatusSchema,
+  stopRequestedAt: isoDateTimeSchema.optional(),
+});
 
 export const healthEventSchema = z.object({
   details: z.record(z.string(), z.unknown()),
@@ -285,6 +316,8 @@ export type MeterFrame = z.infer<typeof meterFrameSchema>;
 export type NodeStatus = z.infer<typeof nodeStatusSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;
 export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
+export type RecordingJob = z.infer<typeof recordingJobSchema>;
+export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;
 export type ResourceGrant = z.infer<typeof resourceGrantSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;

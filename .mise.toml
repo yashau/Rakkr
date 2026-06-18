@@ -81,6 +81,10 @@ run = "pnpm exec oxfmt --check apps packages \"!packages/db/drizzle/**\""
 description = "Generate Drizzle migrations"
 run = "pnpm --filter @rakkr/db db:generate"
 
+[tasks."db:migrate"]
+description = "Apply Drizzle migrations to the configured Postgres database"
+run = "pnpm --filter @rakkr/db db:migrate"
+
 [tasks."rust:build"]
 description = "Build Rust crates"
 run = "cargo build --workspace"

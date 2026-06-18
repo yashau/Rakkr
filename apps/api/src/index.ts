@@ -136,11 +136,13 @@ async function recordAuditEvent(
 function requirePermission(
   permission: Permission,
   action: string,
-  target: (c: Context<AppBindings>) => AuditTarget = () => ({ type: "controller" }),
+  target: (c: Context<AppBindings>) => AuditTarget | Promise<AuditTarget> = () => ({
+    type: "controller",
+  }),
 ): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     const auth = await authService.authenticate(c.req.header("authorization"));
-    const auditTarget = target(c);
+    const auditTarget = await target(c);
     const hasPermission = auth.user?.permissions.includes(permission) ?? false;
     const hasScope = auth.user ? hasResourceScope(auth.user, auditTarget) : false;
     const allowed = hasPermission && hasScope;

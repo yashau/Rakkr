@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Play, Radio, Square } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { RecordingJob } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,13 +17,24 @@ export function RecordingsPage() {
     queryFn: api.recordings,
     queryKey: ["recordings"],
   });
+  const recordingJobsQuery = useQuery({
+    queryFn: api.recordingJobs,
+    queryKey: ["recording-jobs"],
+    refetchInterval: 3000,
+  });
   const startMutation = useMutation({
     mutationFn: api.startRecording,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["recordings"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+    },
   });
   const stopMutation = useMutation({
     mutationFn: api.stopRecording,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["recordings"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+    },
   });
   const playbackMutation = useMutation({
     mutationFn: async (recordingId: string) => {
@@ -111,18 +123,24 @@ export function RecordingsPage() {
         </section>
       ) : null}
 
-      {recordingsQuery.data?.data.map((recording) => (
-        <RecordingCard
-          downloadPending={downloadMutation.isPending}
-          key={recording.id}
-          onDownload={() => downloadMutation.mutate(recording.id)}
-          onPlayback={() => playbackMutation.mutate(recording.id)}
-          onStop={() => stopMutation.mutate(recording.id)}
-          playbackPending={playbackMutation.isPending}
-          recording={recording}
-          stopPending={stopMutation.isPending}
-        />
-      ))}
+      {recordingsQuery.data?.data.map((recording) => {
+        const jobs =
+          recordingJobsQuery.data?.data.filter((job) => job.recordingId === recording.id) ?? [];
+
+        return (
+          <RecordingCard
+            downloadPending={downloadMutation.isPending}
+            jobs={jobs}
+            key={recording.id}
+            onDownload={() => downloadMutation.mutate(recording.id)}
+            onPlayback={() => playbackMutation.mutate(recording.id)}
+            onStop={() => stopMutation.mutate(recording.id)}
+            playbackPending={playbackMutation.isPending}
+            recording={recording}
+            stopPending={stopMutation.isPending}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -139,6 +157,7 @@ function downloadBlob(file: Awaited<ReturnType<typeof api.recordingFile>>) {
 
 function RecordingCard({
   downloadPending,
+  jobs,
   onDownload,
   onPlayback,
   onStop,
@@ -147,6 +166,7 @@ function RecordingCard({
   stopPending,
 }: {
   downloadPending: boolean;
+  jobs: RecordingJob[];
   onDownload: () => void;
   onPlayback: () => void;
   onStop: () => void;
@@ -181,6 +201,30 @@ function RecordingCard({
             <span>{formatDuration(recording.durationSeconds)}</span>
             <span>{recording.source}</span>
           </div>
+          {jobs.length > 0 ? (
+            <div className="mt-3 grid gap-2">
+              {jobs.map((job) => (
+                <div
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-2 text-xs"
+                  key={job.id}
+                >
+                  <Badge className={jobStatusClass(job.status)} variant="outline">
+                    {job.status}
+                  </Badge>
+                  <span className="font-mono break-all text-muted-foreground">{job.id}</span>
+                  <span className="text-muted-foreground">{job.claimedBy ?? job.nodeId}</span>
+                  {job.leaseExpiresAt ? (
+                    <span className="text-muted-foreground">
+                      Lease {formatDateTime(job.leaseExpiresAt)}
+                    </span>
+                  ) : null}
+                  {job.failureReason ? (
+                    <span className="text-destructive">{job.failureReason}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {recording.status === "recording" ? (
@@ -201,4 +245,24 @@ function RecordingCard({
       </div>
     </Card>
   );
+}
+
+function jobStatusClass(status: RecordingJob["status"]) {
+  if (status === "running") {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  if (status === "completed") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "failed" || status === "cancelled") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+
+  if (status === "stop_requested") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
 }

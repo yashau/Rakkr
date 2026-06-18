@@ -31,6 +31,14 @@ export const recordingStatusEnum = pgEnum("recording_status", [
   "cached",
   "uploaded",
 ]);
+export const recordingJobStatusEnum = pgEnum("recording_job_status", [
+  "queued",
+  "running",
+  "stop_requested",
+  "cancelled",
+  "completed",
+  "failed",
+]);
 
 export const recordingSourceEnum = pgEnum("recording_source", ["ad_hoc", "schedule"]);
 
@@ -302,6 +310,31 @@ export const recordings = pgTable(
     recordedAtIdx: index("recordings_recorded_at_idx").on(table.recordedAt),
     scheduleIdx: index("recordings_schedule_idx").on(table.scheduleId),
     statusIdx: index("recordings_status_idx").on(table.status),
+  }),
+);
+
+export const recordingJobs = pgTable(
+  "recording_jobs",
+  {
+    claimedBy: varchar("claimed_by", { length: 160 }),
+    command: jsonb("command").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    failureReason: text("failure_reason"),
+    id: varchar("id", { length: 120 }).primaryKey(),
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    nodeId: varchar("node_id", { length: 160 }).notNull(),
+    recordingId: varchar("recording_id", { length: 160 }).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    status: recordingJobStatusEnum("status").notNull(),
+    stopRequestedAt: timestamp("stop_requested_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    leaseIdx: index("recording_jobs_lease_idx").on(table.status, table.leaseExpiresAt),
+    nodeStatusIdx: index("recording_jobs_node_status_idx").on(table.nodeId, table.status),
+    recordingIdx: index("recording_jobs_recording_idx").on(table.recordingId),
   }),
 );
 
