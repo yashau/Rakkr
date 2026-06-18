@@ -12,8 +12,6 @@ import {
   accessGroupIdSchema,
   accessPolicyInputSchema,
   auditOutcomeSchema,
-  defaultScheduledVoiceWatchdogPolicy,
-  defaultVoiceRecordingProfile,
   resourceGrantSchema,
   roleSchema,
   type AuditEvent,
@@ -33,12 +31,12 @@ import type { RecordAuditEvent } from "./http-types.js";
 import {
   nodes as seedNodes,
   buildMeterFrame,
-  prometheusMetrics,
   recordings,
   schedules as seedSchedules,
 } from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
 import { createMeterFrameStore } from "./meter-store.js";
+import { registerMetricsRoutes } from "./metrics-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
@@ -46,6 +44,7 @@ import { createRecordingStore } from "./recording-store.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleRunner } from "./schedule-runner.js";
 import { createScheduleStore } from "./schedule-store.js";
+import { registerStatusRoutes } from "./status-routes.js";
 import { createWatchdogRunner } from "./watchdog-runner.js";
 
 const startedAt = new Date();
@@ -537,27 +536,27 @@ app.get("/healthz", (c) =>
   }),
 );
 
-app.get("/metrics", requirePermission("metrics:read", "metrics.read"), (c) =>
-  c.text(prometheusMetrics(), 200, {
-    "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
-  }),
-);
+registerMetricsRoutes({
+  app,
+  currentUser,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
+  healthEventStore,
+  meterFrameStore,
+  nodeStore,
+  recordingStore,
+  requirePermission,
+  startedAt,
+});
 
-app.get("/api/v1/status", requirePermission("node:read", "status.read"), async (c) => {
-  const visibleNodes = await scopedNodes(currentUser(c));
-  const visibleRecordings = await scopedRecordings(currentUser(c));
-
-  return c.json({
-    activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
-      .length,
-    cachedRecordings: visibleRecordings.filter((recording) => recording.cached).length,
-    criticalAlerts: 0,
-    nodeCount: visibleNodes.length,
-    onlineNodes: visibleNodes.filter((node) => node.status === "online").length,
-    recordingProfile: defaultVoiceRecordingProfile,
-    startedAt: startedAt.toISOString(),
-    watchdogPolicy: defaultScheduledVoiceWatchdogPolicy,
-  });
+registerStatusRoutes({
+  app,
+  currentUser,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
+  healthEventStore,
+  requirePermission,
+  scopedNodes,
+  scopedRecordings,
+  startedAt,
 });
 
 app.post("/api/v1/auth/login", async (c) => {

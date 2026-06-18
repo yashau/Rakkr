@@ -62,7 +62,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
 | RBAC                 | 🟦 Scaffold  | Durable grants, group memberships, allow-deny policies, scoped middleware |
 | Audit trail          | 🟦 Scaffold  | Postgres-backed store, API/UI filters, metadata audit events     |
-| Observability        | 🟦 Scaffold  | Local node health log, central store, Prometheus endpoint, OpenTelemetry/Mimir later |
+| Observability        | 🟦 Scaffold  | Local node health log, central store, store-backed Prometheus endpoint, OpenTelemetry/Mimir later |
 
 ## North Star
 
@@ -528,6 +528,8 @@ Candidate metrics:
 - `rakkr_upload_failures_total`
 - `rakkr_device_xruns_total`
 
+Current scaffold status: `/metrics` is protected by `metrics:read`, writes the same audit trail as other controller reads, and now renders Prometheus gauges from scoped controller stores instead of static demo data. The export includes process start time, visible node online state, active and cached recordings by node, recording jobs by node/status, latest RMS/peak/clipping channel values from stored meter frames, unresolved health events by severity/status, active watchdog alerts, and active xrun events. The controller status API also derives critical alert counts from visible unresolved health events. Full OpenTelemetry instrumentation and Mimir-oriented deployment guidance are still pending.
+
 ---
 
 ## Recording Library
@@ -911,7 +913,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Replace demo-only Prometheus metrics with store-backed controller metrics.
+1. Add recording profile and template settings store/UI foundations.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 
