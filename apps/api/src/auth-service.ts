@@ -17,18 +17,21 @@ import {
   userAccessGroups,
   users,
 } from "@rakkr/db";
-import {
-  permissions,
-  rolePermissions,
-  roles,
-  type AccessGroup,
-  type AccessPolicy,
-  type AccessPolicyEffect,
-  type AccessPolicyInput,
-  type CurrentUser,
-  type ResourceGrant,
-  type Role,
-} from "@rakkr/shared";
+import { permissions, rolePermissions, roles } from "@rakkr/shared";
+import type {
+  AccessGroup,
+  AccessPolicy,
+  AccessPolicyInput,
+  AccessPolicyDecision,
+  AuthResult,
+  AuthSession,
+  CurrentUser,
+  LocalAccess,
+  LocalUserCreateInput,
+  LoginResult,
+  SessionContext,
+} from "./auth-types.js";
+import { AuthError } from "./auth-errors.js";
 
 import {
   accessPoliciesWithIds,
@@ -60,68 +63,26 @@ import {
   updateLocalUserDisabled as updateLocalUserDisabledRecord,
   type LocalUserRecord,
 } from "./auth-user-lifecycle.js";
+import { OidcSyncError, type AzureAdOidcUserSyncInput } from "./oidc-sync.js";
+import { syncAzureAdOidcUser as syncOidcUser } from "./oidc-user-sync.js";
 import { hashPassword, verifyPassword } from "./password.js";
+export type {
+  AccessPolicyDecision,
+  AuthResult,
+  LocalAccess,
+  LocalUserCreateInput,
+  LoginResult,
+  SessionContext,
+} from "./auth-types.js";
+export { AuthError } from "./auth-errors.js";
+
 const sessionTtlMs = 12 * 60 * 60 * 1000;
-
-interface AuthSession {
-  createdAt: Date;
-  expiresAt: Date;
-  tokenHash: string;
-  user: CurrentUser;
-}
-
-export interface LocalAccess {
-  groupIds?: string[];
-  resourceGrants: ResourceGrant[];
-  roles: Role[];
-}
-
-export interface LocalUserCreateInput extends LocalAccess {
-  email: string;
-  name: string;
-  password: string;
-}
-
-export interface AccessPolicyDecision {
-  effect: AccessPolicyEffect;
-  policy: AccessPolicy;
-}
-
-export interface AuthResult {
-  sessionId?: string;
-  user?: CurrentUser;
-}
-
-export interface SessionContext {
-  ipAddress?: string;
-  userAgent?: string;
-}
-
-export interface LoginResult {
-  expiresAt: string;
-  sessionId: string;
-  token: string;
-  user: CurrentUser;
-}
-
-export class AuthError extends Error {
-  constructor(
-    message: string,
-    readonly code:
-      | "database_unavailable"
-      | "invalid_credentials"
-      | "missing_local_password"
-      | "user_disabled"
-      | "user_exists",
-  ) {
-    super(message);
-  }
-}
 
 export class LocalAuthService {
   private accessPolicyOverrides?: AccessPolicyInput[];
   private readonly localAccessOverrides = new Map<string, LocalAccess>();
   private readonly localGroupOverrides = new Map<string, AccessGroup[]>();
+  private readonly oidcUserRecords = new Map<string, LocalUserRecord>();
   private readonly sessions = new Map<string, AuthSession>();
   private readonly db?: ReturnType<typeof createDatabase>;
   private dbAvailable: boolean;
@@ -236,7 +197,12 @@ export class LocalAuthService {
     const db = this.availableDatabase();
 
     if (!db) {
-      return [await this.localAdmin()];
+      return [
+        await this.localAdmin(),
+        ...(await Promise.all(
+          [...this.oidcUserRecords.values()].map((record) => this.currentUserFromRecord(record)),
+        )),
+      ];
     }
 
     try {
@@ -321,6 +287,10 @@ export class LocalAuthService {
         })
         .returning(localUserReturning);
 
+      if (!row) {
+        throw new AuthError("Local user storage is unavailable", "database_unavailable");
+      }
+
       await this.persistLocalUserAccess(row.id, input, groupsFromIds(input.groupIds ?? []));
 
       return this.currentUserFromRecord(row);
@@ -342,6 +312,18 @@ export class LocalAuthService {
 
       this.markDatabaseUnavailable(error);
       throw new AuthError("Local user storage is unavailable", "database_unavailable");
+    }
+  }
+
+  async syncAzureAdOidcUser(input: AzureAdOidcUserSyncInput): Promise<CurrentUser> {
+    try {
+      return await syncOidcUser(input, this.oidcSyncAdapter());
+    } catch (error) {
+      if (error instanceof OidcSyncError) {
+        throw new AuthError(error.message, error.code);
+      }
+
+      throw new AuthError("OIDC user storage is unavailable", "database_unavailable");
     }
   }
 
@@ -372,11 +354,7 @@ export class LocalAuthService {
       return undefined;
     }
 
-    for (const session of this.sessions.values()) {
-      if (session.user.id === user.id) {
-        session.user = user;
-      }
-    }
+    this.refreshUserSessions(user);
 
     return user;
   }
@@ -540,7 +518,7 @@ export class LocalAuthService {
     const db = this.availableDatabase();
 
     if (!db) {
-      return undefined;
+      return this.oidcUserRecords.get(email.toLowerCase());
     }
 
     try {
@@ -561,7 +539,7 @@ export class LocalAuthService {
     const db = this.availableDatabase();
 
     if (!db || !isUuid(userId)) {
-      return undefined;
+      return [...this.oidcUserRecords.values()].find((record) => record.id === userId);
     }
 
     try {
@@ -588,9 +566,39 @@ export class LocalAuthService {
       id: record.id,
       name: record.name,
       permissions: permissionsForRoles(access.roles),
-      provider: "local",
+      provider: authProvider(record.provider),
       resourceGrants: access.resourceGrants,
       roles: access.roles,
+    };
+  }
+
+  private refreshUserSessions(user: CurrentUser) {
+    for (const session of this.sessions.values()) {
+      if (session.user.id === user.id) {
+        session.user = user;
+      }
+    }
+  }
+
+  private oidcSyncAdapter() {
+    return {
+      currentUserFromRecord: (record: LocalUserRecord) => this.currentUserFromRecord(record),
+      db: () => this.availableDatabase(),
+      findUserByEmail: (email: string) => this.localUserRecordByEmail(email),
+      markDatabaseUnavailable: (error: unknown) => this.markDatabaseUnavailable(error),
+      memoryRecordByEmail: (email: string) => this.oidcUserRecords.get(email),
+      persistAccess: async (userId: string, access: LocalAccess, groups: AccessGroup[]) => {
+        await this.persistLocalUserAccess(userId, access, groups);
+        this.localAccessOverrides.set(userId, {
+          resourceGrants: access.resourceGrants,
+          roles: access.roles,
+        });
+        this.localGroupOverrides.set(userId, groups);
+      },
+      refreshSessions: (user: CurrentUser) => this.refreshUserSessions(user),
+      saveMemoryRecord: (email: string, record: LocalUserRecord) => {
+        this.oidcUserRecords.set(email, record);
+      },
     };
   }
 
@@ -612,12 +620,14 @@ export class LocalAuthService {
           id: session.user.id,
           name: session.user.name,
           passwordHash,
+          provider: session.user.provider,
         })
         .onConflictDoUpdate({
           set: {
             email: session.user.email,
             name: session.user.name,
             ...(passwordHash ? { passwordHash } : {}),
+            provider: session.user.provider,
             updatedAt: new Date(),
           },
           target: users.id,
@@ -653,6 +663,7 @@ export class LocalAuthService {
           userEmail: users.email,
           userId: users.id,
           userName: users.name,
+          userProvider: users.provider,
         })
         .from(authSessions)
         .innerJoin(users, eq(authSessions.userId, users.id))
@@ -685,7 +696,7 @@ export class LocalAuthService {
           id: row.userId,
           name: row.userName,
           permissions: permissionsForRoles(access.roles),
-          provider: "local",
+          provider: authProvider(row.userProvider),
           resourceGrants: access.resourceGrants,
           roles: access.roles,
         },
@@ -972,4 +983,8 @@ function defaultLocalPassword() {
   }
 
   return "rakkr-local-dev-password";
+}
+
+function authProvider(value: string): CurrentUser["provider"] {
+  return value === "oidc" ? "oidc" : "local";
 }

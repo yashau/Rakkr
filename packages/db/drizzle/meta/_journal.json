@@ -127,6 +127,13 @@
       "when": 1781793222005,
       "tag": "0017_volatile_mephistopheles",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781795612492,
+      "tag": "0018_quick_rockslide",
+      "breakpoints": true
     }
   ]
 }

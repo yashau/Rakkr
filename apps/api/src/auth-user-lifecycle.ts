@@ -12,6 +12,7 @@ export interface LocalUserRecord {
   id: string;
   name: string;
   passwordHash: string | null;
+  provider: string;
 }
 
 export interface AuthSessionLike {
@@ -24,6 +25,7 @@ export const localUserReturning = {
   id: users.id,
   name: users.name,
   passwordHash: users.passwordHash,
+  provider: users.provider,
 };
 
 export async function resetLocalUserPassword(db: AuthDatabase, userId: string, password: string) {

@@ -66,7 +66,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
 | Storage upload | 🟦 | Stub queue, provider config/status, policy templates, auto-queue, audited runner, API/UI control, metrics |
-| OIDC | 🧊 | Azure AD-ready boundary; local auth first |
+| OIDC | 🟨 | Azure AD claim normalization and user sync scaffold; local auth first |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
 ---
@@ -288,6 +288,7 @@ Audit events must capture actor, permission, target, outcome, reason, timestamp,
 Current scaffold:
 
 - Local users, groups, roles, scopes, access policies, passwords, status.
+- Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
 - Access UI manages users, groups, policies, and scopes.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time.
@@ -296,7 +297,7 @@ Current scaffold:
 ## Security And Transport
 
 - Local auth uses hashed passwords and bearer sessions.
-- Azure AD OIDC remains a future integration.
+- Azure AD OIDC login/discovery remains a future integration.
 - Node enrollment uses one-time tokens and stores only hashes.
 - Controller/node traffic must be transport-layer encrypted.
 - Development can use a local CA or trusted dev certificates.
@@ -424,7 +425,7 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Add Azure AD OIDC user sync.
+1. 🚧 Add Azure AD OIDC discovery/config and login flow.
 2. ⏸️ Return to X32 hardware validation after device is confirmed.
 3. 🧊 Add SMB/S3 providers.
 4. 🧊 Add local VAD and noise/speech scoring.
