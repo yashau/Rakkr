@@ -1,7 +1,7 @@
 # Rakkr Source Of Truth
 
 ![Project](https://img.shields.io/badge/project-Rakkr-2563eb)
-![Status](https://img.shields.io/badge/status-active%20scaffold-f59e0b)
+![Status](https://img.shields.io/badge/status-active%20development-f59e0b)
 ![Runtime](https://img.shields.io/badge/runtime-Linux%20%2B%20Docker-111827)
 ![Agent](https://img.shields.io/badge/agent-Rust-7c2d12)
 ![Controller](https://img.shields.io/badge/controller-Hono%20%2B%20React-16a34a)
@@ -44,8 +44,8 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Mark | Meaning |
 | ---- | ------- |
 | ✅ | Complete and checked in |
-| 🟦 | Scaffolded and usable foundation exists |
-| 🟨 | Partially implemented or designed |
+| 🟦 | Scaffold only; structure exists but the workflow is not useful yet |
+| 🟨 | Partial; real behavior exists but required scope remains |
 | 🚧 | Current focus |
 | ⏸️ | Paused on external state |
 | ⏳ | Not started |
@@ -57,17 +57,17 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | ---------- | ------ | ------------- |
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
-| Controller API | 🟦 | Auth, RBAC, audit, nodes, recordings, jobs, schedules, settings, metrics |
-| Controller UI | 🟦 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
-| Recorder agent | 🟦 | Inventory, meters, jobs, capture growth guards, profile rendering, health log |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes, recordings, jobs, schedules, settings, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
+| Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟦 | ALSA loopback path validates fake capture/rendering |
-| Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
-| Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview, encoded cache output |
-| Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
-| Storage upload | 🟦 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
-| OIDC | 🟦 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |
-| Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
+| Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
+| Scheduler | 🟨 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
+| Recording library | 🟨 | Metadata, tags/folders/search, playback, download, checksum, waveform preview, encoded cache output |
+| Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
+| Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
+| OIDC | 🟨 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |
+| Observability | 🟨 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
 ---
 
@@ -420,10 +420,10 @@ Examples:
 | Milestone | Goal | Status |
 | --------- | ---- | ------ |
 | 0. Foundation | Monorepo, Docker, API/UI shells, shared types | ✅ |
-| 1. Test rig visibility | Agent identity, meters, loopback validation, node UI | 🟦 |
-| 2. First reliable recording | Start/stop, cache, metadata, playback, download, health | 🟦 |
-| 3. Scheduling | Human scheduler, metadata ownership, execution events | 🟦 |
-| 4. Watchdog reliability | Scheduled health alerts, timelines, metrics | 🟦 |
+| 1. Test rig visibility | Agent identity, meters, loopback validation, node UI | 🟨 |
+| 2. First reliable recording | Start/stop, cache, metadata, playback, download, health | 🟨 |
+| 3. Scheduling | Human scheduler, metadata ownership, execution events | 🟨 |
+| 4. Watchdog reliability | Scheduled health alerts, timelines, metrics | 🟨 |
 | 5. Operations | Organization, templates, audit search/export, upload stubs | 🚧 |
 | 6. Integrations | SMB/S3, Azure AD OIDC, Iroh, AI quality | 🧊 |
 
