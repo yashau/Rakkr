@@ -293,7 +293,7 @@ Current scaffold:
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
 - Access UI manages users, groups, policies, and scopes.
 - Disabled/deleted/password-reset users lose active sessions.
-- Audit API/UI filters by actor, action, target, outcome, and time.
+- Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
 
 ## Security And Transport
@@ -433,7 +433,8 @@ Examples:
 2. ✅ Harden recording file-growth and terminal failure transitions.
 3. ✅ Add profile-driven encoder output for MP3 VBR/WAV/FLAC.
 4. ✅ Add waveform/metadata extraction for encoded cache files.
-5. ⏸️ Return to X32 hardware validation after device is confirmed.
+5. ✅ Add RBAC-gated audit CSV export.
+6. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

@@ -263,6 +263,8 @@ export const api = {
   accessPolicies: () => fetchJson<{ data: AccessPolicy[] }>("/api/v1/auth/access-policies"),
   auditEvents: (filters: AuditEventFilters = {}) =>
     fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
+  auditEventsExport: (filters: AuditEventFilters = {}) =>
+    fetchBlob(withQuery("/api/v1/audit-events/export", filters)),
   healthEvents: (filters: HealthEventFilters = {}) =>
     fetchJson<{ data: HealthEvent[] }>(withQuery("/api/v1/health-events", filters)),
   createHealthEvent: (input: HealthEventCreateInput) =>

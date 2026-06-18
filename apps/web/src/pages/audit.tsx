@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { RotateCcw, Search } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Download, RotateCcw, Search } from "lucide-react";
 import { useState } from "react";
 import type { AuditOutcome } from "@rakkr/shared";
 
@@ -50,6 +50,10 @@ export function AuditPage() {
     queryFn: () => api.auditEvents(filters),
     queryKey: ["audit-events", filters],
     refetchInterval: 5000,
+  });
+  const auditExportMutation = useMutation({
+    mutationFn: () => api.auditEventsExport(filters),
+    onSuccess: downloadAuditExport,
   });
 
   const events = auditQuery.data?.data ?? [];
@@ -128,6 +132,16 @@ export function AuditPage() {
           </Button>
           <Button
             className="h-9"
+            disabled={auditExportMutation.isPending}
+            onClick={() => auditExportMutation.mutate()}
+            type="button"
+            variant="outline"
+          >
+            <Download className="size-4" />
+            Export
+          </Button>
+          <Button
+            className="h-9"
             onClick={() => {
               setDraft(emptyDraft);
               setFilters({});
@@ -191,6 +205,16 @@ export function AuditPage() {
       </div>
     </Card>
   );
+}
+
+function downloadAuditExport(file: Awaited<ReturnType<typeof api.auditEventsExport>>) {
+  const url = URL.createObjectURL(file.blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = file.fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function FilterInput({

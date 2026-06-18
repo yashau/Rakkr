@@ -11,7 +11,6 @@ import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   accessGroupIdSchema,
   accessPolicyInputSchema,
-  auditOutcomeSchema,
   resourceGrantSchema,
   roleSchema,
   type AuditEvent,
@@ -20,7 +19,8 @@ import {
   type RecorderNode,
   type ScheduleSummary,
 } from "@rakkr/shared";
-import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
+import { registerAuditRoutes } from "./audit-routes.js";
+import { createAuditStore } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { clearOidcLoginStateCookie, registerAuthOidcRoutes } from "./auth-oidc-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
@@ -72,29 +72,6 @@ type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-});
-const optionalTextFilterSchema = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-  z.string().trim().max(160).optional(),
-);
-const optionalDateFilterSchema = optionalTextFilterSchema.refine(
-  (value) => !value || !Number.isNaN(Date.parse(value)),
-  "Expected an ISO date/time value",
-);
-const auditEventsQuerySchema = z.object({
-  action: optionalTextFilterSchema,
-  actor: optionalTextFilterSchema,
-  from: optionalDateFilterSchema,
-  limit: z.preprocess(
-    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-    z.coerce.number().int().min(1).max(500).optional(),
-  ),
-  outcome: z.preprocess(
-    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-    auditOutcomeSchema.optional(),
-  ),
-  target: optionalTextFilterSchema,
-  to: optionalDateFilterSchema,
 });
 const userAccessRequestSchema = z
   .object({
@@ -235,18 +212,6 @@ function authorizationReason(input: {
   }
 
   return undefined;
-}
-
-function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEventFilters {
-  return {
-    action: input.action,
-    actor: input.actor,
-    from: input.from ? new Date(input.from) : undefined,
-    limit: input.limit,
-    outcome: input.outcome,
-    target: input.target,
-    to: input.to ? new Date(input.to) : undefined,
-  };
 }
 
 async function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
@@ -903,14 +868,10 @@ registerAuthLifecycleRoutes({
   requirePermission,
 });
 
-app.get("/api/v1/audit-events", requirePermission("audit:read", "audit.events.read"), async (c) => {
-  const query = auditEventsQuerySchema.safeParse(c.req.query());
-
-  if (!query.success) {
-    return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
-  }
-
-  return c.json({ data: await auditStore.list(auditFilters(query.data)) });
+registerAuditRoutes({
+  app,
+  auditStore,
+  requirePermission,
 });
 
 registerNodeRoutes({
