@@ -1,6 +1,21 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum MeterBackend {
+    Alsa,
+    Synthetic,
+}
+
+impl MeterBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Alsa => "alsa",
+            Self::Synthetic => "synthetic",
+        }
+    }
+}
 
 #[derive(Clone, Debug, Parser)]
 #[command(author, version, about = "Rakkr recorder node agent")]
@@ -79,8 +94,8 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CAPTURE_CHANNELS", default_value_t = 2)]
     pub capture_channels: u16,
 
-    #[arg(long, env = "RAKKR_METER_BACKEND", default_value = "alsa")]
-    pub meter_backend: String,
+    #[arg(long, env = "RAKKR_METER_BACKEND", value_enum, default_value_t = MeterBackend::Alsa)]
+    pub meter_backend: MeterBackend,
 
     #[arg(long, env = "RAKKR_METER_SAMPLE_SECONDS", default_value_t = 1)]
     pub meter_sample_seconds: u64,

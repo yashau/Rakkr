@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use clap::Parser;
-use config::AgentConfig;
+use config::{AgentConfig, MeterBackend};
 use serde_json::{Value, json};
 use telemetry::{MeterCaptureConfig, MeterFrame, alsa_meter_frame, synthetic_meter_frame};
 use tracing::{info, warn};
@@ -94,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
     let meter_capture = meter_capture_config(&config, meter_channel_count);
     let mut ticker = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
     let mut tick = 0_u64;
-    let mut meter_capture_failed = false;
+    let mut meter_capture_failure = None;
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
     let mut meter_sync_failed = false;
@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
         json!({
             "alias": inventory.alias,
             "controllerUrl": config.controller_url,
-            "meterBackend": config.meter_backend,
+            "meterBackend": config.meter_backend.as_str(),
             "nodeId": inventory.id,
         }),
     )
@@ -134,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
                     &config,
                     &meter_context,
                     tick,
-                    &mut meter_capture_failed,
+                    &mut meter_capture_failure,
                 ).await?;
 
                 info!(
@@ -248,12 +248,13 @@ fn strict_meter_frame(
     tick: u64,
     meter_capture: &MeterCaptureConfig<'_>,
 ) -> anyhow::Result<MeterFrame> {
-    match config.meter_backend.to_ascii_lowercase().as_str() {
-        "synthetic" => synthetic_meter_frame(node_id, interface_id, channel_count, tick)
-            .context("failed to create synthetic meter frame"),
-        "alsa" => alsa_meter_frame(node_id, interface_id, meter_capture)
+    match config.meter_backend {
+        MeterBackend::Synthetic => {
+            synthetic_meter_frame(node_id, interface_id, channel_count, tick)
+                .context("failed to create synthetic meter frame")
+        }
+        MeterBackend::Alsa => alsa_meter_frame(node_id, interface_id, meter_capture)
             .context("failed to create ALSA meter frame"),
-        backend => anyhow::bail!("unsupported meter backend: {backend}"),
     }
 }
 
@@ -269,78 +270,129 @@ async fn next_meter_frame(
     config: &AgentConfig,
     context: &MeterLoopContext<'_>,
     tick: u64,
-    meter_capture_failed: &mut bool,
+    meter_capture_failure: &mut Option<MeterFailureKind>,
 ) -> anyhow::Result<MeterFrame> {
-    match config.meter_backend.to_ascii_lowercase().as_str() {
-        "synthetic" => synthetic_meter_frame(
+    match config.meter_backend {
+        MeterBackend::Synthetic => synthetic_meter_frame(
             context.node_id,
             context.interface_id,
             context.channel_count,
             tick,
         )
         .context("failed to create synthetic meter frame"),
-        "alsa" => match alsa_meter_frame(context.node_id, context.interface_id, context.capture) {
-            Ok(frame) => {
-                if *meter_capture_failed {
-                    *meter_capture_failed = false;
-                    append_and_sync_health_event(
-                        config,
-                        context.token,
-                        "agent.meter.capture_recovered",
-                        "info",
-                        json!({
-                            "backend": "alsa",
-                            "device": config.capture_device,
-                            "format": config.capture_format,
-                            "nodeId": context.node_id,
-                        }),
-                    )
-                    .await
-                    .context("append meter capture recovery event")?;
-                }
+        MeterBackend::Alsa => {
+            match alsa_meter_frame(context.node_id, context.interface_id, context.capture) {
+                Ok(frame) => {
+                    if let Some(kind) = meter_capture_failure.take() {
+                        append_and_sync_health_event(
+                            config,
+                            context.token,
+                            "agent.meter.capture_recovered",
+                            "info",
+                            json!({
+                                "backend": "alsa",
+                                "device": config.capture_device,
+                                "format": config.capture_format,
+                                "previousKind": kind.as_str(),
+                                "previousType": kind.event_type(),
+                                "nodeId": context.node_id,
+                            }),
+                        )
+                        .await
+                        .context("append meter capture recovery event")?;
+                    }
 
-                Ok(frame)
-            }
-            Err(error) => {
-                if !*meter_capture_failed {
-                    *meter_capture_failed = true;
-                    append_and_sync_health_event(
-                        config,
-                        context.token,
-                        "agent.meter.capture_failed",
-                        "warning",
-                        json!({
-                            "backend": "alsa",
-                            "device": config.capture_device,
-                            "error": error.to_string(),
-                            "format": config.capture_format,
-                            "nodeId": context.node_id,
-                            "usingSyntheticFallback": true,
-                        }),
-                    )
-                    .await
-                    .context("append meter capture failure event")?;
+                    Ok(frame)
                 }
+                Err(error) => {
+                    let kind = MeterFailureKind::classify(&error.to_string());
+                    if *meter_capture_failure != Some(kind) {
+                        *meter_capture_failure = Some(kind);
+                        append_and_sync_health_event(
+                            config,
+                            context.token,
+                            kind.event_type(),
+                            kind.severity(),
+                            json!({
+                                "backend": "alsa",
+                                "classification": kind.as_str(),
+                                "device": config.capture_device,
+                                "error": error.to_string(),
+                                "format": config.capture_format,
+                                "nodeId": context.node_id,
+                                "usingSyntheticFallback": true,
+                            }),
+                        )
+                        .await
+                        .context("append meter capture failure event")?;
+                    }
 
-                warn!(error = %error, "ALSA meter sampling failed; using synthetic fallback");
-                synthetic_meter_frame(
-                    context.node_id,
-                    context.interface_id,
-                    context.channel_count,
-                    tick,
-                )
-                .context("failed to create fallback synthetic meter frame")
+                    warn!(error = %error, "ALSA meter sampling failed; using synthetic fallback");
+                    synthetic_meter_frame(
+                        context.node_id,
+                        context.interface_id,
+                        context.channel_count,
+                        tick,
+                    )
+                    .context("failed to create fallback synthetic meter frame")
+                }
             }
-        },
-        backend => {
-            warn!(backend, "unknown meter backend; using synthetic fallback");
-            synthetic_meter_frame(
-                context.node_id,
-                context.interface_id,
-                context.channel_count,
-                tick,
-            )
-            .context("failed to create synthetic meter frame")
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MeterFailureKind {
+    CaptureFailed,
+    DeviceUnavailable,
+    Xrun,
+}
+
+impl MeterFailureKind {
+    fn classify(error: &str) -> Self {
+        let error = error.to_ascii_lowercase();
+
+        if error.contains("overrun")
+            || error.contains("underrun")
+            || error.contains("xrun")
+            || error.contains("broken pipe")
+        {
+            return Self::Xrun;
+        }
+
+        if error.contains("no such device")
+            || error.contains("no such file or directory")
+            || error.contains("unknown pcm")
+            || error.contains("cannot find card")
+            || error.contains("device or resource busy")
+            || error.contains("input/output error")
+        {
+            return Self::DeviceUnavailable;
+        }
+
+        Self::CaptureFailed
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::CaptureFailed => "capture_failed",
+            Self::DeviceUnavailable => "device_unavailable",
+            Self::Xrun => "xrun",
+        }
+    }
+
+    fn event_type(self) -> &'static str {
+        match self {
+            Self::CaptureFailed => "agent.meter.capture_failed",
+            Self::DeviceUnavailable => "agent.meter.device_unavailable",
+            Self::Xrun => "agent.meter.xrun",
+        }
+    }
+
+    fn severity(self) -> &'static str {
+        match self {
+            Self::CaptureFailed | Self::Xrun => "warning",
+            Self::DeviceUnavailable => "critical",
         }
     }
 }
@@ -483,5 +535,21 @@ mod tests {
     #[test]
     fn ignores_named_alsa_capture_device_for_inventory_matching() {
         assert_eq!(capture_device_interface_id("hw:Loopback,1,0"), None);
+    }
+
+    #[test]
+    fn classifies_alsa_xrun_errors() {
+        assert_eq!(
+            MeterFailureKind::classify("ALSA meter command exited: overrun!!!"),
+            MeterFailureKind::Xrun
+        );
+    }
+
+    #[test]
+    fn classifies_alsa_device_unavailable_errors() {
+        assert_eq!(
+            MeterFailureKind::classify("Unknown PCM hw:9,9,0: No such device"),
+            MeterFailureKind::DeviceUnavailable
+        );
     }
 }

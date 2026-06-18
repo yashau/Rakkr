@@ -228,7 +228,7 @@ mod tests {
             controller_url: "http://localhost:8787".to_string(),
             heartbeat_seconds: 5,
             job_poll_seconds: 2,
-            meter_backend: "alsa".to_string(),
+            meter_backend: crate::config::MeterBackend::Alsa,
             meter_clip_dbfs: -1.0,
             meter_flatline_dbfs: -120.0,
             meter_sample_seconds: 1,
