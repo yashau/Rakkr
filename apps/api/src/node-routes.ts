@@ -12,6 +12,7 @@ import type {
   RecordAuditEvent,
   RequirePermission,
 } from "./http-types.js";
+import type { MeterFrameStore } from "./meter-store.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
 
@@ -23,6 +24,7 @@ interface NodeRouteDependencies {
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
   ) => Promise<boolean>;
+  meterFrameStore: MeterFrameStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
@@ -68,6 +70,7 @@ export function registerNodeRoutes({
   currentAuth,
   currentUser,
   hasResourceScope,
+  meterFrameStore,
   nodeStore,
   recordAuditEvent,
   requirePermission,
@@ -170,7 +173,7 @@ export function registerNodeRoutes({
     })),
     async (c) => {
       const nodeId = c.req.param("nodeId");
-      const frame = buildMeterFrame();
+      const frame = (await meterFrameStore.latest(nodeId)) ?? buildMeterFrame();
 
       if (!(await nodeStore.find(nodeId))) {
         return c.json({ error: "Node not found" }, 404);
@@ -241,7 +244,7 @@ export function registerNodeRoutes({
 
     return streamSSE(c, async (stream) => {
       while (true) {
-        const frame = buildMeterFrame();
+        const frame = await liveMeterFrame();
 
         if (await hasResourceScope(user, { id: frame.nodeId, type: "node" })) {
           await stream.writeSSE({
@@ -254,6 +257,12 @@ export function registerNodeRoutes({
       }
     });
   });
+
+  async function liveMeterFrame() {
+    const seededFrame = buildMeterFrame();
+
+    return (await meterFrameStore.latest(seededFrame.nodeId)) ?? seededFrame;
+  }
 
   async function recordNodeFailure(
     c: Context<AppBindings>,

@@ -1,8 +1,12 @@
 import type { Context, Hono } from "hono";
-import type { RecordingSummary } from "@rakkr/shared";
+import { healthSeveritySchema, meterFrameSchema, type RecordingSummary } from "@rakkr/shared";
+import { z } from "zod";
 
 import { bearerToken } from "./auth-utils.js";
+import type { HealthEventStore } from "./health-store.js";
+import { syncRecordingHealth } from "./health-sync.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
+import type { MeterFrameStore } from "./meter-store.js";
 import type { NodeCredentialAuth, NodeStore } from "./node-store.js";
 import {
   cancelRecordingJob,
@@ -18,6 +22,8 @@ import type { RecordingStore } from "./recording-store.js";
 
 interface AgentRouteDependencies {
   app: Hono<AppBindings>;
+  healthEventStore: HealthEventStore;
+  meterFrameStore: MeterFrameStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
@@ -29,10 +35,156 @@ type AuthenticatedNode =
 
 export function registerAgentRoutes({
   app,
+  healthEventStore,
+  meterFrameStore,
   nodeStore,
   recordAuditEvent,
   recordingStore,
 }: AgentRouteDependencies) {
+  app.post("/api/v1/nodes/:nodeId/meter-frame", async (c) => {
+    const nodeId = c.req.param("nodeId");
+    const auth = await authenticateNode(c, "nodes.meter_frame.ingest", {
+      id: nodeId,
+      type: "node",
+    });
+
+    if (auth.response) {
+      return auth.response;
+    }
+
+    if (auth.credential.nodeId !== nodeId) {
+      await recordNodeCredentialFailure(c, "nodes.meter_frame.ingest.failed", "node_scope_denied", {
+        actor: auth.credential,
+        permission: "node:control",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Node credential cannot access this node" }, 403);
+    }
+
+    const body = meterFrameSchema.safeParse(await c.req.json().catch(() => ({})));
+
+    if (!body.success) {
+      await recordNodeCredentialFailure(c, "nodes.meter_frame.ingest.failed", "invalid_request", {
+        actor: auth.credential,
+        permission: "node:control",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Invalid meter frame", issues: body.error.issues }, 400);
+    }
+
+    if (body.data.nodeId !== nodeId || body.data.nodeId !== auth.credential.nodeId) {
+      await recordNodeCredentialFailure(c, "nodes.meter_frame.ingest.failed", "node_scope_denied", {
+        actor: auth.credential,
+        permission: "node:control",
+        target: { id: body.data.nodeId, type: "node" },
+      });
+      return c.json({ error: "Meter frame node mismatch" }, 403);
+    }
+
+    const stored = await meterFrameStore.save(body.data);
+
+    return c.json({ data: stored }, 202);
+  });
+
+  app.post("/api/v1/nodes/:nodeId/health-events", async (c) => {
+    const nodeId = c.req.param("nodeId");
+    const auth = await authenticateNode(c, "nodes.health_events.sync", {
+      id: nodeId,
+      type: "node",
+    });
+
+    if (auth.response) {
+      return auth.response;
+    }
+
+    if (auth.credential.nodeId !== nodeId) {
+      await recordNodeCredentialFailure(c, "nodes.health_events.sync.failed", "node_scope_denied", {
+        actor: auth.credential,
+        permission: "health:acknowledge",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Node credential cannot access this node" }, 403);
+    }
+
+    const body = nodeHealthEventSchema.safeParse(await c.req.json().catch(() => ({})));
+
+    if (!body.success) {
+      await recordNodeCredentialFailure(c, "nodes.health_events.sync.failed", "invalid_request", {
+        actor: auth.credential,
+        permission: "health:acknowledge",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Invalid node health event", issues: body.error.issues }, 400);
+    }
+
+    if (body.data.recordingId) {
+      const recording = await recordingStore.find(body.data.recordingId);
+
+      if (!recording) {
+        await recordNodeCredentialFailure(
+          c,
+          "nodes.health_events.sync.failed",
+          "recording_not_found",
+          {
+            actor: auth.credential,
+            permission: "health:acknowledge",
+            target: { id: body.data.recordingId, type: "recording" },
+          },
+        );
+        return c.json({ error: "Recording not found" }, 404);
+      }
+
+      if (recording.nodeId !== auth.credential.nodeId) {
+        await recordNodeCredentialFailure(
+          c,
+          "nodes.health_events.sync.failed",
+          "node_scope_denied",
+          {
+            actor: auth.credential,
+            permission: "health:acknowledge",
+            target: { id: body.data.recordingId, type: "recording" },
+          },
+        );
+        return c.json({ error: "Node credential cannot access this recording" }, 403);
+      }
+    }
+
+    const event = await healthEventStore.create({
+      details: nodeHealthEventDetails(body.data),
+      nodeId,
+      openedAt: body.data.openedAt ? new Date(body.data.openedAt) : undefined,
+      recordingId: body.data.recordingId,
+      scheduleId: body.data.scheduleId,
+      severity: body.data.severity,
+      type: body.data.type,
+    });
+
+    await syncRecordingHealth(healthEventStore, recordingStore, event.recordingId);
+    await recordAuditEvent(c, {
+      action: "nodes.health_events.sync.succeeded",
+      actor: nodeActor(auth.credential),
+      after: {
+        healthEventId: event.id,
+        recordingId: event.recordingId,
+        scheduleId: event.scheduleId,
+        severity: event.severity,
+        type: event.type,
+      },
+      details: {
+        localEventId: body.data.id,
+      },
+      outcome: "succeeded",
+      permission: "health:acknowledge",
+      target: {
+        id: event.id,
+        name: event.type,
+        type: "health_event",
+      },
+    });
+
+    return c.json({ data: event }, 201);
+  });
+
   app.get("/api/v1/nodes/:nodeId/recording-jobs/next", async (c) => {
     const nodeId = c.req.param("nodeId");
     const auth = await authenticateNode(c, "recording_jobs.next", { id: nodeId, type: "node" });
@@ -402,6 +554,7 @@ export function registerAgentRoutes({
     reason: string,
     options: {
       actor?: NodeCredentialAuth;
+      permission?: "health:acknowledge" | "node:control" | "recording:control";
       target: AuditTarget;
     },
   ) {
@@ -410,12 +563,29 @@ export function registerAgentRoutes({
       actor: options.actor ? nodeActor(options.actor) : undefined,
       outcome:
         reason === "missing_node_token" || reason === "invalid_node_token" ? "denied" : "failed",
-      permission: "recording:control",
+      permission: options.permission ?? "recording:control",
       reason,
       target: options.target,
     });
   }
 }
+
+const nodeHealthEventSchema = z
+  .object({
+    details: z.record(z.string(), z.unknown()).default({}),
+    id: z.string().trim().min(1).max(160).optional(),
+    openedAt: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((value) => !Number.isNaN(Date.parse(value)), "Expected ISO date/time")
+      .optional(),
+    recordingId: z.string().trim().min(1).max(160).optional(),
+    scheduleId: z.string().trim().min(1).max(160).optional(),
+    severity: healthSeveritySchema,
+    type: z.string().trim().min(1).max(160),
+  })
+  .strict();
 
 function nodeActor(credential: NodeCredentialAuth) {
   return {
@@ -423,6 +593,13 @@ function nodeActor(credential: NodeCredentialAuth) {
     name: credential.nodeId,
     roles: [],
     type: "node" as const,
+  };
+}
+
+function nodeHealthEventDetails(input: z.infer<typeof nodeHealthEventSchema>) {
+  return {
+    ...input.details,
+    localEventId: input.id,
   };
 }
 

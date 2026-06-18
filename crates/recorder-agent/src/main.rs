@@ -1,6 +1,7 @@
 mod capture;
 mod config;
 mod controller;
+mod health_log;
 mod inventory;
 mod state;
 mod telemetry;
@@ -10,6 +11,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Parser;
 use config::AgentConfig;
+use serde_json::json;
 use telemetry::synthetic_meter_frame;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -84,6 +86,25 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(2);
     let mut ticker = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
     let mut tick = 0_u64;
+    let mut meter_sync_failed = false;
+    let token = config.controller_token.as_deref();
+    let started_event = health_log::append_health_event(
+        &config,
+        "agent.started",
+        "info",
+        json!({
+            "alias": inventory.alias,
+            "controllerUrl": config.controller_url,
+            "nodeId": inventory.id,
+        }),
+    )
+    .context("append startup health event")?;
+
+    if let Some(token) = token
+        && let Err(error) = controller::sync_health_event(&config, token, &started_event).await
+    {
+        warn!(error = %error, "failed to sync startup health event");
+    }
 
     loop {
         tokio::select! {
@@ -106,6 +127,52 @@ async fn main() -> anyhow::Result<()> {
                     channels = frame.levels.len(),
                     "recorder heartbeat"
                 );
+
+                if let Some(token) = token {
+                    match controller::post_meter_frame(&config, token, &frame).await {
+                        Ok(()) if meter_sync_failed => {
+                            meter_sync_failed = false;
+                            let event = health_log::append_health_event(
+                                &config,
+                                "agent.meter_frame.sync_recovered",
+                                "info",
+                                json!({
+                                    "capturedAt": frame.captured_at,
+                                    "nodeId": inventory.id,
+                                }),
+                            )
+                            .context("append meter sync recovery event")?;
+
+                            if let Err(error) = controller::sync_health_event(&config, token, &event).await {
+                                warn!(error = %error, "failed to sync meter recovery health event");
+                            }
+                        }
+                        Ok(()) => {}
+                        Err(error) if !meter_sync_failed => {
+                            meter_sync_failed = true;
+                            let event = health_log::append_health_event(
+                                &config,
+                                "agent.meter_frame.sync_failed",
+                                "warning",
+                                json!({
+                                    "capturedAt": frame.captured_at,
+                                    "error": error.to_string(),
+                                    "nodeId": inventory.id,
+                                }),
+                            )
+                            .context("append meter sync failure event")?;
+
+                            warn!(error = %error, "failed to post meter frame");
+
+                            if let Err(sync_error) = controller::sync_health_event(&config, token, &event).await {
+                                warn!(error = %sync_error, "failed to sync meter failure health event");
+                            }
+                        }
+                        Err(error) => {
+                            warn!(error = %error, "failed to post meter frame");
+                        }
+                    }
+                }
             }
         }
     }

@@ -88,4 +88,18 @@ pub struct AgentConfig {
 
     #[arg(long, env = "RAKKR_JOB_POLL_SECONDS", default_value_t = 2)]
     pub job_poll_seconds: u64,
+
+    #[arg(
+        long,
+        env = "RAKKR_AGENT_HEALTH_LOG_FILE",
+        default_value = "data/agent/health-events.jsonl"
+    )]
+    pub agent_health_log_file: PathBuf,
+
+    #[arg(
+        long,
+        env = "RAKKR_AGENT_HEALTH_LOG_MAX_BYTES",
+        default_value_t = 1_048_576
+    )]
+    pub agent_health_log_max_bytes: u64,
 }

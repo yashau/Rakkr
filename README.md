@@ -43,6 +43,8 @@ For non-admin local roles, scoped resource access can be seeded with `RAKKR_LOCA
 
 Local cached recording files are served from `RAKKR_RECORDING_CACHE_DIR`, defaulting to `data/recordings`.
 
+Recorder agents authenticate with node credentials, post live meter frames to the controller, and keep a local JSONL health log. The default log path is `RAKKR_AGENT_HEALTH_LOG_FILE=data/agent/health-events.jsonl`, with size rotation controlled by `RAKKR_AGENT_HEALTH_LOG_MAX_BYTES`.
+
 ## Workspace
 
 ```text

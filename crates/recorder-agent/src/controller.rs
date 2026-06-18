@@ -7,7 +7,9 @@ use tracing::info;
 
 use crate::capture::{CapturePlan, local_capture_path, spawn_capture_plan};
 use crate::config::AgentConfig;
+use crate::health_log::AgentHealthEvent;
 use crate::state::write_job_state;
+use crate::telemetry::MeterFrame;
 
 const DURATION_HEADER: &str = "x-rakkr-duration-seconds";
 const FILE_NAME_HEADER: &str = "x-rakkr-file-name";
@@ -280,6 +282,54 @@ pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()>
     Ok(())
 }
 
+pub async fn post_meter_frame(
+    config: &AgentConfig,
+    token: &str,
+    frame: &MeterFrame,
+) -> anyhow::Result<()> {
+    let url = node_url(&config.controller_url, &config.node_id, "meter-frame");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .json(frame)
+        .send()
+        .await
+        .context("post meter frame to controller")?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected meter frame with {status}: {body}");
+    }
+
+    Ok(())
+}
+
+pub async fn sync_health_event(
+    config: &AgentConfig,
+    token: &str,
+    event: &AgentHealthEvent,
+) -> anyhow::Result<()> {
+    let url = node_url(&config.controller_url, &config.node_id, "health-events");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .json(event)
+        .send()
+        .await
+        .context("sync health event to controller")?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected health event with {status}: {body}");
+    }
+
+    Ok(())
+}
+
 async fn fetch_next_recording_job(
     config: &AgentConfig,
     token: &str,
@@ -470,6 +520,15 @@ fn recording_cache_url(controller_url: &str, recording_id: &str) -> String {
     )
 }
 
+fn node_url(controller_url: &str, node_id: &str, suffix: &str) -> String {
+    format!(
+        "{}/api/v1/nodes/{}/{}",
+        controller_url.trim_end_matches('/'),
+        node_id,
+        suffix.trim_start_matches('/')
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,6 +538,14 @@ mod tests {
         assert_eq!(
             recording_cache_url("https://controller.local/", "rec_123"),
             "https://controller.local/api/v1/recordings/rec_123/cache-file"
+        );
+    }
+
+    #[test]
+    fn builds_node_url_without_double_slashes() {
+        assert_eq!(
+            node_url("https://controller.local/", "node_1", "/meter-frame"),
+            "https://controller.local/api/v1/nodes/node_1/meter-frame"
         );
     }
 }

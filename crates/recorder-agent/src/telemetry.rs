@@ -4,6 +4,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MeterFrame {
     pub captured_at: String,
     pub interface_id: String,
@@ -12,6 +13,7 @@ pub struct MeterFrame {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioLevel {
     pub channel_index: u16,
     pub clipping: bool,

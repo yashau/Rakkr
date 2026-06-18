@@ -32,11 +32,13 @@ import { createHealthEventStore } from "./health-store.js";
 import type { RecordAuditEvent } from "./http-types.js";
 import {
   nodes as seedNodes,
+  buildMeterFrame,
   prometheusMetrics,
   recordings,
   schedules as seedSchedules,
 } from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
+import { createMeterFrameStore } from "./meter-store.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
@@ -53,6 +55,7 @@ const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
 const healthEventStore = createHealthEventStore();
+const meterFrameStore = createMeterFrameStore();
 const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
@@ -65,6 +68,7 @@ export const scheduleRunner = createScheduleRunner({
 export const watchdogRunner = createWatchdogRunner({
   auditStore,
   healthEventStore,
+  meterFrameProvider: (nodeId) => watchdogMeterFrame(nodeId),
   recordingStore,
 });
 type NodeRecord = RecorderNode;
@@ -906,6 +910,7 @@ registerNodeRoutes({
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
+  meterFrameStore,
   nodeStore,
   recordAuditEvent,
   requirePermission,
@@ -926,6 +931,8 @@ registerScheduleRoutes({
 
 registerAgentRoutes({
   app,
+  healthEventStore,
+  meterFrameStore,
   nodeStore,
   recordAuditEvent,
   recordingStore,
@@ -970,4 +977,16 @@ if (process.env.RAKKR_API_NO_LISTEN !== "1") {
       console.log(`Rakkr API listening on http://localhost:${info.port}`);
     },
   );
+}
+
+async function watchdogMeterFrame(nodeId: string) {
+  const frame = await meterFrameStore.latest(nodeId);
+
+  if (frame) {
+    return frame;
+  }
+
+  const demoFrame = buildMeterFrame();
+
+  return demoFrame.nodeId === nodeId ? demoFrame : undefined;
 }
