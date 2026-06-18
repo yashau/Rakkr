@@ -6,7 +6,7 @@ use std::fs;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use crate::capture::{CapturePlan, local_capture_path, spawn_capture_plan};
+use crate::capture::{CaptureChannelMap, CapturePlan, local_capture_path, spawn_capture_plan};
 use crate::config::AgentConfig;
 use crate::health_log::{self, AgentHealthEvent};
 use crate::state::write_job_state;
@@ -172,15 +172,60 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         recording_id = %job.recording_id,
         "claimed recording job"
     );
-    let capture_plan = CapturePlan {
-        channels: job.command.capture_channels,
-        command: config.capture_command.clone(),
-        device: job.command.capture_device.clone(),
-        format: job.command.capture_format.clone(),
-        output_path: local_capture_path(&job.command.output_file_name),
-        sample_rate: job.command.capture_sample_rate,
-        seconds: job.command.duration_seconds,
+    let channel_maps = match fetch_channel_map_assignments(config, token).await {
+        Ok(assignments) => assignments,
+        Err(error) => {
+            let reason = error.to_string();
+
+            warn!(error = %reason, "failed to fetch channel map assignments for recording job");
+            append_job_health_event(
+                config,
+                token,
+                &job,
+                "agent.recording_job.channel_map_lookup_failed",
+                "warning",
+                json!({
+                    "error": reason.as_str(),
+                    "jobId": job.id.as_str(),
+                    "recordingId": job.recording_id.as_str(),
+                }),
+            )
+            .await?;
+            Vec::new()
+        }
     };
+    let capture_plan = capture_plan_for_job(config, &job, &channel_maps);
+
+    if let Some(channel_map) = &capture_plan.channel_map {
+        info!(
+            assignment_id = %channel_map.assignment_id,
+            capture_channels = channel_map.source_channels,
+            channel_mode = %channel_map.channel_mode,
+            template_id = %channel_map.template_id,
+            "applied channel map to recording job capture plan"
+        );
+        append_job_health_event(
+            config,
+            token,
+            &job,
+            "agent.recording_job.channel_map_applied",
+            "info",
+            json!({
+                "assignmentId": channel_map.assignment_id.as_str(),
+                "captureChannels": channel_map.source_channels,
+                "channelMode": channel_map.channel_mode.as_str(),
+                "configuredCaptureChannels": job.command.capture_channels,
+                "jobId": job.id.as_str(),
+                "recordingId": job.recording_id.as_str(),
+                "targetId": channel_map.target_id.as_str(),
+                "targetType": channel_map.target_type.as_str(),
+                "templateId": channel_map.template_id.as_str(),
+                "templateName": channel_map.template_name.as_str(),
+            }),
+        )
+        .await?;
+    }
+
     let mut capture = match spawn_capture_plan(&capture_plan) {
         Ok(capture) => capture,
         Err(error) => {
@@ -198,6 +243,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                     "device": capture_plan.device.as_str(),
                     "error": reason.as_str(),
                     "jobId": job.id.as_str(),
+                    "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
                     "outputPath": capture_plan.output_path.display().to_string(),
                     "recordingId": job.recording_id.as_str(),
                 }),
@@ -229,6 +275,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                         "device": capture_plan.device.as_str(),
                         "error": reason.as_str(),
                         "jobId": job.id.as_str(),
+                        "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
                         "outputPath": capture_plan.output_path.display().to_string(),
                         "recordingId": job.recording_id.as_str(),
                     }),
@@ -368,6 +415,91 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             Err(error)
         }
     }
+}
+
+fn capture_plan_for_job(
+    config: &AgentConfig,
+    job: &ControllerRecordingJob,
+    channel_maps: &[ControllerChannelMapBundle],
+) -> CapturePlan {
+    let channel_map =
+        select_capture_channel_map(&config.node_id, &job.command.capture_device, channel_maps);
+    let channels = channel_map
+        .as_ref()
+        .map_or(job.command.capture_channels, |map| map.source_channels);
+
+    CapturePlan {
+        channel_map,
+        channels,
+        command: config.capture_command.clone(),
+        device: job.command.capture_device.clone(),
+        format: job.command.capture_format.clone(),
+        output_path: local_capture_path(&job.command.output_file_name),
+        sample_rate: job.command.capture_sample_rate,
+        seconds: job.command.duration_seconds,
+    }
+}
+
+fn select_capture_channel_map(
+    node_id: &str,
+    capture_device: &str,
+    channel_maps: &[ControllerChannelMapBundle],
+) -> Option<CaptureChannelMap> {
+    channel_maps
+        .iter()
+        .find_map(|bundle| {
+            if bundle.assignment.target_type == "interface"
+                && bundle.assignment.target_id == capture_device
+            {
+                capture_channel_map_from_bundle(bundle)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            channel_maps.iter().find_map(|bundle| {
+                if bundle.assignment.target_type == "node" && bundle.assignment.target_id == node_id
+                {
+                    capture_channel_map_from_bundle(bundle)
+                } else {
+                    None
+                }
+            })
+        })
+}
+
+fn capture_channel_map_from_bundle(
+    bundle: &ControllerChannelMapBundle,
+) -> Option<CaptureChannelMap> {
+    let source_channels = bundle
+        .template
+        .entries
+        .iter()
+        .filter(|entry| entry.included)
+        .map(|entry| entry.source_channel_index)
+        .max()?;
+
+    Some(CaptureChannelMap {
+        assignment_id: bundle.assignment.id.clone(),
+        channel_mode: bundle.template.channel_mode.clone(),
+        source_channels,
+        target_id: bundle.assignment.target_id.clone(),
+        target_type: bundle.assignment.target_type.clone(),
+        template_id: bundle.template.id.clone(),
+        template_name: bundle.template.name.clone(),
+    })
+}
+
+fn channel_map_details(channel_map: &CaptureChannelMap) -> serde_json::Value {
+    json!({
+        "assignmentId": channel_map.assignment_id.as_str(),
+        "captureChannels": channel_map.source_channels,
+        "channelMode": channel_map.channel_mode.as_str(),
+        "targetId": channel_map.target_id.as_str(),
+        "targetType": channel_map.target_type.as_str(),
+        "templateId": channel_map.template_id.as_str(),
+        "templateName": channel_map.template_name.as_str(),
+    })
 }
 
 pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()> {
@@ -719,5 +851,112 @@ mod tests {
             node_url("https://controller.local/", "node_1", "/meter-frame"),
             "https://controller.local/api/v1/nodes/node_1/meter-frame"
         );
+    }
+
+    #[test]
+    fn selects_interface_channel_map_before_node_channel_map() {
+        let selected = select_capture_channel_map(
+            "node_1",
+            "interface_1",
+            &[
+                channel_map_bundle("node_assignment", "node", "node_1", "node_template", &[4]),
+                channel_map_bundle(
+                    "interface_assignment",
+                    "interface",
+                    "interface_1",
+                    "interface_template",
+                    &[2],
+                ),
+            ],
+        )
+        .expect("selected channel map");
+
+        assert_eq!(selected.assignment_id, "interface_assignment");
+        assert_eq!(selected.source_channels, 2);
+    }
+
+    #[test]
+    fn node_channel_map_uses_highest_included_source_channel() {
+        let selected = select_capture_channel_map(
+            "node_1",
+            "default",
+            &[channel_map_bundle(
+                "node_assignment",
+                "node",
+                "node_1",
+                "node_template",
+                &[1, 8],
+            )],
+        )
+        .expect("selected channel map");
+
+        assert_eq!(selected.source_channels, 8);
+        assert_eq!(selected.template_id, "node_template");
+    }
+
+    #[test]
+    fn ignores_channel_map_without_included_entries() {
+        assert!(
+            select_capture_channel_map(
+                "node_1",
+                "default",
+                &[channel_map_bundle(
+                    "node_assignment",
+                    "node",
+                    "node_1",
+                    "node_template",
+                    &[],
+                )],
+            )
+            .is_none()
+        );
+    }
+
+    fn channel_map_bundle(
+        assignment_id: &str,
+        target_type: &str,
+        target_id: &str,
+        template_id: &str,
+        included_sources: &[u16],
+    ) -> ControllerChannelMapBundle {
+        ControllerChannelMapBundle {
+            assignment: ControllerChannelMapAssignment {
+                assigned_at: "2026-06-18T00:00:00Z".to_string(),
+                id: assignment_id.to_string(),
+                target_id: target_id.to_string(),
+                target_type: target_type.to_string(),
+                template_id: template_id.to_string(),
+            },
+            template: ControllerChannelMapTemplate {
+                channel_mode: "mono_to_stereo_mix".to_string(),
+                entries: channel_map_entries(included_sources),
+                id: template_id.to_string(),
+                name: format!("Template {template_id}"),
+                tags: vec![],
+            },
+        }
+    }
+
+    fn channel_map_entries(included_sources: &[u16]) -> Vec<ControllerChannelMapEntry> {
+        let mut entries = vec![ControllerChannelMapEntry {
+            included: false,
+            label: "Muted".to_string(),
+            output_channel_index: None,
+            source_channel_index: 16,
+        }];
+
+        entries.extend(
+            included_sources
+                .iter()
+                .copied()
+                .map(|source_channel_index| ControllerChannelMapEntry {
+                    included: true,
+                    label: format!("Channel {source_channel_index}"),
+                    output_channel_index: Some(source_channel_index),
+                    source_channel_index,
+                }),
+        );
+
+        entries
     }
 }

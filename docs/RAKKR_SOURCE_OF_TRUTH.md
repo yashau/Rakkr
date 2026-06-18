@@ -54,7 +54,7 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
 | Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, health events, Postgres-backed nodes/credentials/recordings/jobs/schedules/settings, and assignment rollback |
 | Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, node health summaries/trends/drilldown, jobs, metadata editing, filters, settings profiles/policies, channel-map assignment rollback, schedule editing, execution detail, and quality timelines |
-| Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, ALSA-backed meter sampling, disk/load/audio health sampling, controller meter sync, assignment fetch smoke command, and local health log |
+| Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, ALSA-backed meter sampling, disk/load/audio health sampling, controller meter sync, assignment fetch/apply foundation, and local health log |
 | Test rig integration | 🟨 Partial   | Debian node reachable; ALSA loopback meter smoke validated; X32 validation waits for device check |
 | Health watchdog      | 🟦 Scaffold  | Health event model, lifecycle actions, node meter ingest, clipping/flatline/xrun/device-unavailable/job/system health events, scheduled low-signal runner, quality timelines, and recording health sync exist |
 | Scheduler            | 🟦 Scaffold  | Persistent store, create/edit/run-now/skip/delete UI, metadata ownership, recurrence editing, paused ranges, quick text helpers, previews, execution detail, timeline, and due runner |
@@ -261,7 +261,7 @@ Rakkr must support central settings for all recorders:
 - staged rollout and rollback;
 - en-masse deployment to similar recorders.
 
-Current scaffold status: recording profiles, watchdog policies, channel map templates, and channel-map assignments now have a central settings store with JSON fallback and Postgres support through the `recording_profiles`, `watchdog_policies`, `channel_map_templates`, and `template_assignments` tables. The default `voice-mp3-vbr` profile and `scheduled-voice-watchdog` policy are seeded from shared configuration, can be edited through RBAC-gated `settings:read` and `settings:manage` controller routes, and write before/after audit events for updates. The Settings UI exposes profile name, codec, bitrate, channel mode, VBR, silence detection, silence skip, watchdog active period, metric, threshold, window, grace, repeat cadence, minimum signal duration, severity, reusable channel-map entries, tags, node/interface assignment controls, assignment history counts, and rollback actions. The dashboard status reads the active profile and watchdog policy from the central store. Channel-map assignment history is persisted and audited, rollback is available through the controller and UI, and recorder agents can fetch node/interface assignment bundles from the controller. Applying those assignments inside recorder capture planning and adding staged rollout/version promotion remain pending.
+Current scaffold status: recording profiles, watchdog policies, channel map templates, and channel-map assignments now have a central settings store with JSON fallback and Postgres support through the `recording_profiles`, `watchdog_policies`, `channel_map_templates`, and `template_assignments` tables. The default `voice-mp3-vbr` profile and `scheduled-voice-watchdog` policy are seeded from shared configuration, can be edited through RBAC-gated `settings:read` and `settings:manage` controller routes, and write before/after audit events for updates. The Settings UI exposes profile name, codec, bitrate, channel mode, VBR, silence detection, silence skip, watchdog active period, metric, threshold, window, grace, repeat cadence, minimum signal duration, severity, reusable channel-map entries, tags, node/interface assignment controls, assignment history counts, and rollback actions. The dashboard status reads the active profile and watchdog policy from the central store. Channel-map assignment history is persisted and audited, rollback is available through the controller and UI, and recorder agents can fetch node/interface assignment bundles from the controller. The agent now applies node-level assignments and interface assignments whose target ID matches the job capture device, deriving the raw capture width from the highest included source channel and logging the applied map as a job health event. Explicit job/interface targeting, DSP remap/mixdown output, and staged rollout/version promotion remain pending.
 
 ## Node Inventory
 
@@ -791,7 +791,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🧊 Failed upload retry queue skeleton.
 - [ ] ⏳ Checksum verification.
 - [ ] ⏳ Waveform previews.
-- [ ] 🟨 Template rollout, rollback history, and agent assignment fetch foundation.
+- [ ] 🟨 Template rollback history and agent assignment application foundation.
 
 ## Later
 
@@ -915,7 +915,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Apply channel-map assignments inside recorder capture planning and add rollout version promotion.
+1. Add explicit job/interface channel-map targeting and rollout version promotion.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 

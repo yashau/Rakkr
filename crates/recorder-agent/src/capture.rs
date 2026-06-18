@@ -3,11 +3,25 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 
 use anyhow::Context;
+use serde::Serialize;
 use tracing::info;
 
 use crate::config::AgentConfig;
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureChannelMap {
+    pub assignment_id: String,
+    pub channel_mode: String,
+    pub source_channels: u16,
+    pub target_id: String,
+    pub target_type: String,
+    pub template_id: String,
+    pub template_name: String,
+}
+
 pub struct CapturePlan {
+    pub channel_map: Option<CaptureChannelMap>,
     pub channels: u16,
     pub command: String,
     pub device: String,
@@ -19,6 +33,7 @@ pub struct CapturePlan {
 
 pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CapturePlan> {
     Ok(CapturePlan {
+        channel_map: None,
         channels: config.capture_channels,
         command: config.capture_command.clone(),
         device: config.capture_device.clone(),
