@@ -75,4 +75,7 @@ pub struct AgentConfig {
 
     #[arg(long, env = "RAKKR_CAPTURE_CHANNELS", default_value_t = 2)]
     pub capture_channels: u16,
+
+    #[arg(long, env = "RAKKR_RUN_NEXT_JOB", default_value_t = false)]
+    pub run_next_job: bool,
 }

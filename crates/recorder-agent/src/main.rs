@@ -32,6 +32,11 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if config.run_next_job {
+        controller::run_next_recording_job(&config).await?;
+        return Ok(());
+    }
+
     if config.capture_recording_id.is_some() {
         let token = config
             .controller_token
@@ -48,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
                 .and_then(|value| value.to_str())
                 .map(str::to_string),
             file_path: &output_path,
+            job_id: None,
             recording_id: config
                 .capture_recording_id
                 .as_deref()

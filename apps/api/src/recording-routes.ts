@@ -9,6 +9,15 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import {
+  claimRecordingJob,
+  completeRecordingJob,
+  createRecordingJob,
+  nextRecordingJob,
+  recordingJob,
+  recordingJobs,
+  stopRecordingJob,
+} from "./recording-jobs.js";
+import {
   loadRecordingFile,
   recordingFileName,
   recordingHasCachedFile,
@@ -122,6 +131,88 @@ export function registerRecordingRoutes({
 
   app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), (c) =>
     c.json({ data: scopedRecordings(currentUser(c)) }),
+  );
+
+  app.get(
+    "/api/v1/recording-jobs",
+    requirePermission("recording:read", "recording_jobs.read"),
+    (c) => {
+      const visibleRecordingIds = new Set(
+        scopedRecordings(currentUser(c)).map((recording) => recording.id),
+      );
+
+      return c.json({
+        data: recordingJobs.filter((job) => visibleRecordingIds.has(job.recordingId)),
+      });
+    },
+  );
+
+  app.get(
+    "/api/v1/nodes/:nodeId/recording-jobs/next",
+    requirePermission("recording:control", "recording_jobs.next", (c) => ({
+      id: c.req.param("nodeId"),
+      type: "node",
+    })),
+    (c) => {
+      const job = nextRecordingJob(c.req.param("nodeId"));
+
+      if (!job) {
+        return c.body(null, 204);
+      }
+
+      return c.json({ data: job });
+    },
+  );
+
+  app.post(
+    "/api/v1/recording-jobs/:jobId/claim",
+    requirePermission("recording:control", "recording_jobs.claim", (c) =>
+      recordingJobTarget(c.req.param("jobId")),
+    ),
+    async (c) => {
+      const jobId = c.req.param("jobId");
+      const job = claimRecordingJob(jobId);
+
+      if (!job) {
+        await recordAuditEvent(c, {
+          action: "recording_jobs.claim.failed",
+          auth: currentAuth(c),
+          outcome: "failed",
+          permission: "recording:control",
+          reason: "job_not_claimable",
+          target: {
+            id: jobId,
+            type: "recording_job",
+          },
+        });
+
+        return c.json({ error: "Recording job is not claimable" }, 409);
+      }
+
+      const recording = recordings.find((candidate) => candidate.id === job.recordingId);
+
+      if (recording) {
+        recording.status = "recording";
+      }
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.claim.succeeded",
+        auth: currentAuth(c),
+        details: {
+          command: job.command,
+          nodeId: job.nodeId,
+          recordingId: job.recordingId,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: {
+          id: job.id,
+          type: "recording_job",
+        },
+      });
+
+      return c.json({ data: job });
+    },
   );
 
   app.post(
@@ -292,14 +383,18 @@ export function registerRecordingRoutes({
       };
 
       recordings.unshift(recording);
+      const job = createRecordingJob(recording);
 
       await recordAuditEvent(c, {
         action: "recordings.start.succeeded",
         auth: currentAuth(c),
         correlationIds: {
+          jobId: job.id,
           recordingId: recording.id,
         },
         details: {
+          jobCommand: job.command,
+          jobStatus: job.status,
           profileId: defaultVoiceRecordingProfile.id,
           source: recording.source,
         },
@@ -312,7 +407,7 @@ export function registerRecordingRoutes({
         },
       });
 
-      return c.json({ data: recording }, 202);
+      return c.json({ data: recording, job }, 202);
     },
   );
 
@@ -346,6 +441,7 @@ export function registerRecordingRoutes({
         cached: recording.cached,
         status: recording.status,
       };
+      const job = stopRecordingJob(recording.id);
 
       recording.durationSeconds = Math.max(recording.durationSeconds, 1);
       recording.status = "completed";
@@ -359,7 +455,11 @@ export function registerRecordingRoutes({
         },
         before,
         correlationIds: {
+          ...(job ? { jobId: job.id } : {}),
           recordingId: recording.id,
+        },
+        details: {
+          jobStatus: job?.status ?? "no_active_job",
         },
         outcome: "succeeded",
         permission: "recording:control",
@@ -429,6 +529,7 @@ export function registerRecordingRoutes({
         durationSeconds: recording.durationSeconds,
         status: recording.status,
       };
+      const jobId = c.req.header("x-rakkr-recording-job-id");
       const stored = await storeRecordingFile(recording, {
         bytes,
         fileName: c.req.header("x-rakkr-file-name"),
@@ -449,6 +550,7 @@ export function registerRecordingRoutes({
       recording.cachePath = stored.cachePath;
       recording.durationSeconds = durationSeconds ?? Math.max(recording.durationSeconds, 1);
       recording.status = "cached";
+      const job = completeRecordingJob(recording.id, jobId);
 
       await recordAuditEvent(c, {
         action: "recordings.cache_file.attach.succeeded",
@@ -463,6 +565,8 @@ export function registerRecordingRoutes({
         details: {
           cachePath: stored.cachePath,
           fileName: stored.fileName,
+          jobId,
+          jobStatus: job?.status,
           mimeType: stored.mimeType,
           size: stored.size,
         },
@@ -478,6 +582,16 @@ export function registerRecordingRoutes({
       return c.json({ data: { file: stored, recording } }, 201);
     },
   );
+}
+
+function recordingJobTarget(jobId: string | undefined) {
+  if (!jobId) {
+    return { type: "recording_job" };
+  }
+
+  const job = recordingJob(jobId);
+
+  return job ? { id: job.nodeId, type: "node" } : { id: jobId, type: "recording_job" };
 }
 
 function durationFromHeader(value: string | undefined) {

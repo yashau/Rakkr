@@ -1,12 +1,15 @@
 use anyhow::Context;
 use reqwest::header::{CONTENT_TYPE, HeaderName, HeaderValue};
+use serde::Deserialize;
 use std::fs;
 use tracing::info;
 
+use crate::capture::{CapturePlan, local_capture_path, run_capture_plan};
 use crate::config::AgentConfig;
 
 const DURATION_HEADER: &str = "x-rakkr-duration-seconds";
 const FILE_NAME_HEADER: &str = "x-rakkr-file-name";
+const JOB_ID_HEADER: &str = "x-rakkr-recording-job-id";
 
 pub struct CacheFileUpload<'a> {
     pub content_type: &'a str,
@@ -14,8 +17,34 @@ pub struct CacheFileUpload<'a> {
     pub duration_seconds: Option<u64>,
     pub file_name: Option<String>,
     pub file_path: &'a std::path::Path,
+    pub job_id: Option<&'a str>,
     pub recording_id: &'a str,
     pub token: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerRecordingJob {
+    pub command: ControllerCaptureCommand,
+    pub id: String,
+    pub node_id: String,
+    pub recording_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerCaptureCommand {
+    pub capture_channels: u16,
+    pub capture_device: String,
+    pub capture_format: String,
+    pub capture_sample_rate: u32,
+    pub duration_seconds: u64,
+    pub output_file_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DataEnvelope<T> {
+    data: T,
 }
 
 pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {
@@ -44,7 +73,50 @@ pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {
         duration_seconds: config.attach_cache_duration_seconds,
         file_name,
         file_path,
+        job_id: None,
         recording_id,
+        token,
+    })
+    .await
+}
+
+pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> {
+    let token = config
+        .controller_token
+        .as_deref()
+        .context("missing --controller-token or RAKKR_CONTROLLER_TOKEN")?;
+    let Some(job) = fetch_next_recording_job(config, token).await? else {
+        info!(node_id = %config.node_id, "no queued recording job for node");
+        return Ok(());
+    };
+    let job = claim_recording_job(config, token, &job.id).await?;
+    info!(
+        job_id = %job.id,
+        node_id = %job.node_id,
+        recording_id = %job.recording_id,
+        "claimed recording job"
+    );
+    let output_path = run_capture_plan(&CapturePlan {
+        channels: job.command.capture_channels,
+        command: config.capture_command.clone(),
+        device: job.command.capture_device.clone(),
+        format: job.command.capture_format.clone(),
+        output_path: local_capture_path(&job.command.output_file_name),
+        sample_rate: job.command.capture_sample_rate,
+        seconds: job.command.duration_seconds,
+    })?;
+
+    upload_cache_file(CacheFileUpload {
+        content_type: "audio/wav",
+        controller_url: &config.controller_url,
+        duration_seconds: Some(job.command.duration_seconds),
+        file_name: output_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(str::to_string),
+        file_path: &output_path,
+        job_id: Some(&job.id),
+        recording_id: &job.recording_id,
         token,
     })
     .await
@@ -82,6 +154,13 @@ pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()>
         );
     }
 
+    if let Some(job_id) = input.job_id {
+        request = request.header(
+            HeaderName::from_static(JOB_ID_HEADER),
+            HeaderValue::from_str(job_id).context("job id header")?,
+        );
+    }
+
     let response = request
         .send()
         .await
@@ -101,6 +180,73 @@ pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()>
     );
 
     Ok(())
+}
+
+async fn fetch_next_recording_job(
+    config: &AgentConfig,
+    token: &str,
+) -> anyhow::Result<Option<ControllerRecordingJob>> {
+    let url = format!(
+        "{}/api/v1/nodes/{}/recording-jobs/next",
+        config.controller_url.trim_end_matches('/'),
+        config.node_id
+    );
+    let response = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("fetch next recording job")?;
+    let status = response.status();
+
+    if status.as_u16() == 204 {
+        return Ok(None);
+    }
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected next job request with {status}: {body}");
+    }
+
+    let envelope = response
+        .json::<DataEnvelope<ControllerRecordingJob>>()
+        .await
+        .context("decode next recording job")?;
+
+    Ok(Some(envelope.data))
+}
+
+async fn claim_recording_job(
+    config: &AgentConfig,
+    token: &str,
+    job_id: &str,
+) -> anyhow::Result<ControllerRecordingJob> {
+    let url = format!(
+        "{}/api/v1/recording-jobs/{}/claim",
+        config.controller_url.trim_end_matches('/'),
+        job_id
+    );
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("claim recording job")?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected job claim with {status}: {body}");
+    }
+
+    let envelope = response
+        .json::<DataEnvelope<ControllerRecordingJob>>()
+        .await
+        .context("decode claimed recording job")?;
+
+    Ok(envelope.data)
 }
 
 fn recording_cache_url(controller_url: &str, recording_id: &str) -> String {

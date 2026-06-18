@@ -7,6 +7,28 @@ use tracing::info;
 
 use crate::config::AgentConfig;
 
+pub struct CapturePlan {
+    pub channels: u16,
+    pub command: String,
+    pub device: String,
+    pub format: String,
+    pub output_path: PathBuf,
+    pub sample_rate: u32,
+    pub seconds: u64,
+}
+
+pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CapturePlan> {
+    Ok(CapturePlan {
+        channels: config.capture_channels,
+        command: config.capture_command.clone(),
+        device: config.capture_device.clone(),
+        format: config.capture_format.clone(),
+        output_path: capture_output_path(config)?,
+        sample_rate: config.capture_sample_rate,
+        seconds: config.capture_seconds,
+    })
+}
+
 pub fn capture_output_path(config: &AgentConfig) -> anyhow::Result<PathBuf> {
     if let Some(path) = &config.capture_output {
         return Ok(path.clone());
@@ -26,32 +48,43 @@ pub fn capture_output_path(config: &AgentConfig) -> anyhow::Result<PathBuf> {
         )))
 }
 
-pub fn capture_command_args(config: &AgentConfig, output_path: &str) -> Vec<String> {
+pub fn local_capture_path(file_name: &str) -> PathBuf {
+    PathBuf::from("data")
+        .join("recordings")
+        .join("local-captures")
+        .join(safe_file_stem(file_name))
+}
+
+pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> Vec<String> {
     vec![
         "-D".to_string(),
-        config.capture_device.clone(),
+        plan.device.clone(),
         "-f".to_string(),
-        config.capture_format.clone(),
+        plan.format.clone(),
         "-r".to_string(),
-        config.capture_sample_rate.to_string(),
+        plan.sample_rate.to_string(),
         "-c".to_string(),
-        config.capture_channels.to_string(),
+        plan.channels.to_string(),
         "-d".to_string(),
-        config.capture_seconds.to_string(),
+        plan.seconds.to_string(),
         output_path.to_string(),
     ]
 }
 
 pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
-    if config.capture_seconds == 0 {
+    run_capture_plan(&capture_plan_from_config(config)?)
+}
+
+pub fn run_capture_plan(plan: &CapturePlan) -> anyhow::Result<PathBuf> {
+    if plan.seconds == 0 {
         anyhow::bail!("capture duration must be greater than zero");
     }
 
-    if config.capture_channels == 0 {
+    if plan.channels == 0 {
         anyhow::bail!("capture channel count must be greater than zero");
     }
 
-    let output_path = capture_output_path(config)?;
+    let output_path = &plan.output_path;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -59,20 +92,20 @@ pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
     }
 
     let output_text = output_path.to_string_lossy().to_string();
-    let args = capture_command_args(config, &output_text);
-    let status = Command::new(&config.capture_command)
+    let args = capture_command_args(plan, &output_text);
+    let status = Command::new(&plan.command)
         .args(&args)
         .status()
-        .with_context(|| format!("run capture command {}", config.capture_command))?;
+        .with_context(|| format!("run capture command {}", plan.command))?;
 
     if !status.success() {
         anyhow::bail!(
             "capture command {} failed with status {status}",
-            config.capture_command
+            plan.command
         );
     }
 
-    let metadata = fs::metadata(&output_path)
+    let metadata = fs::metadata(output_path)
         .with_context(|| format!("inspect capture output {}", output_path.display()))?;
 
     if metadata.len() == 0 {
@@ -85,7 +118,7 @@ pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
         "recording capture job completed"
     );
 
-    Ok(output_path)
+    Ok(output_path.clone())
 }
 
 fn safe_file_stem(value: &str) -> String {
@@ -132,6 +165,7 @@ mod tests {
             heartbeat_seconds: 5,
             node_id: "node".to_string(),
             print_inventory: false,
+            run_next_job: false,
             room: "Room".to_string(),
             site: "Site".to_string(),
         }
@@ -140,7 +174,10 @@ mod tests {
     #[test]
     fn builds_arecord_capture_args() {
         assert_eq!(
-            capture_command_args(&config(), "/tmp/rec.wav"),
+            capture_command_args(
+                &capture_plan_from_config(&config()).unwrap(),
+                "/tmp/rec.wav"
+            ),
             vec![
                 "-D",
                 "hw:2,0",
