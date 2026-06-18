@@ -21,8 +21,7 @@ The project source of truth lives in [docs/RAKKR_SOURCE_OF_TRUTH.md](docs/RAKKR_
 
 ```powershell
 mise trust
-mise install
-mise run install
+mise run setup
 mise run services:up
 mise run dev
 ```
@@ -62,6 +61,7 @@ docs/
 ## Development Commands
 
 ```powershell
+mise run setup        # toolchains + workspace dependencies
 mise run dev          # API + web UI
 mise run services:up  # local Postgres
 mise run services:down

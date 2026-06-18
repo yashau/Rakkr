@@ -6,6 +6,10 @@ rust = "1.95.0"
 [env]
 _.file = ".env"
 
+[tasks.setup]
+description = "Install toolchains and workspace dependencies"
+run = "mise install && mise run install"
+
 [tasks.install]
 description = "Install workspace dependencies"
 run = "pnpm install"
