@@ -239,13 +239,18 @@ export const watchdogPolicySchema = z.object({
 });
 
 export const scheduleSummarySchema = z.object({
+  enabled: z.boolean(),
+  folderTemplate: z.string().min(1),
   id: z.string().min(1),
   name: z.string().min(1),
   nextRunAt: isoDateTimeSchema.optional(),
   nodeId: z.string().min(1),
+  recordingProfileId: z.string().min(1),
   room: z.string().min(1),
   tags: z.array(z.string().min(1)),
   timezone: z.string().min(1),
+  titleTemplate: z.string().min(1),
+  watchdogPolicyId: z.string().min(1),
 });
 
 export const recordingSummarySchema = z.object({
@@ -258,10 +263,12 @@ export const recordingSummarySchema = z.object({
   name: z.string().min(1),
   nodeId: z.string().min(1).optional(),
   recordedAt: isoDateTimeSchema,
+  recordingProfileId: z.string().min(1).optional(),
   scheduleId: z.string().min(1).optional(),
   source: recordingSourceSchema,
   status: recordingStatusSchema,
   tags: z.array(z.string().min(1)),
+  watchdogPolicyId: z.string().min(1).optional(),
 });
 export const recordingJobSchema = z.object({
   claimedBy: z.string().min(1).optional(),

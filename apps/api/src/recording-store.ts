@@ -229,9 +229,6 @@ function recordingToRow(recording: RecordingSummary): RecordingInsert {
     folder: recording.folder,
     healthStatus: recording.healthStatus,
     id: recording.id,
-    metadata: {
-      cached: recording.cached,
-    },
     name: recording.name,
     nodeId: recording.nodeId ?? null,
     recordedAt: new Date(recording.recordedAt),
@@ -239,10 +236,13 @@ function recordingToRow(recording: RecordingSummary): RecordingInsert {
     source: recording.source,
     status: recording.status,
     tags: recording.tags,
+    metadata: recordingMetadata(recording),
   };
 }
 
 function recordingFromRow(row: RecordingRow): RecordingSummary {
+  const metadata = record(row.metadata);
+
   return {
     cached: cachedFromRow(row),
     cachePath: row.cachePath ?? undefined,
@@ -253,10 +253,20 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     name: row.name,
     nodeId: row.nodeId ?? undefined,
     recordedAt: row.recordedAt.toISOString(),
+    recordingProfileId: stringOrUndefined(metadata?.recordingProfileId),
     scheduleId: row.scheduleId ?? undefined,
     source: row.source,
     status: row.status,
     tags: stringArray(row.tags),
+    watchdogPolicyId: stringOrUndefined(metadata?.watchdogPolicyId),
+  };
+}
+
+function recordingMetadata(recording: RecordingSummary) {
+  return {
+    cached: recording.cached,
+    recordingProfileId: recording.recordingProfileId,
+    watchdogPolicyId: recording.watchdogPolicyId,
   };
 }
 
@@ -283,6 +293,10 @@ function stringArray(value: unknown) {
     : [];
 }
 
+function stringOrUndefined(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 function isRecordingStore(value: unknown): value is { recordings: unknown[] } {
   return isRecord(value) && Array.isArray(value.recordings);
 }
@@ -299,6 +313,8 @@ function isRecordingSummary(value: unknown): value is RecordingSummary {
     typeof value.recordedAt === "string" &&
     typeof value.durationSeconds === "number" &&
     typeof value.cached === "boolean" &&
+    optionalString(value.recordingProfileId) &&
+    optionalString(value.watchdogPolicyId) &&
     healthStatus(value.healthStatus as string) === value.healthStatus &&
     (value.source === "ad_hoc" || value.source === "schedule") &&
     (value.status === "queued" ||
@@ -309,6 +325,10 @@ function isRecordingSummary(value: unknown): value is RecordingSummary {
       value.status === "uploaded") &&
     stringArray(value.tags).length === value.tags.length
   );
+}
+
+function optionalString(value: unknown) {
+  return value === undefined || typeof value === "string";
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

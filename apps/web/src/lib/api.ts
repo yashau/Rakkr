@@ -235,6 +235,13 @@ export const api = {
     fetchJson<{ data: RecordingSummary[] }>(withQuery("/api/v1/recordings", filters)),
   recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),
   recordingStream: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/stream`),
+  runScheduleNow: (scheduleId: string) =>
+    fetchJson<{ data: RecordingSummary; job: RecordingJob }>(
+      `/api/v1/schedules/${scheduleId}/run-now`,
+      {
+        method: "POST",
+      },
+    ),
   schedules: () => fetchJson<{ data: ScheduleSummary[] }>("/api/v1/schedules"),
   startPlayback: (recordingId: string) =>
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {

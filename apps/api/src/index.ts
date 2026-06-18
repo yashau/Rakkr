@@ -31,6 +31,7 @@ import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
+import { registerScheduleRoutes } from "./schedule-routes.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -888,9 +889,17 @@ registerNodeRoutes({
   scopedNodes,
 });
 
-app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
-  c.json({ data: await scopedSchedules(currentUser(c)) }),
-);
+registerScheduleRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  nodeStore,
+  recordAuditEvent,
+  recordingStore,
+  requirePermission,
+  schedules,
+  scopedSchedules,
+});
 
 registerRecordingRoutes({
   app,

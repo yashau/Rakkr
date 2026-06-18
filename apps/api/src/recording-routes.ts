@@ -640,6 +640,7 @@ export function registerRecordingRoutes({
         name: `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_Council Chamber Rack`,
         nodeId: "node_x32_test",
         recordedAt: now.toISOString(),
+        recordingProfileId: defaultVoiceRecordingProfile.id,
         source: "ad_hoc",
         status: "recording",
         tags: ["ad-hoc", "voice"],

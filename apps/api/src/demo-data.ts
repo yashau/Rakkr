@@ -1,4 +1,11 @@
-import type { MeterFrame, RecorderNode, RecordingSummary, ScheduleSummary } from "@rakkr/shared";
+import {
+  defaultScheduledVoiceWatchdogPolicy,
+  defaultVoiceRecordingProfile,
+  type MeterFrame,
+  type RecorderNode,
+  type RecordingSummary,
+  type ScheduleSummary,
+} from "@rakkr/shared";
 
 export const nodes: RecorderNode[] = [
   {
@@ -34,13 +41,18 @@ export const nodes: RecorderNode[] = [
 
 export const schedules: ScheduleSummary[] = [
   {
+    enabled: true,
+    folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
     id: "sched_council_weekly",
     name: "Council Meeting",
     nextRunAt: "2026-06-22T05:00:00.000Z",
     nodeId: "node_x32_test",
+    recordingProfileId: defaultVoiceRecordingProfile.id,
     room: "Council Chamber",
     tags: ["council", "scheduled", "voice"],
     timezone: "Indian/Maldives",
+    titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
+    watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];
 
@@ -54,10 +66,12 @@ export const recordings: RecordingSummary[] = [
     name: "2026-06-15_0900_Council Meeting_Council Chamber Rack",
     nodeId: "node_x32_test",
     recordedAt: "2026-06-15T04:00:00.000Z",
+    recordingProfileId: defaultVoiceRecordingProfile.id,
     scheduleId: "sched_council_weekly",
     source: "schedule",
     status: "completed",
     tags: ["council", "voice"],
+    watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];
 
