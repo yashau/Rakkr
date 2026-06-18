@@ -9,19 +9,10 @@ import {
   RotateCcw,
   Save,
   SkipForward,
+  Sparkles,
   Trash2,
 } from "lucide-react";
-import {
-  defaultScheduledVoiceWatchdogPolicy,
-  defaultVoiceRecordingProfile,
-  type AuditEvent,
-  type RecorderNode,
-  type ScheduleDayOfWeek,
-  type ScheduleInput,
-  type ScheduleOccurrencePreview,
-  type ScheduleRecurrence,
-  type ScheduleSummary,
-} from "@rakkr/shared";
+import { type ScheduleDayOfWeek, type ScheduleInput, type ScheduleSummary } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,41 +22,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
-
-interface ScheduleDraft {
-  dayOfMonth: number;
-  daysOfWeek: ScheduleDayOfWeek[];
-  enabled: boolean;
-  endTime: string;
-  exceptions: NonNullable<ScheduleRecurrence["exceptions"]>;
-  folderTemplate: string;
-  interval: number;
-  name: string;
-  nextRunAt: string;
-  nodeId: string;
-  recurrenceMode: ScheduleRecurrence["mode"];
-  recurrenceStartAt: string;
-  recordingProfileId: string;
-  room: string;
-  startTime: string;
-  startEarlyMinutes: number;
-  stopLateMinutes: number;
-  tags: string;
-  timezone: string;
-  titleTemplate: string;
-  watchdogPolicyId: string;
-}
-
-const fallbackTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-const dayOptions: Array<{ id: ScheduleDayOfWeek; label: string }> = [
-  { id: "monday", label: "Mon" },
-  { id: "tuesday", label: "Tue" },
-  { id: "wednesday", label: "Wed" },
-  { id: "thursday", label: "Thu" },
-  { id: "friday", label: "Fri" },
-  { id: "saturday", label: "Sat" },
-  { id: "sunday", label: "Sun" },
-];
+import {
+  addPauseRangeToDraft,
+  applyNaturalLanguageSchedule,
+  bufferSummary,
+  dayOptions,
+  defaultDraft,
+  draftToInput,
+  exceptionSummary,
+  occurrenceWindow,
+  recurrenceSummary,
+  removeExceptionFromDraft,
+  scheduleTimelineEvents,
+  scheduleToDraft,
+  timelineAction,
+  type ScheduleDraft,
+} from "@/lib/schedule-draft";
 const selectClass =
   "h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
@@ -73,6 +45,8 @@ export function SchedulesPage() {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string>();
   const [draft, setDraft] = useState<ScheduleDraft>(() => defaultDraft());
+  const [quickRecurrence, setQuickRecurrence] = useState("");
+  const [quickRecurrenceError, setQuickRecurrenceError] = useState(false);
   const schedulesQuery = useQuery({
     queryFn: api.schedules,
     queryKey: ["schedules"],
@@ -205,6 +179,17 @@ export function SchedulesPage() {
     });
   }
 
+  function applyQuickRecurrence() {
+    const nextDraft = applyNaturalLanguageSchedule(draft, quickRecurrence);
+
+    setQuickRecurrenceError(!nextDraft);
+
+    if (nextDraft) {
+      setDraft(nextDraft);
+      setQuickRecurrence("");
+    }
+  }
+
   return (
     <div className="grid gap-4">
       <Card className="rounded-lg p-4 shadow-sm">
@@ -302,6 +287,26 @@ export function SchedulesPage() {
                 <option value="monthly">Monthly</option>
                 <option value="always_on">Always on</option>
               </select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-quick-recurrence">Quick Recurrence</Label>
+              <div className="flex gap-2">
+                <Input
+                  aria-invalid={quickRecurrenceError}
+                  id="schedule-quick-recurrence"
+                  onChange={(event) => {
+                    setQuickRecurrence(event.target.value);
+                    setQuickRecurrenceError(false);
+                  }}
+                  placeholder="weekdays 9am-10am"
+                  value={quickRecurrence}
+                />
+                <Button onClick={applyQuickRecurrence} type="button" variant="outline">
+                  <Sparkles className="size-4" />
+                  Apply
+                </Button>
+              </div>
             </div>
 
             {draft.recurrenceMode === "manual" ? (
@@ -439,6 +444,50 @@ export function SchedulesPage() {
               />
               <Label htmlFor="schedule-enabled">Enabled</Label>
             </div>
+          </div>
+
+          <div className="grid gap-3">
+            <Label>Paused Date Ranges</Label>
+            <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
+              <Input
+                aria-label="Pause start date"
+                onChange={(event) => updateDraft("pauseStartDate", event.target.value)}
+                type="date"
+                value={draft.pauseStartDate}
+              />
+              <Input
+                aria-label="Pause end date"
+                onChange={(event) => updateDraft("pauseEndDate", event.target.value)}
+                type="date"
+                value={draft.pauseEndDate}
+              />
+              <Input
+                aria-label="Pause reason"
+                onChange={(event) => updateDraft("pauseReason", event.target.value)}
+                value={draft.pauseReason}
+              />
+              <Button onClick={() => setDraft(addPauseRangeToDraft(draft))} type="button">
+                <PlusCircle className="size-4" />
+                Add Pause
+              </Button>
+            </div>
+            {draft.exceptions.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {draft.exceptions.map((exception, index) => (
+                  <Button
+                    key={`${exception.action}-${exception.action === "skip" ? exception.date : `${exception.startDate}-${exception.endDate}`}`}
+                    onClick={() => setDraft(removeExceptionFromDraft(draft, index))}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Trash2 className="size-3" />
+                    {exception.action === "skip"
+                      ? `Skip ${exception.date}`
+                      : `Pause ${exception.startDate}-${exception.endDate}`}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -653,283 +702,4 @@ export function SchedulesPage() {
       ) : null}
     </div>
   );
-}
-
-function defaultDraft(node?: RecorderNode): ScheduleDraft {
-  return {
-    dayOfMonth: 1,
-    daysOfWeek: ["monday"],
-    enabled: true,
-    endTime: "10:00",
-    exceptions: [],
-    folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
-    interval: 1,
-    name: "",
-    nextRunAt: "",
-    nodeId: node?.id ?? "",
-    recurrenceMode: "weekly",
-    recurrenceStartAt: "",
-    recordingProfileId: defaultVoiceRecordingProfile.id,
-    room: node?.location.room ?? "",
-    startTime: "09:00",
-    startEarlyMinutes: 0,
-    stopLateMinutes: 0,
-    tags: "voice, scheduled",
-    timezone: fallbackTimezone,
-    titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
-    watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
-  };
-}
-
-function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
-  const draft: ScheduleDraft = {
-    ...defaultDraft(),
-    enabled: schedule.enabled,
-    folderTemplate: schedule.folderTemplate,
-    name: schedule.name,
-    nextRunAt: localDateTimeInput(schedule.nextRunAt),
-    nodeId: schedule.nodeId,
-    recordingProfileId: schedule.recordingProfileId,
-    room: schedule.room,
-    tags: schedule.tags.join(", "),
-    timezone: schedule.timezone,
-    titleTemplate: schedule.titleTemplate,
-    watchdogPolicyId: schedule.watchdogPolicyId,
-  };
-
-  return applyRecurrenceToDraft(draft, schedule.recurrence);
-}
-
-function draftToInput(draft: ScheduleDraft): ScheduleInput {
-  const recurrence = recurrenceFromDraft(draft);
-
-  return {
-    enabled: draft.enabled,
-    folderTemplate: draft.folderTemplate,
-    name: draft.name,
-    nextRunAt: nextRunAtFromDraft(draft, recurrence),
-    nodeId: draft.nodeId,
-    recurrence,
-    recordingProfileId: draft.recordingProfileId,
-    room: draft.room,
-    tags: uniqueTags(draft.tags),
-    timezone: draft.timezone,
-    titleTemplate: draft.titleTemplate,
-    watchdogPolicyId: draft.watchdogPolicyId,
-  };
-}
-
-function recurrenceFromDraft(draft: ScheduleDraft): ScheduleRecurrence {
-  const interval = Math.max(1, Math.floor(draft.interval || 1));
-  const options = recurrenceOptionsFromDraft(draft);
-
-  if (draft.recurrenceMode === "manual") {
-    return { mode: "manual", ...options };
-  }
-
-  if (draft.recurrenceMode === "once") {
-    return {
-      mode: "once",
-      startsAt: isoFromLocalDateTime(draft.recurrenceStartAt) ?? new Date().toISOString(),
-      ...options,
-    };
-  }
-
-  if (draft.recurrenceMode === "daily") {
-    return {
-      endTime: draft.endTime,
-      interval,
-      mode: "daily",
-      startTime: draft.startTime,
-      ...options,
-    };
-  }
-
-  if (draft.recurrenceMode === "weekly") {
-    return {
-      daysOfWeek: draft.daysOfWeek,
-      endTime: draft.endTime,
-      interval,
-      mode: "weekly",
-      startTime: draft.startTime,
-      ...options,
-    };
-  }
-
-  if (draft.recurrenceMode === "monthly") {
-    return {
-      dayOfMonth: Math.min(31, Math.max(1, Math.floor(draft.dayOfMonth || 1))),
-      endTime: draft.endTime,
-      interval,
-      mode: "monthly",
-      startTime: draft.startTime,
-      ...options,
-    };
-  }
-
-  return { mode: "always_on", ...options };
-}
-
-function recurrenceOptionsFromDraft(draft: ScheduleDraft) {
-  const startEarlySeconds = positiveMinutes(draft.startEarlyMinutes) * 60;
-  const stopLateSeconds = positiveMinutes(draft.stopLateMinutes) * 60;
-
-  return {
-    ...(draft.exceptions.length > 0 ? { exceptions: draft.exceptions } : {}),
-    ...(startEarlySeconds > 0 ? { startEarlySeconds } : {}),
-    ...(stopLateSeconds > 0 ? { stopLateSeconds } : {}),
-  };
-}
-
-function nextRunAtFromDraft(draft: ScheduleDraft, recurrence: ScheduleRecurrence) {
-  if (recurrence.mode === "once") {
-    return recurrence.startsAt;
-  }
-
-  if (recurrence.mode === "manual") {
-    return isoFromLocalDateTime(draft.nextRunAt);
-  }
-
-  return undefined;
-}
-
-function applyRecurrenceToDraft(draft: ScheduleDraft, recurrence: ScheduleRecurrence) {
-  const nextDraft = { ...draft, recurrenceMode: recurrence.mode };
-
-  nextDraft.exceptions = recurrence.exceptions ?? [];
-  nextDraft.startEarlyMinutes = secondsToMinutes(recurrence.startEarlySeconds);
-  nextDraft.stopLateMinutes = secondsToMinutes(recurrence.stopLateSeconds);
-
-  if (recurrence.mode === "once") {
-    return {
-      ...nextDraft,
-      recurrenceStartAt: localDateTimeInput(recurrence.startsAt),
-    };
-  }
-
-  if (
-    recurrence.mode === "daily" ||
-    recurrence.mode === "weekly" ||
-    recurrence.mode === "monthly"
-  ) {
-    nextDraft.endTime = recurrence.endTime;
-    nextDraft.interval = recurrence.interval;
-    nextDraft.startTime = recurrence.startTime;
-  }
-
-  if (recurrence.mode === "weekly") {
-    nextDraft.daysOfWeek = recurrence.daysOfWeek;
-  }
-
-  if (recurrence.mode === "monthly") {
-    nextDraft.dayOfMonth = recurrence.dayOfMonth;
-  }
-
-  return nextDraft;
-}
-
-function isoFromLocalDateTime(value: string) {
-  return value ? new Date(value).toISOString() : undefined;
-}
-
-function localDateTimeInput(value: string | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-
-  return local.toISOString().slice(0, 16);
-}
-
-function uniqueTags(value: string) {
-  return [
-    ...new Set(
-      value
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-    ),
-  ];
-}
-
-function positiveMinutes(value: number) {
-  return Math.max(0, Math.floor(value || 0));
-}
-
-function secondsToMinutes(value: number | undefined) {
-  return value ? Math.floor(value / 60) : 0;
-}
-
-function recurrenceSummary(recurrence: ScheduleRecurrence) {
-  if (recurrence.mode === "manual") {
-    return "Manual next run";
-  }
-
-  if (recurrence.mode === "once") {
-    return `One-off at ${formatDateTime(recurrence.startsAt)}`;
-  }
-
-  if (recurrence.mode === "daily") {
-    return `Every ${intervalLabel(recurrence.interval, "day")} ${recurrence.startTime}-${recurrence.endTime}`;
-  }
-
-  if (recurrence.mode === "weekly") {
-    return `Every ${intervalLabel(recurrence.interval, "week")} on ${dayList(recurrence.daysOfWeek)} ${recurrence.startTime}-${recurrence.endTime}`;
-  }
-
-  if (recurrence.mode === "monthly") {
-    return `Every ${intervalLabel(recurrence.interval, "month")} on day ${recurrence.dayOfMonth} ${recurrence.startTime}-${recurrence.endTime}`;
-  }
-
-  return "Always on";
-}
-
-function bufferSummary(recurrence: ScheduleRecurrence) {
-  const startEarly = secondsToMinutes(recurrence.startEarlySeconds);
-  const stopLate = secondsToMinutes(recurrence.stopLateSeconds);
-
-  if (startEarly === 0 && stopLate === 0) {
-    return "None";
-  }
-
-  return `Start ${startEarly}m early / stop ${stopLate}m late`;
-}
-
-function exceptionSummary(recurrence: ScheduleRecurrence) {
-  const exceptions = recurrence.exceptions ?? [];
-
-  return exceptions.length > 0 ? exceptions.map((exception) => exception.date).join(", ") : "None";
-}
-
-function occurrenceWindow(occurrence: ScheduleOccurrencePreview) {
-  const scheduledStart = occurrence.scheduledStartAt
-    ? `scheduled ${formatDateTime(occurrence.scheduledStartAt)}`
-    : "manual start";
-  const recordingEnd = occurrence.recordingEndAt
-    ? `, records until ${formatDateTime(occurrence.recordingEndAt)}`
-    : "";
-
-  return `${scheduledStart}${recordingEnd}`;
-}
-
-function scheduleTimelineEvents(scheduleId: string, events: AuditEvent[]) {
-  return events
-    .filter(
-      (event) => event.target.id === scheduleId || event.correlationIds?.scheduleId === scheduleId,
-    )
-    .slice(0, 4);
-}
-
-function timelineAction(event: AuditEvent) {
-  return event.action.replace(/^schedules\./, "").replaceAll("_", " ");
-}
-
-function intervalLabel(interval: number, unit: string) {
-  return interval === 1 ? unit : `${interval} ${unit}s`;
-}
-
-function dayList(days: ScheduleDayOfWeek[]) {
-  return days.map((day) => dayOptions.find((option) => option.id === day)?.label ?? day).join(", ");
 }

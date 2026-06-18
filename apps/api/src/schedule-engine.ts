@@ -133,7 +133,7 @@ export function scheduleIsDue(schedule: ScheduleSummary, now = new Date()) {
 export function scheduleOccurrenceIsSkipped(schedule: ScheduleSummary) {
   const occurrenceDate = scheduleOccurrenceDate(schedule);
 
-  return occurrenceDate ? skippedDates(schedule.recurrence).has(occurrenceDate) : false;
+  return occurrenceDate ? isSkippedDateIso(schedule.recurrence, occurrenceDate) : false;
 }
 
 export function skipNextScheduleOccurrence(schedule: ScheduleSummary) {
@@ -424,7 +424,7 @@ function recurrenceWithSkip(recurrence: ScheduleRecurrence, date: string): Sched
       (exception) => !(exception.action === "skip" && exception.date === date),
     ),
     { action: "skip" as const, date },
-  ].sort((left, right) => left.date.localeCompare(right.date));
+  ].sort((left, right) => exceptionStartDate(left).localeCompare(exceptionStartDate(right)));
 
   return {
     ...recurrence,
@@ -436,16 +436,22 @@ function exceptionList(recurrence: ScheduleRecurrence) {
   return recurrence.exceptions ?? [];
 }
 
-function skippedDates(recurrence: ScheduleRecurrence) {
-  return new Set(
-    exceptionList(recurrence)
-      .filter((exception) => exception.action === "skip")
-      .map((exception) => exception.date),
-  );
+function exceptionStartDate(exception: ReturnType<typeof exceptionList>[number]) {
+  return exception.action === "skip" ? exception.date : exception.startDate;
 }
 
 function isSkippedDate(recurrence: ScheduleRecurrence, date: LocalDate) {
-  return skippedDates(recurrence).has(localDateIso(date));
+  return isSkippedDateIso(recurrence, localDateIso(date));
+}
+
+function isSkippedDateIso(recurrence: ScheduleRecurrence, date: string) {
+  return exceptionList(recurrence).some((exception) => {
+    if (exception.action === "skip") {
+      return exception.date === date;
+    }
+
+    return exception.startDate <= date && date <= exception.endDate;
+  });
 }
 
 function runAtForCandidate(candidate: Date, recurrence: ScheduleRecurrence) {

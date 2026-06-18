@@ -235,11 +235,21 @@ export const scheduleDayOfWeekSchema = z.enum([
   "saturday",
   "sunday",
 ]);
-export const scheduleExceptionSchema = z.object({
-  action: z.enum(["skip"]),
-  date: isoDateSchema,
-  reason: z.string().trim().max(240).optional(),
-});
+export const scheduleExceptionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("skip"),
+    date: isoDateSchema,
+    reason: z.string().trim().max(240).optional(),
+  }),
+  z
+    .object({
+      action: z.literal("pause"),
+      endDate: isoDateSchema,
+      reason: z.string().trim().max(240).optional(),
+      startDate: isoDateSchema,
+    })
+    .refine((value) => value.startDate <= value.endDate, "Pause start must be before end"),
+]);
 const scheduleRecurrenceOptions = {
   exceptions: z.array(scheduleExceptionSchema).max(366).optional(),
   startEarlySeconds: z.number().int().nonnegative().max(86_400).optional(),
