@@ -16,6 +16,7 @@ export type RecordAuditEvent = (
   input: {
     action: string;
     after?: Record<string, unknown>;
+    actor?: AuditEvent["actor"];
     before?: Record<string, unknown>;
     correlationIds?: Record<string, string>;
     details?: Record<string, unknown>;

@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
 
+import { registerAgentRoutes } from "./agent-routes.js";
 import {
   accessGroupIdSchema,
   accessPolicyInputSchema,
@@ -16,7 +17,6 @@ import {
   resourceGrantSchema,
   roleSchema,
   type AuditEvent,
-  type AuditOutcome,
   type CurrentUser,
   type Permission,
   type RecorderNode,
@@ -27,6 +27,7 @@ import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
+import type { RecordAuditEvent } from "./http-types.js";
 import {
   nodes as seedNodes,
   prometheusMetrics,
@@ -106,34 +107,22 @@ function requestContext(c: Context<AppBindings>, sessionId?: string) {
   };
 }
 
-async function recordAuditEvent(
-  c: Context<AppBindings>,
-  input: {
-    action: string;
-    after?: Record<string, unknown>;
-    before?: Record<string, unknown>;
-    correlationIds?: Record<string, string>;
-    details?: Record<string, unknown>;
-    outcome: AuditOutcome;
-    permission?: Permission;
-    reason?: string;
-    target: AuditTarget;
-    auth?: AuthResult;
-  },
-) {
-  const actor = input.auth?.user
-    ? {
-        id: input.auth.user.id,
-        name: input.auth.user.name,
-        roles: input.auth.user.roles,
-        type: "user" as const,
-      }
-    : {
-        id: "anonymous",
-        name: "Anonymous",
-        roles: [],
-        type: "user" as const,
-      };
+const recordAuditEvent: RecordAuditEvent = async (c, input) => {
+  const actor =
+    input.actor ??
+    (input.auth?.user
+      ? {
+          id: input.auth.user.id,
+          name: input.auth.user.name,
+          roles: input.auth.user.roles,
+          type: "user" as const,
+        }
+      : {
+          id: "anonymous",
+          name: "Anonymous",
+          roles: [],
+          type: "user" as const,
+        });
   const event: AuditEvent = {
     action: input.action,
     actor,
@@ -157,7 +146,7 @@ async function recordAuditEvent(
   await auditStore.append(event);
 
   return event;
-}
+};
 
 function requirePermission(
   permission: Permission,
@@ -917,6 +906,13 @@ registerScheduleRoutes({
   requirePermission,
   scheduleStore,
   scopedSchedules,
+});
+
+registerAgentRoutes({
+  app,
+  nodeStore,
+  recordAuditEvent,
+  recordingStore,
 });
 
 registerRecordingRoutes({

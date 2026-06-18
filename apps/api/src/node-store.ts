@@ -59,6 +59,12 @@ export interface NodeEnrollmentResult {
   node: RecorderNode;
 }
 
+export interface NodeCredentialAuth {
+  credentialId: string;
+  nodeId: string;
+  tokenPrefix: string;
+}
+
 export class NodeStoreError extends Error {
   constructor(
     message: string,
@@ -69,6 +75,7 @@ export class NodeStoreError extends Error {
 }
 
 export interface NodeStore {
+  authenticateCredential(token: string): Promise<NodeCredentialAuth | undefined>;
   enroll(input: NodeEnrollmentInput, actorUserId?: string): Promise<NodeEnrollmentResult>;
   find(nodeId: string): Promise<RecorderNode | undefined>;
   list(): Promise<RecorderNode[]>;
@@ -85,6 +92,10 @@ export function createNodeStore(seedNodes: RecorderNode[] = []): NodeStore {
 
 class SeedOnlyNodeStore implements NodeStore {
   constructor(private readonly seedNodes: RecorderNode[]) {}
+
+  async authenticateCredential() {
+    return undefined;
+  }
 
   async enroll(): Promise<NodeEnrollmentResult> {
     throw new NodeStoreError("Node enrollment requires Postgres", "database_unavailable");
@@ -141,6 +152,37 @@ class PostgresNodeStore implements NodeStore {
       this.markUnavailable(error);
       throw error;
     }
+  }
+
+  async authenticateCredential(token: string) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      throw new NodeStoreError("Node credential storage is unavailable", "database_unavailable");
+    }
+
+    const [credential] = await db
+      .select({
+        credentialId: nodeCredentials.id,
+        nodeId: nodeCredentials.nodeId,
+        tokenPrefix: nodeCredentials.tokenPrefix,
+      })
+      .from(nodeCredentials)
+      .where(
+        and(eq(nodeCredentials.tokenHash, hashToken(token)), isNull(nodeCredentials.revokedAt)),
+      )
+      .limit(1);
+
+    if (!credential) {
+      return undefined;
+    }
+
+    await db
+      .update(nodeCredentials)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(nodeCredentials.id, credential.credentialId));
+
+    return credential;
   }
 
   async find(nodeId: string) {
