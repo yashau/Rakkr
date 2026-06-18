@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,6 +10,13 @@ const cacheRoot = await mkdtemp(path.join(tmpdir(), "rakkr-cache-"));
 process.env.RAKKR_RECORDING_CACHE_DIR = cacheRoot;
 
 const { storeRecordingFile } = await import("../src/recording-cache.js");
+const fakeAudioToolPath = path.join(cacheRoot, "fake-audio-tool.mjs");
+
+await writeFile(fakeAudioToolPath, fakeAudioToolScript());
+process.env.RAKKR_FFMPEG_ARGS_PREFIX = JSON.stringify([fakeAudioToolPath, "ffmpeg"]);
+process.env.RAKKR_FFMPEG_COMMAND = process.execPath;
+process.env.RAKKR_FFPROBE_ARGS_PREFIX = JSON.stringify([fakeAudioToolPath, "ffprobe"]);
+process.env.RAKKR_FFPROBE_COMMAND = process.execPath;
 
 test.after(async () => {
   await rm(cacheRoot, { force: true, recursive: true });
@@ -29,6 +36,20 @@ test("stores checksum and wav waveform preview for cached recordings", async () 
   assert.equal(stored.waveformPreview?.sampleCount, 4);
   assert.equal(stored.waveformPreview?.sampleRate, 48_000);
   assert.deepEqual(stored.waveformPreview?.peaks, [0, 0.5, 1, 0.25]);
+});
+
+test("extracts duration and decoded waveform preview for encoded recordings", async () => {
+  const stored = await storeRecordingFile(recording(), {
+    bytes: Buffer.from("fake mp3 payload"),
+    fileName: "meeting.mp3",
+    mimeType: "audio/mpeg",
+  });
+
+  assert.equal(stored.cachePath, "scheduled/rec_cache_test.mp3");
+  assert.equal(stored.durationSeconds, 2);
+  assert.equal(stored.waveformPreview?.source, "ffmpeg_decoded_peak");
+  assert.equal(stored.waveformPreview?.sampleRate, 48_000);
+  assert.deepEqual(stored.waveformPreview?.peaks, [0, 1]);
 });
 
 function recording(): RecordingSummary {
@@ -67,4 +88,24 @@ function wavFile(samples: number[]) {
   samples.forEach((sample, index) => buffer.writeInt16LE(sample, 44 + index * 2));
 
   return buffer;
+}
+
+function fakeAudioToolScript() {
+  const wavBase64 = wavFile([0, -32_768]).toString("base64");
+
+  return `
+const mode = process.argv[2];
+
+if (mode === "ffprobe") {
+  process.stdout.write(JSON.stringify({ format: { duration: "2.0" } }));
+  process.exit(0);
+}
+
+if (mode === "ffmpeg") {
+  process.stdout.write(Buffer.from("${wavBase64}", "base64"));
+  process.exit(0);
+}
+
+process.exit(1);
+`;
 }

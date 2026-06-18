@@ -432,7 +432,7 @@ Examples:
 1. ✅ Add local VAD and noise/speech scoring.
 2. ✅ Harden recording file-growth and terminal failure transitions.
 3. ✅ Add profile-driven encoder output for MP3 VBR/WAV/FLAC.
-4. 🚧 Add waveform/metadata extraction for encoded cache files.
+4. ✅ Add waveform/metadata extraction for encoded cache files.
 5. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions

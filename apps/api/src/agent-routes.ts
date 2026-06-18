@@ -458,7 +458,8 @@ export function registerAgentRoutes({
     recording.cached = true;
     recording.cachePath = stored.cachePath;
     recording.checksum = stored.checksum;
-    recording.durationSeconds = durationSeconds ?? Math.max(recording.durationSeconds, 1);
+    recording.durationSeconds =
+      durationSeconds ?? stored.durationSeconds ?? Math.max(recording.durationSeconds, 1);
     recording.status = "cached";
     recording.waveformPreview = stored.waveformPreview;
     await recordingStore.save(recording);

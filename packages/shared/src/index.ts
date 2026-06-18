@@ -517,7 +517,7 @@ export const recordingSummarySchema = z.object({
       peaks: z.array(z.number().min(0).max(1)).min(1).max(256),
       sampleCount: z.number().int().positive(),
       sampleRate: z.number().int().positive(),
-      source: z.literal("wav_s16le_peak"),
+      source: z.enum(["ffmpeg_decoded_peak", "wav_s16le_peak"]),
     })
     .optional(),
 });

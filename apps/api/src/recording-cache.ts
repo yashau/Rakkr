@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RecordingSummary, RecordingWaveformPreview } from "@rakkr/shared";
@@ -13,6 +14,7 @@ export interface CachedRecordingFile {
 export interface StoredRecordingFile {
   cachePath: string;
   checksum: string;
+  durationSeconds?: number;
   fileName: string;
   mimeType: string;
   size: number;
@@ -26,6 +28,11 @@ export interface StoreRecordingFileInput {
 }
 
 const cacheRoot = path.resolve(process.env.RAKKR_RECORDING_CACHE_DIR ?? "data/recordings");
+const decodedPreviewMaxBytes = positiveInteger(
+  process.env.RAKKR_AUDIO_PREVIEW_MAX_BYTES,
+  64 * 1024 * 1024,
+);
+const audioToolTimeoutMs = positiveInteger(process.env.RAKKR_AUDIO_TOOL_TIMEOUT_MS, 15_000);
 
 export function recordingHasCachedFile(recording: RecordingSummary) {
   return (
@@ -55,14 +62,16 @@ export async function storeRecordingFile(
 
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, input.bytes);
+  const analysis = await audioAnalysisFor(filePath, input);
 
   return {
     cachePath,
     checksum: sha256(input.bytes),
+    durationSeconds: analysis.durationSeconds,
     fileName: recordingFileName({ ...recording, cachePath }),
     mimeType: mimeTypeFor(filePath),
     size: input.bytes.byteLength,
-    waveformPreview: waveformPreviewFor(input.bytes, input.fileName, input.mimeType),
+    waveformPreview: analysis.waveformPreview,
   };
 }
 
@@ -148,19 +157,33 @@ function sha256(bytes: Buffer) {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
-function waveformPreviewFor(
-  bytes: Buffer,
-  fileName?: string | null,
-  mimeType?: string | null,
-): RecordingWaveformPreview | undefined {
-  if (extensionFor(fileName, mimeType) !== ".wav") {
-    return undefined;
+async function audioAnalysisFor(filePath: string, input: StoreRecordingFileInput) {
+  const extension = extensionFor(input.fileName, input.mimeType);
+  const directPreview =
+    extension === ".wav" ? wavS16lePeakPreview(input.bytes, "wav_s16le_peak") : undefined;
+
+  if (directPreview) {
+    return {
+      durationSeconds: durationSecondsFor(directPreview),
+      waveformPreview: directPreview,
+    };
   }
 
-  return wavS16lePeakPreview(bytes);
+  const [durationSeconds, decodedPreview] = await Promise.all([
+    probeAudioDurationSeconds(filePath),
+    decodedWaveformPreview(filePath),
+  ]);
+
+  return {
+    durationSeconds,
+    waveformPreview: decodedPreview,
+  };
 }
 
-function wavS16lePeakPreview(bytes: Buffer): RecordingWaveformPreview | undefined {
+function wavS16lePeakPreview(
+  bytes: Buffer,
+  source: RecordingWaveformPreview["source"],
+): RecordingWaveformPreview | undefined {
   const wav = wavData(bytes);
 
   if (!wav) {
@@ -180,8 +203,126 @@ function wavS16lePeakPreview(bytes: Buffer): RecordingWaveformPreview | undefine
     peaks: Array.from({ length: bins }, (_, index) => peakForBin(bytes, wav, index, bins, frames)),
     sampleCount: frames,
     sampleRate: wav.sampleRate,
-    source: "wav_s16le_peak",
+    source,
   };
+}
+
+async function decodedWaveformPreview(
+  filePath: string,
+): Promise<RecordingWaveformPreview | undefined> {
+  const invocation = audioToolInvocation("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    filePath,
+    "-map",
+    "0:a:0",
+    "-acodec",
+    "pcm_s16le",
+    "-f",
+    "wav",
+    "-",
+  ]);
+  const decoded = await runAudioTool(invocation.command, invocation.args, decodedPreviewMaxBytes);
+
+  return decoded ? wavS16lePeakPreview(decoded, "ffmpeg_decoded_peak") : undefined;
+}
+
+async function probeAudioDurationSeconds(filePath: string) {
+  const invocation = audioToolInvocation("ffprobe", [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "json",
+    filePath,
+  ]);
+  const output = await runAudioTool(invocation.command, invocation.args, 1024 * 1024);
+
+  if (!output) {
+    return undefined;
+  }
+
+  const parsed = parseJsonObject(output.toString("utf8"));
+  const duration = Number(record(parsed.format)?.duration);
+
+  return Number.isFinite(duration) && duration > 0 ? Math.max(1, Math.round(duration)) : undefined;
+}
+
+function audioToolInvocation(tool: "ffmpeg" | "ffprobe", args: string[]) {
+  const upperTool = tool.toUpperCase();
+  const command = process.env[`RAKKR_${upperTool}_COMMAND`] ?? tool;
+  const prefix = argsPrefix(process.env[`RAKKR_${upperTool}_ARGS_PREFIX`]);
+
+  return { args: [...prefix, ...args], command };
+}
+
+function argsPrefix(value: string | undefined) {
+  if (!value?.trim()) {
+    return [];
+  }
+
+  if (value.trim().startsWith("[")) {
+    const parsed = parseJson(value);
+
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  }
+
+  return value.split(/\s+/).filter(Boolean);
+}
+
+function runAudioTool(
+  command: string,
+  args: string[],
+  maxBytes: number,
+): Promise<Buffer | undefined> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { windowsHide: true });
+    const chunks: Buffer[] = [];
+    let done = false;
+    let size = 0;
+    const timeout = setTimeout(() => {
+      child.kill();
+      finish(undefined);
+    }, audioToolTimeoutMs);
+
+    function finish(value: Buffer | undefined) {
+      if (!done) {
+        done = true;
+        clearTimeout(timeout);
+        resolve(value);
+      }
+    }
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (done) {
+        return;
+      }
+
+      size += chunk.byteLength;
+
+      if (size > maxBytes) {
+        child.kill();
+        finish(undefined);
+        return;
+      }
+
+      chunks.push(chunk);
+    });
+    child.stderr.resume();
+    child.on("error", () => finish(undefined));
+    child.on("close", (code) => finish(code === 0 ? Buffer.concat(chunks) : undefined));
+  });
+}
+
+function durationSecondsFor(waveform: RecordingWaveformPreview) {
+  const duration = waveform.sampleCount / waveform.sampleRate;
+
+  return Number.isFinite(duration) && duration > 0 ? Math.max(1, Math.round(duration)) : undefined;
 }
 
 function wavData(bytes: Buffer) {
@@ -255,4 +396,28 @@ function peakForBin(
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+function parseJson(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseJsonObject(value: string) {
+  return record(parseJson(value)) ?? {};
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
