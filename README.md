@@ -83,5 +83,6 @@ The initial recorder test rig is a Debian node at `172.22.145.152` with a Behrin
 Before the physical interface is ready, a Linux recorder node can fake a capture device with ALSA `snd-aloop`:
 
 ```powershell
-mise run agent:loopback-smoke
+mise run agent:loopback-smoke        # record a WAV through snd-aloop
+mise run agent:loopback-meter-smoke  # sample Rakkr agent meters through snd-aloop
 ```

@@ -234,6 +234,7 @@ mod tests {
             meter_sample_seconds: 1,
             node_id: "node".to_string(),
             print_inventory: false,
+            print_meter_frame: false,
             run_next_job: false,
             room: "Room".to_string(),
             site: "Site".to_string(),

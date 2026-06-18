@@ -14,4 +14,5 @@ Current scaffold:
 
 ```powershell
 cargo run -p rakkr-recorder-agent -- --print-inventory
+cargo run -p rakkr-recorder-agent -- --print-meter-frame
 ```

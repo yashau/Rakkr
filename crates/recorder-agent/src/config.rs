@@ -30,6 +30,9 @@ pub struct AgentConfig {
     #[arg(long, default_value_t = false)]
     pub print_inventory: bool,
 
+    #[arg(long, default_value_t = false)]
+    pub print_meter_frame: bool,
+
     #[arg(long, env = "RAKKR_CONTROLLER_TOKEN")]
     pub controller_token: Option<String>,
 

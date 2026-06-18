@@ -30,6 +30,22 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if config.print_meter_frame {
+        let (meter_interface_id, meter_channel_count) = meter_target(&config, &inventory);
+        let meter_capture = meter_capture_config(&config, meter_channel_count);
+        let frame = strict_meter_frame(
+            &config,
+            &inventory.id,
+            &meter_interface_id,
+            meter_channel_count,
+            0,
+            &meter_capture,
+        )?;
+
+        println!("{}", serde_json::to_string_pretty(&frame)?);
+        return Ok(());
+    }
+
     if config.attach_cache_file.is_some() || config.attach_cache_recording_id.is_some() {
         controller::attach_cache_file(&config).await?;
         return Ok(());
@@ -74,25 +90,8 @@ async fn main() -> anyhow::Result<()> {
         "starting recorder agent scaffold"
     );
 
-    let meter_interface_id = inventory
-        .interfaces
-        .first()
-        .map(|audio_interface| audio_interface.id.clone())
-        .unwrap_or_else(|| "iface_default_capture".to_string());
-    let meter_channel_count = inventory
-        .interfaces
-        .first()
-        .map(|audio_interface| audio_interface.channel_count.max(1))
-        .unwrap_or(2);
-    let meter_capture = MeterCaptureConfig {
-        channel_count: meter_channel_count,
-        clip_dbfs: config.meter_clip_dbfs,
-        command: &config.capture_command,
-        device: &config.capture_device,
-        format: &config.capture_format,
-        sample_rate: config.capture_sample_rate,
-        sample_seconds: config.meter_sample_seconds,
-    };
+    let (meter_interface_id, meter_channel_count) = meter_target(&config, &inventory);
+    let meter_capture = meter_capture_config(&config, meter_channel_count);
     let mut ticker = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
     let mut tick = 0_u64;
     let mut meter_capture_failed = false;
@@ -198,6 +197,64 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn meter_target(config: &AgentConfig, inventory: &inventory::NodeInventory) -> (String, u16) {
+    let selected_interface = capture_device_interface_id(&config.capture_device)
+        .and_then(|id| {
+            inventory
+                .interfaces
+                .iter()
+                .find(|audio_interface| audio_interface.id == id)
+        })
+        .or_else(|| inventory.interfaces.first());
+
+    let interface_id = selected_interface
+        .map(|audio_interface| audio_interface.id.clone())
+        .unwrap_or_else(|| "iface_default_capture".to_string());
+    let channel_count = selected_interface
+        .map(|audio_interface| audio_interface.channel_count.max(1))
+        .unwrap_or(2);
+
+    (interface_id, channel_count)
+}
+
+fn capture_device_interface_id(value: &str) -> Option<String> {
+    let after_prefix = value.strip_prefix("hw:")?;
+    let mut parts = after_prefix.split(',');
+    let card = parts.next()?.parse::<u16>().ok()?;
+    let device = parts.next()?.parse::<u16>().ok()?;
+
+    Some(format!("alsa_hw_{card}_{device}"))
+}
+
+fn meter_capture_config<'a>(config: &'a AgentConfig, channel_count: u16) -> MeterCaptureConfig<'a> {
+    MeterCaptureConfig {
+        channel_count,
+        clip_dbfs: config.meter_clip_dbfs,
+        command: &config.capture_command,
+        device: &config.capture_device,
+        format: &config.capture_format,
+        sample_rate: config.capture_sample_rate,
+        sample_seconds: config.meter_sample_seconds,
+    }
+}
+
+fn strict_meter_frame(
+    config: &AgentConfig,
+    node_id: &str,
+    interface_id: &str,
+    channel_count: u16,
+    tick: u64,
+    meter_capture: &MeterCaptureConfig<'_>,
+) -> anyhow::Result<MeterFrame> {
+    match config.meter_backend.to_ascii_lowercase().as_str() {
+        "synthetic" => synthetic_meter_frame(node_id, interface_id, channel_count, tick)
+            .context("failed to create synthetic meter frame"),
+        "alsa" => alsa_meter_frame(node_id, interface_id, meter_capture)
+            .context("failed to create ALSA meter frame"),
+        backend => anyhow::bail!("unsupported meter backend: {backend}"),
+    }
 }
 
 struct MeterLoopContext<'a> {
@@ -409,4 +466,22 @@ fn max_rms_dbfs(frame: &MeterFrame) -> Option<f32> {
         .iter()
         .map(|level| level.rms_dbfs)
         .max_by(f32::total_cmp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_numeric_alsa_capture_device_to_inventory_id() {
+        assert_eq!(
+            capture_device_interface_id("hw:1,1,0").as_deref(),
+            Some("alsa_hw_1_1")
+        );
+    }
+
+    #[test]
+    fn ignores_named_alsa_capture_device_for_inventory_matching() {
+        assert_eq!(capture_device_interface_id("hw:Loopback,1,0"), None);
+    }
 }

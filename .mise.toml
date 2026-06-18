@@ -94,6 +94,10 @@ run = "pnpm --filter @rakkr/db db:verify"
 description = "Exercise a Linux ALSA snd-aloop fake capture device"
 run = "bash scripts/alsa-loopback-smoke.sh"
 
+[tasks."agent:loopback-meter-smoke"]
+description = "Sample Rakkr agent meters from a Linux ALSA snd-aloop fake capture device"
+run = "bash scripts/agent-loopback-meter-smoke.sh"
+
 [tasks."rust:build"]
 description = "Build Rust crates"
 run = "cargo build --workspace"

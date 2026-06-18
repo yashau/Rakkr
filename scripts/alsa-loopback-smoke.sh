@@ -38,8 +38,20 @@ if [[ "${RAKKR_LOOPBACK_LOAD_MODULE:-1}" == "1" ]]; then
   load_module
 fi
 
-play_device="${RAKKR_LOOPBACK_PLAY_DEVICE:-hw:Loopback,0,0}"
-capture_device="${RAKKR_LOOPBACK_CAPTURE_DEVICE:-hw:Loopback,1,0}"
+loopback_card="$(
+  arecord -l |
+    awk '/^card [0-9]+: Loopback / { gsub(":", "", $2); print $2; exit }'
+)"
+default_play_device="hw:Loopback,0,0"
+default_capture_device="hw:Loopback,1,0"
+
+if [[ -n "$loopback_card" ]]; then
+  default_play_device="hw:${loopback_card},0,0"
+  default_capture_device="hw:${loopback_card},1,0"
+fi
+
+play_device="${RAKKR_LOOPBACK_PLAY_DEVICE:-$default_play_device}"
+capture_device="${RAKKR_LOOPBACK_CAPTURE_DEVICE:-$default_capture_device}"
 channels="${RAKKR_LOOPBACK_CHANNELS:-2}"
 rate="${RAKKR_LOOPBACK_RATE:-48000}"
 seconds="${RAKKR_LOOPBACK_SECONDS:-5}"
