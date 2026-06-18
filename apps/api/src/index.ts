@@ -560,7 +560,11 @@ registerSettingsRoutes({
 
 registerAuthOidcRoutes({
   app,
+  authService,
+  recordAuditEvent,
   requirePermission,
+  sessionContext: requestContext,
+  webOrigin,
 });
 
 app.post("/api/v1/auth/login", async (c) => {

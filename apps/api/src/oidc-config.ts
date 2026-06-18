@@ -4,7 +4,7 @@ const defaultScopes = ["openid", "profile", "email"];
 
 export interface OidcRuntimeConfig extends Omit<OidcPublicConfig, "loginAvailable"> {
   clientSecret?: string;
-  loginAvailable: false;
+  loginAvailable: boolean;
 }
 
 export class OidcConfigError extends Error {
@@ -50,7 +50,7 @@ export function oidcConfigFromEnv(env: NodeJS.ProcessEnv = process.env): OidcRun
     discoveryUrl: issuer ? `${issuer}/.well-known/openid-configuration` : undefined,
     enabled,
     issuer,
-    loginAvailable: false,
+    loginAvailable: enabled && missingFields.length === 0,
     missingFields,
     provider: "azure_ad",
     redirectUri,

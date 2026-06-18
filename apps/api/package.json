@@ -18,6 +18,7 @@
     "@rakkr/shared": "workspace:*",
     "dotenv": "^17.2.3",
     "hono": "^4.10.7",
+    "openid-client": "^6.8.4",
     "zod": "^4.1.13"
   },
   "devDependencies": {

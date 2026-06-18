@@ -124,10 +124,7 @@ export class LocalAuthService {
     return this.createSession(user, context);
   }
 
-  private async createSession(
-    user: CurrentUser,
-    context: SessionContext = {},
-  ): Promise<LoginResult> {
+  async createSession(user: CurrentUser, context: SessionContext = {}): Promise<LoginResult> {
     const token = `rakkr_${randomBytes(32).toString("base64url")}`;
     const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + sessionTtlMs);

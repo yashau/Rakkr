@@ -14,6 +14,7 @@ import type {
   HealthEvent,
   MeterFrame,
   RecorderNode,
+  OidcPublicConfig,
   RecordingProfile,
   RecordingProfileUpdate,
   RecordingJob,
@@ -235,6 +236,20 @@ export function getAuthToken() {
   return window.localStorage.getItem(authTokenKey);
 }
 
+export function consumeOidcCallbackToken() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const token = params.get("rakkr_token");
+
+  if (!token) {
+    return undefined;
+  }
+
+  setAuthToken(token);
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+
+  return token;
+}
+
 export function setAuthToken(token: string) {
   window.localStorage.setItem(authTokenKey, token);
 }
@@ -284,6 +299,14 @@ export const api = {
       method: "DELETE",
     }),
   currentUser: () => fetchJson<{ data: CurrentUser }>("/api/v1/auth/me"),
+  oidcConfig: () => fetchJson<{ data: OidcPublicConfig }>("/api/v1/auth/oidc/config"),
+  oidcLoginUrl: (returnTo = window.location.href) => {
+    const url = new URL(`${apiBase}/api/v1/auth/oidc/login`, window.location.origin);
+
+    url.searchParams.set("returnTo", returnTo);
+
+    return url.href;
+  },
   login: (email: string, password: string) =>
     fetchJson<{ data: { expiresAt: string; token: string; user: CurrentUser } }>(
       "/api/v1/auth/login",

@@ -18,6 +18,7 @@ import {
   CalendarDays,
   Database,
   Gauge,
+  LogIn,
   LogOut,
   Radio,
   Settings,
@@ -30,7 +31,13 @@ import ReactDOM from "react-dom/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/api";
+import {
+  api,
+  clearAuthToken,
+  consumeOidcCallbackToken,
+  getAuthToken,
+  setAuthToken,
+} from "@/lib/api";
 import { AccessPage } from "@/pages/access";
 import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
@@ -46,7 +53,9 @@ const queryClient = new QueryClient();
 
 function RootLayout() {
   const queryClient = useQueryClient();
-  const [authToken, setAuthTokenState] = React.useState(() => getAuthToken());
+  const [authToken, setAuthTokenState] = React.useState(
+    () => consumeOidcCallbackToken() ?? getAuthToken(),
+  );
   const currentUserQuery = useQuery({
     enabled: Boolean(authToken),
     queryFn: api.currentUser,
@@ -168,6 +177,11 @@ function RootLayout() {
 function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
   const [email, setEmail] = React.useState("admin@rakkr.local");
   const [password, setPassword] = React.useState("");
+  const oidcConfigQuery = useQuery({
+    queryFn: api.oidcConfig,
+    queryKey: ["auth", "oidc-config"],
+    retry: false,
+  });
   const loginMutation = useMutation({
     mutationFn: () => api.login(email, password),
     onSuccess: (response) => onLogin(response.data.token),
@@ -225,6 +239,17 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
             <ShieldCheck className="size-4" />
             Sign In
           </Button>
+
+          {oidcConfigQuery.data?.data.loginAvailable ? (
+            <Button
+              onClick={() => window.location.assign(api.oidcLoginUrl())}
+              type="button"
+              variant="outline"
+            >
+              <LogIn className="size-4" />
+              Sign In With Azure AD
+            </Button>
+          ) : null}
         </form>
       </section>
     </div>
