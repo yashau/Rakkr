@@ -3,7 +3,6 @@ import type { Context, Hono } from "hono";
 import {
   scheduleInputSchema,
   scheduleUpdateSchema,
-  type RecordingSummary,
   type ScheduleRecurrence,
   type ScheduleInput,
   type ScheduleSummary,
@@ -15,6 +14,13 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-ty
 import type { NodeStore } from "./node-store.js";
 import { createRecordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
+import {
+  materializeScheduledRecording,
+  nextRunAtForRecurrence,
+  recordingMetadataSnapshot,
+  scheduleExecutionSnapshot,
+  uniqueTags,
+} from "./schedule-engine.js";
 import { ScheduleStoreError, type ScheduleStore } from "./schedule-store.js";
 
 interface ScheduleRouteDependencies {
@@ -142,7 +148,10 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule node not found" }, 409);
       }
 
-      const updated = await scheduleStore.update(scheduleId, sanitizeScheduleUpdate(body.data));
+      const updated = await scheduleStore.update(
+        scheduleId,
+        sanitizeScheduleUpdate(body.data, before),
+      );
 
       if (!updated) {
         await recordScheduleWriteFailure(
@@ -282,7 +291,7 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
     folderTemplate: input.folderTemplate,
     id: input.id ?? `sched_${randomUUID()}`,
     name: input.name,
-    nextRunAt: nextRunAtForRecurrence(recurrence, input.nextRunAt),
+    nextRunAt: nextRunAtForRecurrence(recurrence, input.timezone, input.nextRunAt),
     nodeId: input.nodeId,
     recurrence,
     recordingProfileId: input.recordingProfileId,
@@ -294,14 +303,19 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
   };
 }
 
-function sanitizeScheduleUpdate(input: ScheduleUpdate): Partial<Omit<ScheduleSummary, "id">> {
+function sanitizeScheduleUpdate(
+  input: ScheduleUpdate,
+  before: ScheduleSummary,
+): Partial<Omit<ScheduleSummary, "id">> {
   const updates: Partial<Omit<ScheduleSummary, "id">> = { ...input };
 
-  if (input.recurrence) {
-    updates.nextRunAt = nextRunAtForRecurrence(input.recurrence, input.nextRunAt);
-  }
-
-  if (input.nextRunAt) {
+  if (input.recurrence || input.timezone) {
+    updates.nextRunAt = nextRunAtForRecurrence(
+      input.recurrence ?? before.recurrence,
+      input.timezone ?? before.timezone,
+      input.nextRunAt,
+    );
+  } else if (input.nextRunAt) {
     updates.nextRunAt = validIsoOrUndefined(input.nextRunAt);
   }
 
@@ -330,132 +344,4 @@ function recurrenceFromNextRun(nextRunAt: string | undefined): ScheduleRecurrenc
   return nextRunAt
     ? { mode: "once", startsAt: new Date(nextRunAt).toISOString() }
     : { mode: "manual" };
-}
-
-function nextRunAtForRecurrence(recurrence: ScheduleRecurrence, fallback: string | undefined) {
-  if (recurrence.mode === "once") {
-    return validIsoOrUndefined(recurrence.startsAt);
-  }
-
-  return validIsoOrUndefined(fallback);
-}
-
-function materializeScheduledRecording(
-  schedule: ScheduleSummary,
-  node: { alias: string; hostname: string; id: string; location: { room: string; site: string } },
-  now = new Date(),
-): RecordingSummary {
-  const context = templateContext(schedule, node, now);
-
-  return {
-    cached: false,
-    durationSeconds: 0,
-    folder: safePath(renderTemplate(schedule.folderTemplate, context)),
-    healthStatus: "unknown",
-    id: `rec_${randomUUID()}`,
-    name: safeText(renderTemplate(schedule.titleTemplate, context)),
-    nodeId: schedule.nodeId,
-    recordedAt: now.toISOString(),
-    recordingProfileId: schedule.recordingProfileId,
-    scheduleId: schedule.id,
-    source: "schedule",
-    status: "recording",
-    tags: uniqueTags(schedule.tags),
-    watchdogPolicyId: schedule.watchdogPolicyId,
-  };
-}
-
-function templateContext(
-  schedule: ScheduleSummary,
-  node: { alias: string; hostname: string; id: string; location: { room: string; site: string } },
-  now: Date,
-) {
-  const clock = scheduleClock(now, schedule.timezone);
-
-  return new Map([
-    ["date", clock.date],
-    ["node.alias", node.alias],
-    ["node.hostname", node.hostname],
-    ["node.id", node.id],
-    ["room", schedule.room],
-    ["schedule.id", schedule.id],
-    ["schedule.name", schedule.name],
-    ["site", node.location.site],
-    ["time", clock.time],
-    ["timestamp", now.toISOString()],
-  ]);
-}
-
-function renderTemplate(template: string, values: Map<string, string>) {
-  return template.replace(/{{\s*([^}]+?)\s*}}/g, (_, rawKey: string) => {
-    const key = rawKey.trim();
-
-    return values.get(key) ?? "";
-  });
-}
-
-function scheduleClock(now: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "2-digit",
-    timeZone,
-    year: "numeric",
-  }).formatToParts(now);
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
-
-  return {
-    date: `${value("year")}-${value("month")}-${value("day")}`,
-    time: `${value("hour")}${value("minute")}`,
-  };
-}
-
-function safePath(value: string) {
-  const path = value
-    .split(/[\\/]+/)
-    .map(safeText)
-    .filter(Boolean)
-    .join("/");
-
-  return path || "Scheduled";
-}
-
-function safeText(value: string) {
-  const text = value
-    .replace(/[<>:"\\|?*]+/g, "-")
-    .replaceAll("\n", " ")
-    .replaceAll("\r", " ")
-    .replaceAll("\t", " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return text || "Scheduled Recording";
-}
-
-function uniqueTags(tags: string[]) {
-  return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))];
-}
-
-function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
-  return {
-    folderTemplate: schedule.folderTemplate,
-    nextRunAt: schedule.nextRunAt,
-    recurrence: schedule.recurrence,
-    recordingProfileId: schedule.recordingProfileId,
-    tags: schedule.tags,
-    titleTemplate: schedule.titleTemplate,
-    watchdogPolicyId: schedule.watchdogPolicyId,
-  };
-}
-
-function recordingMetadataSnapshot(recording: RecordingSummary) {
-  return {
-    folder: recording.folder,
-    name: recording.name,
-    recordingProfileId: recording.recordingProfileId,
-    tags: recording.tags,
-    watchdogPolicyId: recording.watchdogPolicyId,
-  };
 }

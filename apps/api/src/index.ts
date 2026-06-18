@@ -40,6 +40,7 @@ import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
+import { createScheduleRunner } from "./schedule-runner.js";
 import { createScheduleStore } from "./schedule-store.js";
 
 const startedAt = new Date();
@@ -51,6 +52,12 @@ const authService = new LocalAuthService();
 const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
+export const scheduleRunner = createScheduleRunner({
+  auditStore,
+  nodeStore,
+  recordingStore,
+  scheduleStore,
+});
 type NodeRecord = RecorderNode;
 type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
@@ -926,6 +933,10 @@ registerRecordingRoutes({
 });
 
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {
+  if (process.env.RAKKR_SCHEDULE_RUNNER_ENABLED !== "0") {
+    scheduleRunner.start();
+  }
+
   serve(
     {
       fetch: app.fetch,

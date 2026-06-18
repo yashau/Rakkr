@@ -299,7 +299,7 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
     folderTemplate: row.folderTemplate,
     id: row.id,
     name: row.name,
-    nextRunAt: isoOrUndefined(row.nextRunAt) ?? nextRunAtFromRecurrence(recurrence),
+    nextRunAt: isoOrUndefined(row.nextRunAt),
     nodeId: row.nodeId ?? "unassigned",
     recurrence,
     recordingProfileId: row.recordingProfileId ?? defaultVoiceRecordingProfile.id,
@@ -359,10 +359,6 @@ function recurrenceFromValue(value: unknown, nextRunAt?: string): ScheduleRecurr
   }
 
   return { mode: "manual" };
-}
-
-function nextRunAtFromRecurrence(recurrence: ScheduleRecurrence) {
-  return recurrence.mode === "once" ? recurrence.startsAt : undefined;
 }
 
 function dateOrNull(value: string | undefined) {
