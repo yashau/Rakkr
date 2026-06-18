@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
 import { registerAgentRoutes } from "./agent-routes.js";
+import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   accessGroupIdSchema,
   accessPolicyInputSchema,
@@ -26,12 +27,7 @@ import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
 import { registerHealthRoutes } from "./health-routes.js";
 import { createHealthEventStore } from "./health-store.js";
 import type { RecordAuditEvent } from "./http-types.js";
-import {
-  nodes as seedNodes,
-  buildMeterFrame,
-  recordings,
-  schedules as seedSchedules,
-} from "./demo-data.js";
+import { nodes as seedNodes, recordings, schedules as seedSchedules } from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
 import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
@@ -40,12 +36,11 @@ import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
-import { createScheduleRunner } from "./schedule-runner.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { createSettingsStore } from "./settings-store.js";
 import { registerStatusRoutes } from "./status-routes.js";
-import { createWatchdogRunner } from "./watchdog-runner.js";
+import { createUploadProviderStore } from "./upload-providers.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -59,18 +54,16 @@ const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
-export const scheduleRunner = createScheduleRunner({
+const uploadProviderStore = createUploadProviderStore();
+export const { scheduleRunner, uploadRunner, watchdogRunner } = createApiRunners({
   auditStore,
+  healthEventStore,
+  meterFrameStore,
   nodeStore,
   recordingStore,
   scheduleStore,
   settingsStore,
-});
-export const watchdogRunner = createWatchdogRunner({
-  auditStore,
-  healthEventStore,
-  meterFrameProvider: (nodeId) => watchdogMeterFrame(nodeId),
-  recordingStore,
+  uploadProviderStore,
 });
 type NodeRecord = RecorderNode;
 type InterfaceRecord = NodeRecord["interfaces"][number];
@@ -560,6 +553,7 @@ registerSettingsRoutes({
   recordAuditEvent,
   requirePermission,
   settingsStore,
+  uploadProviderStore,
 });
 
 app.post("/api/v1/auth/login", async (c) => {
@@ -966,13 +960,7 @@ registerRecordingRoutes({
 });
 
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {
-  if (process.env.RAKKR_SCHEDULE_RUNNER_ENABLED !== "0") {
-    scheduleRunner.start();
-  }
-
-  if (process.env.RAKKR_WATCHDOG_RUNNER_ENABLED !== "0") {
-    watchdogRunner.start();
-  }
+  startApiRunners({ scheduleRunner, uploadRunner, watchdogRunner });
 
   serve(
     {
@@ -983,16 +971,4 @@ if (process.env.RAKKR_API_NO_LISTEN !== "1") {
       console.log(`Rakkr API listening on http://localhost:${info.port}`);
     },
   );
-}
-
-async function watchdogMeterFrame(nodeId: string) {
-  const frame = await meterFrameStore.latest(nodeId);
-
-  if (frame) {
-    return frame;
-  }
-
-  const demoFrame = buildMeterFrame();
-
-  return demoFrame.nodeId === nodeId ? demoFrame : undefined;
 }
