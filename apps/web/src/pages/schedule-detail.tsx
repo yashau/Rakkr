@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { AuditEvent, HealthEvent, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
+import { QualityTimeline } from "@/components/quality-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -196,6 +197,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
           <div className="mt-3 grid gap-3">
             {recordings.map((recording) => (
               <RecordingExecutionRow
+                events={healthEvents.filter((event) => event.recordingId === recording.id)}
                 jobs={jobs.filter((job) => job.recordingId === recording.id)}
                 key={recording.id}
                 recording={recording}
@@ -290,9 +292,11 @@ function SectionTitle({ icon: Icon, title }: { icon: typeof Activity; title: str
 }
 
 function RecordingExecutionRow({
+  events,
   jobs,
   recording,
 }: {
+  events: HealthEvent[];
   jobs: RecordingJob[];
   recording: RecordingSummary;
 }) {
@@ -325,6 +329,7 @@ function RecordingExecutionRow({
         ))}
         {jobs.length === 0 ? <span className="text-xs text-muted-foreground">No jobs.</span> : null}
       </div>
+      <QualityTimeline events={events} recording={recording} />
     </div>
   );
 }

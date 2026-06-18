@@ -53,10 +53,10 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
 | Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, health events, Postgres-backed nodes/credentials/recordings/jobs/schedules |
-| Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, jobs, metadata editing, filters, schedule editing, and execution detail |
+| Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, jobs, metadata editing, filters, schedule editing, execution detail, and quality timelines |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, telemetry   |
 | Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
-| Health watchdog      | 🟦 Scaffold  | Health event model, lifecycle actions, scheduled low-signal runner, and recording health sync exist |
+| Health watchdog      | 🟦 Scaffold  | Health event model, lifecycle actions, scheduled low-signal runner, quality timelines, and recording health sync exist |
 | Scheduler            | 🟦 Scaffold  | Persistent store, create/edit/run-now/skip/delete UI, metadata ownership, recurrence editing, paused ranges, quick text helpers, previews, execution detail, timeline, and due runner |
 | Storage upload       | 🧊 Deferred  | Interface/stubs only in early milestones                       |
 | OIDC                 | 🧊 Deferred  | Local auth first, Azure AD ready later                         |
@@ -417,7 +417,7 @@ Recordings should show a quality timeline with:
 - device/dropout events;
 - AI quality markers later.
 
-Current scaffold status: health events have a shared lifecycle type, Drizzle/Postgres table, and RBAC-gated API. `GET /api/v1/health-events` reads and filters by node, recording, schedule, severity, lifecycle status, and result limit. `POST /api/v1/health-events` writes targeted health events, and `POST /api/v1/health-events/:eventId/acknowledge`, `/suppress`, `/resolve`, and `/reopen` manage alert lifecycle. Read routes require `health:read`; writer and lifecycle routes require `health:acknowledge`; all returned or mutated events are checked against the same resource-scope model used by nodes, schedules, recordings, meters, and jobs, so a room or recorder denial also hides and blocks its health events. Lifecycle actions write audit events with before/after snapshots. Recording-linked events update the recording health status: unresolved warning/critical events mark the recording warning/critical, resolved events can return it to healthy, and reopened events restore the active health state. A background watchdog runner evaluates active scheduled recordings after the policy grace/window, opens `watchdog.scheduled_low_signal` events when the highest observed signal stays below threshold, updates the existing active event instead of duplicating alerts, emits repeat audit events on the policy cadence, and auto-resolves when signal recovers. The runner is controlled by `RAKKR_WATCHDOG_RUNNER_ENABLED`, `RAKKR_WATCHDOG_RUNNER_INTERVAL_SECONDS`, and `RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS`; deterministic demo-meter smoke tests can force a level with `RAKKR_DEMO_METER_DBFS`. The Schedules execution detail page consumes this API to show linked health events next to recordings, jobs, and audit history, and exposes acknowledge, suppress, resolve, and reopen controls for users with `health:acknowledge`. Real node DSP watchdog sampling, local node log sync, and full quality timeline rendering are still pending.
+Current scaffold status: health events have a shared lifecycle type, Drizzle/Postgres table, and RBAC-gated API. `GET /api/v1/health-events` reads and filters by node, recording, schedule, severity, lifecycle status, and result limit. `POST /api/v1/health-events` writes targeted health events, and `POST /api/v1/health-events/:eventId/acknowledge`, `/suppress`, `/resolve`, and `/reopen` manage alert lifecycle. Read routes require `health:read`; writer and lifecycle routes require `health:acknowledge`; all returned or mutated events are checked against the same resource-scope model used by nodes, schedules, recordings, meters, and jobs, so a room or recorder denial also hides and blocks its health events. Lifecycle actions write audit events with before/after snapshots. Recording-linked events update the recording health status: unresolved warning/critical events mark the recording warning/critical, resolved events can return it to healthy, and reopened events restore the active health state. A background watchdog runner evaluates active scheduled recordings after the policy grace/window, opens `watchdog.scheduled_low_signal` events when the highest observed signal stays below threshold, updates the existing active event instead of duplicating alerts, emits repeat audit events on the policy cadence, and auto-resolves when signal recovers. The runner is controlled by `RAKKR_WATCHDOG_RUNNER_ENABLED`, `RAKKR_WATCHDOG_RUNNER_INTERVAL_SECONDS`, and `RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS`; deterministic demo-meter smoke tests can force a level with `RAKKR_DEMO_METER_DBFS`. The recording library and Schedules execution detail page now render health-event-backed quality timelines with warning/critical/resolved spans and watchdog dBFS threshold details. The schedule detail page also shows linked health events next to recordings, jobs, and audit history, and exposes acknowledge, suppress, resolve, and reopen controls for users with `health:acknowledge`. Real node DSP watchdog sampling and local node log sync are still pending.
 
 ---
 
@@ -551,7 +551,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Recording metadata now flows through a controller store that uses the Drizzle/Postgres `recordings` table when `DATABASE_URL` is configured and falls back to `RAKKR_RECORDING_METADATA_STORE_PATH`, defaulting to `data/recordings-metadata.json`. The recordings UI exposes permission-aware inline editing for name, folder, and tags; the controller validates `PATCH /api/v1/recordings/:recordingId/metadata`, requires `recording:edit`, persists the update, and writes before/after audit events for success and failure. Schedule run-now execution materializes year-first recording names, folders, tags, recording profile IDs, and watchdog policy IDs from schedule-owned templates before creating the recording row and queued job. The recording list now has RBAC-scoped API and UI filters for search text, folder, tag, node, schedule, status, and health, with invalid filter requests rejected before query execution. Schedule execution detail reuses the schedule filter and job list to show schedule-owned recordings, job state, recording health status, linked health events, and audit context together. Controller start creates a persisted recording metadata row and a queued recording job. Recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs are modeled in Drizzle/Postgres via `recording_jobs` and `recording_job_status`; the controller uses Postgres as the primary job store and falls back to the JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`. Claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`, and the recordings UI surfaces each recording's job status, claimant, lease expiry, and terminal failure reason. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording persists metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Recording metadata now flows through a controller store that uses the Drizzle/Postgres `recordings` table when `DATABASE_URL` is configured and falls back to `RAKKR_RECORDING_METADATA_STORE_PATH`, defaulting to `data/recordings-metadata.json`. The recordings UI exposes permission-aware inline editing for name, folder, and tags; the controller validates `PATCH /api/v1/recordings/:recordingId/metadata`, requires `recording:edit`, persists the update, and writes before/after audit events for success and failure. Schedule run-now execution materializes year-first recording names, folders, tags, recording profile IDs, and watchdog policy IDs from schedule-owned templates before creating the recording row and queued job. The recording list now has RBAC-scoped API and UI filters for search text, folder, tag, node, schedule, status, and health, with invalid filter requests rejected before query execution. Recording cards render a health-event-backed quality timeline showing healthy baseline plus warning/critical/resolved spans and watchdog dBFS details. Schedule execution detail reuses the schedule filter and job list to show schedule-owned recordings, job state, recording health status, linked quality timelines, linked health events, and audit context together. Controller start creates a persisted recording metadata row and a queued recording job. Recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs are modeled in Drizzle/Postgres via `recording_jobs` and `recording_job_status`; the controller uses Postgres as the primary job store and falls back to the JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`. Claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`, and the recordings UI surfaces each recording's job status, claimant, lease expiry, and terminal failure reason. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording persists metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
 
 ---
 
@@ -870,14 +870,14 @@ Goal: alert while recordings are happening, not after users complain.
 
 Exit criteria:
 
-- Scheduled low-signal activity rule.
-- Clipping alerts.
-- Flatline alerts.
-- Device disconnect/xrun events.
-- Auto-resolving alert lifecycle.
-- Recording quality timeline in UI.
-- Prometheus metrics exported.
-- Alert acknowledge/suppress/resolve actions are RBAC-gated and audited.
+- 🟦 Scheduled low-signal activity rule.
+- ⏳ Clipping alerts.
+- ⏳ Flatline alerts.
+- ⏳ Device disconnect/xrun events.
+- 🟦 Auto-resolving alert lifecycle.
+- 🟦 Recording quality timeline in UI.
+- 🟦 Prometheus metrics exported.
+- 🟦 Alert acknowledge/suppress/resolve actions are RBAC-gated and audited.
 
 ## Milestone 5 - Organization And Operations
 
@@ -910,7 +910,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add real node DSP watchdog sample ingestion and quality timeline rendering.
+1. Add real node DSP watchdog sample ingestion and local node health log sync.
 2. Add richer recurrence helper coverage after real scheduling examples accumulate.
 3. Add OIDC-backed user sync when Azure AD work starts.
 4. Return to the Debian recorder node when the X32 connection is confirmed.

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Download, Pencil, Play, Radio, RotateCcw, Search, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { RecordingJob, RecordingSummary } from "@rakkr/shared";
+import type { HealthEvent, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
+import { QualityTimeline } from "@/components/quality-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -76,9 +77,15 @@ export function RecordingsPage() {
     queryKey: ["recording-jobs"],
     refetchInterval: 3000,
   });
+  const healthEventsQuery = useQuery({
+    queryFn: () => api.healthEvents({ limit: 500 }),
+    queryKey: ["health-events", "recordings"],
+    refetchInterval: 5000,
+  });
   const startMutation = useMutation({
     mutationFn: api.startRecording,
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
@@ -86,6 +93,7 @@ export function RecordingsPage() {
   const stopMutation = useMutation({
     mutationFn: api.stopRecording,
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
@@ -161,6 +169,7 @@ export function RecordingsPage() {
   const canEditRecordings =
     currentUserQuery.data?.data.permissions.includes("recording:edit") ?? false;
   const recordings = recordingsQuery.data?.data ?? [];
+  const healthEventsByRecording = groupHealthEventsByRecording(healthEventsQuery.data?.data ?? []);
   const activeFilterCount = Object.values(recordingFilters).filter(Boolean).length;
 
   useEffect(
@@ -341,9 +350,10 @@ export function RecordingsPage() {
         return (
           <RecordingCard
             downloadPending={downloadMutation.isPending}
-            jobs={jobs}
+            events={healthEventsByRecording.get(recording.id) ?? []}
             canEdit={canEditRecordings}
             editPending={updateMetadataMutation.isPending}
+            jobs={jobs}
             key={recording.id}
             onDownload={() => downloadMutation.mutate(recording.id)}
             onPlayback={() => playbackMutation.mutate(recording.id)}
@@ -392,10 +402,25 @@ function textOrUndefined(value: string) {
   return trimmed || undefined;
 }
 
+function groupHealthEventsByRecording(events: HealthEvent[]) {
+  const grouped = new Map<string, HealthEvent[]>();
+
+  for (const event of events) {
+    if (!event.recordingId) {
+      continue;
+    }
+
+    grouped.set(event.recordingId, [...(grouped.get(event.recordingId) ?? []), event]);
+  }
+
+  return grouped;
+}
+
 function RecordingCard({
   canEdit,
   downloadPending,
   editPending,
+  events,
   jobs,
   onDownload,
   onPlayback,
@@ -408,6 +433,7 @@ function RecordingCard({
   canEdit: boolean;
   downloadPending: boolean;
   editPending: boolean;
+  events: HealthEvent[];
   jobs: RecordingJob[];
   onDownload: () => void;
   onPlayback: () => void;
@@ -552,6 +578,7 @@ function RecordingCard({
               ))}
             </div>
           ) : null}
+          <QualityTimeline events={events} recording={recording} />
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
           {canEdit && !isEditing ? (
