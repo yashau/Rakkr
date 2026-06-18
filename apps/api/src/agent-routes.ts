@@ -336,13 +336,17 @@ export function registerAgentRoutes({
       return c.json({ error: "Node credential cannot access this recording" }, 403);
     }
 
+    const jobId = c.req.header("x-rakkr-recording-job-id");
     const bytes = Buffer.from(await c.req.arrayBuffer());
 
     if (bytes.byteLength === 0) {
       await recordRecordingFileFailure(c, {
         actor: auth.credential,
+        createHealthEvent: true,
+        jobId,
         reason: "empty_file",
         recordingId,
+        severity: "critical",
         targetName: recording.name,
       });
       return c.json({ error: "Recording cache file cannot be empty" }, 400);
@@ -353,15 +357,17 @@ export function registerAgentRoutes({
     if (durationSeconds === "invalid") {
       await recordRecordingFileFailure(c, {
         actor: auth.credential,
+        createHealthEvent: true,
+        jobId,
         reason: "invalid_duration",
         recordingId,
+        severity: "warning",
         targetName: recording.name,
       });
       return c.json({ error: "Invalid x-rakkr-duration-seconds header" }, 400);
     }
 
     const before = recordingFileSnapshot(recording);
-    const jobId = c.req.header("x-rakkr-recording-job-id");
     const stored = await storeRecordingFile(recording, {
       bytes,
       fileName: c.req.header("x-rakkr-file-name"),
@@ -369,8 +375,11 @@ export function registerAgentRoutes({
     }).catch(async (error: unknown) => {
       await recordRecordingFileFailure(c, {
         actor: auth.credential,
+        createHealthEvent: true,
+        jobId,
         reason: error instanceof Error ? error.message : "cache_write_failed",
         recordingId,
+        severity: "critical",
         targetName: recording.name,
       });
       throw error;
@@ -529,14 +538,36 @@ export function registerAgentRoutes({
     c: Context<AppBindings>,
     input: {
       actor: NodeCredentialAuth;
+      createHealthEvent?: boolean;
+      jobId?: string;
       reason: string;
       recordingId: string;
+      severity?: "critical" | "warning";
       targetName?: string;
     },
   ) {
+    const healthEvent = input.createHealthEvent
+      ? await healthEventStore.create({
+          details: {
+            ...(input.jobId ? { jobId: input.jobId } : {}),
+            reason: input.reason,
+            source: "cache_file_attach",
+          },
+          nodeId: input.actor.nodeId,
+          recordingId: input.recordingId,
+          severity: input.severity ?? "warning",
+          type: "controller.recording.cache_file_failed",
+        })
+      : undefined;
+
+    await syncRecordingHealth(healthEventStore, recordingStore, healthEvent?.recordingId);
     await recordAuditEvent(c, {
       action: "recordings.cache_file.attach.failed",
       actor: nodeActor(input.actor),
+      details: {
+        ...(healthEvent ? { healthEventId: healthEvent.id } : {}),
+        ...(input.jobId ? { jobId: input.jobId } : {}),
+      },
       outcome: "failed",
       permission: "recording:control",
       reason: input.reason,

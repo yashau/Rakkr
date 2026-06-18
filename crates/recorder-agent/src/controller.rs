@@ -1,13 +1,14 @@
 use anyhow::Context;
 use reqwest::header::{CONTENT_TYPE, HeaderName, HeaderValue};
 use serde::Deserialize;
+use serde_json::json;
 use std::fs;
 use std::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::capture::{CapturePlan, local_capture_path, spawn_capture_plan};
 use crate::config::AgentConfig;
-use crate::health_log::AgentHealthEvent;
+use crate::health_log::{self, AgentHealthEvent};
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 
@@ -104,7 +105,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         recording_id = %job.recording_id,
         "claimed recording job"
     );
-    let mut capture = spawn_capture_plan(&CapturePlan {
+    let capture_plan = CapturePlan {
         channels: job.command.capture_channels,
         command: config.capture_command.clone(),
         device: job.command.capture_device.clone(),
@@ -112,11 +113,64 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         output_path: local_capture_path(&job.command.output_file_name),
         sample_rate: job.command.capture_sample_rate,
         seconds: job.command.duration_seconds,
-    })?;
+    };
+    let mut capture = match spawn_capture_plan(&capture_plan) {
+        Ok(capture) => capture,
+        Err(error) => {
+            let reason = error.to_string();
+
+            let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+            append_job_health_event(
+                config,
+                token,
+                &job,
+                "agent.recording_job.capture_start_failed",
+                "critical",
+                json!({
+                    "command": capture_plan.command.as_str(),
+                    "device": capture_plan.device.as_str(),
+                    "error": reason.as_str(),
+                    "jobId": job.id.as_str(),
+                    "outputPath": capture_plan.output_path.display().to_string(),
+                    "recordingId": job.recording_id.as_str(),
+                }),
+            )
+            .await?;
+            write_job_state(config, &job, "failed", None, Some(&reason))?;
+
+            return Err(error);
+        }
+    };
     let output_path = loop {
-        if let Some(output_path) = capture.try_complete()? {
-            write_job_state(config, &job, "captured", Some(&output_path), None)?;
-            break output_path;
+        match capture.try_complete() {
+            Ok(Some(output_path)) => {
+                write_job_state(config, &job, "captured", Some(&output_path), None)?;
+                break output_path;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let reason = error.to_string();
+
+                let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+                append_job_health_event(
+                    config,
+                    token,
+                    &job,
+                    "agent.recording_job.capture_failed",
+                    "critical",
+                    json!({
+                        "device": capture_plan.device.as_str(),
+                        "error": reason.as_str(),
+                        "jobId": job.id.as_str(),
+                        "outputPath": capture_plan.output_path.display().to_string(),
+                        "recordingId": job.recording_id.as_str(),
+                    }),
+                )
+                .await?;
+                write_job_state(config, &job, "failed", None, Some(&reason))?;
+
+                return Err(error);
+            }
         }
 
         if let Err(error) = heartbeat_recording_job(config, token, &job.id).await {
@@ -158,6 +212,19 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             let reason = error.to_string();
             capture.stop()?;
             let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+            append_job_health_event(
+                config,
+                token,
+                &job,
+                "agent.recording_job.control_plane_failed",
+                "warning",
+                json!({
+                    "error": reason.as_str(),
+                    "jobId": job.id.as_str(),
+                    "recordingId": job.recording_id.as_str(),
+                }),
+            )
+            .await?;
             write_job_state(config, &job, "failed", None, Some(&reason))?;
             return Err(error);
         }
@@ -216,6 +283,20 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         Err(error) => {
             let reason = error.to_string();
             mark_recording_job_failed(config, token, &job.id, &reason).await?;
+            append_job_health_event(
+                config,
+                token,
+                &job,
+                "agent.recording_job.cache_upload_failed",
+                "warning",
+                json!({
+                    "error": reason.as_str(),
+                    "jobId": job.id.as_str(),
+                    "outputPath": output_path.display().to_string(),
+                    "recordingId": job.recording_id.as_str(),
+                }),
+            )
+            .await?;
             write_job_state(config, &job, "failed", Some(&output_path), Some(&reason))?;
             Err(error)
         }
@@ -325,6 +406,30 @@ pub async fn sync_health_event(
         let body = response.text().await.unwrap_or_default();
 
         anyhow::bail!("controller rejected health event with {status}: {body}");
+    }
+
+    Ok(())
+}
+
+async fn append_job_health_event(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    event_type: &str,
+    severity: &str,
+    details: serde_json::Value,
+) -> anyhow::Result<()> {
+    let event = health_log::append_health_event_with_targets(
+        config,
+        event_type,
+        severity,
+        details,
+        Some(job.recording_id.clone()),
+        None,
+    )?;
+
+    if let Err(error) = sync_health_event(config, token, &event).await {
+        warn!(event_type, error = %error, "failed to sync recording job health event");
     }
 
     Ok(())

@@ -28,6 +28,17 @@ pub fn append_health_event(
     severity: &str,
     details: serde_json::Value,
 ) -> anyhow::Result<AgentHealthEvent> {
+    append_health_event_with_targets(config, event_type, severity, details, None, None)
+}
+
+pub fn append_health_event_with_targets(
+    config: &AgentConfig,
+    event_type: &str,
+    severity: &str,
+    details: serde_json::Value,
+    recording_id: Option<String>,
+    schedule_id: Option<String>,
+) -> anyhow::Result<AgentHealthEvent> {
     let event = AgentHealthEvent {
         details,
         id: format!(
@@ -36,8 +47,8 @@ pub fn append_health_event(
             now_rfc3339().replace([':', '.'], "-")
         ),
         opened_at: now_rfc3339(),
-        recording_id: None,
-        schedule_id: None,
+        recording_id,
+        schedule_id,
         severity: severity.to_string(),
         r#type: event_type.to_string(),
     };
