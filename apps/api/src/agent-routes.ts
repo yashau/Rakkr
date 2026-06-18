@@ -455,8 +455,10 @@ export function registerAgentRoutes({
 
     recording.cached = true;
     recording.cachePath = stored.cachePath;
+    recording.checksum = stored.checksum;
     recording.durationSeconds = durationSeconds ?? Math.max(recording.durationSeconds, 1);
     recording.status = "cached";
+    recording.waveformPreview = stored.waveformPreview;
     await recordingStore.save(recording);
     const job = await completeRecordingJob(recording.id, jobId);
 
@@ -467,11 +469,13 @@ export function registerAgentRoutes({
       before,
       details: {
         cachePath: stored.cachePath,
+        checksum: stored.checksum,
         fileName: stored.fileName,
         jobId,
         jobStatus: job?.status,
         mimeType: stored.mimeType,
         size: stored.size,
+        waveformPeaks: stored.waveformPreview?.peaks.length,
       },
       outcome: "succeeded",
       permission: "recording:control",
@@ -706,8 +710,10 @@ function recordingFileSnapshot(recording: RecordingSummary) {
   return {
     cachePath: recording.cachePath,
     cached: recording.cached,
+    checksum: recording.checksum,
     durationSeconds: recording.durationSeconds,
     status: recording.status,
+    waveformPeaks: recording.waveformPreview?.peaks.length,
   };
 }
 

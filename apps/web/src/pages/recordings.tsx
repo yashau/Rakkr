@@ -1,5 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, Pencil, Play, Radio, RotateCcw, Search, Square, X } from "lucide-react";
+import {
+  Check,
+  Download,
+  Fingerprint,
+  Pencil,
+  Play,
+  Radio,
+  RotateCcw,
+  Search,
+  Square,
+  Waves,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import type { HealthEvent, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
@@ -552,6 +564,24 @@ function RecordingCard({
                   ))}
                 </div>
               ) : null}
+              {recording.checksum || recording.waveformPreview ? (
+                <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/20 p-2">
+                  {recording.checksum ? (
+                    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                      <Fingerprint className="size-4 shrink-0" />
+                      <span className="font-mono break-all">
+                        {shortChecksum(recording.checksum)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {recording.waveformPreview ? (
+                    <div className="flex items-center gap-2">
+                      <Waves className="size-4 shrink-0 text-muted-foreground" />
+                      <WaveformPreview recording={recording} />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </>
           )}
           {jobs.length > 0 ? (
@@ -605,6 +635,31 @@ function RecordingCard({
       </div>
     </Card>
   );
+}
+
+function WaveformPreview({ recording }: { recording: RecordingSummary }) {
+  const peaks = recording.waveformPreview?.peaks ?? [];
+
+  return (
+    <div
+      aria-label={`Waveform preview for ${recording.name}`}
+      className="flex h-8 min-w-0 flex-1 items-center gap-px overflow-hidden rounded bg-background px-1"
+    >
+      {peaks.map((peak, index) => (
+        <span
+          className="w-1 shrink-0 rounded-full bg-sky-500"
+          key={`${recording.id}-${index}`}
+          style={{ height: `${Math.max(10, Math.round(peak * 100))}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function shortChecksum(checksum: string) {
+  const withoutPrefix = checksum.replace(/^sha256:/, "");
+
+  return `sha256:${withoutPrefix.slice(0, 16)}`;
 }
 
 function jobStatusClass(status: RecordingJob["status"]) {

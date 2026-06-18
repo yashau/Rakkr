@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDatabase, desc, eq, recordings as recordingsTable } from "@rakkr/db";
-import type { RecordingSummary } from "@rakkr/shared";
+import { recordingSummarySchema, type RecordingSummary } from "@rakkr/shared";
 
 type RecordingInsert = typeof recordingsTable.$inferInsert;
 type RecordingRow = typeof recordingsTable.$inferSelect;
@@ -189,6 +189,7 @@ class PostgresRecordingStore implements RecordingStore {
       .onConflictDoUpdate({
         set: {
           cachePath: row.cachePath,
+          checksum: row.checksum,
           durationSeconds: row.durationSeconds,
           folder: row.folder,
           healthStatus: row.healthStatus,
@@ -225,6 +226,7 @@ function loadRecordings(seedRecordings: RecordingSummary[]) {
 function recordingToRow(recording: RecordingSummary): RecordingInsert {
   return {
     cachePath: recording.cachePath ?? null,
+    checksum: recording.checksum ?? null,
     durationSeconds: recording.durationSeconds,
     folder: recording.folder,
     healthStatus: recording.healthStatus,
@@ -246,6 +248,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
   return {
     cached: cachedFromRow(row),
     cachePath: row.cachePath ?? undefined,
+    checksum: row.checksum ?? undefined,
     durationSeconds: row.durationSeconds,
     folder: row.folder,
     healthStatus: healthStatus(row.healthStatus),
@@ -259,6 +262,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     status: row.status,
     tags: stringArray(row.tags),
     watchdogPolicyId: stringOrUndefined(metadata?.watchdogPolicyId),
+    waveformPreview: waveformPreviewOrUndefined(metadata?.waveformPreview),
   };
 }
 
@@ -267,7 +271,14 @@ function recordingMetadata(recording: RecordingSummary) {
     cached: recording.cached,
     recordingProfileId: recording.recordingProfileId,
     watchdogPolicyId: recording.watchdogPolicyId,
+    waveformPreview: recording.waveformPreview,
   };
+}
+
+function waveformPreviewOrUndefined(value: unknown) {
+  const result = recordingSummarySchema.shape.waveformPreview.safeParse(value);
+
+  return result.success ? result.data : undefined;
 }
 
 function cachedFromRow(row: RecordingRow) {

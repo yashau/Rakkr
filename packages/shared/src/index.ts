@@ -444,6 +444,7 @@ export const scheduleOccurrencePreviewSchema = z.object({
 export const recordingSummarySchema = z.object({
   cached: z.boolean(),
   cachePath: z.string().min(1).optional(),
+  checksum: z.string().min(1).optional(),
   durationSeconds: z.number().int().nonnegative(),
   folder: z.string().min(1),
   healthStatus: z.enum(["healthy", "warning", "critical", "unknown"]),
@@ -457,6 +458,16 @@ export const recordingSummarySchema = z.object({
   status: recordingStatusSchema,
   tags: z.array(z.string().min(1)),
   watchdogPolicyId: z.string().min(1).optional(),
+  waveformPreview: z
+    .object({
+      channelCount: z.number().int().positive(),
+      generatedAt: isoDateTimeSchema,
+      peaks: z.array(z.number().min(0).max(1)).min(1).max(256),
+      sampleCount: z.number().int().positive(),
+      sampleRate: z.number().int().positive(),
+      source: z.literal("wav_s16le_peak"),
+    })
+    .optional(),
 });
 export const recordingJobChannelMapSchema = z.object({
   assignmentId: z.string().min(1),
@@ -574,6 +585,7 @@ export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobChannelMap = z.infer<typeof recordingJobChannelMapSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;
+export type RecordingWaveformPreview = NonNullable<RecordingSummary["waveformPreview"]>;
 export type ResourceGrant = z.infer<typeof resourceGrantSchema>;
 export type ScheduleDayOfWeek = z.infer<typeof scheduleDayOfWeekSchema>;
 export type ScheduleException = z.infer<typeof scheduleExceptionSchema>;

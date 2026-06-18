@@ -604,7 +604,9 @@ Current:
 - UI/API: scoped filters, metadata editing, playback, download, cache files, and audit events.
 - Schedules: run-now materializes schedule-owned name, folder, tags, profile, and watchdog policy.
 - Agent: claim, capture, heartbeat, stop handling, cache upload, local job state, and job leasing.
-- Pending: waveform previews, checksums, upload retry queue, and real SMB/S3 providers.
+- Integrity: cache-file attach computes SHA-256 checksums and WAV PCM waveform preview peaks.
+- UI: recording cards show checksum fingerprints and compact waveform previews when available.
+- Pending: upload retry queue and real SMB/S3 providers.
 
 ---
 
@@ -854,8 +856,8 @@ Current:
 - [ ] 🟦 Disk/CPU/audio backend health.
 - [ ] 🟦 Meter xrun and device-unavailable tracking.
 - [ ] 🧊 Failed upload retry queue skeleton.
-- [ ] ⏳ Checksum verification.
-- [ ] ⏳ Waveform previews.
+- [ ] 🟦 Checksum verification foundation.
+- [ ] 🟦 Waveform preview foundation.
 - [ ] 🟦 Template revisions, rollback history, pinned job targeting, and loopback-validated DSP render foundation.
 
 ## Later
@@ -980,7 +982,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add checksum verification and waveform preview foundations for cached recordings.
+1. Add failed upload retry queue skeleton for future SMB/S3 providers.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 

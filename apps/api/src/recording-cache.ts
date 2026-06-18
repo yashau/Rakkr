@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { RecordingSummary } from "@rakkr/shared";
+import type { RecordingSummary, RecordingWaveformPreview } from "@rakkr/shared";
 
 export interface CachedRecordingFile {
   bytes: Buffer;
@@ -11,9 +12,11 @@ export interface CachedRecordingFile {
 
 export interface StoredRecordingFile {
   cachePath: string;
+  checksum: string;
   fileName: string;
   mimeType: string;
   size: number;
+  waveformPreview?: RecordingWaveformPreview;
 }
 
 export interface StoreRecordingFileInput {
@@ -55,9 +58,11 @@ export async function storeRecordingFile(
 
   return {
     cachePath,
+    checksum: sha256(input.bytes),
     fileName: recordingFileName({ ...recording, cachePath }),
     mimeType: mimeTypeFor(filePath),
     size: input.bytes.byteLength,
+    waveformPreview: waveformPreviewFor(input.bytes, input.fileName, input.mimeType),
   };
 }
 
@@ -137,6 +142,115 @@ function mimeTypeFor(filePath: string) {
   }
 
   return "audio/mpeg";
+}
+
+function sha256(bytes: Buffer) {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function waveformPreviewFor(
+  bytes: Buffer,
+  fileName?: string | null,
+  mimeType?: string | null,
+): RecordingWaveformPreview | undefined {
+  if (extensionFor(fileName, mimeType) !== ".wav") {
+    return undefined;
+  }
+
+  return wavS16lePeakPreview(bytes);
+}
+
+function wavS16lePeakPreview(bytes: Buffer): RecordingWaveformPreview | undefined {
+  const wav = wavData(bytes);
+
+  if (!wav) {
+    return undefined;
+  }
+
+  const frames = Math.floor(wav.dataSize / (wav.channelCount * 2));
+  const bins = Math.min(96, frames);
+
+  if (frames <= 0 || bins <= 0) {
+    return undefined;
+  }
+
+  return {
+    channelCount: wav.channelCount,
+    generatedAt: new Date().toISOString(),
+    peaks: Array.from({ length: bins }, (_, index) => peakForBin(bytes, wav, index, bins, frames)),
+    sampleCount: frames,
+    sampleRate: wav.sampleRate,
+    source: "wav_s16le_peak",
+  };
+}
+
+function wavData(bytes: Buffer) {
+  if (
+    bytes.byteLength < 44 ||
+    bytes.toString("ascii", 0, 4) !== "RIFF" ||
+    bytes.toString("ascii", 8, 12) !== "WAVE"
+  ) {
+    return undefined;
+  }
+
+  let offset = 12;
+  let channelCount = 0;
+  let dataOffset = 0;
+  let dataSize = 0;
+  let sampleRate = 0;
+  let supportedFormat = false;
+
+  while (offset + 8 <= bytes.byteLength) {
+    const chunkId = bytes.toString("ascii", offset, offset + 4);
+    const chunkSize = bytes.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    const end = Math.min(start + chunkSize, bytes.byteLength);
+
+    if (chunkId === "fmt " && chunkSize >= 16 && end <= bytes.byteLength) {
+      supportedFormat = bytes.readUInt16LE(start) === 1 && bytes.readUInt16LE(start + 14) === 16;
+      channelCount = bytes.readUInt16LE(start + 2);
+      sampleRate = bytes.readUInt32LE(start + 4);
+    }
+
+    if (chunkId === "data") {
+      dataOffset = start;
+      dataSize = Math.max(0, end - start);
+    }
+
+    offset = start + chunkSize + (chunkSize % 2);
+  }
+
+  if (!supportedFormat || channelCount <= 0 || sampleRate <= 0 || dataSize <= 0) {
+    return undefined;
+  }
+
+  return { channelCount, dataOffset, dataSize, sampleRate };
+}
+
+function peakForBin(
+  bytes: Buffer,
+  wav: NonNullable<ReturnType<typeof wavData>>,
+  index: number,
+  bins: number,
+  frames: number,
+) {
+  const startFrame = Math.floor((index * frames) / bins);
+  const endFrame = Math.max(startFrame + 1, Math.floor(((index + 1) * frames) / bins));
+  let peak = 0;
+
+  for (let frame = startFrame; frame < endFrame; frame += 1) {
+    const frameOffset = wav.dataOffset + frame * wav.channelCount * 2;
+
+    for (let channel = 0; channel < wav.channelCount; channel += 1) {
+      const sampleOffset = frameOffset + channel * 2;
+
+      if (sampleOffset + 2 <= bytes.byteLength) {
+        peak = Math.max(peak, Math.abs(bytes.readInt16LE(sampleOffset)) / 32768);
+      }
+    }
+  }
+
+  return Number(peak.toFixed(3));
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
