@@ -66,7 +66,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
 | Storage upload | 🟦 | Stub queue, provider config/status, policy templates, auto-queue, audited runner, API/UI control, metrics |
-| OIDC | 🟨 | Azure AD claim normalization and user sync scaffold; local auth first |
+| OIDC | 🟨 | Azure AD user sync plus config/discovery scaffold; local auth first |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
 ---
@@ -297,7 +297,7 @@ Current scaffold:
 ## Security And Transport
 
 - Local auth uses hashed passwords and bearer sessions.
-- Azure AD OIDC login/discovery remains a future integration.
+- Azure AD OIDC login/callback remains a future integration.
 - Node enrollment uses one-time tokens and stores only hashes.
 - Controller/node traffic must be transport-layer encrypted.
 - Development can use a local CA or trusted dev certificates.
@@ -425,7 +425,7 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Add Azure AD OIDC discovery/config and login flow.
+1. 🚧 Add Azure AD OIDC login/callback flow.
 2. ⏸️ Return to X32 hardware validation after device is confirmed.
 3. 🧊 Add SMB/S3 providers.
 4. 🧊 Add local VAD and noise/speech scoring.

@@ -22,6 +22,7 @@ import {
 } from "@rakkr/shared";
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
+import { registerAuthOidcRoutes } from "./auth-oidc-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
 import { registerHealthRoutes } from "./health-routes.js";
@@ -555,6 +556,11 @@ registerSettingsRoutes({
   requirePermission,
   settingsStore,
   uploadProviderStore,
+});
+
+registerAuthOidcRoutes({
+  app,
+  requirePermission,
 });
 
 app.post("/api/v1/auth/login", async (c) => {
