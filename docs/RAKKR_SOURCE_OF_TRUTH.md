@@ -65,7 +65,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
-| Storage upload | 🟦 | Stub queue, provider status/config stubs, audit hooks, UI actions, metrics |
+| Storage upload | 🟦 | Stub queue, provider config/status, policy templates, UI actions, metrics |
 | OIDC | 🧊 | Azure AD-ready boundary; local auth first |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
@@ -355,10 +355,11 @@ Current scaffold:
 - Queue entries are auditable, visible, retryable, and metric-exported.
 - Recording library can enqueue cached recordings and retry failed queue items.
 - Upload providers expose enabled state, target, credential reference, readiness, and implementation status.
+- Upload policy templates choose provider, target, trigger, and retry budget.
+- Schedules and recordings carry `uploadPolicyId` for provider selection.
 
 Later:
 
-- upload policy templates and schedule ownership;
 - SMB provider.
 - S3 provider.
 - checksum verification after upload.
@@ -419,7 +420,7 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Add upload policy templates and provider selection for scheduled/ad hoc queues.
+1. 🚧 Add automatic queueing when cached recordings match enabled upload policies.
 2. ⏸️ Return to X32 hardware validation after device is confirmed.
 3. 🧊 Add Azure AD OIDC user sync.
 4. 🧊 Add SMB/S3 providers.

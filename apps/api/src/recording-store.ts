@@ -261,6 +261,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     source: row.source,
     status: row.status,
     tags: stringArray(row.tags),
+    uploadPolicyId: stringOrUndefined(metadata?.uploadPolicyId),
     watchdogPolicyId: stringOrUndefined(metadata?.watchdogPolicyId),
     waveformPreview: waveformPreviewOrUndefined(metadata?.waveformPreview),
   };
@@ -270,6 +271,7 @@ function recordingMetadata(recording: RecordingSummary) {
   return {
     cached: recording.cached,
     recordingProfileId: recording.recordingProfileId,
+    uploadPolicyId: recording.uploadPolicyId,
     watchdogPolicyId: recording.watchdogPolicyId,
     waveformPreview: recording.waveformPreview,
   };
@@ -325,6 +327,7 @@ function isRecordingSummary(value: unknown): value is RecordingSummary {
     typeof value.durationSeconds === "number" &&
     typeof value.cached === "boolean" &&
     optionalString(value.recordingProfileId) &&
+    optionalString(value.uploadPolicyId) &&
     optionalString(value.watchdogPolicyId) &&
     healthStatus(value.healthStatus as string) === value.healthStatus &&
     (value.source === "ad_hoc" || value.source === "schedule") &&

@@ -27,6 +27,9 @@ import type {
   UploadProvider,
   UploadProviderConfigUpdate,
   UploadProviderRuntimeStatus,
+  UploadPolicy,
+  UploadPolicyInput,
+  UploadPolicyUpdate,
   UploadQueueItem,
   WatchdogPolicy,
   WatchdogPolicyUpdate,
@@ -88,6 +91,7 @@ export interface UploadQueueInput {
   provider?: UploadProvider;
   reason?: string;
   target?: string;
+  uploadPolicyId?: string;
 }
 
 export interface RecordingFilters {
@@ -312,6 +316,7 @@ export const api = {
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
   uploadProviders: () =>
     fetchJson<{ data: UploadProviderRuntimeStatus[] }>("/api/v1/settings/upload-providers"),
+  uploadPolicies: () => fetchJson<{ data: UploadPolicy[] }>("/api/v1/settings/upload-policies"),
   watchdogPolicies: () =>
     fetchJson<{ data: WatchdogPolicy[] }>("/api/v1/settings/watchdog-policies"),
   channelMapTemplates: () =>
@@ -375,6 +380,22 @@ export const api = {
         method: "PATCH",
       },
     ),
+  createUploadPolicy: (input: UploadPolicyInput) =>
+    fetchJson<{ data: UploadPolicy }>("/api/v1/settings/upload-policies", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  updateUploadPolicy: (policyId: string, input: UploadPolicyUpdate) =>
+    fetchJson<{ data: UploadPolicy }>(`/api/v1/settings/upload-policies/${policyId}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
   updateWatchdogPolicy: (policyId: string, input: WatchdogPolicyUpdate) =>
     fetchJson<{ data: WatchdogPolicy }>(`/api/v1/settings/watchdog-policies/${policyId}`, {
       body: JSON.stringify(input),

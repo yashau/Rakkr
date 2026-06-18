@@ -513,7 +513,7 @@ export function SchedulesPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <div className="grid gap-2">
               <Label htmlFor="schedule-profile">Recording Profile</Label>
               <Input
@@ -530,6 +530,15 @@ export function SchedulesPage() {
                 onChange={(event) => updateDraft("watchdogPolicyId", event.target.value)}
                 required
                 value={draft.watchdogPolicyId}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-upload-policy">Upload Policy</Label>
+              <Input
+                id="schedule-upload-policy"
+                onChange={(event) => updateDraft("uploadPolicyId", event.target.value)}
+                required
+                value={draft.uploadPolicyId}
               />
             </div>
             <div className="grid gap-2">
@@ -587,6 +596,10 @@ export function SchedulesPage() {
                   <div>
                     <dt className="font-medium text-foreground">Watchdog</dt>
                     <dd>{schedule.watchdogPolicyId}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Upload Policy</dt>
+                    <dd>{schedule.uploadPolicyId}</dd>
                   </div>
                   <div>
                     <dt className="font-medium text-foreground">Buffers</dt>

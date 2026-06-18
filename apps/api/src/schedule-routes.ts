@@ -428,6 +428,7 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
     tags: uniqueTags(input.tags),
     timezone: input.timezone,
     titleTemplate: input.titleTemplate,
+    uploadPolicyId: input.uploadPolicyId,
     watchdogPolicyId: input.watchdogPolicyId,
   };
 }

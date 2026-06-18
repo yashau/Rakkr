@@ -57,6 +57,7 @@ export function materializeScheduledRecording(
     source: "schedule",
     status: "recording",
     tags: uniqueTags(schedule.tags),
+    uploadPolicyId: schedule.uploadPolicyId,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 }
@@ -108,6 +109,7 @@ export function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
     recordingProfileId: schedule.recordingProfileId,
     tags: schedule.tags,
     titleTemplate: schedule.titleTemplate,
+    uploadPolicyId: schedule.uploadPolicyId,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 }
@@ -118,6 +120,7 @@ export function recordingMetadataSnapshot(recording: RecordingSummary) {
     name: recording.name,
     recordingProfileId: recording.recordingProfileId,
     tags: recording.tags,
+    uploadPolicyId: recording.uploadPolicyId,
     watchdogPolicyId: recording.watchdogPolicyId,
   };
 }

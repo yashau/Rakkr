@@ -1,0 +1,1 @@
+ALTER TABLE "schedules" ADD COLUMN "upload_policy_id" varchar(160);

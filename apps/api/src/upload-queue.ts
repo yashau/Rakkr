@@ -11,6 +11,8 @@ import {
 import { recordingFileName } from "./recording-cache.js";
 
 interface EnqueueUploadInput {
+  maxAttempts?: number;
+  policyId?: string;
   provider?: UploadProvider;
   reason?: string;
   target?: string;
@@ -46,13 +48,14 @@ class UploadQueueStore {
       fileName: recordingFileName(recording),
       id: `upload_${randomUUID()}`,
       lastError: input.reason ?? "provider_not_configured",
-      maxAttempts: Number(process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS ?? 5),
+      maxAttempts: input.maxAttempts ?? Number(process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS ?? 5),
       nextAttemptAt: now,
       provider,
       recordingId: recording.id,
       status: "queued",
       target: input.target,
       updatedAt: now,
+      uploadPolicyId: input.policyId,
     };
 
     this.items.unshift(item);

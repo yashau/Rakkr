@@ -5,12 +5,15 @@ import {
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
   recordingProfileUpdateSchema,
+  uploadPolicyInputSchema,
+  uploadPolicyUpdateSchema,
   uploadProviderConfigUpdateSchema,
   uploadProviderSchema,
   watchdogPolicyUpdateSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
   type RecordingProfile,
+  type UploadPolicy,
   type UploadProviderRuntimeStatus,
   type WatchdogPolicy,
 } from "@rakkr/shared";
@@ -18,6 +21,7 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
+import { createUploadPolicy, listUploadPolicies, updateUploadPolicy } from "./upload-policies.js";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 
 interface SettingsRouteDependencies {
@@ -75,6 +79,14 @@ export function registerSettingsRoutes({
       type: "settings",
     })),
     async (c) => c.json({ data: await uploadProviderStore.listStatuses() }),
+  );
+
+  app.get(
+    "/api/v1/settings/upload-policies",
+    requirePermission("settings:read", "settings.upload_policies.read", () => ({
+      type: "settings",
+    })),
+    async (c) => c.json({ data: await listUploadPolicies() }),
   );
 
   app.patch(
@@ -238,6 +250,89 @@ export function registerSettingsRoutes({
         outcome: "succeeded",
         permission: "settings:manage",
         target: uploadProviderAuditTarget(updated),
+      });
+
+      return c.json({ data: updated });
+    },
+  );
+
+  app.post(
+    "/api/v1/settings/upload-policies",
+    requirePermission("settings:manage", "settings.upload_policies.create", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = uploadPolicyInputSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(c, "settings.upload_policies.create.failed", "invalid_request");
+        return c.json({ error: "Invalid upload policy", issues: body.error.issues }, 400);
+      }
+
+      const created = await createUploadPolicy(body.data);
+
+      await recordAuditEvent(c, {
+        action: "settings.upload_policies.create.succeeded",
+        after: uploadPolicySnapshot(created),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: uploadPolicyAuditTarget(created),
+      });
+
+      return c.json({ data: created }, 201);
+    },
+  );
+
+  app.patch(
+    "/api/v1/settings/upload-policies/:policyId",
+    requirePermission("settings:manage", "settings.upload_policies.update", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const policyId = c.req.param("policyId");
+      const before = (await listUploadPolicies()).find((policy) => policy.id === policyId);
+
+      if (!before) {
+        await recordSettingsFailure(c, "settings.upload_policies.update.failed", "not_found", {
+          id: policyId,
+          type: "upload_policy",
+        });
+        return c.json({ error: "Upload policy not found" }, 404);
+      }
+
+      const body = uploadPolicyUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.upload_policies.update.failed",
+          "invalid_request",
+          uploadPolicyAuditTarget(before),
+        );
+        return c.json({ error: "Invalid upload policy", issues: body.error.issues }, 400);
+      }
+
+      const updated = await updateUploadPolicy(policyId, body.data);
+
+      if (!updated) {
+        await recordSettingsFailure(
+          c,
+          "settings.upload_policies.update.failed",
+          "not_found",
+          uploadPolicyAuditTarget(before),
+        );
+        return c.json({ error: "Upload policy not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "settings.upload_policies.update.succeeded",
+        after: uploadPolicySnapshot(updated),
+        auth: currentAuth(c),
+        before: uploadPolicySnapshot(before),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: uploadPolicyAuditTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -547,6 +642,26 @@ function uploadProviderSnapshot(provider: UploadProviderRuntimeStatus) {
     provider: provider.provider,
     status: provider.status,
     target: provider.target,
+  };
+}
+
+function uploadPolicyAuditTarget(policy: UploadPolicy) {
+  return {
+    id: policy.id,
+    name: policy.name,
+    type: "upload_policy",
+  };
+}
+
+function uploadPolicySnapshot(policy: UploadPolicy) {
+  return {
+    enabled: policy.enabled,
+    id: policy.id,
+    maxAttempts: policy.maxAttempts,
+    name: policy.name,
+    provider: policy.provider,
+    target: policy.target,
+    trigger: policy.trigger,
   };
 }
 

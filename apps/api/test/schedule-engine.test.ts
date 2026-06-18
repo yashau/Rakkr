@@ -133,6 +133,7 @@ function scheduleFixture(overrides: Partial<ScheduleSummary> = {}): ScheduleSumm
     tags: ["voice", "scheduled"],
     timezone: "UTC",
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}",
+    uploadPolicyId: "upload-policy-stub",
     watchdogPolicyId: "scheduled-voice-watchdog",
     ...overrides,
   };

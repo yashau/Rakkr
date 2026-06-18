@@ -1,5 +1,6 @@
 import {
   defaultScheduledVoiceWatchdogPolicy,
+  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
   type MeterFrame,
   type RecorderNode,
@@ -58,6 +59,7 @@ export const schedules: ScheduleSummary[] = [
     tags: ["council", "scheduled", "voice"],
     timezone: "Indian/Maldives",
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
+    uploadPolicyId: defaultStubUploadPolicy.id,
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];
@@ -77,6 +79,7 @@ export const recordings: RecordingSummary[] = [
     source: "schedule",
     status: "completed",
     tags: ["council", "voice"],
+    uploadPolicyId: defaultStubUploadPolicy.id,
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];

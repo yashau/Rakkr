@@ -15,7 +15,13 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { HealthEvent, RecordingJob, RecordingSummary, UploadQueueItem } from "@rakkr/shared";
+import type {
+  HealthEvent,
+  RecordingJob,
+  RecordingSummary,
+  UploadPolicy,
+  UploadQueueItem,
+} from "@rakkr/shared";
 
 import { QualityTimeline } from "@/components/quality-timeline";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +73,7 @@ const recordingStatuses: Array<RecordingSummary["status"]> = [
   "cached",
   "uploaded",
 ];
+const emptyUploadPolicies: UploadPolicy[] = [];
 
 const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
@@ -100,6 +107,10 @@ export function RecordingsPage() {
     queryFn: api.uploadQueue,
     queryKey: ["upload-queue"],
     refetchInterval: 5000,
+  });
+  const uploadPoliciesQuery = useQuery({
+    queryFn: api.uploadPolicies,
+    queryKey: ["upload-policies"],
   });
   const startMutation = useMutation({
     mutationFn: api.startRecording,
@@ -185,7 +196,8 @@ export function RecordingsPage() {
     },
   });
   const enqueueUploadMutation = useMutation({
-    mutationFn: (recordingId: string) => api.enqueueRecordingUpload(recordingId),
+    mutationFn: (input: { recordingId: string; uploadPolicyId?: string }) =>
+      api.enqueueRecordingUpload(input.recordingId, { uploadPolicyId: input.uploadPolicyId }),
     onError: () =>
       setNotice({
         detail: "The selected cached recording could not be queued for upload.",
@@ -222,6 +234,7 @@ export function RecordingsPage() {
   const recordings = recordingsQuery.data?.data ?? [];
   const healthEventsByRecording = groupHealthEventsByRecording(healthEventsQuery.data?.data ?? []);
   const uploadItemsByRecording = groupUploadItemsByRecording(uploadQueueQuery.data?.data ?? []);
+  const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
   const activeFilterCount = Object.values(recordingFilters).filter(Boolean).length;
 
   useEffect(
@@ -410,7 +423,9 @@ export function RecordingsPage() {
             key={recording.id}
             onDownload={() => downloadMutation.mutate(recording.id)}
             onPlayback={() => playbackMutation.mutate(recording.id)}
-            onQueueUpload={() => enqueueUploadMutation.mutate(recording.id)}
+            onQueueUpload={(uploadPolicyId) =>
+              enqueueUploadMutation.mutate({ recordingId: recording.id, uploadPolicyId })
+            }
             onRetryUpload={(itemId) => retryUploadMutation.mutate(itemId)}
             onStop={() => stopMutation.mutate(recording.id)}
             onUpdate={(input) =>
@@ -424,6 +439,7 @@ export function RecordingsPage() {
             retryUploadPending={retryUploadMutation.isPending}
             stopPending={stopMutation.isPending}
             uploadItems={uploadItemsByRecording.get(recording.id) ?? []}
+            uploadPolicies={uploadPolicies}
             uploadPending={enqueueUploadMutation.isPending}
           />
         );
@@ -502,6 +518,7 @@ function RecordingCard({
   retryUploadPending,
   stopPending,
   uploadItems,
+  uploadPolicies,
   uploadPending,
 }: {
   canControl: boolean;
@@ -512,7 +529,7 @@ function RecordingCard({
   jobs: RecordingJob[];
   onDownload: () => void;
   onPlayback: () => void;
-  onQueueUpload: () => void;
+  onQueueUpload: (uploadPolicyId?: string) => void;
   onRetryUpload: (itemId: string) => void;
   onStop: () => void;
   onUpdate: (input: RecordingMetadataUpdate) => Promise<unknown>;
@@ -521,18 +538,26 @@ function RecordingCard({
   retryUploadPending: boolean;
   stopPending: boolean;
   uploadItems: UploadQueueItem[];
+  uploadPolicies: UploadPolicy[];
   uploadPending: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const fileReady =
     recording.cached || recording.status === "cached" || recording.status === "uploaded";
   const [draft, setDraft] = useState<RecordingMetadataDraft>(() => draftFromRecording(recording));
+  const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(
+    recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "",
+  );
 
   useEffect(() => {
     if (!isEditing) {
       setDraft(draftFromRecording(recording));
     }
   }, [isEditing, recording]);
+
+  useEffect(() => {
+    setSelectedUploadPolicyId(recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "");
+  }, [recording.uploadPolicyId, uploadPolicies]);
 
   const resetDraft = () => {
     setDraft(draftFromRecording(recording));
@@ -736,14 +761,29 @@ function RecordingCard({
             Download
           </Button>
           {canControl ? (
-            <Button
-              disabled={!fileReady || uploadPending}
-              onClick={onQueueUpload}
-              variant="outline"
-            >
-              <UploadCloud className="size-4" />
-              Queue Upload
-            </Button>
+            <>
+              {uploadPolicies.length > 0 ? (
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  onChange={(event) => setSelectedUploadPolicyId(event.target.value)}
+                  value={selectedUploadPolicyId}
+                >
+                  {uploadPolicies.map((policy) => (
+                    <option key={policy.id} value={policy.id}>
+                      {policy.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <Button
+                disabled={!fileReady || uploadPending}
+                onClick={() => onQueueUpload(selectedUploadPolicyId || undefined)}
+                variant="outline"
+              >
+                <UploadCloud className="size-4" />
+                Queue Upload
+              </Button>
+            </>
           ) : null}
         </div>
       </div>

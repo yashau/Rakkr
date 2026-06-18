@@ -3,6 +3,7 @@ import type { Context, Hono } from "hono";
 import { z } from "zod";
 import {
   defaultVoiceRecordingProfile,
+  defaultStubUploadPolicy,
   type Permission,
   type RecordingSummary,
   type UploadQueueItem,
@@ -17,6 +18,7 @@ import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recor
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
+import { uploadPolicyForQueue } from "./upload-policies.js";
 import {
   enqueueRecordingUpload,
   listUploadQueueItems,
@@ -76,6 +78,7 @@ const uploadQueueRequestSchema = z
     provider: z.unknown().optional(),
     reason: z.string().trim().min(1).max(240).optional(),
     target: z.string().trim().min(1).max(500).optional(),
+    uploadPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
 
@@ -258,10 +261,29 @@ export function registerRecordingRoutes({
         );
       }
 
+      const policy = await uploadPolicyForQueue(
+        body.data.uploadPolicyId ?? recording.uploadPolicyId,
+      );
+
+      if (!policy.enabled) {
+        await recordUploadQueueFailure(c, {
+          action: "recordings.upload_queue.enqueue.failed",
+          reason: "upload_policy_disabled",
+          recordingId,
+          targetName: recording.name,
+        });
+
+        return c.json({ error: "Upload policy is disabled" }, 409);
+      }
+
       const item = await enqueueRecordingUpload(recording, {
-        provider: uploadProviderFromValue(body.data.provider),
+        maxAttempts: policy.maxAttempts,
+        policyId: policy.id,
+        provider: body.data.provider
+          ? uploadProviderFromValue(body.data.provider)
+          : policy.provider,
         reason: body.data.reason,
-        target: body.data.target,
+        target: body.data.target ?? policy.target,
       });
 
       await recordAuditEvent(c, {
@@ -594,6 +616,7 @@ export function registerRecordingRoutes({
         source: "ad_hoc",
         status: "recording",
         tags: ["ad-hoc", "voice"],
+        uploadPolicyId: defaultStubUploadPolicy.id,
       };
 
       await recordingStore.create(recording);
@@ -806,6 +829,7 @@ function uploadQueueAuditDetails(item: UploadQueueItem) {
     provider: item.provider,
     status: item.status,
     target: item.target,
+    uploadPolicyId: item.uploadPolicyId,
   };
 }
 

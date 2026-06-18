@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UploadPolicyPanel } from "@/components/upload-policy-panel";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 
@@ -118,6 +119,8 @@ export function SettingsPage() {
           <UploadProviderCard key={provider.provider} provider={provider} />
         ))}
       </div>
+
+      <UploadPolicyPanel />
 
       <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>

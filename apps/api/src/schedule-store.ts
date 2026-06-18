@@ -3,6 +3,7 @@ import path from "node:path";
 import { createDatabase, desc, eq, schedules as schedulesTable } from "@rakkr/db";
 import {
   defaultScheduledVoiceWatchdogPolicy,
+  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
   scheduleRecurrenceSchema,
   scheduleSummarySchema,
@@ -284,6 +285,7 @@ class PostgresScheduleStore implements ScheduleStore {
           tags: row.tags,
           timezone: row.timezone,
           titleTemplate: row.titleTemplate,
+          uploadPolicyId: row.uploadPolicyId,
           watchdogPolicyId: row.watchdogPolicyId,
         },
         target: schedulesTable.id,
@@ -323,6 +325,7 @@ function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
     tags: schedule.tags,
     timezone: schedule.timezone,
     titleTemplate: schedule.titleTemplate,
+    uploadPolicyId: schedule.uploadPolicyId,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 }
@@ -343,6 +346,7 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
     tags: stringArray(row.tags),
     timezone: row.timezone,
     titleTemplate: row.titleTemplate,
+    uploadPolicyId: row.uploadPolicyId ?? defaultStubUploadPolicy.id,
     watchdogPolicyId: row.watchdogPolicyId ?? defaultScheduledVoiceWatchdogPolicy.id,
   };
 }

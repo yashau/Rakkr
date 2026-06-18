@@ -387,6 +387,7 @@ export const schedules = pgTable(
       .default(sql`'[]'::jsonb`),
     timezone: varchar("timezone", { length: 80 }).notNull(),
     titleTemplate: text("title_template").notNull(),
+    uploadPolicyId: varchar("upload_policy_id", { length: 160 }),
     watchdogPolicyId: varchar("watchdog_policy_id", { length: 160 }),
   },
   (table) => ({
