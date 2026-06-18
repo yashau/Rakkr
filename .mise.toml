@@ -10,6 +10,14 @@ _.file = ".env"
 description = "Install workspace dependencies"
 run = "pnpm install"
 
+[tasks."services:up"]
+description = "Start local development services"
+run = "docker compose up -d postgres"
+
+[tasks."services:down"]
+description = "Stop local development services"
+run = "docker compose down"
+
 [tasks."install:ci"]
 description = "Install workspace dependencies in CI with the locked dependency graph"
 run = "pnpm install --frozen-lockfile"

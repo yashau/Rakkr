@@ -15,14 +15,15 @@ The project source of truth lives in [docs/RAKKR_SOURCE_OF_TRUTH.md](docs/RAKKR_
 | Recorder agent    | Rust                                                            |
 | Initial transport | Encrypted HTTP/WebSocket-ready boundary over trusted LAN        |
 
-`mise` owns workspace setup and repository commands. Install runtimes, dependencies, checks, formatting, builds, and local development through mise tasks. Package-manager commands are an internal implementation detail of `.mise.toml`, not the canonical developer interface.
+`mise` owns every developer-facing workspace command. Install runtimes and dependencies, start local services, run checks, format, build, and launch local development through mise tasks. The commands below are the canonical interface for the repo.
 
 ## Quick Start
 
 ```powershell
+mise trust
 mise install
 mise run install
-docker compose up -d postgres
+mise run services:up
 mise run dev
 ```
 
@@ -62,6 +63,8 @@ docs/
 
 ```powershell
 mise run dev          # API + web UI
+mise run services:up  # local Postgres
+mise run services:down
 mise run build        # TypeScript packages/apps + Rust agent
 mise run check        # LOC, TypeScript, Oxlint, Oxfmt, Cargo, Clippy, Miri
 mise run db:generate  # Drizzle migration generation
