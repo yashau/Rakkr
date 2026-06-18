@@ -1,17 +1,60 @@
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, CalendarPlus } from "lucide-react";
+import { CalendarClock, CalendarPlus, Pencil, PlusCircle, RotateCcw, Save } from "lucide-react";
+import {
+  defaultScheduledVoiceWatchdogPolicy,
+  defaultVoiceRecordingProfile,
+  type RecorderNode,
+  type ScheduleInput,
+  type ScheduleSummary,
+} from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 
+interface ScheduleDraft {
+  enabled: boolean;
+  folderTemplate: string;
+  name: string;
+  nextRunAt: string;
+  nodeId: string;
+  recordingProfileId: string;
+  room: string;
+  tags: string;
+  timezone: string;
+  titleTemplate: string;
+  watchdogPolicyId: string;
+}
+
+const fallbackTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
 export function SchedulesPage() {
   const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<string>();
+  const [draft, setDraft] = useState<ScheduleDraft>(() => defaultDraft());
   const schedulesQuery = useQuery({
     queryFn: api.schedules,
     queryKey: ["schedules"],
+  });
+  const nodesQuery = useQuery({
+    queryFn: api.nodes,
+    queryKey: ["nodes"],
+  });
+  const nodes = useMemo(() => nodesQuery.data?.data ?? [], [nodesQuery.data?.data]);
+  const firstNode = nodes[0];
+  const saveScheduleMutation = useMutation({
+    mutationFn: ({ input, scheduleId }: { input: ScheduleInput; scheduleId?: string }) =>
+      scheduleId ? api.updateSchedule(scheduleId, input) : api.createSchedule(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      resetDraft(firstNode);
+    },
   });
   const runNowMutation = useMutation({
     mutationFn: api.runScheduleNow,
@@ -21,8 +64,205 @@ export function SchedulesPage() {
     },
   });
 
+  useEffect(() => {
+    if (draft.nodeId || !firstNode) {
+      return;
+    }
+
+    setDraft((current) =>
+      current.nodeId
+        ? current
+        : {
+            ...current,
+            nodeId: firstNode.id,
+            room: firstNode.location.room,
+          },
+    );
+  }, [draft.nodeId, firstNode]);
+
+  function resetDraft(node = firstNode) {
+    setEditingId(undefined);
+    setDraft(defaultDraft(node));
+  }
+
+  function editSchedule(schedule: ScheduleSummary) {
+    setEditingId(schedule.id);
+    setDraft(scheduleToDraft(schedule));
+  }
+
+  function updateDraft<Key extends keyof ScheduleDraft>(key: Key, value: ScheduleDraft[Key]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectNode(nodeId: string) {
+    const node = nodes.find((candidate) => candidate.id === nodeId);
+
+    setDraft((current) => ({
+      ...current,
+      nodeId,
+      room: node?.location.room ?? current.room,
+    }));
+  }
+
+  function submitSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveScheduleMutation.mutate({
+      input: draftToInput(draft),
+      scheduleId: editingId,
+    });
+  }
+
   return (
     <div className="grid gap-4">
+      <Card className="rounded-lg p-4 shadow-sm">
+        <form className="grid gap-4" onSubmit={submitSchedule}>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2">
+              {editingId ? (
+                <Pencil className="size-5 text-teal-700" />
+              ) : (
+                <PlusCircle className="size-5 text-teal-700" />
+              )}
+              <h2 className="text-base font-semibold">
+                {editingId ? "Edit Schedule" : "Create Schedule"}
+              </h2>
+              {editingId ? <Badge variant="outline">{editingId}</Badge> : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={saveScheduleMutation.isPending}>
+                <Save className="size-4" />
+                {editingId ? "Save" : "Create"}
+              </Button>
+              <Button onClick={() => resetDraft()} type="button" variant="outline">
+                <RotateCcw className="size-4" />
+                Reset
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-name">Name</Label>
+              <Input
+                id="schedule-name"
+                onChange={(event) => updateDraft("name", event.target.value)}
+                required
+                value={draft.name}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-node">Recorder Node</Label>
+              <select
+                className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                id="schedule-node"
+                onChange={(event) => selectNode(event.target.value)}
+                required
+                value={draft.nodeId}
+              >
+                <option value="">Select a recorder</option>
+                {nodes.map((node) => (
+                  <option key={node.id} value={node.id}>
+                    {node.alias} / {node.location.room}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-room">Room</Label>
+              <Input
+                id="schedule-room"
+                onChange={(event) => updateDraft("room", event.target.value)}
+                required
+                value={draft.room}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-timezone">Timezone</Label>
+              <Input
+                id="schedule-timezone"
+                onChange={(event) => updateDraft("timezone", event.target.value)}
+                required
+                value={draft.timezone}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-next-run">Next Run</Label>
+              <Input
+                id="schedule-next-run"
+                onChange={(event) => updateDraft("nextRunAt", event.target.value)}
+                type="datetime-local"
+                value={draft.nextRunAt}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-7">
+              <input
+                checked={draft.enabled}
+                className="size-4 accent-teal-700"
+                id="schedule-enabled"
+                onChange={(event) => updateDraft("enabled", event.target.checked)}
+                type="checkbox"
+              />
+              <Label htmlFor="schedule-enabled">Enabled</Label>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-title-template">Title Template</Label>
+              <Textarea
+                id="schedule-title-template"
+                onChange={(event) => updateDraft("titleTemplate", event.target.value)}
+                required
+                value={draft.titleTemplate}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-folder-template">Folder Template</Label>
+              <Textarea
+                id="schedule-folder-template"
+                onChange={(event) => updateDraft("folderTemplate", event.target.value)}
+                required
+                value={draft.folderTemplate}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-profile">Recording Profile</Label>
+              <Input
+                id="schedule-profile"
+                onChange={(event) => updateDraft("recordingProfileId", event.target.value)}
+                required
+                value={draft.recordingProfileId}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
+              <Input
+                id="schedule-watchdog"
+                onChange={(event) => updateDraft("watchdogPolicyId", event.target.value)}
+                required
+                value={draft.watchdogPolicyId}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-tags">Tags</Label>
+              <Input
+                id="schedule-tags"
+                onChange={(event) => updateDraft("tags", event.target.value)}
+                value={draft.tags}
+              />
+            </div>
+          </div>
+        </form>
+      </Card>
+
       {schedulesQuery.data?.data.map((schedule) => (
         <Card className="rounded-lg p-4 shadow-sm" key={schedule.id}>
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -60,14 +300,21 @@ export function SchedulesPage() {
               </dl>
             </div>
             <div className="grid gap-3 md:justify-items-end">
-              <Button
-                disabled={runNowMutation.isPending || !schedule.enabled}
-                onClick={() => runNowMutation.mutate(schedule.id)}
-                variant="outline"
-              >
-                <CalendarPlus className="size-4" />
-                Run Now
-              </Button>
+              <div className="flex flex-wrap gap-2 md:justify-end">
+                <Button onClick={() => editSchedule(schedule)} type="button" variant="outline">
+                  <Pencil className="size-4" />
+                  Edit
+                </Button>
+                <Button
+                  disabled={runNowMutation.isPending || !schedule.enabled}
+                  onClick={() => runNowMutation.mutate(schedule.id)}
+                  type="button"
+                  variant="outline"
+                >
+                  <CalendarPlus className="size-4" />
+                  Run Now
+                </Button>
+              </div>
               <div className="flex flex-wrap gap-2 md:justify-end">
                 {schedule.tags.map((tag) => (
                   <Badge key={tag} variant="secondary">
@@ -79,9 +326,90 @@ export function SchedulesPage() {
           </div>
         </Card>
       ))}
+
+      {schedulesQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading schedules.</p>
+      ) : null}
+      {saveScheduleMutation.isError ? (
+        <p className="text-sm text-destructive">Schedule save failed.</p>
+      ) : null}
       {runNowMutation.isError ? (
         <p className="text-sm text-destructive">Schedule run failed.</p>
       ) : null}
     </div>
   );
+}
+
+function defaultDraft(node?: RecorderNode): ScheduleDraft {
+  return {
+    enabled: true,
+    folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
+    name: "",
+    nextRunAt: "",
+    nodeId: node?.id ?? "",
+    recordingProfileId: defaultVoiceRecordingProfile.id,
+    room: node?.location.room ?? "",
+    tags: "voice, scheduled",
+    timezone: fallbackTimezone,
+    titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
+    watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
+  };
+}
+
+function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
+  return {
+    enabled: schedule.enabled,
+    folderTemplate: schedule.folderTemplate,
+    name: schedule.name,
+    nextRunAt: localDateTimeInput(schedule.nextRunAt),
+    nodeId: schedule.nodeId,
+    recordingProfileId: schedule.recordingProfileId,
+    room: schedule.room,
+    tags: schedule.tags.join(", "),
+    timezone: schedule.timezone,
+    titleTemplate: schedule.titleTemplate,
+    watchdogPolicyId: schedule.watchdogPolicyId,
+  };
+}
+
+function draftToInput(draft: ScheduleDraft): ScheduleInput {
+  return {
+    enabled: draft.enabled,
+    folderTemplate: draft.folderTemplate,
+    name: draft.name,
+    nextRunAt: isoFromLocalDateTime(draft.nextRunAt),
+    nodeId: draft.nodeId,
+    recordingProfileId: draft.recordingProfileId,
+    room: draft.room,
+    tags: uniqueTags(draft.tags),
+    timezone: draft.timezone,
+    titleTemplate: draft.titleTemplate,
+    watchdogPolicyId: draft.watchdogPolicyId,
+  };
+}
+
+function isoFromLocalDateTime(value: string) {
+  return value ? new Date(value).toISOString() : undefined;
+}
+
+function localDateTimeInput(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+
+  return local.toISOString().slice(0, 16);
+}
+
+function uniqueTags(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  ];
 }

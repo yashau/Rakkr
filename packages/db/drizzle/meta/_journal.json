@@ -71,6 +71,13 @@
       "when": 1781764549553,
       "tag": "0009_hard_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781764761114,
+      "tag": "0010_open_wolfsbane",
+      "breakpoints": true
     }
   ]
 }

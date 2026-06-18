@@ -252,6 +252,35 @@ export const scheduleSummarySchema = z.object({
   titleTemplate: z.string().min(1),
   watchdogPolicyId: z.string().min(1),
 });
+export const scheduleInputSchema = z.object({
+  enabled: z.boolean().default(true),
+  folderTemplate: z.string().trim().min(1).max(500),
+  id: z.string().trim().min(1).max(160).optional(),
+  name: z.string().trim().min(1).max(160),
+  nextRunAt: isoDateTimeSchema.optional(),
+  nodeId: z.string().trim().min(1).max(160),
+  recordingProfileId: z.string().trim().min(1).max(160),
+  room: z.string().trim().min(1).max(160),
+  tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
+  timezone: z.string().trim().min(1).max(80),
+  titleTemplate: z.string().trim().min(1).max(500),
+  watchdogPolicyId: z.string().trim().min(1).max(160),
+});
+export const scheduleUpdateSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    folderTemplate: z.string().trim().min(1).max(500).optional(),
+    name: z.string().trim().min(1).max(160).optional(),
+    nextRunAt: isoDateTimeSchema.optional(),
+    nodeId: z.string().trim().min(1).max(160).optional(),
+    recordingProfileId: z.string().trim().min(1).max(160).optional(),
+    room: z.string().trim().min(1).max(160).optional(),
+    tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
+    timezone: z.string().trim().min(1).max(80).optional(),
+    titleTemplate: z.string().trim().min(1).max(500).optional(),
+    watchdogPolicyId: z.string().trim().min(1).max(160).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one schedule field is required");
 
 export const recordingSummarySchema = z.object({
   cached: z.boolean(),
@@ -353,5 +382,7 @@ export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;
 export type ResourceGrant = z.infer<typeof resourceGrantSchema>;
+export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
+export type ScheduleUpdate = z.infer<typeof scheduleUpdateSchema>;
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;

@@ -1,12 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
-import type { RecordingSummary, ScheduleSummary } from "@rakkr/shared";
+import {
+  scheduleInputSchema,
+  scheduleUpdateSchema,
+  type RecordingSummary,
+  type ScheduleInput,
+  type ScheduleSummary,
+  type ScheduleUpdate,
+} from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
 import { createRecordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
+import { ScheduleStoreError, type ScheduleStore } from "./schedule-store.js";
 
 interface ScheduleRouteDependencies {
   app: Hono<AppBindings>;
@@ -16,7 +24,7 @@ interface ScheduleRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
   requirePermission: RequirePermission;
-  schedules: ScheduleSummary[];
+  scheduleStore: ScheduleStore;
   scopedSchedules: (user: NonNullable<AuthResult["user"]>) => Promise<ScheduleSummary[]>;
 }
 
@@ -28,11 +36,139 @@ export function registerScheduleRoutes({
   recordAuditEvent,
   recordingStore,
   requirePermission,
-  schedules,
+  scheduleStore,
   scopedSchedules,
 }: ScheduleRouteDependencies) {
   app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
     c.json({ data: await scopedSchedules(currentUser(c)) }),
+  );
+
+  app.post(
+    "/api/v1/schedules",
+    requirePermission("schedule:manage", "schedules.create", () => ({ type: "schedule" })),
+    async (c) => {
+      const body = scheduleInputSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordScheduleWriteFailure(c, "schedules.create.failed", "invalid_request");
+        return c.json({ error: "Invalid schedule", issues: body.error.issues }, 400);
+      }
+
+      if (!isValidOptionalDate(body.data.nextRunAt)) {
+        await recordScheduleWriteFailure(c, "schedules.create.failed", "invalid_next_run_at");
+        return c.json({ error: "Invalid next run date" }, 400);
+      }
+
+      const node = await nodeStore.find(body.data.nodeId);
+
+      if (!node) {
+        await recordScheduleWriteFailure(c, "schedules.create.failed", "schedule_node_not_found");
+        return c.json({ error: "Schedule node not found" }, 409);
+      }
+
+      const schedule = buildSchedule(body.data);
+
+      try {
+        const created = await scheduleStore.create(schedule);
+
+        await recordAuditEvent(c, {
+          action: "schedules.create.succeeded",
+          after: scheduleExecutionSnapshot(created),
+          auth: currentAuth(c),
+          outcome: "succeeded",
+          permission: "schedule:manage",
+          target: {
+            id: created.id,
+            name: created.name,
+            type: "schedule",
+          },
+        });
+
+        return c.json({ data: created }, 201);
+      } catch (error) {
+        const reason = error instanceof ScheduleStoreError ? error.code : "schedule_create_failed";
+
+        await recordScheduleWriteFailure(c, "schedules.create.failed", reason, schedule);
+        return c.json(
+          { error: "Schedule could not be created" },
+          reason === "schedule_exists" ? 409 : 503,
+        );
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v1/schedules/:scheduleId",
+    requirePermission("schedule:manage", "schedules.update", (c) => ({
+      id: c.req.param("scheduleId"),
+      type: "schedule",
+    })),
+    async (c) => {
+      const scheduleId = c.req.param("scheduleId");
+      const before = await scheduleStore.find(scheduleId);
+
+      if (!before) {
+        await recordScheduleWriteFailure(c, "schedules.update.failed", "schedule_not_found", {
+          id: scheduleId,
+        });
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      const body = scheduleUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordScheduleWriteFailure(c, "schedules.update.failed", "invalid_request", before);
+        return c.json({ error: "Invalid schedule update", issues: body.error.issues }, 400);
+      }
+
+      if (!isValidOptionalDate(body.data.nextRunAt)) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.update.failed",
+          "invalid_next_run_at",
+          before,
+        );
+        return c.json({ error: "Invalid next run date" }, 400);
+      }
+
+      if (body.data.nodeId && !(await nodeStore.find(body.data.nodeId))) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.update.failed",
+          "schedule_node_not_found",
+          before,
+        );
+        return c.json({ error: "Schedule node not found" }, 409);
+      }
+
+      const updated = await scheduleStore.update(scheduleId, sanitizeScheduleUpdate(body.data));
+
+      if (!updated) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.update.failed",
+          "schedule_not_found",
+          before,
+        );
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "schedules.update.succeeded",
+        after: scheduleExecutionSnapshot(updated),
+        auth: currentAuth(c),
+        before: scheduleExecutionSnapshot(before),
+        outcome: "succeeded",
+        permission: "schedule:manage",
+        target: {
+          id: updated.id,
+          name: updated.name,
+          type: "schedule",
+        },
+      });
+
+      return c.json({ data: updated });
+    },
   );
 
   app.post(
@@ -43,7 +179,7 @@ export function registerScheduleRoutes({
     })),
     async (c) => {
       const scheduleId = c.req.param("scheduleId");
-      const schedule = schedules.find((candidate) => candidate.id === scheduleId);
+      const schedule = await scheduleStore.find(scheduleId);
 
       if (!schedule) {
         await recordScheduleRunFailure(c, scheduleId, "schedule_not_found");
@@ -115,6 +251,65 @@ export function registerScheduleRoutes({
       },
     });
   }
+
+  async function recordScheduleWriteFailure(
+    c: Context<AppBindings>,
+    action: string,
+    reason: string,
+    schedule?: Partial<ScheduleSummary>,
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      outcome: "failed",
+      permission: "schedule:manage",
+      reason,
+      target: {
+        id: schedule?.id,
+        name: schedule?.name,
+        type: "schedule",
+      },
+    });
+  }
+}
+
+function buildSchedule(input: ScheduleInput): ScheduleSummary {
+  return {
+    enabled: input.enabled,
+    folderTemplate: input.folderTemplate,
+    id: input.id ?? `sched_${randomUUID()}`,
+    name: input.name,
+    nextRunAt: validIsoOrUndefined(input.nextRunAt),
+    nodeId: input.nodeId,
+    recordingProfileId: input.recordingProfileId,
+    room: input.room,
+    tags: uniqueTags(input.tags),
+    timezone: input.timezone,
+    titleTemplate: input.titleTemplate,
+    watchdogPolicyId: input.watchdogPolicyId,
+  };
+}
+
+function sanitizeScheduleUpdate(input: ScheduleUpdate): Partial<Omit<ScheduleSummary, "id">> {
+  const updates: Partial<Omit<ScheduleSummary, "id">> = { ...input };
+
+  if (input.nextRunAt) {
+    updates.nextRunAt = validIsoOrUndefined(input.nextRunAt);
+  }
+
+  if (input.tags) {
+    updates.tags = uniqueTags(input.tags);
+  }
+
+  return updates;
+}
+
+function isValidOptionalDate(value: string | undefined) {
+  return !value || !Number.isNaN(Date.parse(value));
+}
+
+function validIsoOrUndefined(value: string | undefined) {
+  return value ? new Date(value).toISOString() : undefined;
 }
 
 function materializeScheduledRecording(

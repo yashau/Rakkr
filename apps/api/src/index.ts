@@ -20,18 +20,25 @@ import {
   type CurrentUser,
   type Permission,
   type RecorderNode,
+  type ScheduleSummary,
 } from "@rakkr/shared";
 
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
-import { nodes as seedNodes, prometheusMetrics, recordings, schedules } from "./demo-data.js";
+import {
+  nodes as seedNodes,
+  prometheusMetrics,
+  recordings,
+  schedules as seedSchedules,
+} from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
+import { createScheduleStore } from "./schedule-store.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -41,6 +48,7 @@ const auditStore = createAuditStore();
 const authService = new LocalAuthService();
 const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
+const scheduleStore = createScheduleStore(seedSchedules);
 type NodeRecord = RecorderNode;
 type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
@@ -293,7 +301,7 @@ async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]>
     const recording = await recordingStore.find(target.id);
 
     if (recording?.scheduleId) {
-      addScheduleScopeTargets(targets, recording.scheduleId, knownNodes);
+      await addScheduleScopeTargets(targets, recording.scheduleId, knownNodes);
     }
 
     if (recording?.nodeId) {
@@ -302,7 +310,7 @@ async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]>
   }
 
   if (target.type === "schedule" && target.id) {
-    addScheduleScopeTargets(targets, target.id, knownNodes);
+    await addScheduleScopeTargets(targets, target.id, knownNodes);
   }
 
   if (target.type === "node" && target.id) {
@@ -326,12 +334,12 @@ async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]>
   );
 }
 
-function addScheduleScopeTargets(
+async function addScheduleScopeTargets(
   targets: AuditTarget[],
   scheduleId: string,
   knownNodes: NodeRecord[],
 ) {
-  const schedule = schedules.find((candidate) => candidate.id === scheduleId);
+  const schedule = await scheduleStore.find(scheduleId);
 
   if (!schedule) {
     return;
@@ -475,9 +483,9 @@ async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
 }
 
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
-  const result: typeof schedules = [];
+  const result: ScheduleSummary[] = [];
 
-  for (const schedule of schedules) {
+  for (const schedule of await scheduleStore.list()) {
     if (await hasResourceScope(user, { id: schedule.id, type: "schedule" })) {
       result.push(schedule);
     }
@@ -897,7 +905,7 @@ registerScheduleRoutes({
   recordAuditEvent,
   recordingStore,
   requirePermission,
-  schedules,
+  scheduleStore,
   scopedSchedules,
 });
 

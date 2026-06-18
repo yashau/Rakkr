@@ -330,9 +330,11 @@ export const schedules = pgTable(
     folderTemplate: text("folder_template").notNull(),
     id: varchar("id", { length: 160 }).primaryKey(),
     name: varchar("name", { length: 160 }).notNull(),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
     nodeId: varchar("node_id", { length: 160 }),
     recurrence: jsonb("recurrence").notNull(),
     recordingProfileId: varchar("recording_profile_id", { length: 160 }),
+    room: varchar("room", { length: 160 }).notNull().default("Unknown Room"),
     tags: jsonb("tags")
       .notNull()
       .default(sql`'[]'::jsonb`),

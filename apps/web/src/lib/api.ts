@@ -12,7 +12,9 @@ import type {
   RecordingSummary,
   ResourceGrant,
   Role,
+  ScheduleInput,
   ScheduleSummary,
+  ScheduleUpdate,
   WatchdogPolicy,
 } from "@rakkr/shared";
 
@@ -258,6 +260,14 @@ export const api = {
     fetchJson<{ data: NodeEnrollmentResult }>(`/api/v1/nodes/${nodeId}/credentials/rotate`, {
       method: "POST",
     }),
+  createSchedule: (input: ScheduleInput) =>
+    fetchJson<{ data: ScheduleSummary }>("/api/v1/schedules", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   startRecording: () =>
     fetchJson<{ data: RecordingSummary; job: RecordingJob }>("/api/v1/recordings", {
       method: "POST",
@@ -269,6 +279,14 @@ export const api = {
     }),
   updateRecordingMetadata: (recordingId: string, input: RecordingMetadataUpdate) =>
     fetchJson<{ data: RecordingSummary }>(`/api/v1/recordings/${recordingId}/metadata`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
+  updateSchedule: (scheduleId: string, input: ScheduleUpdate) =>
+    fetchJson<{ data: ScheduleSummary }>(`/api/v1/schedules/${scheduleId}`, {
       body: JSON.stringify(input),
       headers: {
         "Content-Type": "application/json",
