@@ -44,6 +44,8 @@ import { createRecordingStore } from "./recording-store.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleRunner } from "./schedule-runner.js";
 import { createScheduleStore } from "./schedule-store.js";
+import { registerSettingsRoutes } from "./settings-routes.js";
+import { createSettingsStore } from "./settings-store.js";
 import { registerStatusRoutes } from "./status-routes.js";
 import { createWatchdogRunner } from "./watchdog-runner.js";
 
@@ -58,6 +60,7 @@ const meterFrameStore = createMeterFrameStore();
 const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
+const settingsStore = createSettingsStore();
 export const scheduleRunner = createScheduleRunner({
   auditStore,
   nodeStore,
@@ -528,14 +531,6 @@ app.use(
   }),
 );
 
-app.get("/healthz", (c) =>
-  c.json({
-    ok: true,
-    service: "rakkr-api",
-    startedAt: startedAt.toISOString(),
-  }),
-);
-
 registerMetricsRoutes({
   app,
   currentUser,
@@ -554,9 +549,18 @@ registerStatusRoutes({
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,
   requirePermission,
+  settingsStore,
   scopedNodes,
   scopedRecordings,
   startedAt,
+});
+
+registerSettingsRoutes({
+  app,
+  currentAuth,
+  recordAuditEvent,
+  requirePermission,
+  settingsStore,
 });
 
 app.post("/api/v1/auth/login", async (c) => {

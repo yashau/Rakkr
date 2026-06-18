@@ -52,8 +52,8 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | -------------------- | ----------- | -------------------------------------------------------------- |
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
-| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, health events, Postgres-backed nodes/credentials/recordings/jobs/schedules |
-| Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, node health summaries/trends/drilldown, jobs, metadata editing, filters, schedule editing, execution detail, and quality timelines |
+| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, health events, Postgres-backed nodes/credentials/recordings/jobs/schedules/settings |
+| Controller UI        | 🟦 Scaffold  | Dashboard plus node enrollment, node health summaries/trends/drilldown, jobs, metadata editing, filters, settings profiles, schedule editing, execution detail, and quality timelines |
 | Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, ALSA-backed meter sampling, disk/load/audio health sampling, controller meter sync, and local health log |
 | Test rig integration | 🟨 Partial   | Debian node reachable; ALSA loopback meter smoke validated; X32 validation waits for device check |
 | Health watchdog      | 🟦 Scaffold  | Health event model, lifecycle actions, node meter ingest, clipping/flatline/xrun/device-unavailable/job/system health events, scheduled low-signal runner, quality timelines, and recording health sync exist |
@@ -260,6 +260,8 @@ Rakkr must support central settings for all recorders:
 - node/interface/channel aliases;
 - staged rollout and rollback;
 - en-masse deployment to similar recorders.
+
+Current scaffold status: recording profiles now have a central settings store with JSON fallback and Postgres support through the existing `recording_profiles` table. The default `voice-mp3-vbr` profile is seeded from shared configuration, can be edited through RBAC-gated `settings:read` and `settings:manage` controller routes, and writes before/after audit events for profile updates. The Settings UI exposes profile name, codec, bitrate, channel mode, VBR, silence detection, and silence skip controls, and the dashboard status reads the active profile from the central store. Watchdog policy editing, channel map templates, rollout/rollback, and node/interface assignment flows remain pending.
 
 ## Node Inventory
 
@@ -913,7 +915,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Add recording profile and template settings store/UI foundations.
+1. Add watchdog policy, channel map, and assignment template settings foundations.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 

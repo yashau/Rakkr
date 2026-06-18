@@ -227,6 +227,17 @@ export const recordingProfileSchema = z.object({
   silenceSkipEnabled: z.boolean(),
   vbr: z.boolean(),
 });
+export const recordingProfileUpdateSchema = z
+  .object({
+    bitrateKbps: z.number().int().positive().max(512).optional(),
+    channelMode: channelModeSchema.optional(),
+    codec: z.enum(["mp3", "flac", "wav"]).optional(),
+    name: z.string().trim().min(1).max(160).optional(),
+    silenceDetectionEnabled: z.boolean().optional(),
+    silenceSkipEnabled: z.boolean().optional(),
+    vbr: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one profile field is required");
 export const scheduleDayOfWeekSchema = z.enum([
   "monday",
   "tuesday",
@@ -464,6 +475,7 @@ export type MeterFrame = z.infer<typeof meterFrameSchema>;
 export type NodeStatus = z.infer<typeof nodeStatusSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;
 export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
+export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
 export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingSummary = z.infer<typeof recordingSummarySchema>;

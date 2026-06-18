@@ -9,6 +9,7 @@ import type {
   MeterFrame,
   RecorderNode,
   RecordingProfile,
+  RecordingProfileUpdate,
   RecordingJob,
   RecordingSummary,
   ResourceGrant,
@@ -290,6 +291,16 @@ export const api = {
       method: "POST",
     }),
   recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
+  recordingProfiles: () =>
+    fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
+  updateRecordingProfile: (profileId: string, input: RecordingProfileUpdate) =>
+    fetchJson<{ data: RecordingProfile }>(`/api/v1/settings/recording-profiles/${profileId}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
   recordings: (filters: RecordingFilters = {}) =>
     fetchJson<{ data: RecordingSummary[] }>(withQuery("/api/v1/recordings", filters)),
   recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),

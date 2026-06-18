@@ -38,6 +38,7 @@ import { NodesPage } from "@/pages/nodes";
 import { RecordingsPage } from "@/pages/recordings";
 import { ScheduleDetailPage } from "@/pages/schedule-detail";
 import { SchedulesPage } from "@/pages/schedules";
+import { SettingsPage } from "@/pages/settings";
 
 import "./styles.css";
 
@@ -65,6 +66,7 @@ function RootLayout() {
     { icon: Radio, label: "Nodes", to: "/nodes" },
     { icon: CalendarDays, label: "Schedules", to: "/schedules" },
     { icon: Database, label: "Recordings", to: "/recordings" },
+    { icon: Settings, label: "Settings", to: "/settings" },
     { icon: ShieldCheck, label: "Audit", to: "/audit" },
     { icon: Users, label: "Access", to: "/access" },
   ] as const;
@@ -134,7 +136,7 @@ function RootLayout() {
                 <div className="text-xs text-muted-foreground">{currentUser.roles.join(", ")}</div>
               </div>
               <Button asChild variant="outline">
-                <Link to="/access">
+                <Link to="/settings">
                   <Settings className="size-4" />
                   Settings
                 </Link>
@@ -267,6 +269,12 @@ const recordingsRoute = createRoute({
   path: "/recordings",
 });
 
+const settingsRoute = createRoute({
+  component: SettingsPage,
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+});
+
 const auditRoute = createRoute({
   component: AuditPage,
   getParentRoute: () => rootRoute,
@@ -285,6 +293,7 @@ const routeTree = rootRoute.addChildren([
   schedulesRoute,
   scheduleDetailRoute,
   recordingsRoute,
+  settingsRoute,
   auditRoute,
   accessRoute,
 ]);

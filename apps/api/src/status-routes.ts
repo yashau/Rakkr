@@ -10,6 +10,7 @@ import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
 import { scopedHealthEvents } from "./metrics-routes.js";
+import type { SettingsStore } from "./settings-store.js";
 
 interface StatusRouteDependencies {
   app: Hono<AppBindings>;
@@ -20,12 +21,21 @@ interface StatusRouteDependencies {
   ) => Promise<boolean>;
   healthEventStore: HealthEventStore;
   requirePermission: RequirePermission;
+  settingsStore: SettingsStore;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
   startedAt: Date;
 }
 
 export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
+  dependencies.app.get("/healthz", (c) =>
+    c.json({
+      ok: true,
+      service: "rakkr-api",
+      startedAt: dependencies.startedAt.toISOString(),
+    }),
+  );
+
   dependencies.app.get(
     "/api/v1/status",
     dependencies.requirePermission("node:read", "status.read"),
@@ -37,6 +47,11 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
         hasResourceScope: dependencies.hasResourceScope,
         healthEventStore: dependencies.healthEventStore,
       });
+      const profiles = await dependencies.settingsStore.listRecordingProfiles();
+      const recordingProfile =
+        profiles.find((profile) => profile.id === defaultVoiceRecordingProfile.id) ??
+        profiles[0] ??
+        defaultVoiceRecordingProfile;
 
       return c.json({
         activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
@@ -47,7 +62,7 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
         ).length,
         nodeCount: visibleNodes.length,
         onlineNodes: visibleNodes.filter((node) => node.status === "online").length,
-        recordingProfile: defaultVoiceRecordingProfile,
+        recordingProfile,
         startedAt: dependencies.startedAt.toISOString(),
         watchdogPolicy: defaultScheduledVoiceWatchdogPolicy,
       });
