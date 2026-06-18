@@ -51,7 +51,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | ⏳ | Not started |
 | 🧊 | Deferred intentionally |
 
-Promotion rule: a feature moves from 🟦 to 🟨 once at least one useful workflow exists with real API/UI/agent behavior, persistence where applicable, tests/checks, and a pushed commit. It only moves to ✅ when the required product scope is complete and no longer depends on placeholders.
+Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required scope.
 
 ## Progress Dashboard
 
