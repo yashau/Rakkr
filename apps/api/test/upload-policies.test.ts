@@ -23,6 +23,7 @@ test.after(async () => {
 
 test("creates and updates upload policy templates", async () => {
   const created = await createUploadPolicy({
+    deleteCacheAfterUpload: true,
     enabled: true,
     maxAttempts: 7,
     name: "Scheduled S3",
@@ -32,6 +33,7 @@ test("creates and updates upload policy templates", async () => {
   });
 
   assert.equal(created.provider, "s3");
+  assert.equal(created.deleteCacheAfterUpload, true);
   assert.equal(created.trigger, "on_recording_cached");
 
   const cachedRecording = recording(created.id);

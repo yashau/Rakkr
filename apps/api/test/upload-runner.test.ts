@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,9 +10,12 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/ht
 
 const runnerRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-runner-"));
 process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(runnerRoot, "providers.json");
+process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(runnerRoot, "policies.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(runnerRoot, "queue.json");
+process.env.RAKKR_RECORDING_CACHE_DIR = path.join(runnerRoot, "cache");
 
 const { createAuditStore } = await import("../src/audit-store.js");
+const { createUploadPolicy } = await import("../src/upload-policies.js");
 const { createUploadProviderStore } = await import("../src/upload-providers.js");
 const { registerUploadRunnerRoutes } = await import("../src/upload-runner-routes.js");
 const { createUploadRunner } = await import("../src/upload-runner.js");
@@ -48,6 +51,63 @@ test("upload runner processes queue items and records service audit events", asy
   assert.equal(runEvents[0]?.details.succeeded, 1);
   assert.equal(itemEvents.length, 1);
   assert.equal(itemEvents[0]?.target.id, "rec_upload_runner_test");
+});
+
+test("upload runner deletes local cache after confirmed upload when policy requests it", async () => {
+  const auditStore = createAuditStore("");
+  const providerStore = createUploadProviderStore();
+  const uploadedRoot = path.join(runnerRoot, "retention-share");
+  const cachedRecording = recording("rec_upload_retention_test");
+  const cachePath = await cacheRecording(cachedRecording.id, "archive-bytes");
+  const recordingStore = memoryRecordingStore([cachedRecording]);
+  const runner = createUploadRunner({
+    auditStore,
+    limit: 5,
+    providerStore,
+    recordingStore,
+  });
+
+  await providerStore.update("smb", {
+    displayName: "Retention Share",
+    enabled: true,
+    target: uploadedRoot,
+  });
+  const policy = await createUploadPolicy({
+    deleteCacheAfterUpload: true,
+    enabled: true,
+    maxAttempts: 1,
+    name: "Archive then delete cache",
+    provider: "smb",
+    target: uploadedRoot,
+    trigger: "manual",
+  });
+  await enqueueRecordingUpload(cachedRecording, {
+    maxAttempts: 1,
+    policyId: policy.id,
+    provider: "smb",
+    target: uploadedRoot,
+  });
+
+  const summary = await runner.runOnce();
+  const updated = await recordingStore.find(cachedRecording.id);
+  const itemEvents = await auditStore.list({
+    action: "recordings.upload_queue.runner_item.succeeded",
+  });
+
+  assert.equal(summary.succeeded, 1);
+  assert.equal(
+    await readFile(path.join(uploadedRoot, "Council Meeting.mp3"), "utf8"),
+    "archive-bytes",
+  );
+  await assert.rejects(readFile(cachePath), /ENOENT/);
+  assert.equal(updated?.cached, false);
+  assert.equal(updated?.cachePath, undefined);
+  assert.equal(updated?.checksum, cachedRecording.checksum);
+  assert.equal(updated?.status, "uploaded");
+  assert.deepEqual(itemEvents[0]?.details.retention, {
+    cacheDeleted: true,
+    policyId: policy.id,
+  });
 });
 
 test("upload runner routes expose status and run-now control", async () => {
@@ -143,4 +203,34 @@ function recording(id = "rec_upload_runner_test"): RecordingSummary {
     status: "cached",
     tags: ["council"],
   };
+}
+
+function memoryRecordingStore(recordings: RecordingSummary[]) {
+  return {
+    async create(recording: RecordingSummary) {
+      recordings.unshift(recording);
+    },
+    async find(recordingId: string) {
+      return recordings.find((recording) => recording.id === recordingId);
+    },
+    async list() {
+      return recordings;
+    },
+    async save(recording: RecordingSummary) {
+      const index = recordings.findIndex((candidate) => candidate.id === recording.id);
+
+      if (index >= 0) {
+        recordings[index] = recording;
+      }
+    },
+  };
+}
+
+async function cacheRecording(id: string, contents: string) {
+  const cachePath = path.join(runnerRoot, "cache", "scheduled", `${id}.mp3`);
+
+  await mkdir(path.dirname(cachePath), { recursive: true });
+  await writeFile(cachePath, contents);
+
+  return cachePath;
 }

@@ -170,6 +170,21 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
         Enabled
       </label>
 
+      <label className="mt-3 flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
+        <input
+          checked={draft.deleteCacheAfterUpload}
+          className="size-4"
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              deleteCacheAfterUpload: event.target.checked,
+            }))
+          }
+          type="checkbox"
+        />
+        Delete controller cache after confirmed upload
+      </label>
+
       {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}
     </Card>
   );
@@ -186,6 +201,7 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 
 function policyUpdate(policy: UploadPolicy): UploadPolicyUpdate {
   return {
+    deleteCacheAfterUpload: policy.deleteCacheAfterUpload,
     enabled: policy.enabled,
     maxAttempts: policy.maxAttempts,
     name: policy.name,
@@ -197,6 +213,7 @@ function policyUpdate(policy: UploadPolicy): UploadPolicyUpdate {
 
 function defaultPolicyInput(): UploadPolicyInput {
   return {
+    deleteCacheAfterUpload: false,
     enabled: true,
     maxAttempts: 5,
     name: "New Upload Policy",

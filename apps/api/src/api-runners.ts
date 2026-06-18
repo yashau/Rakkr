@@ -43,6 +43,7 @@ export function createApiRunners({
     uploadRunner: createUploadRunner({
       auditStore,
       providerStore: uploadProviderStore,
+      recordingStore,
     }),
     watchdogRunner: createWatchdogRunner({
       auditStore,

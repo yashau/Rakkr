@@ -2,13 +2,25 @@ import { randomUUID } from "node:crypto";
 import type { AuditEvent, UploadQueueRunItem, UploadQueueRunSummary } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
+import { deleteRecordingCacheFile } from "./recording-cache.js";
+import type { RecordingStore } from "./recording-store.js";
 import type { UploadProviderStore } from "./upload-providers.js";
 import { runUploadQueueOnce } from "./upload-executor.js";
+import { uploadPolicyForQueue } from "./upload-policies.js";
+import { listUploadQueueItems } from "./upload-queue.js";
 
 interface UploadRunnerDependencies {
   auditStore: AuditStore;
   limit?: number;
   providerStore: UploadProviderStore;
+  recordingStore?: RecordingStore;
+}
+
+interface UploadRetentionResult {
+  cacheDeleted?: boolean;
+  error?: string;
+  policyId?: string;
+  skipped?: string;
 }
 
 export function createUploadRunner(dependencies: UploadRunnerDependencies) {
@@ -75,7 +87,12 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
 export type UploadRunner = ReturnType<typeof createUploadRunner>;
 
 export async function runUploadQueuePass(
-  { auditStore, limit = uploadRunnerBatchSize(), providerStore }: UploadRunnerDependencies,
+  {
+    auditStore,
+    limit = uploadRunnerBatchSize(),
+    providerStore,
+    recordingStore,
+  }: UploadRunnerDependencies,
   now = new Date(),
 ) {
   const summary = await runUploadQueueOnce({ limit, now, providerStore });
@@ -87,7 +104,9 @@ export async function runUploadQueuePass(
   await appendUploadRunAudit(auditStore, summary, limit);
 
   for (const item of summary.items) {
-    await appendUploadItemAudit(auditStore, item);
+    const retention = await applyUploadRetention(item, recordingStore);
+
+    await appendUploadItemAudit(auditStore, item, retention);
   }
 
   return summary;
@@ -120,7 +139,11 @@ async function appendUploadRunAudit(
   });
 }
 
-async function appendUploadItemAudit(auditStore: AuditStore, item: UploadQueueRunItem) {
+async function appendUploadItemAudit(
+  auditStore: AuditStore,
+  item: UploadQueueRunItem,
+  retention?: UploadRetentionResult,
+) {
   const outcome = uploadItemOutcome(item);
 
   await auditStore.append({
@@ -134,6 +157,7 @@ async function appendUploadItemAudit(auditStore: AuditStore, item: UploadQueueRu
     createdAt: new Date().toISOString(),
     details: {
       provider: item.provider,
+      ...(retention ? { retention } : {}),
       status: item.status,
     },
     id: `audit_${randomUUID()}`,
@@ -145,6 +169,55 @@ async function appendUploadItemAudit(auditStore: AuditStore, item: UploadQueueRu
       type: "recording",
     },
   });
+}
+
+async function applyUploadRetention(
+  item: UploadQueueRunItem,
+  recordingStore?: RecordingStore,
+): Promise<UploadRetentionResult | undefined> {
+  if (item.status !== "succeeded" || !recordingStore) {
+    return undefined;
+  }
+
+  if (item.provider === "stub") {
+    return { skipped: "stub_provider" };
+  }
+
+  const queueItem = (await listUploadQueueItems()).find(
+    (candidate) => candidate.id === item.itemId,
+  );
+  const policy = await uploadPolicyForQueue(queueItem?.uploadPolicyId);
+
+  if (!policy.deleteCacheAfterUpload) {
+    return { policyId: policy.id, skipped: "policy_keeps_cache" };
+  }
+
+  const recording = await recordingStore.find(item.recordingId);
+
+  if (!recording?.cachePath) {
+    return { policyId: policy.id, skipped: "recording_cache_missing" };
+  }
+
+  try {
+    const cacheDeleted = await deleteRecordingCacheFile(recording);
+
+    await recordingStore.save({
+      ...recording,
+      cachePath: undefined,
+      cached: false,
+      status: "uploaded",
+    });
+
+    return {
+      cacheDeleted,
+      policyId: policy.id,
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "cache_retention_failed",
+      policyId: policy.id,
+    };
+  }
 }
 
 function uploadRunOutcome(summary: UploadQueueRunSummary): AuditEvent["outcome"] {

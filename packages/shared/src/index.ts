@@ -626,6 +626,7 @@ export const uploadProviderRuntimeStatusSchema = z.object({
 });
 export const uploadPolicyTriggerSchema = z.enum(["manual", "on_recording_cached"]);
 export const uploadPolicySchema = z.object({
+  deleteCacheAfterUpload: z.boolean().default(false),
   enabled: z.boolean(),
   id: z.string().min(1),
   maxAttempts: z.number().int().positive().max(100),
@@ -636,6 +637,7 @@ export const uploadPolicySchema = z.object({
   updatedAt: isoDateTimeSchema,
 });
 export const uploadPolicyInputSchema = z.object({
+  deleteCacheAfterUpload: z.boolean().default(false),
   enabled: z.boolean().default(true),
   id: z.string().trim().min(1).max(160).optional(),
   maxAttempts: z.number().int().positive().max(100).default(5),
@@ -646,6 +648,7 @@ export const uploadPolicyInputSchema = z.object({
 });
 export const uploadPolicyUpdateSchema = z
   .object({
+    deleteCacheAfterUpload: z.boolean().optional(),
     enabled: z.boolean().optional(),
     maxAttempts: z.number().int().positive().max(100).optional(),
     name: z.string().trim().min(1).max(160).optional(),
@@ -686,6 +689,7 @@ export const defaultVoiceRecordingProfile = {
 } satisfies RecordingProfile;
 
 export const defaultStubUploadPolicy = {
+  deleteCacheAfterUpload: false,
   enabled: true,
   id: "upload-policy-stub",
   maxAttempts: 5,

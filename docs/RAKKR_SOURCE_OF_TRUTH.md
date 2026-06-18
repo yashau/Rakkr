@@ -351,7 +351,7 @@ Current scaffold:
 Current rule:
 
 - Local cache is the reliable source for now.
-- SMB/S3 execution is scaffolded; retention waits for verified uploads.
+- SMB/S3 execution is scaffolded; cache retention only runs after confirmed upload.
 
 Current scaffold:
 
@@ -366,11 +366,11 @@ Current scaffold:
 - SMB copies cached files to mounted share targets; S3 sends cached files to `s3://` targets.
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
 - Controller API and Settings UI expose upload runner status and run-now control.
+- Upload policies can delete controller cache after confirmed non-stub upload.
 
 Later:
 
 - checksum verification after upload.
-- retention policy after confirmed upload.
 
 ## Observability
 
@@ -434,7 +434,8 @@ Examples:
 3. ✅ Add profile-driven encoder output for MP3 VBR/WAV/FLAC.
 4. ✅ Add waveform/metadata extraction for encoded cache files.
 5. ✅ Add RBAC-gated audit CSV export.
-6. ⏸️ Return to X32 hardware validation after device is confirmed.
+6. ✅ Add policy-controlled cache deletion after confirmed upload.
+7. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
