@@ -1,6 +1,7 @@
 import type { Context, Hono } from "hono";
 import {
   channelMapTemplateAssignmentInputSchema,
+  channelMapTemplateAssignmentRollbackInputSchema,
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
   recordingProfileUpdateSchema,
@@ -316,6 +317,63 @@ export function registerSettingsRoutes({
     },
   );
 
+  app.post(
+    "/api/v1/settings/channel-map-assignments/rollback",
+    requirePermission("settings:manage", "settings.channel_map_assignments.rollback", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = channelMapTemplateAssignmentRollbackInputSchema.safeParse(
+        await c.req.json().catch(() => ({})),
+      );
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignments.rollback.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid channel map rollback", issues: body.error.issues }, 400);
+      }
+
+      const before = (await settingsStore.listChannelMapAssignments()).find(
+        (assignment) =>
+          assignment.targetType === body.data.targetType &&
+          assignment.targetId === body.data.targetId,
+      );
+      const rolledBack = await settingsStore.rollbackChannelMapAssignment(
+        body.data.targetType,
+        body.data.targetId,
+        currentAuth(c).user?.id,
+      );
+
+      if (!rolledBack) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignments.rollback.failed",
+          "rollback_target_not_found",
+          {
+            id: `${body.data.targetType}:${body.data.targetId}`,
+            type: "channel_map_assignment",
+          },
+        );
+        return c.json({ error: "Channel map assignment cannot be rolled back" }, 409);
+      }
+
+      await recordAuditEvent(c, {
+        action: "settings.channel_map_assignments.rollback.succeeded",
+        after: assignmentSnapshot(rolledBack),
+        auth: currentAuth(c),
+        before: before ? assignmentSnapshot(before) : undefined,
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: assignmentAuditTarget(rolledBack),
+      });
+
+      return c.json({ data: rolledBack });
+    },
+  );
+
   async function recordSettingsFailure(
     c: Context<AppBindings>,
     action: string,
@@ -370,6 +428,7 @@ function assignmentAuditTarget(assignment: ChannelMapTemplateAssignment) {
 function assignmentSnapshot(assignment: ChannelMapTemplateAssignment) {
   return {
     assignedAt: assignment.assignedAt,
+    history: assignment.history,
     id: assignment.id,
     targetId: assignment.targetId,
     targetType: assignment.targetType,

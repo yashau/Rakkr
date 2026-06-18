@@ -47,6 +47,17 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if config.print_channel_map_assignments {
+        let token = config
+            .controller_token
+            .as_deref()
+            .context("missing --controller-token or RAKKR_CONTROLLER_TOKEN")?;
+        let assignments = controller::fetch_channel_map_assignments(&config, token).await?;
+
+        println!("{}", serde_json::to_string_pretty(&assignments)?);
+        return Ok(());
+    }
+
     if config.attach_cache_file.is_some() || config.attach_cache_recording_id.is_some() {
         controller::attach_cache_file(&config).await?;
         return Ok(());

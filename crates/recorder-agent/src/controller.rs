@@ -1,6 +1,6 @@
 use anyhow::Context;
 use reqwest::header::{CONTENT_TYPE, HeaderName, HeaderValue};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
 use std::time::Duration;
@@ -50,9 +50,76 @@ pub struct ControllerCaptureCommand {
     pub output_file_name: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerChannelMapBundle {
+    pub assignment: ControllerChannelMapAssignment,
+    pub template: ControllerChannelMapTemplate,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerChannelMapAssignment {
+    pub assigned_at: String,
+    pub id: String,
+    pub target_id: String,
+    pub target_type: String,
+    pub template_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerChannelMapTemplate {
+    pub channel_mode: String,
+    pub entries: Vec<ControllerChannelMapEntry>,
+    pub id: String,
+    pub name: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerChannelMapEntry {
+    pub included: bool,
+    pub label: String,
+    pub output_channel_index: Option<u16>,
+    pub source_channel_index: u16,
+}
+
 #[derive(Debug, Deserialize)]
 struct DataEnvelope<T> {
     data: T,
+}
+
+pub async fn fetch_channel_map_assignments(
+    config: &AgentConfig,
+    token: &str,
+) -> anyhow::Result<Vec<ControllerChannelMapBundle>> {
+    let url = node_url(
+        &config.controller_url,
+        &config.node_id,
+        "channel-map-assignments",
+    );
+    let response = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("fetch channel map assignments")?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected channel map assignment request with {status}: {body}");
+    }
+
+    let envelope = response
+        .json::<DataEnvelope<Vec<ControllerChannelMapBundle>>>()
+        .await
+        .context("decode channel map assignments")?;
+
+    Ok(envelope.data)
 }
 
 pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {

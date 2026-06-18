@@ -48,6 +48,13 @@ pub struct AgentConfig {
     #[arg(long, default_value_t = false)]
     pub print_meter_frame: bool,
 
+    #[arg(
+        long,
+        env = "RAKKR_PRINT_CHANNEL_MAP_ASSIGNMENTS",
+        default_value_t = false
+    )]
+    pub print_channel_map_assignments: bool,
+
     #[arg(long, env = "RAKKR_CONTROLLER_TOKEN")]
     pub controller_token: Option<String>,
 

@@ -4,6 +4,7 @@ import type {
   ChannelMapTemplate,
   ChannelMapTemplateAssignment,
   ChannelMapTemplateAssignmentInput,
+  ChannelMapTemplateAssignmentRollbackInput,
   ChannelMapTemplateInput,
   ChannelMapTemplateUpdate,
   AccessGroup,
@@ -332,6 +333,17 @@ export const api = {
       },
       method: "PUT",
     }),
+  rollbackChannelMapAssignment: (input: ChannelMapTemplateAssignmentRollbackInput) =>
+    fetchJson<{ data: ChannelMapTemplateAssignment }>(
+      "/api/v1/settings/channel-map-assignments/rollback",
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    ),
   updateRecordingProfile: (profileId: string, input: RecordingProfileUpdate) =>
     fetchJson<{ data: RecordingProfile }>(`/api/v1/settings/recording-profiles/${profileId}`, {
       body: JSON.stringify(input),

@@ -939,6 +939,7 @@ registerAgentRoutes({
   nodeStore,
   recordAuditEvent,
   recordingStore,
+  settingsStore,
 });
 
 registerHealthRoutes({

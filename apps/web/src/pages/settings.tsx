@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ChannelMapEntry,
   ChannelMapTemplate,
+  ChannelMapTemplateAssignment,
   ChannelMapTemplateUpdate,
   RecorderNode,
   RecordingProfile,
@@ -10,7 +11,15 @@ import type {
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
-import { Cable, PlusCircle, Save, ShieldAlert, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  Cable,
+  PlusCircle,
+  RotateCcw,
+  Save,
+  ShieldAlert,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +27,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { formatDateTime } from "@/lib/dates";
 
 export function SettingsPage() {
   const profilesQuery = useQuery({
@@ -390,7 +400,7 @@ function ChannelMapTemplateCard({
   nodes,
   template,
 }: {
-  assignments: Array<{ targetId: string; targetType: "interface" | "node"; templateId: string }>;
+  assignments: ChannelMapTemplateAssignment[];
   nodes: RecorderNode[];
   template: ChannelMapTemplate;
 }) {
@@ -416,6 +426,16 @@ function ChannelMapTemplateCard({
         templateId: template.id,
       });
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-assignments"] });
+    },
+  });
+  const rollbackMutation = useMutation({
+    mutationFn: (assignment: ChannelMapTemplateAssignment) =>
+      api.rollbackChannelMapAssignment({
+        targetId: assignment.targetId,
+        targetType: assignment.targetType,
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["channel-map-assignments"] });
     },
@@ -582,7 +602,45 @@ function ChannelMapTemplateCard({
         </Button>
       </div>
 
-      {updateMutation.isError || assignMutation.isError ? (
+      {assignedTargets.length > 0 ? (
+        <div className="mt-4 grid gap-2">
+          {assignedTargets.map((assignment) => {
+            const latest = assignment.history.at(-1);
+
+            return (
+              <div
+                className="flex flex-col gap-2 rounded-md border border-border bg-background p-2 text-sm md:flex-row md:items-center md:justify-between"
+                key={assignment.id}
+              >
+                <div>
+                  <div className="font-medium">
+                    {assignment.targetType}:{assignment.targetId}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {assignment.history.length} changes
+                    {latest ? ` / ${formatDateTime(latest.changedAt)}` : ""}
+                  </div>
+                </div>
+                <Button
+                  disabled={
+                    rollbackMutation.isPending ||
+                    !assignment.history.some((event) => event.previousTemplateId)
+                  }
+                  onClick={() => rollbackMutation.mutate(assignment)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <RotateCcw className="size-4" />
+                  Roll Back
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {updateMutation.isError || assignMutation.isError || rollbackMutation.isError ? (
         <p className="mt-3 text-sm text-destructive">Save failed.</p>
       ) : null}
     </Card>

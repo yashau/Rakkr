@@ -267,8 +267,17 @@ export const channelMapTemplateUpdateSchema = z
     tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one channel map field is required");
+export const channelMapAssignmentHistorySchema = z.object({
+  actorUserId: z.string().optional(),
+  changedAt: isoDateTimeSchema,
+  id: z.string().min(1),
+  nextTemplateId: z.string().min(1),
+  previousTemplateId: z.string().min(1).optional(),
+  reason: z.enum(["assigned", "rolled_back"]),
+});
 export const channelMapTemplateAssignmentSchema = z.object({
   assignedAt: isoDateTimeSchema,
+  history: z.array(channelMapAssignmentHistorySchema).default([]),
   id: z.string().min(1),
   targetId: z.string().min(1),
   targetType: templateAssignmentTargetSchema,
@@ -278,6 +287,10 @@ export const channelMapTemplateAssignmentInputSchema = z.object({
   targetId: z.string().trim().min(1).max(160),
   targetType: templateAssignmentTargetSchema,
   templateId: z.string().trim().min(1).max(160),
+});
+export const channelMapTemplateAssignmentRollbackInputSchema = z.object({
+  targetId: z.string().trim().min(1).max(160),
+  targetType: templateAssignmentTargetSchema,
 });
 export const scheduleDayOfWeekSchema = z.enum([
   "monday",
@@ -510,11 +523,15 @@ export const defaultScheduledVoiceWatchdogPolicy = {
 } satisfies WatchdogPolicy;
 
 export type AudioChannel = z.infer<typeof audioChannelSchema>;
+export type ChannelMapAssignmentHistory = z.infer<typeof channelMapAssignmentHistorySchema>;
 export type ChannelMapEntry = z.infer<typeof channelMapEntrySchema>;
 export type ChannelMapTemplate = z.infer<typeof channelMapTemplateSchema>;
 export type ChannelMapTemplateAssignment = z.infer<typeof channelMapTemplateAssignmentSchema>;
 export type ChannelMapTemplateAssignmentInput = z.infer<
   typeof channelMapTemplateAssignmentInputSchema
+>;
+export type ChannelMapTemplateAssignmentRollbackInput = z.infer<
+  typeof channelMapTemplateAssignmentRollbackInputSchema
 >;
 export type ChannelMapTemplateInput = z.infer<typeof channelMapTemplateInputSchema>;
 export type ChannelMapTemplateUpdate = z.infer<typeof channelMapTemplateUpdateSchema>;

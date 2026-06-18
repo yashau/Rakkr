@@ -1,5 +1,10 @@
 import type { Context, Hono } from "hono";
-import { healthSeveritySchema, meterFrameSchema, type RecordingSummary } from "@rakkr/shared";
+import {
+  healthSeveritySchema,
+  meterFrameSchema,
+  type ChannelMapTemplateAssignment,
+  type RecordingSummary,
+} from "@rakkr/shared";
 import { z } from "zod";
 
 import { bearerToken } from "./auth-utils.js";
@@ -19,6 +24,7 @@ import {
 } from "./recording-jobs.js";
 import { storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
+import type { SettingsStore } from "./settings-store.js";
 
 interface AgentRouteDependencies {
   app: Hono<AppBindings>;
@@ -27,6 +33,7 @@ interface AgentRouteDependencies {
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
+  settingsStore: SettingsStore;
 }
 
 type AuthenticatedNode =
@@ -40,7 +47,68 @@ export function registerAgentRoutes({
   nodeStore,
   recordAuditEvent,
   recordingStore,
+  settingsStore,
 }: AgentRouteDependencies) {
+  app.get("/api/v1/nodes/:nodeId/channel-map-assignments", async (c) => {
+    const nodeId = c.req.param("nodeId");
+    const auth = await authenticateNode(c, "nodes.channel_map_assignments.read", {
+      id: nodeId,
+      type: "node",
+    });
+
+    if (auth.response) {
+      return auth.response;
+    }
+
+    if (auth.credential.nodeId !== nodeId) {
+      await recordNodeCredentialFailure(
+        c,
+        "nodes.channel_map_assignments.read.failed",
+        "node_scope_denied",
+        {
+          actor: auth.credential,
+          permission: "node:control",
+          target: { id: nodeId, type: "node" },
+        },
+      );
+      return c.json({ error: "Node credential cannot access this node" }, 403);
+    }
+
+    const node = await nodeStore.find(nodeId);
+
+    if (!node) {
+      await recordNodeCredentialFailure(
+        c,
+        "nodes.channel_map_assignments.read.failed",
+        "node_not_found",
+        {
+          actor: auth.credential,
+          permission: "node:control",
+          target: { id: nodeId, type: "node" },
+        },
+      );
+      return c.json({ error: "Node not found" }, 404);
+    }
+
+    const assignments = await assignedChannelMaps(node, settingsStore);
+
+    await recordAuditEvent(c, {
+      action: "nodes.channel_map_assignments.read.succeeded",
+      actor: nodeActor(auth.credential),
+      details: {
+        assignmentCount: assignments.length,
+      },
+      outcome: "succeeded",
+      permission: "node:control",
+      target: {
+        id: nodeId,
+        type: "node",
+      },
+    });
+
+    return c.json({ data: assignments });
+  });
+
   app.post("/api/v1/nodes/:nodeId/meter-frame", async (c) => {
     const nodeId = c.req.param("nodeId");
     const auth = await authenticateNode(c, "nodes.meter_frame.ingest", {
@@ -651,4 +719,37 @@ function durationFromHeader(value: string | undefined) {
   const duration = Number(value);
 
   return Number.isFinite(duration) && duration >= 0 ? Math.round(duration) : "invalid";
+}
+
+async function assignedChannelMaps(
+  node: NonNullable<Awaited<ReturnType<NodeStore["find"]>>>,
+  settingsStore: SettingsStore,
+) {
+  const interfaceIds = new Set(node.interfaces.map((audioInterface) => audioInterface.id));
+  const assignments = (await settingsStore.listChannelMapAssignments()).filter((assignment) =>
+    matchesNodeAssignment(assignment, node.id, interfaceIds),
+  );
+  const result = [];
+
+  for (const assignment of assignments) {
+    const template = await settingsStore.findChannelMapTemplate(assignment.templateId);
+
+    if (template) {
+      result.push({ assignment, template });
+    }
+  }
+
+  return result;
+}
+
+function matchesNodeAssignment(
+  assignment: ChannelMapTemplateAssignment,
+  nodeId: string,
+  interfaceIds: Set<string>,
+) {
+  if (assignment.targetType === "node") {
+    return assignment.targetId === nodeId;
+  }
+
+  return interfaceIds.has(assignment.targetId);
 }

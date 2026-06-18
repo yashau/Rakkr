@@ -50,6 +50,11 @@ export interface SettingsStore {
   listChannelMapTemplates(): Promise<ChannelMapTemplate[]>;
   listRecordingProfiles(): Promise<RecordingProfile[]>;
   listWatchdogPolicies(): Promise<WatchdogPolicy[]>;
+  rollbackChannelMapAssignment(
+    targetType: ChannelMapTemplateAssignmentInput["targetType"],
+    targetId: string,
+    actorUserId?: string,
+  ): Promise<ChannelMapTemplateAssignment | undefined>;
   updateChannelMapTemplate(
     templateId: string,
     update: ChannelMapTemplateUpdate,
@@ -143,14 +148,16 @@ class JsonSettingsStore implements SettingsStore {
     return this.channelMapAssignments;
   }
 
-  async assignChannelMapTemplate(input: ChannelMapTemplateAssignmentInput) {
+  async assignChannelMapTemplate(input: ChannelMapTemplateAssignmentInput, actorUserId?: string) {
     const existingIndex = this.channelMapAssignments.findIndex(
       (assignment) =>
         assignment.targetType === input.targetType && assignment.targetId === input.targetId,
     );
     const assignment = channelMapAssignmentFromInput(
       input,
-      existingIndex >= 0 ? this.channelMapAssignments[existingIndex]?.id : undefined,
+      existingIndex >= 0 ? this.channelMapAssignments[existingIndex] : undefined,
+      actorUserId,
+      "assigned",
     );
 
     if (existingIndex >= 0) {
@@ -159,6 +166,38 @@ class JsonSettingsStore implements SettingsStore {
       this.channelMapAssignments.unshift(assignment);
     }
 
+    persistSettings(channelMapAssignmentStorePath, "assignments", this.channelMapAssignments);
+
+    return assignment;
+  }
+
+  async rollbackChannelMapAssignment(
+    targetType: ChannelMapTemplateAssignmentInput["targetType"],
+    targetId: string,
+    actorUserId?: string,
+  ) {
+    const existingIndex = this.channelMapAssignments.findIndex(
+      (assignment) => assignment.targetType === targetType && assignment.targetId === targetId,
+    );
+    const existing = this.channelMapAssignments[existingIndex];
+    const previousTemplateId = latestPreviousTemplateId(existing);
+
+    if (!existing || !previousTemplateId) {
+      return undefined;
+    }
+
+    const assignment = channelMapAssignmentFromInput(
+      {
+        targetId,
+        targetType,
+        templateId: previousTemplateId,
+      },
+      existing,
+      actorUserId,
+      "rolled_back",
+    );
+
+    this.channelMapAssignments[existingIndex] = assignment;
     persistSettings(channelMapAssignmentStorePath, "assignments", this.channelMapAssignments);
 
     return assignment;
@@ -328,7 +367,7 @@ class PostgresSettingsStore implements SettingsStore {
         (assignment) =>
           assignment.targetType === input.targetType && assignment.targetId === input.targetId,
       );
-      const assignment = channelMapAssignmentFromInput(input, existing?.id);
+      const assignment = channelMapAssignmentFromInput(input, existing, actorUserId, "assigned");
       const row = channelMapAssignmentToRow(assignment, actorUserId);
 
       if (existing) {
@@ -337,6 +376,7 @@ class PostgresSettingsStore implements SettingsStore {
           .set({
             assignedAt: row.assignedAt,
             assignedByUserId: row.assignedByUserId,
+            metadata: row.metadata,
             targetId: row.targetId,
             targetType: row.targetType,
             templateId: row.templateId,
@@ -351,6 +391,54 @@ class PostgresSettingsStore implements SettingsStore {
     } catch (error) {
       await this.failover("channel map assignment unavailable; using JSON store", error);
       return this.fallback.assignChannelMapTemplate(input, actorUserId);
+    }
+  }
+
+  async rollbackChannelMapAssignment(
+    targetType: ChannelMapTemplateAssignmentInput["targetType"],
+    targetId: string,
+    actorUserId?: string,
+  ) {
+    if (!this.dbAvailable) {
+      return this.fallback.rollbackChannelMapAssignment(targetType, targetId, actorUserId);
+    }
+
+    try {
+      const existing = (await this.listChannelMapAssignments()).find(
+        (assignment) => assignment.targetType === targetType && assignment.targetId === targetId,
+      );
+      const previousTemplateId = latestPreviousTemplateId(existing);
+
+      if (!existing || !previousTemplateId) {
+        return undefined;
+      }
+
+      const assignment = channelMapAssignmentFromInput(
+        {
+          targetId,
+          targetType,
+          templateId: previousTemplateId,
+        },
+        existing,
+        actorUserId,
+        "rolled_back",
+      );
+      const row = channelMapAssignmentToRow(assignment, actorUserId);
+
+      await this.db
+        .update(templateAssignmentsTable)
+        .set({
+          assignedAt: row.assignedAt,
+          assignedByUserId: row.assignedByUserId,
+          metadata: row.metadata,
+          templateId: row.templateId,
+        })
+        .where(eq(templateAssignmentsTable.id, existing.id));
+
+      return assignment;
+    } catch (error) {
+      await this.failover("channel map assignment rollback unavailable; using JSON store", error);
+      return this.fallback.rollbackChannelMapAssignment(targetType, targetId, actorUserId);
     }
   }
 
@@ -692,11 +780,27 @@ function channelMapTemplateFromRow(row: ChannelMapTemplateRow): ChannelMapTempla
 
 function channelMapAssignmentFromInput(
   input: ChannelMapTemplateAssignmentInput,
-  existingId?: string,
+  existing?: ChannelMapTemplateAssignment,
+  actorUserId?: string,
+  reason: "assigned" | "rolled_back" = "assigned",
 ): ChannelMapTemplateAssignment {
+  const changedAt = new Date().toISOString();
+  const previousTemplateId = existing?.templateId;
+
   return channelMapTemplateAssignmentSchema.parse({
-    assignedAt: new Date().toISOString(),
-    id: existingId ?? `assignment_${randomUUID()}`,
+    assignedAt: changedAt,
+    history: [
+      ...(existing?.history ?? []),
+      {
+        actorUserId,
+        changedAt,
+        id: `assignment_event_${randomUUID()}`,
+        nextTemplateId: input.templateId,
+        previousTemplateId,
+        reason,
+      },
+    ],
+    id: existing?.id ?? `assignment_${randomUUID()}`,
     targetId: input.targetId,
     targetType: input.targetType,
     templateId: input.templateId,
@@ -711,7 +815,9 @@ function channelMapAssignmentToRow(
     assignedAt: new Date(assignment.assignedAt),
     assignedByUserId: actorUserId ?? null,
     id: uuidFromDomainId(assignment.id),
-    metadata: {},
+    metadata: {
+      history: assignment.history,
+    },
     targetId: assignment.targetId,
     targetType: assignment.targetType,
     templateId: assignment.templateId,
@@ -720,8 +826,11 @@ function channelMapAssignmentToRow(
 }
 
 function channelMapAssignmentFromRow(row: TemplateAssignmentRow): ChannelMapTemplateAssignment {
+  const metadata = record(row.metadata) ?? {};
+
   return channelMapTemplateAssignmentSchema.parse({
     assignedAt: row.assignedAt.toISOString(),
+    history: Array.isArray(metadata.history) ? metadata.history : [],
     id: row.id,
     targetId: row.targetId,
     targetType: row.targetType,
@@ -830,4 +939,9 @@ function uuidFromDomainId(value: string) {
   const prefix = "assignment_";
 
   return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+}
+
+function latestPreviousTemplateId(assignment: ChannelMapTemplateAssignment | undefined) {
+  return [...(assignment?.history ?? [])].reverse().find((event) => event.previousTemplateId)
+    ?.previousTemplateId;
 }
