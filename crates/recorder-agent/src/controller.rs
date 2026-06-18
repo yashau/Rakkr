@@ -11,6 +11,7 @@ use crate::state::write_job_state;
 
 const DURATION_HEADER: &str = "x-rakkr-duration-seconds";
 const FILE_NAME_HEADER: &str = "x-rakkr-file-name";
+const AGENT_ID_HEADER: &str = "x-rakkr-agent-id";
 const JOB_ID_HEADER: &str = "x-rakkr-recording-job-id";
 
 pub struct CacheFileUpload<'a> {
@@ -28,6 +29,7 @@ pub struct CacheFileUpload<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct ControllerRecordingJob {
     pub command: ControllerCaptureCommand,
+    pub failure_reason: Option<String>,
     pub id: String,
     pub node_id: String,
     pub recording_id: String,
@@ -115,6 +117,49 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             break output_path;
         }
 
+        if let Err(error) = heartbeat_recording_job(config, token, &job.id).await {
+            let refreshed = fetch_recording_job(config, token, &job.id).await.ok();
+
+            if let Some(latest) = refreshed {
+                if matches!(latest.status.as_str(), "stop_requested" | "cancelled") {
+                    capture.stop()?;
+                    mark_recording_job_cancelled(
+                        config,
+                        token,
+                        &job.id,
+                        "controller_stop_requested",
+                    )
+                    .await?;
+                    write_job_state(
+                        config,
+                        &latest,
+                        "cancelled",
+                        None,
+                        Some("controller_stop_requested"),
+                    )?;
+                    return Ok(());
+                }
+
+                if matches!(latest.status.as_str(), "failed" | "completed") {
+                    capture.stop()?;
+                    write_job_state(
+                        config,
+                        &latest,
+                        latest.status.as_str(),
+                        None,
+                        latest.failure_reason.as_deref(),
+                    )?;
+                    return Ok(());
+                }
+            }
+
+            let reason = error.to_string();
+            capture.stop()?;
+            let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+            write_job_state(config, &job, "failed", None, Some(&reason))?;
+            return Err(error);
+        }
+
         let latest = fetch_recording_job(config, token, &job.id).await?;
 
         if matches!(latest.status.as_str(), "stop_requested" | "cancelled") {
@@ -127,6 +172,18 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 "cancelled",
                 None,
                 Some("controller_stop_requested"),
+            )?;
+            return Ok(());
+        }
+
+        if matches!(latest.status.as_str(), "failed" | "completed") {
+            capture.stop()?;
+            write_job_state(
+                config,
+                &latest,
+                latest.status.as_str(),
+                None,
+                latest.failure_reason.as_deref(),
             )?;
             return Ok(());
         }
@@ -271,6 +328,7 @@ async fn claim_recording_job(
     let response = reqwest::Client::new()
         .post(&url)
         .bearer_auth(token)
+        .header(AGENT_ID_HEADER, config.node_id.as_str())
         .send()
         .await
         .context("claim recording job")?;
@@ -286,6 +344,39 @@ async fn claim_recording_job(
         .json::<DataEnvelope<ControllerRecordingJob>>()
         .await
         .context("decode claimed recording job")?;
+
+    Ok(envelope.data)
+}
+
+async fn heartbeat_recording_job(
+    config: &AgentConfig,
+    token: &str,
+    job_id: &str,
+) -> anyhow::Result<ControllerRecordingJob> {
+    let url = format!(
+        "{}/api/v1/recording-jobs/{}/heartbeat",
+        config.controller_url.trim_end_matches('/'),
+        job_id
+    );
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .header(AGENT_ID_HEADER, config.node_id.as_str())
+        .send()
+        .await
+        .context("heartbeat recording job")?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected job heartbeat with {status}: {body}");
+    }
+
+    let envelope = response
+        .json::<DataEnvelope<ControllerRecordingJob>>()
+        .await
+        .context("decode heartbeat recording job")?;
 
     Ok(envelope.data)
 }

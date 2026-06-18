@@ -52,9 +52,9 @@ This document is the living source of truth for Rakkr. It combines executive sta
 | -------------------- | ----------- | -------------------------------------------------------------- |
 | Product discovery    | ✅ Complete  | Initial scope, features, and technical direction captured      |
 | Monorepo scaffold    | ✅ Complete  | `mise`-managed runtimes, workspace commands, Docker Compose, CI |
-| Controller API       | 🟦 Scaffold  | Hono API with status, nodes, schedules, recordings, meters     |
+| Controller API       | 🟦 Scaffold  | Hono API with RBAC, audit, recordings, jobs, status, meters    |
 | Controller UI        | 🟦 Scaffold  | TanStack/shadcn operations dashboard on Tailwind 4              |
-| Recorder agent       | 🟦 Scaffold  | Rust CLI with generic Linux inventory and telemetry scaffold    |
+| Recorder agent       | 🟦 Scaffold  | Rust CLI with inventory, capture jobs, heartbeats, telemetry   |
 | Test rig integration | ⏸️ Paused    | Debian node reachable; X32 validation waits for device check    |
 | Health watchdog      | 🟨 Designed  | Core non-AI checks first, AI quality analysis later            |
 | Scheduler            | 🟨 Designed  | Human-friendly rules, metadata ownership, watchdog integration |
@@ -545,7 +545,7 @@ Required organization features:
 - upload/cache status;
 - derived preview/transcode assets later.
 
-Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Controller start now creates a queued recording job, recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording marks metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
+Current scaffold status: the recording library has UI controls, RBAC-gated controller actions, and protected cache-backed file endpoints for playback and download. Playback/download actions and file access write audit events for success and failure. Controller start now creates a queued recording job, recorder agents can fetch/claim the next job for their node, run an ALSA `arecord` capture plan, poll for stop requests, and upload the resulting WAV artifact back to `PUT /api/v1/recordings/:recordingId/cache-file`. Recording jobs persist to the controller JSON scaffold at `RAKKR_RECORDING_JOB_STORE_PATH`, defaulting to `data/recording-jobs.json`, and claims carry `claimedBy`, `lastHeartbeatAt`, and `leaseExpiresAt`. Agents heartbeat active jobs while capture is running; the controller expires stale running jobs to `failed` and stale stop-requested jobs to `cancelled`. The upload completes the job and stores real bytes under `RAKKR_RECORDING_CACHE_DIR`; the controller only serves files that actually exist. Stopping a recording marks metadata `completed`, marks active jobs stop-requested, and the agent can terminate the running capture child process, report `cancelled`, and persist a small local job-state file.
 
 ---
 
@@ -728,7 +728,7 @@ Current scaffold status: controller audit events persist through Postgres when `
 - [ ] 🟦 Generic Linux audio device discovery.
 - [ ] ⏸️ X32 test-rig validation.
 - [ ] 🟦 Realtime meters.
-- [ ] 🟨 Recording job model.
+- [ ] 🟦 Recording job model.
 - [ ] 🟦 Voice MP3 VBR default profile.
 - [ ] 🟦 Local recording cache.
 - [ ] 🟦 Recording library metadata.
@@ -880,7 +880,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Persist controller recording jobs beyond the in-memory scaffold and add job heartbeat/lease expiry.
+1. Move controller recording jobs from JSON scaffold to Postgres and surface lease/terminal states in the UI.
 2. Add multi-user local auth or OIDC-backed user sync after the local access scaffold hardens.
 3. Add persistent node enrollment and node credential rotation.
 4. Return to the Debian recorder node when the X32 connection is confirmed.

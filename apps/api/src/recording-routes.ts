@@ -14,9 +14,10 @@ import {
   cancelRecordingJob,
   createRecordingJob,
   failRecordingJob,
+  heartbeatRecordingJob,
+  listRecordingJobs,
   nextRecordingJob,
   recordingJob,
-  recordingJobs,
   stopRecordingJob,
 } from "./recording-jobs.js";
 import {
@@ -144,7 +145,7 @@ export function registerRecordingRoutes({
       );
 
       return c.json({
-        data: recordingJobs.filter((job) => visibleRecordingIds.has(job.recordingId)),
+        data: listRecordingJobs().filter((job) => visibleRecordingIds.has(job.recordingId)),
       });
     },
   );
@@ -173,7 +174,7 @@ export function registerRecordingRoutes({
     ),
     async (c) => {
       const jobId = c.req.param("jobId");
-      const job = claimRecordingJob(jobId);
+      const job = claimRecordingJob(jobId, c.req.header("x-rakkr-agent-id"));
 
       if (!job) {
         await recordAuditEvent(c, {
@@ -202,6 +203,55 @@ export function registerRecordingRoutes({
         auth: currentAuth(c),
         details: {
           command: job.command,
+          claimedBy: job.claimedBy,
+          leaseExpiresAt: job.leaseExpiresAt,
+          nodeId: job.nodeId,
+          recordingId: job.recordingId,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: {
+          id: job.id,
+          type: "recording_job",
+        },
+      });
+
+      return c.json({ data: job });
+    },
+  );
+
+  app.post(
+    "/api/v1/recording-jobs/:jobId/heartbeat",
+    requirePermission("recording:control", "recording_jobs.heartbeat", (c) =>
+      recordingJobTarget(c.req.param("jobId")),
+    ),
+    async (c) => {
+      const jobId = c.req.param("jobId");
+      const job = heartbeatRecordingJob(jobId, c.req.header("x-rakkr-agent-id"));
+
+      if (!job) {
+        await recordAuditEvent(c, {
+          action: "recording_jobs.heartbeat.failed",
+          auth: currentAuth(c),
+          outcome: "failed",
+          permission: "recording:control",
+          reason: "job_not_heartbeatable",
+          target: {
+            id: jobId,
+            type: "recording_job",
+          },
+        });
+
+        return c.json({ error: "Recording job is not heartbeatable" }, 409);
+      }
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.heartbeat.succeeded",
+        auth: currentAuth(c),
+        details: {
+          claimedBy: job.claimedBy,
+          lastHeartbeatAt: job.lastHeartbeatAt,
+          leaseExpiresAt: job.leaseExpiresAt,
           nodeId: job.nodeId,
           recordingId: job.recordingId,
         },
