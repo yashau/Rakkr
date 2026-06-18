@@ -34,6 +34,7 @@ run = "pnpm -r --parallel --filter @rakkr/api --filter @rakkr/web dev"
 [tasks.check]
 depends = [
   "check:loc",
+  "db:verify",
   "node:check",
   "node:lint",
   "node:format-check",
@@ -84,6 +85,10 @@ run = "pnpm --filter @rakkr/db db:generate"
 [tasks."db:migrate"]
 description = "Apply Drizzle migrations to the configured Postgres database"
 run = "pnpm --filter @rakkr/db db:migrate"
+
+[tasks."db:verify"]
+description = "Replay Drizzle migrations against a fresh throwaway Postgres database"
+run = "pnpm --filter @rakkr/db db:verify"
 
 [tasks."rust:build"]
 description = "Build Rust crates"

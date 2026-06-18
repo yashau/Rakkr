@@ -615,7 +615,7 @@ Current scaffold status:
 - Nodes UI can enroll persisted recorder nodes and display one-time node tokens;
 - node credentials persist as token hashes in Postgres and rotation revokes active credentials before issuing a new one-time token;
 - recorder-agent job polling, job state updates, and cache-file upload endpoints require node bearer credentials and audit node actors;
-- Drizzle migrations are verified against local Docker Postgres using the canonical `127.0.0.1` connection string;
+- Drizzle migrations are replayed against a fresh throwaway Postgres database by `mise run db:verify`, which is now part of `mise run check` and CI;
 - in-memory auth session fallback keeps local development usable before Postgres is ready;
 - OIDC-backed user sync is still pending.
 

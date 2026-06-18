@@ -8,6 +8,22 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: rakkr
+          POSTGRES_PASSWORD: rakkr
+          POSTGRES_USER: rakkr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rakkr -d rakkr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://rakkr:rakkr@127.0.0.1:5432/rakkr
     steps:
       - uses: actions/checkout@v6.0.3
 
