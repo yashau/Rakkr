@@ -39,13 +39,13 @@ export interface RecordingDownloadTicket {
   downloadId: string;
   expiresAt: string;
   fileName: string;
-  mode: "stubbed";
+  mode: "controller_cache";
   recordingId: string;
   url: string;
 }
 
 export interface RecordingPlaybackSession {
-  mode: "stubbed";
+  mode: "controller_cache";
   recordingId: string;
   sessionId: string;
   startedAt: string;

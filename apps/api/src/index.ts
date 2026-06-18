@@ -19,24 +19,17 @@ import {
   type AuditOutcome,
   type CurrentUser,
   type Permission,
-  type RecordingSummary,
 } from "@rakkr/shared";
 
 import { createAuditStore, type AuditEventFilters } from "./audit-store.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { buildMeterFrame, nodes, prometheusMetrics, recordings, schedules } from "./demo-data.js";
-import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
+import type { AppBindings, AuditTarget } from "./http-types.js";
+import { registerRecordingRoutes } from "./recording-routes.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
 const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
-
-type AuditTarget = AuditEvent["target"];
-type AppBindings = {
-  Variables: {
-    auth: AuthResult;
-  };
-};
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
@@ -301,81 +294,6 @@ function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
   return recordings.filter((recording) =>
     hasResourceScope(user, { id: recording.id, type: "recording" }),
   );
-}
-
-async function recordRecordingFileFailure(
-  c: Context<AppBindings>,
-  input: {
-    action: string;
-    permission: Permission;
-    reason: string;
-    recordingId: string;
-    targetName?: string;
-  },
-) {
-  await recordAuditEvent(c, {
-    action: input.action,
-    auth: currentAuth(c),
-    outcome: "failed",
-    permission: input.permission,
-    reason: input.reason,
-    target: {
-      id: input.recordingId,
-      name: input.targetName,
-      type: "recording",
-    },
-  });
-}
-
-async function serveRecordingFile(
-  c: Context<AppBindings>,
-  recordingId: string,
-  disposition: "attachment" | "inline",
-  permission: Permission,
-) {
-  const recording = recordings.find((candidate) => candidate.id === recordingId);
-  const action =
-    disposition === "attachment" ? "recordings.download.file" : "recordings.playback.stream";
-
-  if (!recording || !recordingHasCachedFile(recording)) {
-    await recordRecordingFileFailure(c, {
-      action: `${action}.failed`,
-      permission,
-      reason: recording ? "recording_not_cached" : "recording_not_found",
-      recordingId,
-      targetName: recording?.name,
-    });
-
-    return c.json(
-      { error: recording ? "Recording is not cached" : "Recording not found" },
-      recording ? 409 : 404,
-    );
-  }
-
-  const file = await loadRecordingFile(recording);
-
-  await recordAuditEvent(c, {
-    action: `${action}.succeeded`,
-    auth: currentAuth(c),
-    details: {
-      disposition,
-      fileName: file.fileName,
-      size: file.size,
-    },
-    outcome: "succeeded",
-    permission,
-    target: {
-      id: recording.id,
-      name: recording.name,
-      type: "recording",
-    },
-  });
-
-  return c.body(new Uint8Array(file.bytes), 200, {
-    "Content-Disposition": `${disposition}; filename="${file.fileName}"`,
-    "Content-Length": file.size.toString(),
-    "Content-Type": file.mimeType,
-  });
 }
 
 export const app = new Hono<AppBindings>();
@@ -711,273 +629,16 @@ app.get("/api/v1/meter-events", requirePermission("node:read", "meters.stream"),
 app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), (c) =>
   c.json({ data: scopedSchedules(currentUser(c)) }),
 );
-app.get("/api/v1/recordings", requirePermission("recording:read", "recordings.read"), (c) =>
-  c.json({ data: scopedRecordings(currentUser(c)) }),
-);
 
-app.post(
-  "/api/v1/recordings/:recordingId/playback",
-  requirePermission("recording:playback", "recordings.playback.start", (c) => ({
-    id: c.req.param("recordingId"),
-    type: "recording",
-  })),
-  async (c) => {
-    const recordingId = c.req.param("recordingId");
-    const recording = recordings.find((candidate) => candidate.id === recordingId);
-
-    if (!recording) {
-      await recordRecordingFileFailure(c, {
-        action: "recordings.playback.failed",
-        permission: "recording:playback",
-        reason: "recording_not_found",
-        recordingId,
-      });
-
-      return c.json({ error: "Recording not found" }, 404);
-    }
-
-    if (!recordingHasCachedFile(recording)) {
-      await recordRecordingFileFailure(c, {
-        action: "recordings.playback.failed",
-        permission: "recording:playback",
-        reason: "recording_not_cached",
-        recordingId,
-        targetName: recording.name,
-      });
-
-      return c.json({ error: "Recording is not ready for playback" }, 409);
-    }
-
-    const sessionId = `playback_${randomUUID()}`;
-
-    await recordAuditEvent(c, {
-      action: "recordings.playback.started",
-      auth: currentAuth(c),
-      correlationIds: {
-        playbackSessionId: sessionId,
-        recordingId: recording.id,
-      },
-      details: {
-        mode: "stubbed",
-        source: recording.source,
-      },
-      outcome: "succeeded",
-      permission: "recording:playback",
-      target: {
-        id: recording.id,
-        name: recording.name,
-        type: "recording",
-      },
-    });
-
-    return c.json(
-      {
-        data: {
-          mode: "stubbed",
-          recordingId: recording.id,
-          sessionId,
-          startedAt: new Date().toISOString(),
-          streamUrl: `/api/v1/recordings/${recording.id}/stream`,
-        },
-      },
-      202,
-    );
-  },
-);
-
-app.post(
-  "/api/v1/recordings/:recordingId/download",
-  requirePermission("recording:download", "recordings.download.prepare", (c) => ({
-    id: c.req.param("recordingId"),
-    type: "recording",
-  })),
-  async (c) => {
-    const recordingId = c.req.param("recordingId");
-    const recording = recordings.find((candidate) => candidate.id === recordingId);
-
-    if (!recording) {
-      await recordRecordingFileFailure(c, {
-        action: "recordings.download.failed",
-        permission: "recording:download",
-        reason: "recording_not_found",
-        recordingId,
-      });
-
-      return c.json({ error: "Recording not found" }, 404);
-    }
-
-    if (!recordingHasCachedFile(recording)) {
-      await recordRecordingFileFailure(c, {
-        action: "recordings.download.failed",
-        permission: "recording:download",
-        reason: "recording_not_cached",
-        recordingId,
-        targetName: recording.name,
-      });
-
-      return c.json({ error: "Recording is not ready for download" }, 409);
-    }
-
-    const downloadId = `download_${randomUUID()}`;
-
-    await recordAuditEvent(c, {
-      action: "recordings.download.prepared",
-      auth: currentAuth(c),
-      correlationIds: {
-        downloadId,
-        recordingId: recording.id,
-      },
-      details: {
-        fileName: recordingFileName(recording),
-        mode: "stubbed",
-      },
-      outcome: "succeeded",
-      permission: "recording:download",
-      target: {
-        id: recording.id,
-        name: recording.name,
-        type: "recording",
-      },
-    });
-
-    return c.json(
-      {
-        data: {
-          downloadId,
-          expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-          fileName: recordingFileName(recording),
-          mode: "stubbed",
-          recordingId: recording.id,
-          url: `/api/v1/recordings/${recording.id}/file`,
-        },
-      },
-      202,
-    );
-  },
-);
-
-app.get(
-  "/api/v1/recordings/:recordingId/stream",
-  requirePermission("recording:playback", "recordings.playback.stream", (c) => ({
-    id: c.req.param("recordingId"),
-    type: "recording",
-  })),
-  async (c) => serveRecordingFile(c, c.req.param("recordingId"), "inline", "recording:playback"),
-);
-
-app.get(
-  "/api/v1/recordings/:recordingId/file",
-  requirePermission("recording:download", "recordings.download.file", (c) => ({
-    id: c.req.param("recordingId"),
-    type: "recording",
-  })),
-  async (c) =>
-    serveRecordingFile(c, c.req.param("recordingId"), "attachment", "recording:download"),
-);
-
-app.post(
-  "/api/v1/recordings",
-  requirePermission("recording:create", "recordings.start", () => ({
-    id: "node_x32_test",
-    name: "Council Chamber Rack",
-    type: "node",
-  })),
-  async (c) => {
-    const now = new Date();
-    const recording: RecordingSummary = {
-      cached: false,
-      durationSeconds: 0,
-      folder: `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
-      healthStatus: "unknown",
-      id: `rec_${randomUUID()}`,
-      name: `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_Council Chamber Rack`,
-      nodeId: "node_x32_test",
-      recordedAt: now.toISOString(),
-      source: "ad_hoc",
-      status: "recording",
-      tags: ["ad-hoc", "voice"],
-    };
-
-    recordings.unshift(recording);
-
-    await recordAuditEvent(c, {
-      action: "recordings.start.succeeded",
-      auth: currentAuth(c),
-      correlationIds: {
-        recordingId: recording.id,
-      },
-      details: {
-        profileId: defaultVoiceRecordingProfile.id,
-        source: recording.source,
-      },
-      outcome: "succeeded",
-      permission: "recording:create",
-      target: {
-        id: recording.id,
-        name: recording.name,
-        type: "recording",
-      },
-    });
-
-    return c.json({ data: recording }, 202);
-  },
-);
-
-app.post(
-  "/api/v1/recordings/:recordingId/stop",
-  requirePermission("recording:control", "recordings.stop", (c) => ({
-    id: c.req.param("recordingId"),
-    type: "recording",
-  })),
-  async (c) => {
-    const recordingId = c.req.param("recordingId");
-    const recording = recordings.find((candidate) => candidate.id === recordingId);
-
-    if (!recording) {
-      await recordAuditEvent(c, {
-        action: "recordings.stop.failed",
-        auth: currentAuth(c),
-        outcome: "failed",
-        permission: "recording:control",
-        reason: "recording_not_found",
-        target: {
-          id: recordingId,
-          type: "recording",
-        },
-      });
-
-      return c.json({ error: "Recording not found" }, 404);
-    }
-
-    const before = { status: recording.status };
-
-    recording.cached = true;
-    recording.cachePath = `ad-hoc/${recording.id}.mp3`;
-    recording.durationSeconds = Math.max(recording.durationSeconds, 1);
-    recording.status = "cached";
-
-    await recordAuditEvent(c, {
-      action: "recordings.stop.succeeded",
-      auth: currentAuth(c),
-      after: {
-        status: recording.status,
-      },
-      before,
-      correlationIds: {
-        recordingId: recording.id,
-      },
-      outcome: "succeeded",
-      permission: "recording:control",
-      target: {
-        id: recording.id,
-        name: recording.name,
-        type: "recording",
-      },
-    });
-
-    return c.json({ data: recording });
-  },
-);
+registerRecordingRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  recordAuditEvent,
+  recordings,
+  requirePermission,
+  scopedRecordings,
+});
 
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {
   serve(

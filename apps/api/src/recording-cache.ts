@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RecordingSummary } from "@rakkr/shared";
 
@@ -7,6 +7,19 @@ export interface CachedRecordingFile {
   fileName: string;
   mimeType: string;
   size: number;
+}
+
+export interface StoredRecordingFile {
+  cachePath: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface StoreRecordingFileInput {
+  bytes: Buffer;
+  fileName?: string | null;
+  mimeType?: string | null;
 }
 
 const cacheRoot = path.resolve(process.env.RAKKR_RECORDING_CACHE_DIR ?? "data/recordings");
@@ -20,16 +33,31 @@ export function recordingHasCachedFile(recording: RecordingSummary) {
 
 export async function loadRecordingFile(recording: RecordingSummary): Promise<CachedRecordingFile> {
   const filePath = resolvedCachePath(recording);
-
-  await materializePlaceholderFile(recording, filePath);
-
-  const bytes = await readFile(filePath);
+  const bytes = await readCachedFile(filePath);
 
   return {
     bytes,
     fileName: recordingFileName(recording),
     mimeType: mimeTypeFor(filePath),
     size: bytes.byteLength,
+  };
+}
+
+export async function storeRecordingFile(
+  recording: RecordingSummary,
+  input: StoreRecordingFileInput,
+): Promise<StoredRecordingFile> {
+  const cachePath = cachePathFor(recording, input);
+  const filePath = resolvedCachePathFromRelative(cachePath);
+
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, input.bytes);
+
+  return {
+    cachePath,
+    fileName: recordingFileName({ ...recording, cachePath }),
+    mimeType: mimeTypeFor(filePath),
+    size: input.bytes.byteLength,
   };
 }
 
@@ -45,7 +73,12 @@ function resolvedCachePath(recording: RecordingSummary) {
     throw new Error("recording_not_cached");
   }
 
-  const resolved = path.resolve(cacheRoot, recording.cachePath);
+  return resolvedCachePathFromRelative(recording.cachePath);
+}
+
+function resolvedCachePathFromRelative(cachePath: string) {
+  const normalized = cachePath.replaceAll("\\", "/");
+  const resolved = path.resolve(cacheRoot, normalized);
   const relative = path.relative(cacheRoot, resolved);
 
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -55,27 +88,41 @@ function resolvedCachePath(recording: RecordingSummary) {
   return resolved;
 }
 
-async function materializePlaceholderFile(recording: RecordingSummary, filePath: string) {
+async function readCachedFile(filePath: string) {
   try {
-    await stat(filePath);
-    return;
-  } catch {
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, placeholderBytes(recording));
+    return await readFile(filePath);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      throw new Error("recording_cache_file_missing");
+    }
+
+    throw error;
   }
 }
 
-function placeholderBytes(recording: RecordingSummary) {
-  return Buffer.from(
-    [
-      "RAKKR placeholder cached recording",
-      `id=${recording.id}`,
-      `name=${recording.name}`,
-      `recordedAt=${recording.recordedAt}`,
-      "",
-    ].join("\n"),
-    "utf8",
-  );
+function cachePathFor(recording: RecordingSummary, input: StoreRecordingFileInput) {
+  const folder = recording.source === "schedule" ? "scheduled" : "ad-hoc";
+  const extension = extensionFor(input.fileName, input.mimeType);
+
+  return path.posix.join(folder, `${recording.id}${extension}`);
+}
+
+function extensionFor(fileName?: string | null, mimeType?: string | null) {
+  const extension = path.extname(path.basename(fileName ?? "")).toLowerCase();
+
+  if ([".flac", ".mp3", ".wav"].includes(extension)) {
+    return extension;
+  }
+
+  if (mimeType?.includes("flac")) {
+    return ".flac";
+  }
+
+  if (mimeType?.includes("wav")) {
+    return ".wav";
+  }
+
+  return ".mp3";
 }
 
 function mimeTypeFor(filePath: string) {
@@ -90,4 +137,8 @@ function mimeTypeFor(filePath: string) {
   }
 
   return "audio/mpeg";
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }

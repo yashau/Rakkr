@@ -46,18 +46,17 @@ export const schedules: ScheduleSummary[] = [
 
 export const recordings: RecordingSummary[] = [
   {
-    cached: true,
-    cachePath: "demo/rec_demo_001.mp3",
+    cached: false,
     durationSeconds: 3720,
     folder: "Meetings/2026/06/Council Meeting",
-    healthStatus: "healthy",
+    healthStatus: "unknown",
     id: "rec_demo_001",
     name: "2026-06-15_0900_Council Meeting_Council Chamber Rack",
     nodeId: "node_x32_test",
     recordedAt: "2026-06-15T04:00:00.000Z",
     scheduleId: "sched_council_weekly",
     source: "schedule",
-    status: "cached",
+    status: "completed",
     tags: ["council", "voice"],
   },
 ];
