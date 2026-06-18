@@ -4,6 +4,7 @@ import type {
   RecorderNode,
   RecordingJob,
   RecordingSummary,
+  UploadQueueItem,
 } from "@rakkr/shared";
 
 export interface PrometheusMetricsInput {
@@ -13,6 +14,7 @@ export interface PrometheusMetricsInput {
   recordingJobs: RecordingJob[];
   recordings: RecordingSummary[];
   startedAt: Date;
+  uploadQueueItems: UploadQueueItem[];
 }
 
 type MetricLabels = Record<string, boolean | number | string | undefined>;
@@ -131,6 +133,34 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
     input.healthEvents.filter((event) => event.type.includes("xrun") && event.status !== "resolved")
       .length,
   );
+
+  pushHelp(lines, "rakkr_upload_queue_depth", "Upload queue items by provider and status.");
+  pushType(lines, "rakkr_upload_queue_depth", "gauge");
+  for (const provider of ["stub", "smb", "s3"]) {
+    for (const status of ["queued", "retrying", "failed"]) {
+      pushMetric(
+        lines,
+        "rakkr_upload_queue_depth",
+        { provider, status },
+        input.uploadQueueItems.filter(
+          (item) => item.provider === provider && item.status === status,
+        ).length,
+      );
+    }
+  }
+
+  pushHelp(lines, "rakkr_upload_failures_total", "Failed upload queue attempts.");
+  pushType(lines, "rakkr_upload_failures_total", "counter");
+  for (const provider of ["stub", "smb", "s3"]) {
+    pushMetric(
+      lines,
+      "rakkr_upload_failures_total",
+      { provider },
+      input.uploadQueueItems
+        .filter((item) => item.provider === provider && item.status === "failed")
+        .reduce((total, item) => total + Math.max(1, item.attemptCount), 0),
+    );
+  }
 
   return `${lines.join("\n")}\n`;
 }

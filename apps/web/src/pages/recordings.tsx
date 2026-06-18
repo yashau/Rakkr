@@ -6,14 +6,16 @@ import {
   Pencil,
   Play,
   Radio,
+  RefreshCw,
   RotateCcw,
   Search,
   Square,
+  UploadCloud,
   Waves,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { HealthEvent, RecordingJob, RecordingSummary } from "@rakkr/shared";
+import type { HealthEvent, RecordingJob, RecordingSummary, UploadQueueItem } from "@rakkr/shared";
 
 import { QualityTimeline } from "@/components/quality-timeline";
 import { Badge } from "@/components/ui/badge";
@@ -92,6 +94,11 @@ export function RecordingsPage() {
   const healthEventsQuery = useQuery({
     queryFn: () => api.healthEvents({ limit: 500 }),
     queryKey: ["health-events", "recordings"],
+    refetchInterval: 5000,
+  });
+  const uploadQueueQuery = useQuery({
+    queryFn: api.uploadQueue,
+    queryKey: ["upload-queue"],
     refetchInterval: 5000,
   });
   const startMutation = useMutation({
@@ -177,11 +184,44 @@ export function RecordingsPage() {
       });
     },
   });
+  const enqueueUploadMutation = useMutation({
+    mutationFn: (recordingId: string) => api.enqueueRecordingUpload(recordingId),
+    onError: () =>
+      setNotice({
+        detail: "The selected cached recording could not be queued for upload.",
+        title: "Upload queue unavailable",
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      setNotice({
+        detail: `${response.data.provider} upload queue item ${response.data.status}.`,
+        title: "Upload queued",
+      });
+    },
+  });
+  const retryUploadMutation = useMutation({
+    mutationFn: api.retryUploadQueueItem,
+    onError: () =>
+      setNotice({
+        detail: "The upload queue item could not be retried.",
+        title: "Retry unavailable",
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      setNotice({
+        detail: `${response.data.provider} retry scheduled for ${formatDateTime(response.data.nextAttemptAt)}.`,
+        title: "Upload retry scheduled",
+      });
+    },
+  });
 
   const canEditRecordings =
     currentUserQuery.data?.data.permissions.includes("recording:edit") ?? false;
+  const canControlRecordings =
+    currentUserQuery.data?.data.permissions.includes("recording:control") ?? false;
   const recordings = recordingsQuery.data?.data ?? [];
   const healthEventsByRecording = groupHealthEventsByRecording(healthEventsQuery.data?.data ?? []);
+  const uploadItemsByRecording = groupUploadItemsByRecording(uploadQueueQuery.data?.data ?? []);
   const activeFilterCount = Object.values(recordingFilters).filter(Boolean).length;
 
   useEffect(
@@ -361,6 +401,7 @@ export function RecordingsPage() {
 
         return (
           <RecordingCard
+            canControl={canControlRecordings}
             downloadPending={downloadMutation.isPending}
             events={healthEventsByRecording.get(recording.id) ?? []}
             canEdit={canEditRecordings}
@@ -369,6 +410,8 @@ export function RecordingsPage() {
             key={recording.id}
             onDownload={() => downloadMutation.mutate(recording.id)}
             onPlayback={() => playbackMutation.mutate(recording.id)}
+            onQueueUpload={() => enqueueUploadMutation.mutate(recording.id)}
+            onRetryUpload={(itemId) => retryUploadMutation.mutate(itemId)}
             onStop={() => stopMutation.mutate(recording.id)}
             onUpdate={(input) =>
               updateMetadataMutation.mutateAsync({
@@ -378,7 +421,10 @@ export function RecordingsPage() {
             }
             playbackPending={playbackMutation.isPending}
             recording={recording}
+            retryUploadPending={retryUploadMutation.isPending}
             stopPending={stopMutation.isPending}
+            uploadItems={uploadItemsByRecording.get(recording.id) ?? []}
+            uploadPending={enqueueUploadMutation.isPending}
           />
         );
       })}
@@ -428,7 +474,18 @@ function groupHealthEventsByRecording(events: HealthEvent[]) {
   return grouped;
 }
 
+function groupUploadItemsByRecording(items: UploadQueueItem[]) {
+  const grouped = new Map<string, UploadQueueItem[]>();
+
+  for (const item of items) {
+    grouped.set(item.recordingId, [...(grouped.get(item.recordingId) ?? []), item]);
+  }
+
+  return grouped;
+}
+
 function RecordingCard({
+  canControl,
   canEdit,
   downloadPending,
   editPending,
@@ -436,12 +493,18 @@ function RecordingCard({
   jobs,
   onDownload,
   onPlayback,
+  onQueueUpload,
+  onRetryUpload,
   onStop,
   onUpdate,
   playbackPending,
   recording,
+  retryUploadPending,
   stopPending,
+  uploadItems,
+  uploadPending,
 }: {
+  canControl: boolean;
   canEdit: boolean;
   downloadPending: boolean;
   editPending: boolean;
@@ -449,11 +512,16 @@ function RecordingCard({
   jobs: RecordingJob[];
   onDownload: () => void;
   onPlayback: () => void;
+  onQueueUpload: () => void;
+  onRetryUpload: (itemId: string) => void;
   onStop: () => void;
   onUpdate: (input: RecordingMetadataUpdate) => Promise<unknown>;
   playbackPending: boolean;
   recording: RecordingSummary;
+  retryUploadPending: boolean;
   stopPending: boolean;
+  uploadItems: UploadQueueItem[];
+  uploadPending: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const fileReady =
@@ -608,6 +676,42 @@ function RecordingCard({
               ))}
             </div>
           ) : null}
+          {uploadItems.length > 0 ? (
+            <div className="mt-3 grid gap-2">
+              {uploadItems.map((item) => (
+                <div
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-2 text-xs"
+                  key={item.id}
+                >
+                  <Badge className={uploadStatusClass(item.status)} variant="outline">
+                    {item.status}
+                  </Badge>
+                  <span className="font-mono text-muted-foreground">{item.provider}</span>
+                  <span className="text-muted-foreground">
+                    Attempts {item.attemptCount}/{item.maxAttempts}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Next {formatDateTime(item.nextAttemptAt)}
+                  </span>
+                  {item.lastError ? (
+                    <span className="text-destructive">{item.lastError}</span>
+                  ) : null}
+                  {canControl ? (
+                    <Button
+                      disabled={retryUploadPending}
+                      onClick={() => onRetryUpload(item.id)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <RefreshCw className="size-4" />
+                      Retry
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
           <QualityTimeline events={events} recording={recording} />
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
@@ -631,6 +735,16 @@ function RecordingCard({
             <Download className="size-4" />
             Download
           </Button>
+          {canControl ? (
+            <Button
+              disabled={!fileReady || uploadPending}
+              onClick={onQueueUpload}
+              variant="outline"
+            >
+              <UploadCloud className="size-4" />
+              Queue Upload
+            </Button>
+          ) : null}
         </div>
       </div>
     </Card>
@@ -677,6 +791,22 @@ function jobStatusClass(status: RecordingJob["status"]) {
 
   if (status === "stop_requested") {
     return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function uploadStatusClass(status: UploadQueueItem["status"]) {
+  if (status === "queued" || status === "retrying") {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  if (status === "succeeded") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "failed" || status === "cancelled") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";

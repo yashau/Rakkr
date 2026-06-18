@@ -24,6 +24,8 @@ import type {
   ScheduleOccurrencePreview,
   ScheduleSummary,
   ScheduleUpdate,
+  UploadProvider,
+  UploadQueueItem,
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
@@ -78,6 +80,12 @@ export interface RecordingMetadataUpdate {
   folder?: string;
   name?: string;
   tags?: string[];
+}
+
+export interface UploadQueueInput {
+  provider?: UploadProvider;
+  reason?: string;
+  target?: string;
 }
 
 export interface RecordingFilters {
@@ -362,6 +370,19 @@ export const api = {
     }),
   recordings: (filters: RecordingFilters = {}) =>
     fetchJson<{ data: RecordingSummary[] }>(withQuery("/api/v1/recordings", filters)),
+  uploadQueue: () => fetchJson<{ data: UploadQueueItem[] }>("/api/v1/upload-queue"),
+  enqueueRecordingUpload: (recordingId: string, input: UploadQueueInput = {}) =>
+    fetchJson<{ data: UploadQueueItem }>(`/api/v1/recordings/${recordingId}/upload-queue`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  retryUploadQueueItem: (itemId: string) =>
+    fetchJson<{ data: UploadQueueItem }>(`/api/v1/upload-queue/${itemId}/retry`, {
+      method: "POST",
+    }),
   recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),
   recordingStream: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/stream`),
   runScheduleNow: (scheduleId: string) =>

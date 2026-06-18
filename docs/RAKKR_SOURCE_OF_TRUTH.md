@@ -65,7 +65,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Scheduler | 🟦 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
 | Recording library | 🟦 | Metadata, tags/folders/search, playback, download, checksum, waveform preview |
 | Health watchdog | 🟦 | Meter ingest, low-signal lifecycle alerts, timelines |
-| Storage upload | 🚧 | Next slice: failed upload retry queue skeleton |
+| Storage upload | 🟦 | Stub provider queue, retry state, audit hooks, UI actions, metrics |
 | OIDC | 🧊 | Azure AD-ready boundary; local auth first |
 | Observability | 🟦 | Local node logs, central events, `/metrics`; OTel/Mimir later |
 
@@ -349,13 +349,15 @@ Current rule:
 - Local cache is the reliable source for now.
 - Upload providers stay stubbed until basics are stable.
 
-Next slice:
+Current scaffold:
 
-- Failed upload retry queue skeleton for future SMB/S3 providers.
-- Queue entries should be auditable, visible, retryable, and metric-exported.
+- Failed upload retry queue for future SMB/S3 providers.
+- Queue entries are auditable, visible, retryable, and metric-exported.
+- Recording library can enqueue cached recordings and retry failed queue items.
 
 Later:
 
+- provider configuration and credentials;
 - SMB provider.
 - S3 provider.
 - checksum verification after upload.
@@ -416,7 +418,7 @@ Examples:
 
 ## Focus Queue
 
-1. 🚧 Finish failed upload retry queue skeleton.
+1. 🚧 Add upload provider interfaces/configuration stubs.
 2. ⏸️ Return to X32 hardware validation after device is confirmed.
 3. 🧊 Add Azure AD OIDC user sync.
 4. 🧊 Add SMB/S3 providers.

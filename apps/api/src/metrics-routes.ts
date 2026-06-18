@@ -5,6 +5,7 @@ import type {
   RecorderNode,
   RecordingJob,
   RecordingSummary,
+  UploadQueueItem,
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
@@ -15,6 +16,7 @@ import { renderPrometheusMetrics } from "./metrics.js";
 import type { NodeStore } from "./node-store.js";
 import { listRecordingJobs } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
+import { listUploadQueueItems } from "./upload-queue.js";
 
 interface MetricsScopeDependencies {
   hasResourceScope: (
@@ -64,11 +66,12 @@ async function controllerPrometheusMetrics(
   user: NonNullable<AuthResult["user"]>,
   dependencies: MetricsScopeDependencies,
 ) {
-  const [nodes, recordings, recordingJobs, healthEvents] = await Promise.all([
+  const [nodes, recordings, recordingJobs, healthEvents, uploadQueueItems] = await Promise.all([
     scopedNodes(user, dependencies),
     scopedRecordings(user, dependencies),
     scopedRecordingJobs(user, dependencies),
     scopedHealthEvents(user, dependencies),
+    scopedUploadQueueItems(user, dependencies),
   ]);
   const meterFrames = await scopedMeterFrames(nodes, dependencies);
 
@@ -79,6 +82,7 @@ async function controllerPrometheusMetrics(
     recordingJobs,
     recordings,
     startedAt: dependencies.startedAt,
+    uploadQueueItems,
   });
 }
 
@@ -133,6 +137,21 @@ async function scopedRecordingJobs(
     }
 
     result.push(job);
+  }
+
+  return result;
+}
+
+async function scopedUploadQueueItems(
+  user: NonNullable<AuthResult["user"]>,
+  dependencies: MetricsScopeDependencies,
+) {
+  const result: UploadQueueItem[] = [];
+
+  for (const item of await listUploadQueueItems()) {
+    if (await dependencies.hasResourceScope(user, { id: item.recordingId, type: "recording" })) {
+      result.push(item);
+    }
   }
 
   return result;

@@ -6,6 +6,7 @@ import type {
   RecorderNode,
   RecordingJob,
   RecordingSummary,
+  UploadQueueItem,
 } from "@rakkr/shared";
 
 import { renderPrometheusMetrics } from "../src/metrics.js";
@@ -18,6 +19,7 @@ test("renders store-backed Prometheus gauges", () => {
     recordingJobs: [recordingJob()],
     recordings: [recording()],
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
+    uploadQueueItems: [uploadQueueItem()],
   });
 
   assert.match(output, /rakkr_controller_started_at_seconds 1781784000/);
@@ -38,6 +40,8 @@ test("renders store-backed Prometheus gauges", () => {
   );
   assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 1/);
   assert.match(output, /rakkr_recording_watchdog_alerts_active\{severity="critical"\} 1/);
+  assert.match(output, /rakkr_upload_queue_depth\{provider="stub",status="failed"\} 1/);
+  assert.match(output, /rakkr_upload_failures_total\{provider="stub"\} 3/);
 });
 
 function node(): RecorderNode {
@@ -124,5 +128,23 @@ function healthEvent(): HealthEvent {
     suppressedAt: null,
     suppressedUntil: null,
     type: "watchdog.scheduled_low_signal",
+  };
+}
+
+function uploadQueueItem(): UploadQueueItem {
+  return {
+    attemptCount: 3,
+    cachePath: "scheduled/rec_demo_001.wav",
+    checksum: "sha256:demo",
+    createdAt: "2026-06-18T12:00:00.000Z",
+    fileName: "Council Meeting.wav",
+    id: "upload_demo_001",
+    lastError: "provider_not_configured",
+    maxAttempts: 3,
+    nextAttemptAt: "2026-06-18T12:15:00.000Z",
+    provider: "stub",
+    recordingId: "rec_demo_001",
+    status: "failed",
+    updatedAt: "2026-06-18T12:05:00.000Z",
   };
 }

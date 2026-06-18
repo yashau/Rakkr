@@ -19,6 +19,14 @@ export const recordingStatusSchema = z.enum([
   "cached",
   "uploaded",
 ]);
+export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
+export const uploadQueueStatusSchema = z.enum([
+  "queued",
+  "retrying",
+  "failed",
+  "succeeded",
+  "cancelled",
+]);
 export const recordingJobStatusSchema = z.enum([
   "queued",
   "running",
@@ -504,6 +512,22 @@ export const recordingJobSchema = z.object({
   status: recordingJobStatusSchema,
   stopRequestedAt: isoDateTimeSchema.optional(),
 });
+export const uploadQueueItemSchema = z.object({
+  attemptCount: z.number().int().nonnegative(),
+  cachePath: z.string().min(1).optional(),
+  checksum: z.string().min(1).optional(),
+  createdAt: isoDateTimeSchema,
+  fileName: z.string().min(1).optional(),
+  id: z.string().min(1),
+  lastError: z.string().min(1).optional(),
+  maxAttempts: z.number().int().positive(),
+  nextAttemptAt: isoDateTimeSchema,
+  provider: uploadProviderSchema,
+  recordingId: z.string().min(1),
+  status: uploadQueueStatusSchema,
+  target: z.string().min(1).optional(),
+  updatedAt: isoDateTimeSchema,
+});
 
 export const healthEventSchema = z.object({
   acknowledgedAt: isoDateTimeSchema.nullable(),
@@ -594,5 +618,8 @@ export type ScheduleOccurrencePreview = z.infer<typeof scheduleOccurrencePreview
 export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
 export type ScheduleUpdate = z.infer<typeof scheduleUpdateSchema>;
+export type UploadProvider = z.infer<typeof uploadProviderSchema>;
+export type UploadQueueItem = z.infer<typeof uploadQueueItemSchema>;
+export type UploadQueueStatus = z.infer<typeof uploadQueueStatusSchema>;
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;
 export type WatchdogPolicyUpdate = z.infer<typeof watchdogPolicyUpdateSchema>;
