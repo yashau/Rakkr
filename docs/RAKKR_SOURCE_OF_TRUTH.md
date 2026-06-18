@@ -273,8 +273,9 @@ Current:
 - Channel maps: revisions, promotion metadata, assignment history, rollback, and agent fetch.
 - Jobs: pin target, template, channel entries, channel mode, and source width when created.
 - Agent: pinned-map first, live-assignment fallback, ffmpeg render foundation.
+- UI: rollout band shows current revision, pending draft promotion, target count, and reset/promote controls.
 - Validation: ALSA loopback mapped/rendered output passed on Debian node `recorder` on `2026-06-18`.
-- Pending: richer rollout controls.
+- Pending: multi-target rollout preview and bulk assignment ergonomics.
 
 ## Node Inventory
 
@@ -979,7 +980,7 @@ Exit criteria:
 
 Continue controller trust and operations foundations while X32 validation is paused:
 
-1. Expose richer rollout promotion controls for channel-map templates.
+1. Add checksum verification and waveform preview foundations for cached recordings.
 2. Add OIDC-backed user sync when Azure AD work starts.
 3. Return to the Debian recorder node when the X32 connection is confirmed.
 

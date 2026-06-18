@@ -15,6 +15,7 @@ import {
   Cable,
   PlusCircle,
   RotateCcw,
+  Rocket,
   Save,
   ShieldAlert,
   SlidersHorizontal,
@@ -409,6 +410,8 @@ function ChannelMapTemplateCard({
   const targetOptions = channelMapTargets(nodes);
   const [selectedTarget, setSelectedTarget] = useState(targetOptions[0]?.value ?? "");
   const assignedTargets = assignments.filter((assignment) => assignment.templateId === template.id);
+  const draftChanged = channelMapDraftChanged(template, draft);
+  const nextRevision = template.revision + 1;
   const updateMutation = useMutation({
     mutationFn: () => api.updateChannelMapTemplate(template.id, channelMapTemplateUpdate(draft)),
     onSuccess: ({ data }) => {
@@ -461,6 +464,9 @@ function ChannelMapTemplateCard({
             <Badge className="border-sky-200 bg-sky-50 text-sky-700" variant="outline">
               {assignedTargets.length} targets
             </Badge>
+            <Badge className="border-violet-200 bg-violet-50 text-violet-700" variant="outline">
+              rev {template.revision}
+            </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
             {template.channelMode} / {template.entries.filter((entry) => entry.included).length}{" "}
@@ -468,10 +474,48 @@ function ChannelMapTemplateCard({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button disabled={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
-            <Save className="size-4" />
-            Save
+          <Button
+            disabled={!draftChanged || updateMutation.isPending}
+            onClick={() => updateMutation.mutate()}
+          >
+            <Rocket className="size-4" />
+            Promote Rev {nextRevision}
           </Button>
+          <Button
+            disabled={!draftChanged || updateMutation.isPending}
+            onClick={() => setDraft(template)}
+            type="button"
+            variant="outline"
+          >
+            <RotateCcw className="size-4" />
+            Reset
+          </Button>
+        </div>
+      </div>
+
+      <div className="mb-4 grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-sm md:grid-cols-3">
+        <div>
+          <div className="text-xs font-medium text-muted-foreground uppercase">Current</div>
+          <div>Revision {template.revision}</div>
+          <div className="text-xs text-muted-foreground">
+            {template.promotedAt ? formatDateTime(template.promotedAt) : "No promotion date"}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-medium text-muted-foreground uppercase">Draft</div>
+          <div>{draftChanged ? `Promotes to revision ${nextRevision}` : "No pending changes"}</div>
+          <div className="text-xs text-muted-foreground">
+            {draft.entries.filter((entry) => entry.included).length} active channels
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-medium text-muted-foreground uppercase">Rollout</div>
+          <div>{assignedTargets.length} assigned targets</div>
+          <div className="text-xs text-muted-foreground">
+            {template.promotedFromTemplateId
+              ? `Previous ${template.promotedFromTemplateId}`
+              : "No previous template"}
+          </div>
         </div>
       </div>
 
@@ -620,6 +664,12 @@ function ChannelMapTemplateCard({
                     {assignment.history.length} changes
                     {latest ? ` / ${formatDateTime(latest.changedAt)}` : ""}
                   </div>
+                  {latest ? (
+                    <div className="text-xs text-muted-foreground">
+                      {latest.reason} {latest.previousTemplateId ?? "none"} -&gt;{" "}
+                      {latest.nextTemplateId}
+                    </div>
+                  ) : null}
                 </div>
                 <Button
                   disabled={
@@ -727,6 +777,13 @@ function channelMapTemplateUpdate(template: ChannelMapTemplate): ChannelMapTempl
     name: template.name,
     tags: template.tags,
   };
+}
+
+function channelMapDraftChanged(template: ChannelMapTemplate, draft: ChannelMapTemplate) {
+  return (
+    JSON.stringify(channelMapTemplateUpdate(template)) !==
+    JSON.stringify(channelMapTemplateUpdate(draft))
+  );
 }
 
 function updateChannelEntry(
