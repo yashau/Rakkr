@@ -343,6 +343,7 @@ Current scaffold:
 - Scoped filters, metadata editing, playback, download, cache attach, and audit events.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
+- Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
 
 ## Storage Upload
@@ -430,8 +431,9 @@ Examples:
 
 1. ✅ Add local VAD and noise/speech scoring.
 2. ✅ Harden recording file-growth and terminal failure transitions.
-3. 🚧 Add profile-driven encoder output for MP3 VBR/WAV/FLAC.
-4. ⏸️ Return to X32 hardware validation after device is confirmed.
+3. ✅ Add profile-driven encoder output for MP3 VBR/WAV/FLAC.
+4. 🚧 Add waveform/metadata extraction for encoded cache files.
+5. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

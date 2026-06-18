@@ -1,11 +1,14 @@
 use serde_json::json;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::Context;
 
-use crate::capture::{CaptureChannelMap, CaptureChannelMapEntry, CapturePlan, local_capture_path};
+use crate::capture::{
+    CaptureChannelMap, CaptureChannelMapEntry, CapturePlan, local_capture_path, safe_file_name,
+};
 use crate::config::AgentConfig;
 use crate::controller::{
     ControllerCaptureCommand, ControllerChannelMapBundle, ControllerRecordingJob,
@@ -21,16 +24,27 @@ pub fn capture_plan_for_job(
     let channels = channel_map
         .as_ref()
         .map_or(job.command.capture_channels, |map| map.source_channels);
+    let output_codec = output_codec(&job.command);
+    let final_output_path = local_capture_path(&job.command.output_file_name);
+    let output_path = if output_codec == "wav" && channel_map.is_none() {
+        final_output_path.clone()
+    } else {
+        local_capture_path(&raw_capture_file_name(&job.command.output_file_name))
+    };
 
     CapturePlan {
         channel_map,
         channels,
         command: config.capture_command.clone(),
         device: job.command.capture_device.clone(),
+        final_output_path,
         format: job.command.capture_format.clone(),
         growth_grace_seconds: config.capture_growth_grace_seconds,
         min_output_bytes: config.capture_min_output_bytes,
-        output_path: local_capture_path(&job.command.output_file_name),
+        output_bitrate_kbps: job.command.output_bitrate_kbps,
+        output_codec,
+        output_path,
+        output_vbr: job.command.output_vbr.unwrap_or(false),
         render_command: config.channel_render_command.clone(),
         sample_rate: job.command.capture_sample_rate,
         seconds: job.command.duration_seconds,
@@ -39,54 +53,50 @@ pub fn capture_plan_for_job(
 }
 
 pub fn render_capture_output(plan: &CapturePlan, captured_path: &Path) -> anyhow::Result<PathBuf> {
-    let Some(channel_map) = &plan.channel_map else {
+    let render_plan = plan.channel_map.as_ref().and_then(channel_render_plan);
+
+    if render_plan.is_none()
+        && plan.output_codec == "wav"
+        && captured_path == plan.final_output_path
+    {
         return Ok(captured_path.to_path_buf());
     };
-    let Some(render_plan) = channel_render_plan(channel_map) else {
-        return Ok(captured_path.to_path_buf());
-    };
-    let rendered_path = rendered_capture_path(captured_path);
+
     let output = Command::new(&plan.render_command)
-        .arg("-y")
-        .arg("-hide_banner")
-        .arg("-loglevel")
-        .arg("error")
-        .arg("-i")
-        .arg(captured_path)
-        .arg("-filter_complex")
-        .arg(&render_plan.filter)
-        .arg("-ac")
-        .arg(render_plan.output_channels.to_string())
-        .arg(&rendered_path)
+        .args(render_command_args(
+            plan,
+            captured_path,
+            render_plan.as_ref(),
+        ))
         .output()
-        .with_context(|| format!("run channel render command {}", plan.render_command))?;
+        .with_context(|| format!("run recording render command {}", plan.render_command))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         anyhow::bail!(
-            "channel render command {} failed with status {}: {}",
+            "recording render command {} failed with status {}: {}",
             plan.render_command,
             output.status,
             stderr.trim()
         );
     }
 
-    let metadata = fs::metadata(&rendered_path).with_context(|| {
+    let metadata = fs::metadata(&plan.final_output_path).with_context(|| {
         format!(
-            "inspect rendered channel output {}",
-            rendered_path.display()
+            "inspect rendered recording output {}",
+            plan.final_output_path.display()
         )
     })?;
 
     if metadata.len() == 0 {
         anyhow::bail!(
-            "rendered channel output is empty: {}",
-            rendered_path.display()
+            "rendered recording output is empty: {}",
+            plan.final_output_path.display()
         );
     }
 
-    Ok(rendered_path)
+    Ok(plan.final_output_path.clone())
 }
 
 pub fn channel_map_details(channel_map: &CaptureChannelMap) -> serde_json::Value {
@@ -313,15 +323,6 @@ fn source_channel(entry: &CaptureChannelMapEntry) -> String {
     format!("c{}", entry.source_channel_index.saturating_sub(1))
 }
 
-fn rendered_capture_path(captured_path: &Path) -> PathBuf {
-    let extension = captured_path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("wav");
-
-    captured_path.with_extension(format!("mapped.{extension}"))
-}
-
 fn controller_entry(
     entry: &crate::controller::ControllerChannelMapEntry,
 ) -> CaptureChannelMapEntry {
@@ -330,6 +331,96 @@ fn controller_entry(
         label: entry.label.clone(),
         output_channel_index: entry.output_channel_index,
         source_channel_index: entry.source_channel_index,
+    }
+}
+
+fn output_codec(command: &ControllerCaptureCommand) -> String {
+    command
+        .output_codec
+        .as_deref()
+        .map(str::to_ascii_lowercase)
+        .filter(|value| matches!(value.as_str(), "flac" | "mp3" | "wav"))
+        .or_else(|| {
+            Path::new(&command.output_file_name)
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(str::to_ascii_lowercase)
+        })
+        .filter(|value| matches!(value.as_str(), "flac" | "mp3" | "wav"))
+        .unwrap_or_else(|| "wav".to_string())
+}
+
+fn raw_capture_file_name(output_file_name: &str) -> String {
+    let safe_name = safe_file_name(output_file_name);
+    let stem = Path::new(&safe_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("recording");
+
+    format!("{stem}.raw.wav")
+}
+
+fn render_command_args(
+    plan: &CapturePlan,
+    captured_path: &Path,
+    render_plan: Option<&ChannelRenderPlan>,
+) -> Vec<OsString> {
+    let mut args = vec![
+        OsString::from("-y"),
+        OsString::from("-hide_banner"),
+        OsString::from("-loglevel"),
+        OsString::from("error"),
+        OsString::from("-i"),
+        captured_path.as_os_str().to_os_string(),
+    ];
+
+    if let Some(render_plan) = render_plan {
+        args.push(OsString::from("-filter_complex"));
+        args.push(OsString::from(&render_plan.filter));
+        args.push(OsString::from("-ac"));
+        args.push(OsString::from(render_plan.output_channels.to_string()));
+    }
+
+    args.extend(output_codec_args(plan));
+    args.push(plan.final_output_path.as_os_str().to_os_string());
+    args
+}
+
+fn output_codec_args(plan: &CapturePlan) -> Vec<OsString> {
+    match plan.output_codec.as_str() {
+        "flac" => os_args(["-codec:a", "flac"]),
+        "mp3" if plan.output_vbr => {
+            let quality = mp3_vbr_quality(plan.output_bitrate_kbps.unwrap_or(128));
+
+            os_args(["-codec:a", "libmp3lame", "-q:a", &quality.to_string()])
+        }
+        "mp3" => os_args([
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            &format!("{}k", plan.output_bitrate_kbps.unwrap_or(128)),
+        ]),
+        _ => os_args(["-codec:a", "pcm_s16le"]),
+    }
+}
+
+fn os_args<const N: usize>(values: [&str; N]) -> Vec<OsString> {
+    values.into_iter().map(OsString::from).collect()
+}
+
+fn mp3_vbr_quality(bitrate_kbps: u32) -> u8 {
+    match bitrate_kbps {
+        245.. => 0,
+        225..=244 => 1,
+        190..=224 => 2,
+        175..=189 => 3,
+        165..=174 => 4,
+        130..=164 => 5,
+        115..=129 => 6,
+        100..=114 => 7,
+        85..=99 => 8,
+        _ => 9,
     }
 }
 
@@ -440,7 +531,10 @@ mod tests {
                 template_name: "Pinned Template".to_string(),
             }),
             duration_seconds: 60,
+            output_bitrate_kbps: Some(128),
+            output_codec: Some("mp3".to_string()),
             output_file_name: "rec.wav".to_string(),
+            output_vbr: Some(true),
         }
     }
 
@@ -469,10 +563,109 @@ mod tests {
 
     #[test]
     fn rendered_capture_path_preserves_original_extension() {
-        assert_eq!(
-            rendered_capture_path(Path::new("data/raw.wav")),
-            PathBuf::from("data/raw.mapped.wav")
-        );
+        assert_eq!(raw_capture_file_name("rec.mp3"), "rec.raw.wav");
+    }
+
+    #[test]
+    fn mp3_vbr_render_args_use_profile_bitrate_quality() {
+        let plan = render_test_plan("mp3", Some(128), true, "rec.mp3");
+        let args = render_command_args(&plan, Path::new("rec.raw.wav"), None);
+        let text_args = string_args(args);
+
+        assert!(text_args.windows(2).any(|args| args == ["-codec:a", "libmp3lame"]));
+        assert!(text_args.windows(2).any(|args| args == ["-q:a", "6"]));
+        assert_eq!(text_args.last().map(String::as_str), Some("rec.mp3"));
+    }
+
+    #[test]
+    fn flac_render_args_use_flac_encoder() {
+        let plan = render_test_plan("flac", None, false, "rec.flac");
+        let args = string_args(render_command_args(&plan, Path::new("rec.raw.wav"), None));
+
+        assert!(args.windows(2).any(|args| args == ["-codec:a", "flac"]));
+    }
+
+    #[test]
+    fn wav_without_channel_map_uses_direct_capture_output() {
+        let mut command = command_with_pinned_channel_map();
+
+        command.channel_map = None;
+        command.output_codec = Some("wav".to_string());
+        command.output_file_name = "rec_123.wav".to_string();
+        command.output_vbr = Some(false);
+        let job = ControllerRecordingJob {
+            command,
+            failure_reason: None,
+            id: "job_1".to_string(),
+            node_id: "node_1".to_string(),
+            recording_id: "rec_123".to_string(),
+            status: "running".to_string(),
+        };
+        let plan = capture_plan_for_job(&test_config(), &job, &[]);
+
+        assert!(plan.output_path.ends_with("rec_123.wav"));
+        assert_eq!(plan.output_path, plan.final_output_path);
+    }
+
+    #[test]
+    fn mp3_job_captures_raw_wav_and_finishes_as_profile_output() {
+        let config = AgentConfig {
+            capture_command: "arecord".to_string(),
+            channel_render_command: "ffmpeg".to_string(),
+            capture_growth_grace_seconds: 10,
+            capture_min_output_bytes: 128,
+            capture_stalled_seconds: 30,
+            node_id: "node_1".to_string(),
+            ..test_config()
+        };
+        let job = ControllerRecordingJob {
+            command: ControllerCaptureCommand {
+                output_file_name: "rec_123.mp3".to_string(),
+                ..command_with_pinned_channel_map()
+            },
+            failure_reason: None,
+            id: "job_1".to_string(),
+            node_id: "node_1".to_string(),
+            recording_id: "rec_123".to_string(),
+            status: "running".to_string(),
+        };
+        let plan = capture_plan_for_job(&config, &job, &[]);
+
+        assert!(plan.output_path.ends_with("rec_123.raw.wav"));
+        assert!(plan.final_output_path.ends_with("rec_123.mp3"));
+        assert_eq!(plan.output_codec, "mp3");
+    }
+
+    fn render_test_plan(
+        output_codec: &str,
+        output_bitrate_kbps: Option<u32>,
+        output_vbr: bool,
+        final_output_path: &str,
+    ) -> CapturePlan {
+        CapturePlan {
+            channel_map: None,
+            channels: 2,
+            command: "arecord".to_string(),
+            device: "default".to_string(),
+            final_output_path: PathBuf::from(final_output_path),
+            format: "S16_LE".to_string(),
+            growth_grace_seconds: 10,
+            min_output_bytes: 128,
+            output_bitrate_kbps,
+            output_codec: output_codec.to_string(),
+            output_path: PathBuf::from("rec.raw.wav"),
+            output_vbr,
+            render_command: "ffmpeg".to_string(),
+            sample_rate: 48_000,
+            seconds: 60,
+            stalled_seconds: 30,
+        }
+    }
+
+    fn string_args(args: Vec<std::ffi::OsString>) -> Vec<String> {
+        args.into_iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
     }
 
     fn channel_map_bundle(
@@ -536,6 +729,53 @@ mod tests {
             target_type: "node".to_string(),
             template_id: "template".to_string(),
             template_name: "Template".to_string(),
+        }
+    }
+
+    fn test_config() -> AgentConfig {
+        AgentConfig {
+            agent_health_log_file: PathBuf::from("health-events.jsonl"),
+            agent_health_log_max_bytes: 1_048_576,
+            agent_state_file: PathBuf::from("state.json"),
+            alias: "Node".to_string(),
+            attach_cache_content_type: "audio/mpeg".to_string(),
+            attach_cache_duration_seconds: None,
+            attach_cache_file: None,
+            attach_cache_file_name: None,
+            attach_cache_recording_id: None,
+            capture_channels: 2,
+            capture_command: "arecord".to_string(),
+            capture_device: "default".to_string(),
+            capture_format: "S16_LE".to_string(),
+            capture_growth_grace_seconds: 10,
+            capture_min_output_bytes: 128,
+            capture_output: None,
+            capture_recording_id: None,
+            capture_sample_rate: 48_000,
+            capture_seconds: 60,
+            capture_stalled_seconds: 30,
+            channel_render_command: "ffmpeg".to_string(),
+            controller_token: None,
+            controller_url: "http://localhost:8787".to_string(),
+            heartbeat_seconds: 5,
+            job_poll_seconds: 2,
+            meter_backend: crate::config::MeterBackend::Synthetic,
+            meter_clip_dbfs: -1.0,
+            meter_flatline_dbfs: -120.0,
+            meter_sample_seconds: 1,
+            node_id: "node_1".to_string(),
+            print_channel_map_assignments: false,
+            print_inventory: false,
+            print_meter_frame: false,
+            room: "Room".to_string(),
+            run_next_job: false,
+            site: "Site".to_string(),
+            system_health_disk_critical_percent: 95.0,
+            system_health_disk_path: PathBuf::from("."),
+            system_health_disk_warning_percent: 85.0,
+            system_health_enabled: true,
+            system_health_load_critical_per_core: 4.0,
+            system_health_load_warning_per_core: 2.0,
         }
     }
 }

@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
-import type { RecordingJob, RecordingJobStatus, RecordingSummary } from "@rakkr/shared";
+import {
+  defaultVoiceRecordingProfile,
+  type RecordingJob,
+  type RecordingJobStatus,
+  type RecordingProfile,
+  type RecordingSummary,
+} from "@rakkr/shared";
 
 type RecordingJobCommand = RecordingJob["command"];
 type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
@@ -12,6 +18,7 @@ interface RecordingJobOptions {
   captureInterfaceId?: string;
   channelMap?: RecordingJobCommand["channelMap"];
   durationSeconds?: number;
+  profile?: RecordingProfile;
 }
 
 interface RecordingJobStore {
@@ -41,6 +48,7 @@ export async function createRecordingJob(
   recording: RecordingSummary,
   options: RecordingJobOptions = {},
 ): Promise<RecordingJob> {
+  const profile = options.profile ?? defaultVoiceRecordingProfile;
   const job: RecordingJob = {
     command: {
       captureChannels:
@@ -53,7 +61,10 @@ export async function createRecordingJob(
       channelMap: options.channelMap,
       durationSeconds:
         options.durationSeconds ?? positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SECONDS, 3_600),
-      outputFileName: `${recording.id}.wav`,
+      outputBitrateKbps: profile.bitrateKbps,
+      outputCodec: profile.codec,
+      outputFileName: `${recording.id}.${profile.codec}`,
+      outputVbr: profile.vbr,
       type: "alsa_capture",
     },
     createdAt: new Date().toISOString(),
@@ -476,7 +487,10 @@ function commandFromValue(value: unknown): RecordingJobCommand {
     captureSampleRate: positiveIntegerFromUnknown(value.captureSampleRate, 48_000),
     channelMap: channelMapFromValue(value.channelMap),
     durationSeconds: positiveIntegerFromUnknown(value.durationSeconds, 3_600),
+    outputBitrateKbps: optionalPositiveInteger(value.outputBitrateKbps),
+    outputCodec: outputCodecFromUnknown(value.outputCodec),
     outputFileName: stringFromUnknown(value.outputFileName, "recording.wav"),
+    outputVbr: typeof value.outputVbr === "boolean" ? value.outputVbr : undefined,
     type: "alsa_capture",
   };
 }
@@ -491,6 +505,10 @@ function isoOrUndefined(value: Date | null) {
 
 function positiveIntegerFromUnknown(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function optionalPositiveInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function stringFromUnknown(value: unknown, fallback: string) {
@@ -557,6 +575,10 @@ function channelModeFromUnknown(
     value === "multichannel"
     ? value
     : "mono_to_stereo_mix";
+}
+
+function outputCodecFromUnknown(value: unknown): RecordingJobCommand["outputCodec"] {
+  return value === "mp3" || value === "flac" || value === "wav" ? value : undefined;
 }
 
 function isRecordingJobStore(value: unknown): value is { jobs: unknown[] } {

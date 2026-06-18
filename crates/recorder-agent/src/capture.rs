@@ -36,10 +36,14 @@ pub struct CapturePlan {
     pub channels: u16,
     pub command: String,
     pub device: String,
+    pub final_output_path: PathBuf,
     pub format: String,
     pub growth_grace_seconds: u64,
     pub min_output_bytes: u64,
+    pub output_bitrate_kbps: Option<u32>,
+    pub output_codec: String,
     pub output_path: PathBuf,
+    pub output_vbr: bool,
     pub render_command: String,
     pub sample_rate: u32,
     pub seconds: u64,
@@ -47,15 +51,21 @@ pub struct CapturePlan {
 }
 
 pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CapturePlan> {
+    let output_path = capture_output_path(config)?;
+
     Ok(CapturePlan {
         channel_map: None,
         channels: config.capture_channels,
         command: config.capture_command.clone(),
         device: config.capture_device.clone(),
+        final_output_path: output_path.clone(),
         format: config.capture_format.clone(),
         growth_grace_seconds: config.capture_growth_grace_seconds,
         min_output_bytes: config.capture_min_output_bytes,
-        output_path: capture_output_path(config)?,
+        output_bitrate_kbps: None,
+        output_codec: "wav".to_string(),
+        output_path,
+        output_vbr: false,
         render_command: config.channel_render_command.clone(),
         sample_rate: config.capture_sample_rate,
         seconds: config.capture_seconds,
@@ -86,7 +96,7 @@ pub fn local_capture_path(file_name: &str) -> PathBuf {
     PathBuf::from("data")
         .join("recordings")
         .join("local-captures")
-        .join(safe_file_stem(file_name))
+        .join(safe_file_name(file_name))
 }
 
 pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> Vec<String> {
@@ -332,6 +342,28 @@ fn safe_file_stem(value: &str) -> String {
     }
 }
 
+pub fn safe_file_name(value: &str) -> String {
+    let base_name = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let cleaned = base_name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('.')
+        .to_string();
+
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        "recording.wav".to_string()
+    } else {
+        cleaned
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,6 +449,14 @@ mod tests {
             capture_output_path(&config)
                 .unwrap()
                 .ends_with("rakkr-capture-rec_with_spaces.wav")
+        );
+    }
+
+    #[test]
+    fn local_capture_path_preserves_safe_extension() {
+        assert!(
+            local_capture_path("../rec with spaces.mp3")
+                .ends_with(Path::new("rec_with_spaces.mp3"))
         );
     }
 

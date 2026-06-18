@@ -621,7 +621,11 @@ export function registerRecordingRoutes({
       const node = await nodeStore.find(recording.nodeId ?? "node_x32_test");
       const job = await createRecordingJob(
         recording,
-        await recordingJobTargetOptions({ node, settingsStore }),
+        await recordingJobTargetOptions({
+          node,
+          recordingProfileId: recording.recordingProfileId,
+          settingsStore,
+        }),
       );
 
       await recordAuditEvent(c, {

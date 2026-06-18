@@ -50,7 +50,10 @@ pub struct ControllerCaptureCommand {
     pub capture_sample_rate: u32,
     pub channel_map: Option<ControllerRecordingJobChannelMap>,
     pub duration_seconds: u64,
+    pub output_bitrate_kbps: Option<u32>,
+    pub output_codec: Option<String>,
     pub output_file_name: String,
+    pub output_vbr: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -474,7 +477,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     };
 
     let upload_result = upload_cache_file(CacheFileUpload {
-        content_type: "audio/wav",
+        content_type: content_type_for_codec(job.command.output_codec.as_deref(), &output_path),
         controller_url: &config.controller_url,
         duration_seconds: Some(job.command.duration_seconds),
         file_name: Some(job.command.output_file_name.clone()),
@@ -510,6 +513,29 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             write_job_state(config, &job, "failed", Some(&output_path), Some(&reason))?;
             Err(error)
         }
+    }
+}
+
+fn content_type_for_codec(codec: Option<&str>, path: &std::path::Path) -> &'static str {
+    match codec.map(str::to_ascii_lowercase).as_deref() {
+        Some("flac") => "audio/flac",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        _ => content_type_for_path(path),
+    }
+}
+
+fn content_type_for_path(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("flac") => "audio/flac",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        _ => "application/octet-stream",
     }
 }
 
@@ -861,6 +887,18 @@ mod tests {
         assert_eq!(
             node_url("https://controller.local/", "node_1", "/meter-frame"),
             "https://controller.local/api/v1/nodes/node_1/meter-frame"
+        );
+    }
+
+    #[test]
+    fn maps_encoded_recording_content_types() {
+        assert_eq!(
+            content_type_for_codec(Some("mp3"), std::path::Path::new("recording.wav")),
+            "audio/mpeg"
+        );
+        assert_eq!(
+            content_type_for_codec(None, std::path::Path::new("recording.flac")),
+            "audio/flac"
         );
     }
 }

@@ -150,6 +150,7 @@ export async function runDueSchedules(
         await recordingJobTargetOptions({
           durationSeconds: scheduleRecordingDurationSeconds(schedule),
           node,
+          recordingProfileId: recording.recordingProfileId,
           settingsStore,
         }),
       );

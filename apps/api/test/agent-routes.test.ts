@@ -32,6 +32,11 @@ test("agent failed job marks recording metadata failed", async () => {
   const recordingStore = memoryRecordingStore([recording()]);
   const job = await createRecordingJob((await recordingStore.list())[0]!);
 
+  assert.equal(job.command.outputBitrateKbps, 128);
+  assert.equal(job.command.outputCodec, "mp3");
+  assert.equal(job.command.outputFileName, "rec_agent_failure.mp3");
+  assert.equal(job.command.outputVbr, true);
+
   registerAgentRoutes({
     app,
     healthEventStore,
