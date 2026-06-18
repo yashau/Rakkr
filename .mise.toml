@@ -36,6 +36,7 @@ depends = [
   "check:loc",
   "db:verify",
   "node:check",
+  "node:test",
   "node:lint",
   "node:format-check",
   "rust:check",
@@ -65,6 +66,11 @@ run = "pnpm -r --if-present build"
 depends = ["node:build-libs"]
 description = "Run TypeScript checks"
 run = "pnpm -r --if-present check"
+
+[tasks."node:test"]
+depends = ["node:build-libs"]
+description = "Run Node workspace tests"
+run = "pnpm -r --if-present test"
 
 [tasks."node:lint"]
 description = "Run Oxlint with Tailwind CSS rules"
