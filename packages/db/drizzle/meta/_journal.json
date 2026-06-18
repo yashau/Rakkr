@@ -92,6 +92,20 @@
       "when": 1781770811032,
       "tag": "0012_slow_maddog",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781772227418,
+      "tag": "0013_happy_sabra",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1781772367369,
+      "tag": "0014_clear_white_queen",
+      "breakpoints": true
     }
   ]
 }

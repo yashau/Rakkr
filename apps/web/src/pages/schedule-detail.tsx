@@ -1,14 +1,17 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
   ArrowLeft,
   CalendarClock,
+  CheckCircle2,
   ClipboardList,
   FileAudio,
   HeartPulse,
   History,
+  RotateCcw,
+  ShieldOff,
 } from "lucide-react";
 import type { AuditEvent, HealthEvent, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
@@ -20,6 +23,12 @@ import { formatDateTime, formatDuration } from "@/lib/dates";
 import { occurrenceWindow, recurrenceSummary, timelineAction } from "@/lib/schedule-draft";
 
 export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
+  const queryClient = useQueryClient();
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+    staleTime: 30_000,
+  });
   const schedulesQuery = useQuery({
     queryFn: api.schedules,
     queryKey: ["schedules"],
@@ -67,6 +76,26 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   const healthEvents = healthQuery.data?.data ?? [];
   const auditEvents = auditQuery.data?.data ?? [];
   const node = nodesQuery.data?.data.find((candidate) => candidate.id === schedule?.nodeId);
+  const canManageHealth =
+    currentUserQuery.data?.data.permissions.includes("health:acknowledge") ?? false;
+  const healthLifecycleMutation = useMutation({
+    mutationFn: ({
+      action,
+      eventId,
+      note,
+      suppressedUntil,
+    }: {
+      action: "acknowledge" | "reopen" | "resolve" | "suppress";
+      eventId: string;
+      note?: string;
+      suppressedUntil?: string;
+    }) => api.updateHealthEventLifecycle(eventId, action, { note, suppressedUntil }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+    },
+  });
 
   if (schedulesQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading schedule.</p>;
@@ -184,7 +213,15 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
           <SectionTitle icon={HeartPulse} title="Health Events" />
           <div className="mt-3 grid gap-3">
             {healthEvents.map((event) => (
-              <HealthEventRow event={event} key={event.id} />
+              <HealthEventRow
+                canManage={canManageHealth}
+                event={event}
+                key={event.id}
+                onAction={(action) =>
+                  healthLifecycleMutation.mutate(healthLifecycleInput(event.id, action))
+                }
+                pending={healthLifecycleMutation.isPending}
+              />
             ))}
             {!healthQuery.isPending && healthEvents.length === 0 ? (
               <p className="text-sm text-muted-foreground">No health events are linked yet.</p>
@@ -292,23 +329,74 @@ function RecordingExecutionRow({
   );
 }
 
-function HealthEventRow({ event }: { event: HealthEvent }) {
+function HealthEventRow({
+  canManage,
+  event,
+  onAction,
+  pending,
+}: {
+  canManage: boolean;
+  event: HealthEvent;
+  onAction: (action: "acknowledge" | "reopen" | "resolve" | "suppress") => void;
+  pending: boolean;
+}) {
   return (
     <div className="rounded-md border border-border bg-background p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className={healthSeverityClass(event.severity)} variant="outline">
-          {event.severity}
-        </Badge>
-        <span className="font-medium">{event.type}</span>
-        <Badge variant={event.resolvedAt ? "secondary" : "outline"}>
-          {event.resolvedAt ? "resolved" : "open"}
-        </Badge>
-      </div>
-      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        <span>{formatDateTime(event.openedAt)}</span>
-        {event.resolvedAt ? <span>Resolved {formatDateTime(event.resolvedAt)}</span> : null}
-        {event.nodeId ? <span>{event.nodeId}</span> : null}
-        {event.recordingId ? <span>{event.recordingId}</span> : null}
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className={healthSeverityClass(event.severity)} variant="outline">
+              {event.severity}
+            </Badge>
+            <span className="font-medium">{event.type}</span>
+            <Badge variant={event.status === "resolved" ? "secondary" : "outline"}>
+              {event.status}
+            </Badge>
+          </div>
+          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>{formatDateTime(event.openedAt)}</span>
+            {event.acknowledgedAt ? <span>Ack {formatDateTime(event.acknowledgedAt)}</span> : null}
+            {event.suppressedUntil ? (
+              <span>Muted until {formatDateTime(event.suppressedUntil)}</span>
+            ) : null}
+            {event.resolvedAt ? <span>Resolved {formatDateTime(event.resolvedAt)}</span> : null}
+            {event.nodeId ? <span>{event.nodeId}</span> : null}
+            {event.recordingId ? <span>{event.recordingId}</span> : null}
+          </div>
+        </div>
+        {canManage ? (
+          <div className="flex flex-wrap gap-2 md:justify-end">
+            {event.status === "resolved" ? (
+              <Button disabled={pending} onClick={() => onAction("reopen")} variant="outline">
+                <RotateCcw className="size-4" />
+                Reopen
+              </Button>
+            ) : (
+              <>
+                {event.status === "open" ? (
+                  <Button
+                    disabled={pending}
+                    onClick={() => onAction("acknowledge")}
+                    variant="outline"
+                  >
+                    <CheckCircle2 className="size-4" />
+                    Ack
+                  </Button>
+                ) : null}
+                {event.status !== "suppressed" ? (
+                  <Button disabled={pending} onClick={() => onAction("suppress")} variant="outline">
+                    <ShieldOff className="size-4" />
+                    Suppress
+                  </Button>
+                ) : null}
+                <Button disabled={pending} onClick={() => onAction("resolve")} variant="outline">
+                  <CheckCircle2 className="size-4" />
+                  Resolve
+                </Button>
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -322,11 +410,40 @@ function executionSummary(
   return {
     activeJobs: jobs.filter((job) => job.status === "queued" || job.status === "running").length,
     criticalHealthEvents: healthEvents.filter(
-      (event) => event.severity === "critical" && !event.resolvedAt,
+      (event) => event.severity === "critical" && event.status !== "resolved",
     ).length,
     failedJobs: jobs.filter((job) => job.status === "failed").length,
     failedRecordings: recordings.filter((recording) => recording.status === "failed").length,
-    openHealthEvents: healthEvents.filter((event) => !event.resolvedAt).length,
+    openHealthEvents: healthEvents.filter((event) => event.status !== "resolved").length,
+  };
+}
+
+function healthLifecycleInput(
+  eventId: string,
+  action: "acknowledge" | "reopen" | "resolve" | "suppress",
+) {
+  if (action === "suppress") {
+    const suppressedUntil =
+      window.prompt("Suppress until ISO date/time, optional")?.trim() || undefined;
+
+    return {
+      action,
+      eventId,
+      suppressedUntil,
+    };
+  }
+
+  if (action === "resolve") {
+    return {
+      action,
+      eventId,
+      note: window.prompt("Resolution note, optional")?.trim() || undefined,
+    };
+  }
+
+  return {
+    action,
+    eventId,
   };
 }
 

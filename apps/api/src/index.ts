@@ -927,9 +927,12 @@ registerAgentRoutes({
 
 registerHealthRoutes({
   app,
+  currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,
+  recordAuditEvent,
+  recordingStore,
   requirePermission,
 });
 

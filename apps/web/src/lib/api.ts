@@ -88,6 +88,22 @@ export interface HealthEventFilters {
   recordingId?: string;
   scheduleId?: string;
   severity?: HealthEvent["severity"];
+  status?: HealthEvent["status"];
+}
+
+export interface HealthEventCreateInput {
+  details?: Record<string, unknown>;
+  nodeId?: string;
+  openedAt?: string;
+  recordingId?: string;
+  scheduleId?: string;
+  severity: HealthEvent["severity"];
+  type: string;
+}
+
+export interface HealthEventLifecycleInput {
+  note?: string;
+  suppressedUntil?: string;
 }
 
 export interface UserAccessUpdate {
@@ -210,6 +226,26 @@ export const api = {
     fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
   healthEvents: (filters: HealthEventFilters = {}) =>
     fetchJson<{ data: HealthEvent[] }>(withQuery("/api/v1/health-events", filters)),
+  createHealthEvent: (input: HealthEventCreateInput) =>
+    fetchJson<{ data: HealthEvent }>("/api/v1/health-events", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  updateHealthEventLifecycle: (
+    eventId: string,
+    action: "acknowledge" | "reopen" | "resolve" | "suppress",
+    input: HealthEventLifecycleInput = {},
+  ) =>
+    fetchJson<{ data: HealthEvent }>(`/api/v1/health-events/${eventId}/${action}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   accessUsers: () => fetchJson<{ data: CurrentUser[] }>("/api/v1/auth/users"),
   createLocalUser: (input: LocalUserCreateInput) =>
     fetchJson<{ data: CurrentUser }>("/api/v1/auth/users", {
