@@ -6,7 +6,6 @@ import {
   type Permission,
   type RecorderNode,
   type RecordingSummary,
-  type UploadQueueItem,
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
@@ -32,19 +31,10 @@ import {
   uniqueRecordingIds,
   uniqueTags,
 } from "./recording-metadata.js";
+import { registerRecordingUploadQueueRoutes } from "./recording-upload-queue-routes.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
-import {
-  findUploadPolicy,
-  uploadPolicyForQueue,
-  uploadQueueInputForPolicy,
-} from "./upload-policies.js";
-import {
-  enqueueRecordingUpload,
-  listUploadQueueItems,
-  retryUploadQueueItem,
-  uploadProviderFromValue,
-} from "./upload-queue.js";
+import { findUploadPolicy, uploadPolicyForQueue } from "./upload-policies.js";
 
 interface RecordingRouteDependencies {
   app: Hono<AppBindings>;
@@ -58,14 +48,6 @@ interface RecordingRouteDependencies {
   settingsStore: SettingsStore;
 }
 
-const uploadQueueRequestSchema = z
-  .object({
-    provider: z.unknown().optional(),
-    reason: z.string().trim().min(1).max(240).optional(),
-    target: z.string().trim().min(1).max(500).optional(),
-    uploadPolicyId: z.string().trim().min(1).max(160).optional(),
-  })
-  .strict();
 const recordingStartRequestSchema = z
   .object({
     folder: z.string().trim().min(1).max(240).optional(),
@@ -215,168 +197,15 @@ export function registerRecordingRoutes({
     },
   );
 
-  app.get(
-    "/api/v1/upload-queue",
-    requirePermission("recording:read", "recordings.upload_queue.read"),
-    async (c) => {
-      const visibleRecordingIds = new Set(
-        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
-      );
-      const items = await listUploadQueueItems();
-
-      return c.json({
-        data: items.filter((item) => visibleRecordingIds.has(item.recordingId)),
-      });
-    },
-  );
-
-  app.post(
-    "/api/v1/recordings/:recordingId/upload-queue",
-    requirePermission("recording:control", "recordings.upload_queue.enqueue", (c) => ({
-      id: c.req.param("recordingId"),
-      type: "recording",
-    })),
-    async (c) => {
-      const recordingId = c.req.param("recordingId");
-      const body = uploadQueueRequestSchema.safeParse(await c.req.json().catch(() => ({})));
-
-      if (!body.success) {
-        await recordUploadQueueFailure(c, {
-          action: "recordings.upload_queue.enqueue.failed",
-          reason: "invalid_request",
-          recordingId,
-        });
-
-        return c.json({ error: "Invalid upload queue request", issues: body.error.issues }, 400);
-      }
-
-      const recording = await recordingStore.find(recordingId);
-
-      if (!recording || !recordingHasCachedFile(recording)) {
-        await recordUploadQueueFailure(c, {
-          action: "recordings.upload_queue.enqueue.failed",
-          reason: recording ? "recording_not_cached" : "recording_not_found",
-          recordingId,
-          targetName: recording?.name,
-        });
-
-        return c.json(
-          { error: recording ? "Recording is not cached" : "Recording not found" },
-          recording ? 409 : 404,
-        );
-      }
-
-      const policy = await uploadPolicyForQueue(
-        body.data.uploadPolicyId ?? recording.uploadPolicyId,
-      );
-
-      if (!policy.enabled) {
-        await recordUploadQueueFailure(c, {
-          action: "recordings.upload_queue.enqueue.failed",
-          reason: "upload_policy_disabled",
-          recordingId,
-          targetName: recording.name,
-        });
-
-        return c.json({ error: "Upload policy is disabled" }, 409);
-      }
-
-      const item = await enqueueRecordingUpload(recording, {
-        ...uploadQueueInputForPolicy(policy, body.data.reason),
-        provider: body.data.provider
-          ? uploadProviderFromValue(body.data.provider)
-          : policy.provider,
-        target: body.data.target ?? policy.target,
-      });
-
-      await recordAuditEvent(c, {
-        action: "recordings.upload_queue.enqueue.succeeded",
-        auth: currentAuth(c),
-        correlationIds: {
-          recordingId: recording.id,
-          uploadQueueItemId: item.id,
-        },
-        details: uploadQueueAuditDetails(item),
-        outcome: "succeeded",
-        permission: "recording:control",
-        target: {
-          id: recording.id,
-          name: recording.name,
-          type: "recording",
-        },
-      });
-
-      return c.json({ data: item }, 201);
-    },
-  );
-
-  app.post(
-    "/api/v1/upload-queue/:itemId/retry",
-    requirePermission("recording:control", "recordings.upload_queue.retry", async (c) => {
-      const itemId = c.req.param("itemId") ?? "";
-      const item = await uploadQueueItem(itemId);
-
-      return {
-        id: item?.recordingId ?? itemId,
-        type: item ? "recording" : "upload_queue",
-      };
-    }),
-    async (c) => {
-      const itemId = c.req.param("itemId");
-      const item = await uploadQueueItem(itemId);
-
-      if (!item) {
-        await recordUploadQueueFailure(c, {
-          action: "recordings.upload_queue.retry.failed",
-          itemId,
-          reason: "upload_queue_item_not_found",
-        });
-
-        return c.json({ error: "Upload queue item not found" }, 404);
-      }
-
-      const visibleRecordingIds = new Set(
-        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
-      );
-
-      if (!visibleRecordingIds.has(item.recordingId)) {
-        return c.json({ error: "Upload queue item not found" }, 404);
-      }
-
-      const retried = await retryUploadQueueItem(item.id);
-
-      if (!retried) {
-        await recordUploadQueueFailure(c, {
-          action: "recordings.upload_queue.retry.failed",
-          itemId,
-          reason: "upload_queue_item_not_found",
-        });
-
-        return c.json({ error: "Upload queue item not found" }, 404);
-      }
-
-      const recording = await recordingStore.find(retried.recordingId);
-
-      await recordAuditEvent(c, {
-        action: "recordings.upload_queue.retry.succeeded",
-        auth: currentAuth(c),
-        correlationIds: {
-          recordingId: retried.recordingId,
-          uploadQueueItemId: retried.id,
-        },
-        details: uploadQueueAuditDetails(retried),
-        outcome: "succeeded",
-        permission: "recording:control",
-        target: {
-          id: retried.recordingId,
-          name: recording?.name,
-          type: "recording",
-        },
-      });
-
-      return c.json({ data: retried });
-    },
-  );
+  registerRecordingUploadQueueRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    recordAuditEvent,
+    recordingStore,
+    requirePermission,
+    scopedRecordings,
+  });
 
   app.post(
     "/api/v1/recordings/:recordingId/playback",
@@ -879,34 +708,6 @@ export function registerRecordingRoutes({
       },
     });
   }
-
-  async function recordUploadQueueFailure(
-    c: Context<AppBindings>,
-    input: {
-      action: string;
-      itemId?: string;
-      reason: string;
-      recordingId?: string;
-      targetName?: string;
-    },
-  ) {
-    return recordAuditEvent(c, {
-      action: input.action,
-      auth: currentAuth(c),
-      correlationIds: {
-        ...(input.itemId ? { uploadQueueItemId: input.itemId } : {}),
-        ...(input.recordingId ? { recordingId: input.recordingId } : {}),
-      },
-      outcome: "failed",
-      permission: "recording:control",
-      reason: input.reason,
-      target: {
-        id: input.recordingId ?? input.itemId,
-        name: input.targetName,
-        type: input.recordingId ? "recording" : "upload_queue",
-      },
-    });
-  }
 }
 
 async function recordingStartTarget(c: Context<AppBindings>) {
@@ -929,20 +730,4 @@ function defaultAdHocFolder(now: Date, node: RecorderNode) {
 
 function defaultAdHocName(now: Date, node: RecorderNode) {
   return `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_${node.alias}`;
-}
-
-function uploadQueueAuditDetails(item: UploadQueueItem) {
-  return {
-    attemptCount: item.attemptCount,
-    maxAttempts: item.maxAttempts,
-    nextAttemptAt: item.nextAttemptAt,
-    provider: item.provider,
-    status: item.status,
-    target: item.target,
-    uploadPolicyId: item.uploadPolicyId,
-  };
-}
-
-async function uploadQueueItem(itemId: string) {
-  return (await listUploadQueueItems()).find((item) => item.id === itemId);
 }

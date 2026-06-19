@@ -121,6 +121,10 @@ export interface RecordingBulkDeleteInput {
   recordingIds: string[];
 }
 
+export interface RecordingBulkUploadQueueInput extends UploadQueueInput {
+  recordingIds: string[];
+}
+
 export interface RecordingStartInput {
   folder?: string;
   name?: string;
@@ -585,6 +589,17 @@ export const api = {
       },
       method: "POST",
     }),
+  enqueueRecordingsUpload: (input: RecordingBulkUploadQueueInput) =>
+    fetchJson<{ data: UploadQueueItem[]; meta: { queuedCount: number } }>(
+      "/api/v1/recordings/bulk-upload-queue",
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    ),
   retryUploadQueueItem: (itemId: string) =>
     fetchJson<{ data: UploadQueueItem }>(`/api/v1/upload-queue/${itemId}/retry`, {
       method: "POST",

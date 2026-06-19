@@ -316,7 +316,7 @@ Current partial implementation:
 - Access policy denies have route coverage for protected recording metadata writes and bulk organization.
 - Access policy denies have route coverage for live-listen monitor starts.
 - Access policy denies have route coverage for recording stop controls.
-- Access policy denies have route coverage for recording playback, download, and upload queue actions.
+- Access policy denies have route coverage for recording playback, download, and upload queue actions, including bulk upload queueing.
 - Access policy denies have route coverage for recording delete and bulk delete actions.
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edits.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
@@ -396,6 +396,7 @@ Current partial implementation:
 - Recording library UI exposes RBAC-mirrored delete controls for terminal recordings.
 - Recording library UI can bulk-delete selected terminal recordings.
 - Recording library API supports audited bulk delete with scoped visibility checks.
+- Recording library can bulk-queue selected cached recordings for upload with scoped visibility checks.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
@@ -418,7 +419,7 @@ Current partial implementation:
 
 - Failed upload retry queue for future SMB/S3 providers.
 - Queue entries are auditable, visible, retryable, and metric-exported.
-- Recording library can enqueue cached recordings and retry failed queue items.
+- Recording library can enqueue cached recordings individually or in bulk and retry failed queue items.
 - Upload providers expose enabled state, target, credential reference, readiness, and implementation status.
 - Upload policy templates choose provider, target, trigger, and retry budget.
 - Schedules and recordings carry `uploadPolicyId` for provider selection.
@@ -557,6 +558,7 @@ Current partial implementation:
 63. ✅ Add RBAC-gated bulk recording delete API and wire UI to it.
 64. ✅ Add access-policy deny coverage for bulk recording delete.
 65. ✅ Add access-policy deny coverage for bulk recording organization.
+66. ✅ Add RBAC-gated bulk upload queueing for selected cached recordings.
 
 ## Open Questions
 

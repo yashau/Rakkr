@@ -1,5 +1,6 @@
-import { CheckSquare, RotateCcw, Trash2, X } from "lucide-react";
+import { CheckSquare, RotateCcw, Trash2, UploadCloud, X } from "lucide-react";
 import { useState } from "react";
+import type { UploadPolicy } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function RecordingBulkOrganizer({
   allVisibleSelected,
   canDelete,
   canEdit,
+  canUpload,
   deleteDisabled,
   deleteEligibleCount,
   disabled,
@@ -32,12 +34,17 @@ export function RecordingBulkOrganizer({
   onClear,
   onDeleteSelected,
   onSelectVisible,
+  onUploadSelected,
   selectedCount,
+  uploadDisabled,
+  uploadEligibleCount,
+  uploadPolicies,
   visibleCount,
 }: {
   allVisibleSelected: boolean;
   canDelete: boolean;
   canEdit: boolean;
+  canUpload: boolean;
   deleteDisabled: boolean;
   deleteEligibleCount: number;
   disabled: boolean;
@@ -45,13 +52,20 @@ export function RecordingBulkOrganizer({
   onClear: () => void;
   onDeleteSelected: () => void;
   onSelectVisible: () => void;
+  onUploadSelected: (uploadPolicyId?: string) => void;
   selectedCount: number;
+  uploadDisabled: boolean;
+  uploadEligibleCount: number;
+  uploadPolicies: UploadPolicy[];
   visibleCount: number;
 }) {
   const [draft, setDraft] = useState(emptyBulkDraft);
+  const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(uploadPolicies[0]?.id ?? "");
   const input = bulkInputFromDraft(draft);
   const applyDisabled = disabled || selectedCount === 0 || Object.keys(input).length === 0;
   const bulkDeleteDisabled = deleteDisabled || selectedCount === 0 || deleteEligibleCount === 0;
+  const bulkUploadDisabled = uploadDisabled || selectedCount === 0 || uploadEligibleCount === 0;
+  const uploadPolicyId = selectedUploadPolicyId || uploadPolicies[0]?.id;
 
   return (
     <section className="grid gap-3 rounded-lg border border-border bg-panel p-4 shadow-sm">
@@ -147,6 +161,33 @@ export function RecordingBulkOrganizer({
           >
             <Trash2 className="size-4" />
             Delete selected
+          </Button>
+        </div>
+      ) : null}
+      {canUpload ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{uploadEligibleCount} cached</Badge>
+          {uploadPolicies.length > 0 ? (
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              onChange={(event) => setSelectedUploadPolicyId(event.target.value)}
+              value={uploadPolicyId ?? ""}
+            >
+              {uploadPolicies.map((policy) => (
+                <option key={policy.id} value={policy.id}>
+                  {policy.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <Button
+            disabled={bulkUploadDisabled}
+            onClick={() => onUploadSelected(uploadPolicyId)}
+            type="button"
+            variant="outline"
+          >
+            <UploadCloud className="size-4" />
+            Queue upload
           </Button>
         </div>
       ) : null}

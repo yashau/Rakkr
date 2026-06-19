@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { RecordingSummary, UploadPolicy } from "@rakkr/shared";
 
 import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
 import { RecordingCard } from "@/components/recording-card";
@@ -16,141 +15,29 @@ import {
   type RecordingBulkMetadataUpdate,
   type RecordingFilters,
   type RecordingMetadataUpdate,
-  type RecordingSortBy,
   type RecordingSortOrder,
 } from "@/lib/api";
-import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
+import { formatDateTime } from "@/lib/dates";
 import {
+  defaultRecordingPageSize,
   downloadBlob,
+  emptyRecordingFilterDraft,
+  filtersFromDraft,
   groupHealthEventsByRecording,
   groupUploadItemsByRecording,
+  isCachedRecording,
+  healthStatuses,
   isTerminalRecording,
+  recordingFilterChips,
+  recordingFilterDraftKeys,
+  type RecordingFilterDraft,
+  type RecordingFilterKey,
+  recordingPageSizes,
+  recordingSortOptions,
+  recordingSortOrders,
+  recordingStatuses,
+  selectClassName,
 } from "@/lib/recording-page-helpers";
-
-interface RecordingFilterDraft {
-  folder: string;
-  healthStatus: "" | RecordingSummary["healthStatus"];
-  nodeId: string;
-  recordedFromDate: string;
-  recordedToDate: string;
-  recordingProfileId: string;
-  scheduleId: string;
-  search: string;
-  sortBy: "" | RecordingSortBy;
-  sortOrder: RecordingSortOrder;
-  status: "" | RecordingSummary["status"];
-  tag: string;
-  trackGroupId: string;
-  uploadPolicyId: string;
-}
-
-type RecordingFilterKey = Exclude<keyof RecordingFilters, "limit" | "offset" | "sortOrder">;
-
-interface ActiveRecordingFilterChip {
-  key: RecordingFilterKey;
-  label: string;
-  value: string;
-}
-
-const emptyRecordingFilterDraft: RecordingFilterDraft = {
-  folder: "",
-  healthStatus: "",
-  nodeId: "",
-  recordedFromDate: "",
-  recordedToDate: "",
-  recordingProfileId: "",
-  scheduleId: "",
-  search: "",
-  sortBy: "",
-  sortOrder: "desc",
-  status: "",
-  tag: "",
-  trackGroupId: "",
-  uploadPolicyId: "",
-};
-
-const healthStatuses: Array<RecordingSummary["healthStatus"]> = [
-  "healthy",
-  "warning",
-  "critical",
-  "unknown",
-];
-
-const recordingStatuses: Array<RecordingSummary["status"]> = [
-  "queued",
-  "recording",
-  "completed",
-  "failed",
-  "cached",
-  "uploaded",
-];
-const recordingSortOptions: Array<{ label: string; value: RecordingSortBy }> = [
-  { label: "Date", value: "recordedAt" },
-  { label: "Name", value: "name" },
-  { label: "Folder", value: "folder" },
-  { label: "Duration", value: "durationSeconds" },
-  { label: "Status", value: "status" },
-  { label: "Health", value: "healthStatus" },
-  { label: "Source", value: "source" },
-];
-const recordingSortOrders: Array<{ label: string; value: RecordingSortOrder }> = [
-  { label: "Descending", value: "desc" },
-  { label: "Ascending", value: "asc" },
-];
-const recordingPageSizes = [10, 25, 50, 100];
-const defaultRecordingPageSize = 25;
-const emptyUploadPolicies: UploadPolicy[] = [];
-
-const selectClassName =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
-
-const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilterDraft> = {
-  folder: "folder",
-  healthStatus: "healthStatus",
-  nodeId: "nodeId",
-  recordedFrom: "recordedFromDate",
-  recordedTo: "recordedToDate",
-  recordingProfileId: "recordingProfileId",
-  scheduleId: "scheduleId",
-  search: "search",
-  sortBy: "sortBy",
-  status: "status",
-  tag: "tag",
-  trackGroupId: "trackGroupId",
-  uploadPolicyId: "uploadPolicyId",
-};
-
-const recordingFilterLabels: Record<RecordingFilterKey, string> = {
-  folder: "folder",
-  healthStatus: "health",
-  nodeId: "node",
-  recordedFrom: "from",
-  recordedTo: "to",
-  recordingProfileId: "profile",
-  scheduleId: "schedule",
-  search: "search",
-  sortBy: "sort",
-  status: "status",
-  tag: "tag",
-  trackGroupId: "track group",
-  uploadPolicyId: "upload",
-};
-
-const recordingFilterOrder: RecordingFilterKey[] = [
-  "search",
-  "folder",
-  "tag",
-  "nodeId",
-  "scheduleId",
-  "trackGroupId",
-  "recordingProfileId",
-  "uploadPolicyId",
-  "sortBy",
-  "status",
-  "healthStatus",
-  "recordedFrom",
-  "recordedTo",
-];
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
@@ -355,6 +242,23 @@ export function RecordingsPage() {
       });
     },
   });
+  const bulkEnqueueUploadMutation = useMutation({
+    mutationFn: (input: { recordingIds: string[]; uploadPolicyId?: string }) =>
+      api.enqueueRecordingsUpload(input),
+    onError: () =>
+      setNotice({
+        detail: "The selected cached recordings could not be queued for upload.",
+        title: "Bulk upload queue unavailable",
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      setNotice({
+        detail: `${response.meta.queuedCount} cached recordings were queued.`,
+        title: "Uploads queued",
+      });
+    },
+  });
   const retryUploadMutation = useMutation({
     mutationFn: api.retryUploadQueueItem,
     onError: () =>
@@ -389,7 +293,7 @@ export function RecordingsPage() {
   const topUploadPolicies = facets?.uploadPolicies.slice(0, 8) ?? [];
   const healthEventsByRecording = groupHealthEventsByRecording(healthEventsQuery.data?.data ?? []);
   const uploadItemsByRecording = groupUploadItemsByRecording(uploadQueueQuery.data?.data ?? []);
-  const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
+  const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];
   const activeFilterChips = recordingFilterChips(recordingFilters);
   const activeFilterCount = activeFilterChips.length;
   const selectedRecordingIdSet = new Set(selectedRecordingIds);
@@ -398,6 +302,9 @@ export function RecordingsPage() {
   );
   const selectedTerminalRecordingIds = selectedRecordings
     .filter((recording) => isTerminalRecording(recording))
+    .map((recording) => recording.id);
+  const selectedCachedRecordingIds = selectedRecordings
+    .filter((recording) => isCachedRecording(recording))
     .map((recording) => recording.id);
   const visibleRecordingIds = recordings.map((recording) => recording.id);
   const allVisibleSelected =
@@ -499,6 +406,12 @@ export function RecordingsPage() {
     ) {
       bulkDeleteRecordingMutation.mutate(selectedTerminalRecordingIds);
     }
+  };
+  const uploadSelectedRecordings = (uploadPolicyId?: string) => {
+    bulkEnqueueUploadMutation.mutate({
+      recordingIds: selectedCachedRecordingIds,
+      uploadPolicyId,
+    });
   };
 
   return (
@@ -842,19 +755,29 @@ export function RecordingsPage() {
         />
       </form>
 
-      {(canEditRecordings || canDeleteRecordings) && recordings.length > 0 ? (
+      {(canEditRecordings || canDeleteRecordings || canControlRecordings) &&
+      recordings.length > 0 ? (
         <RecordingBulkOrganizer
           allVisibleSelected={allVisibleSelected}
           canDelete={canDeleteRecordings}
           canEdit={canEditRecordings}
+          canUpload={canControlRecordings}
           deleteDisabled={bulkDeleteRecordingMutation.isPending}
           deleteEligibleCount={selectedTerminalRecordingIds.length}
-          disabled={bulkMetadataMutation.isPending || bulkDeleteRecordingMutation.isPending}
+          disabled={
+            bulkMetadataMutation.isPending ||
+            bulkDeleteRecordingMutation.isPending ||
+            bulkEnqueueUploadMutation.isPending
+          }
           onApply={(input) => bulkMetadataMutation.mutate(input)}
           onClear={() => setSelectedRecordingIds([])}
           onDeleteSelected={deleteSelectedRecordings}
           onSelectVisible={selectVisibleRecordings}
+          onUploadSelected={uploadSelectedRecordings}
           selectedCount={selectedRecordingIds.length}
+          uploadDisabled={bulkEnqueueUploadMutation.isPending}
+          uploadEligibleCount={selectedCachedRecordingIds.length}
+          uploadPolicies={uploadPolicies}
           visibleCount={recordings.length}
         />
       ) : null}
@@ -894,7 +817,7 @@ export function RecordingsPage() {
             }
             onRetryUpload={(itemId) => retryUploadMutation.mutate(itemId)}
             onSelectedChange={
-              canEditRecordings || canDeleteRecordings
+              canEditRecordings || canDeleteRecordings || canControlRecordings
                 ? (selected) => setRecordingSelected(recording.id, selected)
                 : undefined
             }
@@ -918,70 +841,4 @@ export function RecordingsPage() {
       })}
     </div>
   );
-}
-
-function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
-  return {
-    folder: textOrUndefined(draft.folder),
-    healthStatus: draft.healthStatus || undefined,
-    nodeId: textOrUndefined(draft.nodeId),
-    recordedFrom: localDateBoundaryIso(draft.recordedFromDate, "start"),
-    recordedTo: localDateBoundaryIso(draft.recordedToDate, "end"),
-    recordingProfileId: textOrUndefined(draft.recordingProfileId),
-    scheduleId: textOrUndefined(draft.scheduleId),
-    search: textOrUndefined(draft.search),
-    sortBy: draft.sortBy || undefined,
-    sortOrder: draft.sortBy ? draft.sortOrder : undefined,
-    status: draft.status || undefined,
-    tag: textOrUndefined(draft.tag),
-    trackGroupId: textOrUndefined(draft.trackGroupId),
-    uploadPolicyId: textOrUndefined(draft.uploadPolicyId),
-  };
-}
-
-function recordingFilterChips(filters: RecordingFilters): ActiveRecordingFilterChip[] {
-  return recordingFilterOrder.flatMap((key) => {
-    const value = filters[key];
-
-    if (!value) {
-      return [];
-    }
-
-    return [
-      {
-        key,
-        label: recordingFilterLabels[key],
-        value:
-          key === "sortBy"
-            ? `${sortFilterLabel(value, "sort")} ${sortOrderFilterLabel(filters.sortOrder)}`
-            : recordingFilterValue(key, value),
-      },
-    ];
-  });
-}
-
-function recordingFilterValue(key: RecordingFilterKey, value: string) {
-  if (key === "recordedFrom" || key === "recordedTo") {
-    return formatDateTime(value);
-  }
-
-  if (key === "sortBy") {
-    return sortFilterLabel(value, "sort");
-  }
-
-  return value;
-}
-
-function sortFilterLabel(value: string, fallback: string) {
-  return recordingSortOptions.find((option) => option.value === value)?.label ?? fallback;
-}
-
-function sortOrderFilterLabel(value: RecordingFilters["sortOrder"]) {
-  return value === "asc" ? "ascending" : "descending";
-}
-
-function textOrUndefined(value: string) {
-  const trimmed = value.trim();
-
-  return trimmed || undefined;
 }

@@ -244,6 +244,14 @@ test("recording resource denies block playback download upload queue and delete 
       },
       method: "POST",
     });
+    const bulkUploadResponse = await app.request("/api/v1/recordings/bulk-upload-queue", {
+      body: JSON.stringify({ recordingIds: [recordingId] }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
     const deleteResponse = await app.request(`/api/v1/recordings/${recordingId}`, {
       headers: { authorization: `Bearer ${token}` },
       method: "DELETE",
@@ -274,6 +282,12 @@ test("recording resource denies block playback download upload queue and delete 
       "recording:control",
       recordingId,
     );
+    const bulkUploadEvent = await deniedAuditEvent(
+      token,
+      "recordings.upload_queue.bulk_enqueue.failed",
+      "recording:control",
+      "recording_collection",
+    );
     const deleteEvent = await deniedAuditEvent(
       token,
       "recordings.delete",
@@ -290,16 +304,20 @@ test("recording resource denies block playback download upload queue and delete 
     assert.equal(playbackResponse.status, 403);
     assert.equal(downloadResponse.status, 403);
     assert.equal(uploadResponse.status, 403);
+    assert.equal(bulkUploadResponse.status, 404);
     assert.equal(deleteResponse.status, 403);
     assert.equal(bulkDeleteResponse.status, 404);
     assert.equal(playbackEvent?.reason, "access_policy_denied");
     assert.equal(downloadEvent?.reason, "access_policy_denied");
     assert.equal(uploadEvent?.reason, "access_policy_denied");
+    assert.equal(bulkUploadEvent?.reason, "recording_not_visible");
     assert.equal(deleteEvent?.reason, "access_policy_denied");
     assert.equal(bulkDeleteEvent?.reason, "recording_not_visible");
     assert.equal(playbackEvent?.target.id, recordingId);
     assert.equal(downloadEvent?.target.id, recordingId);
     assert.equal(uploadEvent?.target.id, recordingId);
+    assert.equal(bulkUploadEvent?.target.id, "recording_collection");
+    assert.deepEqual(bulkUploadEvent?.details.hiddenIds, [recordingId]);
     assert.equal(deleteEvent?.target.id, recordingId);
     assert.equal(bulkDeleteEvent?.target.id, "recording_collection");
     assert.deepEqual(bulkDeleteEvent?.details.hiddenIds, [recordingId]);
