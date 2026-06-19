@@ -313,6 +313,7 @@ Current partial implementation:
 - Access UI includes a structured resource-scope composer for local user grants.
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
 - Access policy update routes have regression coverage for before/after audit snapshots.
+- Auth management routes have missing-permission deny coverage.
 - Access policy denies have route coverage for protected recording metadata writes and bulk organization.
 - Access policy denies have route coverage for live-listen monitor starts.
 - Access policy denies have route coverage for recording stop controls.
@@ -602,6 +603,7 @@ Current partial implementation:
 89. ✅ Add health route missing-permission coverage.
 90. ✅ Add recording route missing-permission coverage.
 91. ✅ Add ops route missing-permission coverage.
+92. ✅ Add auth management route missing-permission coverage.
 
 ## Open Questions
 
