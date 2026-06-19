@@ -344,6 +344,7 @@ Current partial implementation:
 - Settings shell navigation mirrors `settings:read`.
 - Root shell navigation and header shortcut permission decisions have focused helper coverage.
 - Root shell navigation item visibility is derived through tested RBAC helpers.
+- UI pages and components have regression coverage preventing inline RBAC permission checks.
 - Settings channel-map assignment target lookup mirrors `node:read`.
 - Shell navigation mirrors page-level read/manage permissions.
 - Header recording shortcut mirrors `recording:create`.
@@ -651,6 +652,7 @@ Current partial implementation:
 115. ✅ Add Settings page permission helper coverage.
 116. ✅ Add root shell permission helper coverage.
 117. ✅ Add root shell nav item derivation coverage.
+118. ✅ Add UI RBAC helper boundary coverage.
 
 ## Open Questions
 
