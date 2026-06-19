@@ -47,8 +47,8 @@ export interface NodeUpdateInput {
   hostname?: string;
   ipAddresses?: string[];
   location?: {
-    building?: string;
-    floor?: string;
+    building?: string | null;
+    floor?: string | null;
     room?: string;
     site?: string;
   };
@@ -620,9 +620,17 @@ function updatedChannels(
 }
 
 function definedLocation(location: NodeUpdateInput["location"]) {
-  return Object.fromEntries(
-    Object.entries(location ?? {}).filter(([, value]) => value !== undefined),
-  ) as Partial<RecorderNode["location"]>;
+  const next: Partial<RecorderNode["location"]> = {};
+
+  for (const [key, value] of Object.entries(location ?? {}) as Array<
+    [keyof RecorderNode["location"], string | null | undefined]
+  >) {
+    if (value !== undefined) {
+      next[key] = value ?? undefined;
+    }
+  }
+
+  return next;
 }
 
 function interfaceFromRows(

@@ -106,6 +106,8 @@ test("node update changes identity fields and audits before and after", async ()
       alias: "Council Chamber Recorder",
       ipAddresses: ["10.0.0.51"],
       location: {
+        building: "City Hall",
+        floor: "2",
         room: "Council Chamber",
         site: "Main Site",
       },
@@ -120,6 +122,8 @@ test("node update changes identity fields and audits before and after", async ()
 
   assert.equal(response.status, 200);
   assert.equal(body.data.alias, "Council Chamber Recorder");
+  assert.equal(body.data.location.building, "City Hall");
+  assert.equal(body.data.location.floor, "2");
   assert.equal(body.data.location.room, "Council Chamber");
   assert.deepEqual(body.data.ipAddresses, ["10.0.0.51"]);
   assert.deepEqual(body.data.tags, ["voice", "council"]);

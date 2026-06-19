@@ -72,8 +72,8 @@ const nodeUpdateSchema = z
     ipAddresses: z.array(z.string().trim().min(1).max(120)).max(16).optional(),
     location: z
       .object({
-        building: z.string().trim().min(1).max(120).optional(),
-        floor: z.string().trim().min(1).max(80).optional(),
+        building: z.string().trim().min(1).max(120).nullable().optional(),
+        floor: z.string().trim().min(1).max(80).nullable().optional(),
         room: z.string().trim().min(1).max(160).optional(),
         site: z.string().trim().min(1).max(160).optional(),
       })

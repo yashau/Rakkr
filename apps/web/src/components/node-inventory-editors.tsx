@@ -12,6 +12,8 @@ import { api } from "@/lib/api";
 
 interface NodeIdentityDraft {
   alias: string;
+  building: string;
+  floor: string;
   hostname: string;
   ipAddresses: string;
   notes: string;
@@ -62,11 +64,23 @@ export function NodeIdentityEditor({ node }: { node: RecorderNode }) {
           value={draft.alias}
         />
       </Field>
-      <div className="grid gap-2 md:grid-cols-2">
+      <div className="grid gap-2 md:grid-cols-4">
         <Field label="Site">
           <Input
             onChange={(event) => setDraftValue(setDraft, "site", event.target.value)}
             value={draft.site}
+          />
+        </Field>
+        <Field label="Building">
+          <Input
+            onChange={(event) => setDraftValue(setDraft, "building", event.target.value)}
+            value={draft.building}
+          />
+        </Field>
+        <Field label="Floor">
+          <Input
+            onChange={(event) => setDraftValue(setDraft, "floor", event.target.value)}
+            value={draft.floor}
           />
         </Field>
         <Field label="Room">
@@ -221,6 +235,8 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 function nodeIdentityDraft(node: RecorderNode): NodeIdentityDraft {
   return {
     alias: node.alias,
+    building: node.location.building ?? "",
+    floor: node.location.floor ?? "",
     hostname: node.hostname,
     ipAddresses: node.ipAddresses.join(", "),
     notes: node.notes ?? "",
@@ -236,12 +252,18 @@ function nodeUpdateInput(draft: NodeIdentityDraft) {
     hostname: draft.hostname.trim(),
     ipAddresses: parseList(draft.ipAddresses),
     location: {
+      building: optionalText(draft.building),
+      floor: optionalText(draft.floor),
       room: draft.room.trim(),
       site: draft.site.trim(),
     },
     notes: draft.notes.trim() || null,
     tags: parseList(draft.tags),
   };
+}
+
+function optionalText(value: string) {
+  return value.trim() || null;
 }
 
 function nodeInterfaceDraft(audioInterface: AudioInterface): NodeInterfaceDraft {

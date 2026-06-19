@@ -210,8 +210,8 @@ export interface NodeMetadataUpdate {
   hostname?: string;
   ipAddresses?: string[];
   location?: {
-    building?: string;
-    floor?: string;
+    building?: string | null;
+    floor?: string | null;
     room?: string;
     site?: string;
   };

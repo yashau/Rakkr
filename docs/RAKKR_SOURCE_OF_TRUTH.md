@@ -180,7 +180,7 @@ Nodes need:
 Current partial implementation:
 
 - RBAC-gated node list, enroll, credential rotation, status, and health routes.
-- RBAC-gated node alias/location/network/tag/note edits with audit history.
+- RBAC-gated node alias, site/building/floor/room, network, tag, and note edits with audit history.
 - RBAC-gated interface aliases, system refs, sample rates, and channel aliases with audit history.
 - Node-authenticated heartbeat updates status, last seen, OS/kernel/runtime, IPs, and audio backends.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
@@ -456,7 +456,8 @@ Examples:
 12. ✅ Add RBAC/audited node identity edits.
 13. ✅ Add RBAC/audited interface and channel identity edits.
 14. ✅ Add agent runtime heartbeat and node runtime display.
-15. ⏸️ Return to X32 hardware validation after device is confirmed.
+15. ✅ Add full node location hierarchy editing and display.
+16. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

@@ -28,7 +28,9 @@ interface EnrollmentDraft {
   agentVersion: string;
   alias: string;
   backend: NodeEnrollmentInput["interfaces"][number]["backend"];
+  building: string;
   channelCount: string;
+  floor: string;
   hostname: string;
   interfaceAlias: string;
   ipAddresses: string;
@@ -44,7 +46,9 @@ const emptyDraft: EnrollmentDraft = {
   agentVersion: "0.1.0",
   alias: "",
   backend: "unknown",
+  building: "",
   channelCount: "0",
+  floor: "",
   hostname: "",
   interfaceAlias: "",
   ipAddresses: "",
@@ -179,6 +183,18 @@ export function NodesPage() {
                 value={draft.site}
               />
             </Field>
+            <Field label="Building">
+              <Input
+                onChange={(event) => setDraftValue(setDraft, "building", event.target.value)}
+                value={draft.building}
+              />
+            </Field>
+            <Field label="Floor">
+              <Input
+                onChange={(event) => setDraftValue(setDraft, "floor", event.target.value)}
+                value={draft.floor}
+              />
+            </Field>
             <Field label="Room">
               <Input
                 onChange={(event) => setDraftValue(setDraft, "room", event.target.value)}
@@ -305,7 +321,7 @@ export function NodesPage() {
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <MapPin className="size-4" />
-                      {node.location.site} / {node.location.room}
+                      {locationSummary(node.location)}
                     </div>
                     <div className="flex items-center gap-2">
                       <Network className="size-4" />
@@ -426,6 +442,8 @@ function enrollmentInput(draft: EnrollmentDraft): NodeEnrollmentInput {
       : [],
     ipAddresses: parseList(draft.ipAddresses),
     location: {
+      building: draft.building.trim() || undefined,
+      floor: draft.floor.trim() || undefined,
       room: draft.room.trim(),
       site: draft.site.trim(),
     },
@@ -445,6 +463,17 @@ function parseNumbers(value: string) {
   return parseList(value)
     .map(Number)
     .filter((item) => Number.isInteger(item) && item > 0);
+}
+
+function locationSummary(location: {
+  building?: string;
+  floor?: string;
+  room: string;
+  site: string;
+}) {
+  return [location.site, location.building, location.floor, location.room]
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function runtimeSummary(runtime: NodeRuntime) {
