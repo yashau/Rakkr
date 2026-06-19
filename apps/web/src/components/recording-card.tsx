@@ -36,7 +36,9 @@ interface RecordingMetadataDraft {
 
 export function RecordingCard({
   canControl,
+  canDownload,
   canEdit,
+  canPlayback,
   downloadPending,
   editPending,
   events,
@@ -56,7 +58,9 @@ export function RecordingCard({
   uploadPending,
 }: {
   canControl: boolean;
+  canDownload: boolean;
   canEdit: boolean;
+  canPlayback: boolean;
   downloadPending: boolean;
   editPending: boolean;
   events: HealthEvent[];
@@ -309,20 +313,24 @@ export function RecordingCard({
               Edit
             </Button>
           ) : null}
-          {recording.status === "recording" ? (
+          {canControl && recording.status === "recording" ? (
             <Button disabled={stopPending} onClick={onStop} variant="outline">
               <Square className="size-4" />
               Stop
             </Button>
           ) : null}
-          <Button disabled={!fileReady || playbackPending} onClick={onPlayback} variant="outline">
-            <Play className="size-4" />
-            Play
-          </Button>
-          <Button disabled={!fileReady || downloadPending} onClick={onDownload} variant="outline">
-            <Download className="size-4" />
-            Download
-          </Button>
+          {canPlayback ? (
+            <Button disabled={!fileReady || playbackPending} onClick={onPlayback} variant="outline">
+              <Play className="size-4" />
+              Play
+            </Button>
+          ) : null}
+          {canDownload ? (
+            <Button disabled={!fileReady || downloadPending} onClick={onDownload} variant="outline">
+              <Download className="size-4" />
+              Download
+            </Button>
+          ) : null}
           {canControl ? (
             <>
               {uploadPolicies.length > 0 ? (

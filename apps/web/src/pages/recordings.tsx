@@ -294,12 +294,12 @@ export function RecordingsPage() {
     },
   });
 
-  const canEditRecordings =
-    currentUserQuery.data?.data.permissions.includes("recording:edit") ?? false;
-  const canCreateRecordings =
-    currentUserQuery.data?.data.permissions.includes("recording:create") ?? false;
-  const canControlRecordings =
-    currentUserQuery.data?.data.permissions.includes("recording:control") ?? false;
+  const currentUserPermissions = currentUserQuery.data?.data.permissions ?? [];
+  const canControlRecordings = currentUserPermissions.includes("recording:control");
+  const canCreateRecordings = currentUserPermissions.includes("recording:create");
+  const canDownloadRecordings = currentUserPermissions.includes("recording:download");
+  const canEditRecordings = currentUserPermissions.includes("recording:edit");
+  const canPlaybackRecordings = currentUserPermissions.includes("recording:playback");
   const recordings = recordingsQuery.data?.data ?? [];
   const recordingMeta = recordingsQuery.data?.meta;
   const facets = recordingFacetsQuery.data?.data;
@@ -737,9 +737,11 @@ export function RecordingsPage() {
         return (
           <RecordingCard
             canControl={canControlRecordings}
+            canDownload={canDownloadRecordings}
             downloadPending={downloadMutation.isPending}
             events={healthEventsByRecording.get(recording.id) ?? []}
             canEdit={canEditRecordings}
+            canPlayback={canPlaybackRecordings}
             editPending={updateMetadataMutation.isPending}
             jobs={jobs}
             key={recording.id}

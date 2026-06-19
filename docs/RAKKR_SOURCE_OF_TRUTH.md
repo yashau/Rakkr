@@ -375,6 +375,7 @@ Current partial implementation:
 - Recording library can display, search, and filter scheduled split recordings by track group.
 - Recording library supports explicit server-side sorting with UI controls.
 - Recording library supports paginated result sets with page-size and previous/next controls.
+- Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
@@ -498,7 +499,8 @@ Examples:
 34. ✅ Add recording library pagination controls.
 35. ✅ Add recording relationship facet groups.
 36. ✅ Add RBAC deny-precedence regression coverage.
-37. ⏸️ Return to X32 hardware validation after device is confirmed.
+37. ✅ Mirror recording library action controls against RBAC permissions.
+38. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
