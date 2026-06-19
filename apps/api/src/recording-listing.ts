@@ -14,6 +14,16 @@ const optionalIsoFilterSchema = z
     (value) => value === undefined || !Number.isNaN(Date.parse(value)),
     "Expected ISO date-time",
   );
+const recordingSortBySchema = z.enum([
+  "durationSeconds",
+  "folder",
+  "healthStatus",
+  "name",
+  "recordedAt",
+  "source",
+  "status",
+]);
+const recordingSortOrderSchema = z.enum(["asc", "desc"]);
 
 export const recordingsQuerySchema = z.object({
   folder: optionalTextFilterSchema,
@@ -27,6 +37,14 @@ export const recordingsQuerySchema = z.object({
   recordingProfileId: optionalTextFilterSchema,
   scheduleId: optionalTextFilterSchema,
   search: optionalTextFilterSchema,
+  sortBy: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    recordingSortBySchema.optional(),
+  ),
+  sortOrder: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    recordingSortOrderSchema.optional(),
+  ),
   status: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     recordingStatusSchema.optional(),
@@ -39,7 +57,7 @@ export const recordingsQuerySchema = z.object({
 type RecordingsQuery = z.infer<typeof recordingsQuerySchema>;
 
 export function filterRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
-  return recordings.filter((recording) => {
+  const filtered = recordings.filter((recording) => {
     if (filters.folder && !includesText(recording.folder, filters.folder)) {
       return false;
     }
@@ -92,6 +110,8 @@ export function filterRecordings(recordings: RecordingSummary[], filters: Record
       recording.tags.some((tag) => tag.toLocaleLowerCase() === filters.tag?.toLocaleLowerCase())
     );
   });
+
+  return sortRecordings(filtered, filters);
 }
 
 export function recordingFacets(recordings: RecordingSummary[]) {
@@ -138,4 +158,40 @@ function sortedFacets(values: Map<string, number>) {
 
 function includesText(value: string, search: string) {
   return value.toLocaleLowerCase().includes(search.toLocaleLowerCase());
+}
+
+function sortRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
+  if (!filters.sortBy) {
+    return recordings;
+  }
+
+  const sortBy = filters.sortBy;
+  const sortOrder = filters.sortOrder ?? defaultSortOrder(sortBy);
+
+  return [...recordings].sort((left, right) => {
+    const comparison = compareRecordingField(left, right, sortBy);
+    const ordered = sortOrder === "desc" ? -comparison : comparison;
+
+    return ordered || left.id.localeCompare(right.id);
+  });
+}
+
+function defaultSortOrder(sortBy: NonNullable<RecordingsQuery["sortBy"]>) {
+  return sortBy === "durationSeconds" || sortBy === "recordedAt" ? "desc" : "asc";
+}
+
+function compareRecordingField(
+  left: RecordingSummary,
+  right: RecordingSummary,
+  sortBy: NonNullable<RecordingsQuery["sortBy"]>,
+) {
+  if (sortBy === "durationSeconds") {
+    return left.durationSeconds - right.durationSeconds;
+  }
+
+  if (sortBy === "recordedAt") {
+    return Date.parse(left.recordedAt) - Date.parse(right.recordedAt);
+  }
+
+  return String(left[sortBy]).localeCompare(String(right[sortBy]));
 }

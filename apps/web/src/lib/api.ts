@@ -131,11 +131,23 @@ export interface RecordingFilters {
   recordingProfileId?: string;
   scheduleId?: string;
   search?: string;
+  sortBy?: RecordingSortBy;
+  sortOrder?: RecordingSortOrder;
   status?: RecordingSummary["status"];
   tag?: string;
   trackGroupId?: string;
   uploadPolicyId?: string;
 }
+
+export type RecordingSortBy =
+  | "durationSeconds"
+  | "folder"
+  | "healthStatus"
+  | "name"
+  | "recordedAt"
+  | "source"
+  | "status";
+export type RecordingSortOrder = "asc" | "desc";
 
 export interface RecordingFacet {
   count: number;

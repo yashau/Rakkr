@@ -102,6 +102,54 @@ test("recording list filters by recorded date range", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("recording list sorts by requested field and order", async () => {
+  const auditStore = createAuditStore("");
+  const app = recordingApp({
+    auditStore,
+    nodes: [recorderNode()],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore([
+      recording({
+        durationSeconds: 60,
+        id: "rec_alpha",
+        name: "Alpha",
+        recordedAt: "2026-06-18T11:00:00.000Z",
+      }),
+      recording({
+        durationSeconds: 300,
+        id: "rec_bravo",
+        name: "Bravo",
+        recordedAt: "2026-06-18T12:00:00.000Z",
+      }),
+      recording({
+        durationSeconds: 120,
+        id: "rec_charlie",
+        name: "Charlie",
+        recordedAt: "2026-06-18T10:00:00.000Z",
+      }),
+    ]),
+  });
+
+  const dateResponse = await app.request("/api/v1/recordings?sortBy=recordedAt&sortOrder=desc");
+  const dateBody = (await dateResponse.json()) as { data: RecordingSummary[] };
+  const nameResponse = await app.request("/api/v1/recordings?sortBy=name&sortOrder=asc");
+  const nameBody = (await nameResponse.json()) as { data: RecordingSummary[] };
+  const invalidResponse = await app.request("/api/v1/recordings?sortBy=unknown");
+
+  assert.equal(dateResponse.status, 200);
+  assert.deepEqual(
+    dateBody.data.map((item) => item.id),
+    ["rec_bravo", "rec_alpha", "rec_charlie"],
+  );
+  assert.equal(nameResponse.status, 200);
+  assert.deepEqual(
+    nameBody.data.map((item) => item.id),
+    ["rec_alpha", "rec_bravo", "rec_charlie"],
+  );
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("recording list filters by profile upload policy and track group", async () => {
   const auditStore = createAuditStore("");
   const app = recordingApp({

@@ -9,7 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api, type RecordingFilters, type RecordingMetadataUpdate } from "@/lib/api";
+import {
+  api,
+  type RecordingFilters,
+  type RecordingMetadataUpdate,
+  type RecordingSortBy,
+  type RecordingSortOrder,
+} from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 
 interface RecordingFilterDraft {
@@ -21,6 +27,8 @@ interface RecordingFilterDraft {
   recordingProfileId: string;
   scheduleId: string;
   search: string;
+  sortBy: "" | RecordingSortBy;
+  sortOrder: RecordingSortOrder;
   status: "" | RecordingSummary["status"];
   tag: string;
   trackGroupId: string;
@@ -44,6 +52,8 @@ const emptyRecordingFilterDraft: RecordingFilterDraft = {
   recordingProfileId: "",
   scheduleId: "",
   search: "",
+  sortBy: "",
+  sortOrder: "desc",
   status: "",
   tag: "",
   trackGroupId: "",
@@ -65,6 +75,19 @@ const recordingStatuses: Array<RecordingSummary["status"]> = [
   "cached",
   "uploaded",
 ];
+const recordingSortOptions: Array<{ label: string; value: RecordingSortBy }> = [
+  { label: "Date", value: "recordedAt" },
+  { label: "Name", value: "name" },
+  { label: "Folder", value: "folder" },
+  { label: "Duration", value: "durationSeconds" },
+  { label: "Status", value: "status" },
+  { label: "Health", value: "healthStatus" },
+  { label: "Source", value: "source" },
+];
+const recordingSortOrders: Array<{ label: string; value: RecordingSortOrder }> = [
+  { label: "Descending", value: "desc" },
+  { label: "Ascending", value: "asc" },
+];
 const emptyUploadPolicies: UploadPolicy[] = [];
 
 const selectClassName =
@@ -79,6 +102,8 @@ const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilter
   recordingProfileId: "recordingProfileId",
   scheduleId: "scheduleId",
   search: "search",
+  sortBy: "sortBy",
+  sortOrder: "sortOrder",
   status: "status",
   tag: "tag",
   trackGroupId: "trackGroupId",
@@ -94,6 +119,8 @@ const recordingFilterLabels: Record<RecordingFilterKey, string> = {
   recordingProfileId: "profile",
   scheduleId: "schedule",
   search: "search",
+  sortBy: "sort",
+  sortOrder: "order",
   status: "status",
   tag: "tag",
   trackGroupId: "track group",
@@ -109,6 +136,7 @@ const recordingFilterOrder: RecordingFilterKey[] = [
   "trackGroupId",
   "recordingProfileId",
   "uploadPolicyId",
+  "sortBy",
   "status",
   "healthStatus",
   "recordedFrom",
@@ -297,10 +325,14 @@ export function RecordingsPage() {
     const nextFilters = { ...recordingFilters };
 
     delete nextFilters[key];
+    if (key === "sortBy") {
+      delete nextFilters.sortOrder;
+    }
     setRecordingFilters(nextFilters);
     setFilterDraft((current) => ({
       ...current,
       [recordingFilterDraftKeys[key]]: "",
+      ...(key === "sortBy" ? { sortOrder: "desc" as const } : {}),
     }));
   };
 
@@ -469,6 +501,47 @@ export function RecordingsPage() {
               {recordingStatuses.map((status) => (
                 <option key={status} value={status}>
                   {status}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-sort-filter">Sort</Label>
+            <select
+              className={selectClassName}
+              id="recording-sort-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  sortBy: event.target.value as RecordingFilterDraft["sortBy"],
+                }))
+              }
+              value={filterDraft.sortBy}
+            >
+              <option value="">Default order</option>
+              {recordingSortOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-sort-order-filter">Order</Label>
+            <select
+              className={selectClassName}
+              id="recording-sort-order-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  sortOrder: event.target.value as RecordingSortOrder,
+                }))
+              }
+              value={filterDraft.sortOrder}
+            >
+              {recordingSortOrders.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -664,6 +737,8 @@ function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
     recordingProfileId: textOrUndefined(draft.recordingProfileId),
     scheduleId: textOrUndefined(draft.scheduleId),
     search: textOrUndefined(draft.search),
+    sortBy: draft.sortBy || undefined,
+    sortOrder: draft.sortBy ? draft.sortOrder : undefined,
     status: draft.status || undefined,
     tag: textOrUndefined(draft.tag),
     trackGroupId: textOrUndefined(draft.trackGroupId),
@@ -683,7 +758,10 @@ function recordingFilterChips(filters: RecordingFilters): ActiveRecordingFilterC
       {
         key,
         label: recordingFilterLabels[key],
-        value: recordingFilterValue(key, value),
+        value:
+          key === "sortBy"
+            ? `${sortFilterLabel(value, "sort")} ${sortOrderFilterLabel(filters.sortOrder)}`
+            : recordingFilterValue(key, value),
       },
     ];
   });
@@ -694,7 +772,19 @@ function recordingFilterValue(key: RecordingFilterKey, value: string) {
     return formatDateTime(value);
   }
 
+  if (key === "sortBy") {
+    return sortFilterLabel(value, "sort");
+  }
+
   return value;
+}
+
+function sortFilterLabel(value: string, fallback: string) {
+  return recordingSortOptions.find((option) => option.value === value)?.label ?? fallback;
+}
+
+function sortOrderFilterLabel(value: RecordingFilters["sortOrder"]) {
+  return value === "asc" ? "ascending" : "descending";
 }
 
 function textOrUndefined(value: string) {
