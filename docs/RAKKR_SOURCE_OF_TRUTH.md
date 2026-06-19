@@ -320,6 +320,7 @@ Current partial implementation:
 - Access policy denies have route coverage for recording delete and bulk delete actions.
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edit/control/delete actions.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
+- Schedule read/manage routes have missing-permission deny coverage.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
 - Upload runner run-now control has route coverage for missing-permission denial.
@@ -589,6 +590,7 @@ Current partial implementation:
 82. ✅ Mirror primary shell navigation against RBAC permissions.
 83. ✅ Mirror header recording shortcut against RBAC permissions.
 84. ✅ Add node route missing-permission coverage.
+85. ✅ Add schedule route missing-permission coverage.
 
 ## Open Questions
 
