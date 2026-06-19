@@ -68,7 +68,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
-| Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
+| Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
 | Observability | ✅ | Local logs, central events, metrics, alerts, Mimir config, Grafana baseline |
@@ -464,8 +464,9 @@ Current rule:
 - Local cache is the reliable source for now.
 - SMB/S3 execution is early but functional; cache retention only runs after confirmed upload.
 
-Current partial implementation:
+Current implementation baseline:
 
+- `docs/storage/STORAGE_UPLOAD_BASELINE.md` defines the checked MVP storage-upload baseline.
 - Failed upload retry queue for future SMB/S3 providers.
 - Queue entries are auditable, visible, retryable, and metric-exported.
 - Recording library can enqueue cached recordings individually or in bulk and retry failed queue items.
@@ -481,6 +482,7 @@ Current partial implementation:
 - Upload provider and upload policy Settings UI reads/actions mirror `settings:read` and `settings:manage`.
 - Upload policies can delete controller cache after confirmed non-stub upload.
 - Upload queue reads can filter visible items by status, provider, and recording.
+- Provider, policy, and queue stores are JSON-backed for MVP; Postgres-backed upload stores remain a future hardening item.
 
 ## Observability
 
@@ -701,6 +703,7 @@ Current partial implementation:
 138. ✅ Add checked transport security MVP baseline.
 139. ✅ Promote Scheduler MVP with checked human-friendly baseline.
 140. ✅ Promote Recording Library MVP with checked organization/playback baseline.
+141. ✅ Promote Storage Upload MVP with checked provider/queue/runner baseline.
 
 ## Open Questions
 
