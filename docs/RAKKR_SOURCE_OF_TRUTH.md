@@ -323,6 +323,7 @@ Current partial implementation:
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Upload runner run-now control has route coverage for missing-permission denial.
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
+- Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.

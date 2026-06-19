@@ -35,13 +35,14 @@ test.after(async () => {
 test("settings write routes deny users without settings manage", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
+  const currentUser = viewer();
   const settingsStore = createSettingsStore();
 
   registerSettingsRoutes({
     app,
-    currentAuth: () => ({ user: viewer() }),
+    currentAuth: () => ({ user: currentUser }),
     recordAuditEvent: recordAuditEvent(auditStore),
-    requirePermission: denyMissingPermission(auditStore),
+    requirePermission: denyMissingPermission(auditStore, currentUser),
     settingsStore,
     uploadProviderStore: createUploadProviderStore(),
   });
@@ -117,12 +118,13 @@ test("settings write routes deny users without settings manage", async () => {
 test("settings read routes deny users without settings read", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
+  const currentUser = viewer([]);
 
   registerSettingsRoutes({
     app,
-    currentAuth: () => ({ user: viewer() }),
+    currentAuth: () => ({ user: currentUser }),
     recordAuditEvent: recordAuditEvent(auditStore),
-    requirePermission: denyMissingPermission(auditStore),
+    requirePermission: denyMissingPermission(auditStore, currentUser),
     settingsStore: createSettingsStore(),
     uploadProviderStore: createUploadProviderStore(),
   });
@@ -166,17 +168,20 @@ function requestJson(
   });
 }
 
-function denyMissingPermission(auditStore: ReturnType<typeof createAuditStore>): RequirePermission {
+function denyMissingPermission(
+  auditStore: ReturnType<typeof createAuditStore>,
+  currentUser: CurrentUser,
+): RequirePermission {
   return (permission, action, target) => async (c) => {
     const auditTarget = target ? await target(c) : { type: "controller" as const };
 
     await recordAuditEvent(auditStore)(c, {
       action,
-      auth: { user: viewer() },
+      auth: { user: currentUser },
       details: {
         requiredPermission: permission,
         resourceScope: auditTarget,
-        roles: ["viewer"],
+        roles: currentUser.roles,
       },
       outcome: "denied",
       permission,
@@ -218,13 +223,13 @@ function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): Reco
   };
 }
 
-function viewer(): CurrentUser {
+function viewer(permissions = ["settings:read"]): CurrentUser {
   return {
     email: "settings-viewer@example.com",
     groups: [],
     id: "user_settings_viewer_test",
     name: "Settings Viewer Test",
-    permissions: ["settings:read"],
+    permissions,
     provider: "local",
     resourceGrants: [],
     roles: ["viewer"],
