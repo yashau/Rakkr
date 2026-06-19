@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RefreshCw, UploadCloud } from "lucide-react";
+import type { CurrentUser } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,10 @@ export function UploadRunnerPanel() {
     queryKey: ["upload-runner"],
     refetchInterval: 5_000,
   });
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+  });
   const runMutation = useMutation({
     mutationFn: api.runUploadRunner,
     onSuccess: () => {
@@ -23,6 +28,7 @@ export function UploadRunnerPanel() {
   });
   const status = statusQuery.data?.data;
   const summary = status?.lastSummary;
+  const canRunUploadRunner = canControlUploadRunner(currentUserQuery.data?.data);
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
@@ -51,7 +57,11 @@ export function UploadRunnerPanel() {
             <RefreshCw className="size-4" />
             Refresh
           </Button>
-          <Button disabled={runMutation.isPending} onClick={() => runMutation.mutate()}>
+          <Button
+            disabled={runMutation.isPending || !canRunUploadRunner}
+            onClick={() => runMutation.mutate()}
+            title={canRunUploadRunner ? "Run upload queue now" : "Requires recording control"}
+          >
             <Play className="size-4" />
             Run now
           </Button>
@@ -74,6 +84,10 @@ export function UploadRunnerPanel() {
       ) : null}
     </Card>
   );
+}
+
+function canControlUploadRunner(user: CurrentUser | undefined) {
+  return user?.permissions.includes("recording:control") ?? false;
 }
 
 function Metric({ label, value }: { label: string; value: number | string }) {
