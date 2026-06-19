@@ -1,0 +1,72 @@
+groups:
+  - name: rakkr.controller
+    rules:
+      - alert: RakkrNodeOffline
+        expr: rakkr_node_online == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: recorder-node
+        annotations:
+          summary: "Recorder node is offline"
+          description: "Recorder {{ $labels.node_id }} has stopped reporting online status."
+
+      - alert: RakkrNodeOfflineCritical
+        expr: rakkr_node_offline_alerts_active{severity="critical",status=~"open|acknowledged"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: recorder-node
+        annotations:
+          summary: "Recorder node offline alert is critical"
+          description: "Recorder {{ $labels.node_id }} has an unresolved critical offline health event."
+
+      - alert: RakkrScheduledRecordingWatchdogCritical
+        expr: rakkr_recording_watchdog_alerts_active{severity="critical"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: watchdog
+        annotations:
+          summary: "Scheduled recording watchdog is critical"
+          description: "A scheduled recording has an unresolved critical signal or speech-quality alert."
+
+      - alert: RakkrUploadQueueOverdue
+        expr: rakkr_upload_queue_oldest_due_seconds{status=~"queued|retrying"} > 900
+        for: 5m
+        labels:
+          severity: warning
+          component: upload-runner
+        annotations:
+          summary: "Upload queue item is overdue"
+          description: "The oldest {{ $labels.provider }} {{ $labels.status }} upload has been overdue for more than 15 minutes."
+
+      - alert: RakkrUploadQueueFailed
+        expr: rakkr_upload_queue_depth{status="failed"} > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: upload-runner
+        annotations:
+          summary: "Upload queue has failed items"
+          description: "{{ $labels.provider }} has failed upload queue items that need operator attention."
+
+      - alert: RakkrAudioXruns
+        expr: increase(rakkr_device_xruns_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          component: audio-device
+        annotations:
+          summary: "Audio device XRUN detected"
+          description: "Audio capture reported at least one XRUN in the last 10 minutes."
+
+      - alert: RakkrDeniedActionSpike
+        expr: sum(increase(rakkr_audit_events_total{outcome="denied"}[15m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: rbac
+        annotations:
+          summary: "Denied action spike"
+          description: "More than 10 denied RBAC/audit events were observed in 15 minutes."

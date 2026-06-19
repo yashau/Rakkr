@@ -35,6 +35,7 @@ run = "pnpm -r --parallel --filter @rakkr/api --filter @rakkr/web dev"
 depends = [
   "check:loc",
   "db:verify",
+  "ops:check-alerts",
   "node:check",
   "node:test",
   "node:lint",
@@ -54,6 +55,10 @@ description = "Build the workspace"
 [tasks."check:loc"]
 description = "Enforce the 1000 LOC per file budget"
 run = "node scripts/check-loc.mjs"
+
+[tasks."ops:check-alerts"]
+description = "Validate Prometheus alert rules"
+run = "node scripts/verify-prometheus-alerts.mjs"
 
 [tasks."node:build-libs"]
 description = "Build shared Node workspace libraries"

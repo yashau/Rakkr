@@ -484,6 +484,7 @@ Telemetry surfaces:
 - central health events;
 - central audit events;
 - Prometheus `/metrics`;
+- checked Prometheus alert rules;
 - future OpenTelemetry/Mimir guidance.
 
 Important metric names:
@@ -509,6 +510,7 @@ Important metric names:
 Current partial implementation:
 
 - Prometheus export covers controller, node, recording duration/cache bytes, meter, audit totals, health totals/active counts, watchdog, upload queue depth/failures, and upload overdue age.
+- `docs/observability/rakkr-alerts.yml` defines checked Prometheus alerts for offline nodes, watchdog criticals, upload stalls/failures, XRUNs, and denied-action spikes.
 - Recorder agent local JSONL health logs rotate by size and keep a configured number of retained files.
 - Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata and cache-upload failures.
 
@@ -678,6 +680,7 @@ Current partial implementation:
 129. ✅ Add configurable local health-log retention.
 130. ✅ Add central health-event total Prometheus metric.
 131. ✅ Add audit-event total Prometheus metric.
+132. ✅ Add checked Prometheus alert rules.
 
 ## Open Questions
 
