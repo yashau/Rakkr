@@ -343,6 +343,7 @@ Current partial implementation:
 - Settings page permission decisions have focused helper coverage for read, manage, and node lookup access.
 - Settings shell navigation mirrors `settings:read`.
 - Root shell navigation and header shortcut permission decisions have focused helper coverage.
+- Root shell navigation item visibility is derived through tested RBAC helpers.
 - Settings channel-map assignment target lookup mirrors `node:read`.
 - Shell navigation mirrors page-level read/manage permissions.
 - Header recording shortcut mirrors `recording:create`.
@@ -649,6 +650,7 @@ Current partial implementation:
 114. ✅ Mirror Upload policy panel reads against Settings RBAC permissions.
 115. ✅ Add Settings page permission helper coverage.
 116. ✅ Add root shell permission helper coverage.
+117. ✅ Add root shell nav item derivation coverage.
 
 ## Open Questions
 

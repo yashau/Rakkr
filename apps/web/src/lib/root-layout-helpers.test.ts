@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CurrentUser, Permission } from "@rakkr/shared";
 
-import { rootLayoutPermissions } from "./root-layout-helpers";
+import { rootLayoutNavItems, rootLayoutPermissions } from "./root-layout-helpers";
 
 test("root layout permissions are closed by default", () => {
   assert.deepEqual(rootLayoutPermissions(undefined), {
@@ -50,6 +50,28 @@ test("root layout separates navigation and header action permissions", () => {
       canReadSettings: true,
     },
   );
+});
+
+test("root layout nav items only include permitted sections", () => {
+  assert.deepEqual(rootLayoutNavItems(rootLayoutPermissions(user(["recording:create"]))), []);
+  assert.deepEqual(
+    rootLayoutNavItems(
+      rootLayoutPermissions(
+        user(["audit:read", "auth:manage", "node:read", "recording:read", "settings:read"]),
+      ),
+    ),
+    [
+      { id: "dashboard", label: "Dashboard", to: "/" },
+      { id: "nodes", label: "Nodes", to: "/nodes" },
+      { id: "recordings", label: "Recordings", to: "/recordings" },
+      { id: "settings", label: "Settings", to: "/settings" },
+      { id: "audit", label: "Audit", to: "/audit" },
+      { id: "access", label: "Access", to: "/access" },
+    ],
+  );
+  assert.deepEqual(rootLayoutNavItems(rootLayoutPermissions(user(["schedule:read"]))), [
+    { id: "schedules", label: "Schedules", to: "/schedules" },
+  ]);
 });
 
 function user(permissions: Permission[]): CurrentUser {

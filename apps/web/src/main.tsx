@@ -38,7 +38,11 @@ import {
   getAuthToken,
   setAuthToken,
 } from "@/lib/api";
-import { rootLayoutPermissions } from "@/lib/root-layout-helpers";
+import {
+  rootLayoutNavItems,
+  rootLayoutPermissions,
+  type RootNavItem,
+} from "@/lib/root-layout-helpers";
 import { AccessPage } from "@/pages/access";
 import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
@@ -51,6 +55,16 @@ import { SettingsPage } from "@/pages/settings";
 import "./styles.css";
 
 const queryClient = new QueryClient();
+
+const navIcons: Record<RootNavItem["id"], typeof Gauge> = {
+  access: Users,
+  audit: ShieldCheck,
+  dashboard: Gauge,
+  nodes: Radio,
+  recordings: Database,
+  schedules: CalendarDays,
+  settings: Settings,
+};
 
 function RootLayout() {
   const queryClient = useQueryClient();
@@ -94,22 +108,8 @@ function RootLayout() {
   const currentUser = currentUserQuery.data.data;
   const layoutPermissions = rootLayoutPermissions(currentUser);
   const canCreateRecording = layoutPermissions.canCreateRecording;
-  const canManageAccess = layoutPermissions.canManageAccess;
-  const canReadAudit = layoutPermissions.canReadAudit;
-  const canReadDashboard = layoutPermissions.canReadDashboard;
-  const canReadNodes = layoutPermissions.canReadNodes;
-  const canReadRecordings = layoutPermissions.canReadRecordings;
-  const canReadSchedules = layoutPermissions.canReadSchedules;
   const canReadSettings = layoutPermissions.canReadSettings;
-  const navItems = [
-    ...(canReadDashboard ? [{ icon: Gauge, label: "Dashboard", to: "/" }] : []),
-    ...(canReadNodes ? [{ icon: Radio, label: "Nodes", to: "/nodes" }] : []),
-    ...(canReadSchedules ? [{ icon: CalendarDays, label: "Schedules", to: "/schedules" }] : []),
-    ...(canReadRecordings ? [{ icon: Database, label: "Recordings", to: "/recordings" }] : []),
-    ...(canReadSettings ? [{ icon: Settings, label: "Settings", to: "/settings" }] : []),
-    ...(canReadAudit ? [{ icon: ShieldCheck, label: "Audit", to: "/audit" }] : []),
-    ...(canManageAccess ? [{ icon: Users, label: "Access", to: "/access" }] : []),
-  ] as const;
+  const navItems = rootLayoutNavItems(layoutPermissions);
 
   return (
     <div className="min-h-screen bg-stone-100 text-foreground">
@@ -125,19 +125,23 @@ function RootLayout() {
         </div>
 
         <nav className="grid gap-1">
-          {navItems.map((item) => (
-            <Link
-              activeProps={{
-                className: "bg-stone-100 text-zinc-950",
-              }}
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100"
-              key={item.to}
-              to={item.to}
-            >
-              <item.icon className="size-4" />
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const Icon = navIcons[item.id];
+
+            return (
+              <Link
+                activeProps={{
+                  className: "bg-stone-100 text-zinc-950",
+                }}
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100"
+                key={item.to}
+                to={item.to}
+              >
+                <Icon className="size-4" />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
       </aside>
 
