@@ -5,6 +5,8 @@ const meterCeilingDbfs = -3;
 
 export interface MeterChannelView {
   clipping: boolean;
+  correlationLabel?: string;
+  correlationPercent?: number;
   humPercent?: number;
   noisePercent?: number;
   peakDbfs: string;
@@ -33,9 +35,14 @@ export function dbfsToPercent(dbfs: number) {
 export function meterChannelView(level: AudioLevel): MeterChannelView {
   const speechScore = level.quality?.speechScore;
   const noiseScore = level.quality?.noiseScore;
+  const correlation = level.quality?.channelCorrelation;
 
   return {
     clipping: level.clipping,
+    correlationLabel: correlation
+      ? `ch ${correlation.peerChannelIndex} ${correlation.phase}`
+      : undefined,
+    correlationPercent: scoreToPercent(correlation ? Math.abs(correlation.score) : undefined),
     humPercent: scoreToPercent(level.quality?.humScore),
     noisePercent: scoreToPercent(noiseScore),
     peakDbfs: formatDbfs(level.peakDbfs),

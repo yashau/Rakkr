@@ -2,13 +2,13 @@
 
 The recorder agent is the Linux node process responsible for audio inventory, capture pipelines, health events, local cache management, and controller communication.
 
-Current scaffold:
+Current capabilities:
 
 - parses node/controller configuration;
 - reports stable node identity fields;
 - emits JSON inventory;
 - samples ALSA S16_LE PCM through `arecord` for live RMS/peak meter frames, with synthetic fallback for development hosts;
-- detects meter capture failure/recovery, device-unavailable/xrun failures, clipping, and flatline transitions;
+- detects meter capture failure/recovery, device-unavailable/xrun failures, clipping, flatline, and suspicious same/inverted channel correlation transitions;
 - samples disk pressure, Linux load average, and audio-backend availability transitions;
 - writes a lifecycle-managed local JSONL health log with size-based retention and syncs node health events to the controller when a node token is configured;
 - leaves audio backend implementation open for ALSA/JACK/PipeWire discovery.

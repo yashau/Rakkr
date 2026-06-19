@@ -125,6 +125,12 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
   pushType(lines, "rakkr_input_hum_score", "gauge");
   pushHelp(lines, "rakkr_input_static_score", "Latest local static-likelihood score by channel.");
   pushType(lines, "rakkr_input_static_score", "gauge");
+  pushHelp(
+    lines,
+    "rakkr_input_channel_correlation_score",
+    "Latest strongest same-interface channel correlation score by channel.",
+  );
+  pushType(lines, "rakkr_input_channel_correlation_score", "gauge");
   for (const frame of input.meterFrames) {
     for (const level of frame.levels) {
       const labels = {
@@ -142,6 +148,19 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
         pushMetric(lines, "rakkr_input_noise_score", labels, level.quality.noiseScore);
         pushOptionalMetric(lines, "rakkr_input_hum_score", labels, level.quality.humScore);
         pushOptionalMetric(lines, "rakkr_input_static_score", labels, level.quality.staticScore);
+
+        if (level.quality.channelCorrelation) {
+          pushMetric(
+            lines,
+            "rakkr_input_channel_correlation_score",
+            {
+              ...labels,
+              peer_channel: level.quality.channelCorrelation.peerChannelIndex,
+              phase: level.quality.channelCorrelation.phase,
+            },
+            level.quality.channelCorrelation.score,
+          );
+        }
       }
     }
   }

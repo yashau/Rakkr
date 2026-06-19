@@ -18,6 +18,11 @@ test("meter channel view exposes level voice and clipping state", () => {
         clipping: true,
         peakDbfs: -1.2,
         quality: {
+          channelCorrelation: {
+            peerChannelIndex: 2,
+            phase: "same",
+            score: 0.99,
+          },
           crestFactorDb: 11.8,
           humScore: 0.07,
           noiseScore: 0.18,
@@ -31,6 +36,8 @@ test("meter channel view exposes level voice and clipping state", () => {
     ),
     {
       clipping: true,
+      correlationLabel: "ch 2 same",
+      correlationPercent: 99,
       humPercent: 7,
       noisePercent: 18,
       peakDbfs: "-1.2 dBFS",

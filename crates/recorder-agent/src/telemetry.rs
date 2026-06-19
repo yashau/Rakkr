@@ -28,6 +28,8 @@ pub struct AudioLevel {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioQuality {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_correlation: Option<ChannelCorrelation>,
     pub crest_factor_db: f32,
     pub hum_score: f32,
     pub noise_score: f32,
@@ -35,6 +37,14 @@ pub struct AudioQuality {
     pub speech_score: f32,
     pub static_score: f32,
     pub zero_crossing_rate: f32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelCorrelation {
+    pub peer_channel_index: u16,
+    pub phase: &'static str,
+    pub score: f32,
 }
 
 pub struct MeterCaptureConfig<'a> {
@@ -141,23 +151,52 @@ fn pcm_s16le_meter_frame_at(
         anyhow::bail!("meter PCM payload has an incomplete sample");
     }
 
+    let channel_count = usize::from(channel_count);
+    let frame_bytes = channel_count * 2;
+
+    if !pcm.len().is_multiple_of(frame_bytes) {
+        anyhow::bail!("meter PCM payload has an incomplete interleaved frame");
+    }
+
     let mut stats = (0..channel_count)
         .map(|_| ChannelStats::default())
         .collect::<Vec<_>>();
+    let mut pair_stats = channel_pairs(channel_count);
 
-    for (sample_index, sample) in pcm.chunks_exact(2).enumerate() {
-        let channel_index = sample_index % usize::from(channel_count);
-        let sample = i16::from_le_bytes([sample[0], sample[1]]);
-        stats[channel_index].observe(sample);
+    for frame in pcm.chunks_exact(frame_bytes) {
+        let mut samples = Vec::with_capacity(channel_count);
+
+        for (channel_index, channel_stats) in stats.iter_mut().enumerate() {
+            let offset = channel_index * 2;
+            let sample = i16::from_le_bytes([frame[offset], frame[offset + 1]]);
+            let signed = channel_stats.observe(sample);
+
+            samples.push(signed);
+        }
+
+        for pair in &mut pair_stats {
+            pair.observe(samples[pair.left], samples[pair.right]);
+        }
     }
 
+    let rms_dbfs = stats
+        .iter()
+        .map(|stats| amplitude_to_dbfs(stats.rms()))
+        .collect::<Vec<_>>();
+    let peak_dbfs = stats
+        .iter()
+        .map(|stats| amplitude_to_dbfs(stats.peak))
+        .collect::<Vec<_>>();
+    let correlations = strongest_channel_correlations(&pair_stats, &rms_dbfs);
     let levels = stats
         .iter()
         .enumerate()
         .map(|(index, stats)| {
-            let rms_dbfs = amplitude_to_dbfs(stats.rms());
-            let peak_dbfs = amplitude_to_dbfs(stats.peak);
-            let quality = stats.audio_quality(rms_dbfs, peak_dbfs);
+            let rms_dbfs = rms_dbfs[index];
+            let peak_dbfs = peak_dbfs[index];
+            let mut quality = stats.audio_quality(rms_dbfs, peak_dbfs);
+
+            quality.channel_correlation = correlations[index].clone();
 
             AudioLevel {
                 channel_index: u16::try_from(index + 1).unwrap_or(u16::MAX),
@@ -225,7 +264,7 @@ struct ChannelStats {
 }
 
 impl ChannelStats {
-    fn observe(&mut self, sample: i16) {
+    fn observe(&mut self, sample: i16) -> f64 {
         let signed = f64::from(sample) / 32768.0;
         let normalized = signed.abs();
 
@@ -251,6 +290,8 @@ impl ChannelStats {
 
             self.previous_nonzero_sign = Some(sign);
         }
+
+        signed
     }
 
     fn rms(&self) -> f64 {
@@ -282,6 +323,7 @@ impl ChannelStats {
             clamp_01(audible_score * (1.0 - speech_score).max(hum_score * 0.85).max(static_score));
 
         AudioQuality {
+            channel_correlation: None,
             crest_factor_db: round_2(crest_factor_db.min(80.0)),
             hum_score: round_2(hum_score),
             noise_score: round_2(noise_score),
@@ -290,6 +332,111 @@ impl ChannelStats {
             static_score: round_2(static_score),
             zero_crossing_rate: round_2(zero_crossing_rate),
         }
+    }
+}
+
+#[derive(Default)]
+struct ChannelPairStats {
+    left: usize,
+    right: usize,
+    sample_count: u64,
+    sum_left: f64,
+    sum_right: f64,
+    sum_left_squares: f64,
+    sum_right_squares: f64,
+    sum_products: f64,
+}
+
+impl ChannelPairStats {
+    fn observe(&mut self, left: f64, right: f64) {
+        self.sample_count += 1;
+        self.sum_left += left;
+        self.sum_right += right;
+        self.sum_left_squares += left * left;
+        self.sum_right_squares += right * right;
+        self.sum_products += left * right;
+    }
+
+    fn correlation(&self) -> Option<f32> {
+        if self.sample_count < 8 {
+            return None;
+        }
+
+        let sample_count = self.sample_count as f64;
+        let covariance = sample_count * self.sum_products - self.sum_left * self.sum_right;
+        let left_variance = sample_count * self.sum_left_squares - self.sum_left * self.sum_left;
+        let right_variance =
+            sample_count * self.sum_right_squares - self.sum_right * self.sum_right;
+
+        if left_variance <= f64::EPSILON || right_variance <= f64::EPSILON {
+            return None;
+        }
+
+        Some((covariance / (left_variance.sqrt() * right_variance.sqrt())).clamp(-1.0, 1.0) as f32)
+    }
+}
+
+fn channel_pairs(channel_count: usize) -> Vec<ChannelPairStats> {
+    let mut pairs = Vec::new();
+
+    for left in 0..channel_count {
+        for right in (left + 1)..channel_count {
+            pairs.push(ChannelPairStats {
+                left,
+                right,
+                ..ChannelPairStats::default()
+            });
+        }
+    }
+
+    pairs
+}
+
+fn strongest_channel_correlations(
+    pairs: &[ChannelPairStats],
+    rms_dbfs: &[f32],
+) -> Vec<Option<ChannelCorrelation>> {
+    const AUDIBLE_DBFS: f32 = -65.0;
+    const DISPLAY_MIN_ABS_SCORE: f32 = 0.80;
+
+    let mut strongest = vec![None; rms_dbfs.len()];
+
+    for pair in pairs {
+        if rms_dbfs[pair.left] <= AUDIBLE_DBFS || rms_dbfs[pair.right] <= AUDIBLE_DBFS {
+            continue;
+        }
+
+        let Some(score) = pair.correlation() else {
+            continue;
+        };
+
+        if score.abs() < DISPLAY_MIN_ABS_SCORE {
+            continue;
+        }
+
+        remember_correlation(&mut strongest, pair.left, pair.right, score);
+        remember_correlation(&mut strongest, pair.right, pair.left, score);
+    }
+
+    strongest
+}
+
+fn remember_correlation(
+    strongest: &mut [Option<ChannelCorrelation>],
+    channel_index: usize,
+    peer_index: usize,
+    score: f32,
+) {
+    let should_replace = strongest[channel_index]
+        .as_ref()
+        .is_none_or(|current| score.abs() > current.score.abs());
+
+    if should_replace {
+        strongest[channel_index] = Some(ChannelCorrelation {
+            peer_channel_index: u16::try_from(peer_index + 1).unwrap_or(u16::MAX),
+            phase: if score < 0.0 { "inverted" } else { "same" },
+            score: round_2(score),
+        });
     }
 }
 
@@ -315,6 +462,7 @@ fn synthetic_quality(rms_dbfs: f32, peak_dbfs: f32, phase: f32) -> AudioQuality 
     let noise_score = clamp_01(audible_score * (1.0 - speech_score));
 
     AudioQuality {
+        channel_correlation: None,
         crest_factor_db: round_2((peak_dbfs - rms_dbfs).max(0.0)),
         hum_score: round_2(clamp_01(audible_score * phase.cos().abs() * 0.12)),
         noise_score: round_2(noise_score),
@@ -485,5 +633,74 @@ mod tests {
         assert!(
             static_frame.levels[0].quality.static_score > static_frame.levels[0].quality.hum_score
         );
+    }
+
+    #[test]
+    fn estimates_same_phase_and_inverted_channel_correlation() {
+        let same_phase_pcm = correlated_pcm(false);
+        let inverted_phase_pcm = correlated_pcm(true);
+        let same_phase_frame = pcm_s16le_meter_frame_at(
+            "node_1",
+            "iface_1",
+            &same_phase_pcm,
+            2,
+            -1.0,
+            "2026-06-18T00:00:00Z",
+        )
+        .expect("same-phase frame");
+        let inverted_phase_frame = pcm_s16le_meter_frame_at(
+            "node_1",
+            "iface_1",
+            &inverted_phase_pcm,
+            2,
+            -1.0,
+            "2026-06-18T00:00:00Z",
+        )
+        .expect("inverted-phase frame");
+        let same_phase = same_phase_frame.levels[0]
+            .quality
+            .channel_correlation
+            .as_ref()
+            .expect("same phase correlation");
+        let inverted_phase = inverted_phase_frame.levels[0]
+            .quality
+            .channel_correlation
+            .as_ref()
+            .expect("inverted phase correlation");
+
+        assert_eq!(same_phase.peer_channel_index, 2);
+        assert_eq!(same_phase.phase, "same");
+        assert!(same_phase.score > 0.98);
+        assert_eq!(inverted_phase.peer_channel_index, 2);
+        assert_eq!(inverted_phase.phase, "inverted");
+        assert!(inverted_phase.score < -0.98);
+    }
+
+    #[test]
+    fn ignores_silent_channel_correlation() {
+        let frame = pcm_s16le_meter_frame_at(
+            "node_1",
+            "iface_1",
+            &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            2,
+            -1.0,
+            "2026-06-18T00:00:00Z",
+        )
+        .expect("silent frame");
+
+        assert!(frame.levels[0].quality.channel_correlation.is_none());
+        assert!(frame.levels[1].quality.channel_correlation.is_none());
+    }
+
+    fn correlated_pcm(inverted: bool) -> Vec<u8> {
+        (0..128)
+            .flat_map(|index| {
+                let sample =
+                    (((index as f32 / 11.0).sin() * 16_000.0) as i16).clamp(-16_000, 16_000);
+                let peer = if inverted { -sample } else { sample };
+
+                [sample, peer].into_iter().flat_map(i16::to_le_bytes)
+            })
+            .collect()
     }
 }

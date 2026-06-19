@@ -111,6 +111,11 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
                     {channel.staticPercent !== undefined ? (
                       <span>static {channel.staticPercent}%</span>
                     ) : null}
+                    {channel.correlationPercent !== undefined ? (
+                      <span>
+                        corr {channel.correlationLabel} {channel.correlationPercent}%
+                      </span>
+                    ) : null}
                   </div>
                   <span aria-hidden />
                 </>

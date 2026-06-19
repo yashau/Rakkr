@@ -62,12 +62,12 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | 🟨 | Auth, RBAC, audit, nodes, recordings, jobs, lifecycle coverage, schedules, settings, metrics |
 | Controller UI | 🟨 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
-| Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, health log |
+| Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, channel correlation, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static telemetry, offline, local-log, metrics, and timeline baseline; correlation gaps remain |
+| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, offline, local-log, metrics, and timeline baseline; policy gaps remain |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
@@ -253,6 +253,7 @@ Current partial implementation:
 - Lifecycle health events in Postgres plus local node JSONL logs.
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
 - Local meter frames include speech/noise/hum/static scores; speech-required policies can alert on loud non-speech audio.
+- Local meter frames include first-pass same/inverted channel correlation scoring for suspicious channel mapping.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
@@ -710,6 +711,7 @@ Current partial implementation:
 144. ✅ Promote First Reliable Recording MVP with checked ad-hoc/scheduled lifecycle baseline.
 145. ✅ Add first-pass hum/static quality telemetry, UI display, and Prometheus metrics.
 146. ✅ Promote Scheduling MVP with checked operator route controls and audit coverage.
+147. ✅ Add first-pass channel correlation telemetry, health event, UI cue, and Prometheus metric.
 
 ## Open Questions
 

@@ -229,6 +229,13 @@ export const nodeRuntimeSchema = z.object({
 });
 
 export const audioQualitySchema = z.object({
+  channelCorrelation: z
+    .object({
+      peerChannelIndex: z.number().int().positive(),
+      phase: z.enum(["same", "inverted"]),
+      score: z.number().min(-1).max(1),
+    })
+    .optional(),
   crestFactorDb: z.number().min(0).max(80),
   humScore: z.number().min(0).max(1).optional(),
   noiseScore: z.number().min(0).max(1),

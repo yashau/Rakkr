@@ -109,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
     let mut ticker = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
     let mut tick = 0_u64;
     let mut meter_capture_failure = None;
+    let mut meter_channel_correlation_active = false;
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
     let mut meter_sync_failed = false;
@@ -162,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
                     &config,
                     token,
                     &frame,
+                    &mut meter_channel_correlation_active,
                     &mut meter_clipping_active,
                     &mut meter_flatline_active,
                 ).await?;
@@ -429,13 +431,17 @@ impl MeterFailureKind {
     }
 }
 
+const CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE: f32 = 0.98;
+
 async fn update_meter_health(
     config: &AgentConfig,
     token: Option<&str>,
     frame: &MeterFrame,
+    channel_correlation_active: &mut bool,
     clipping_active: &mut bool,
     flatline_active: &mut bool,
 ) -> anyhow::Result<()> {
+    let correlated_pairs = correlated_channel_pairs(frame);
     let clipping_channels = frame
         .levels
         .iter()
@@ -446,6 +452,40 @@ async fn update_meter_health(
             .levels
             .iter()
             .all(|level| level.rms_dbfs <= config.meter_flatline_dbfs);
+
+    if !correlated_pairs.is_empty() && !*channel_correlation_active {
+        *channel_correlation_active = true;
+        append_and_sync_health_event(
+            config,
+            token,
+            "agent.meter.channel_correlation",
+            "warning",
+            json!({
+                "capturedAt": frame.captured_at,
+                "correlationAbsScore": CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE,
+                "interfaceId": frame.interface_id,
+                "nodeId": frame.node_id,
+                "pairs": correlated_pairs,
+            }),
+        )
+        .await
+        .context("append channel correlation health event")?;
+    } else if correlated_pairs.is_empty() && *channel_correlation_active {
+        *channel_correlation_active = false;
+        append_and_sync_health_event(
+            config,
+            token,
+            "agent.meter.channel_correlation_recovered",
+            "info",
+            json!({
+                "capturedAt": frame.captured_at,
+                "interfaceId": frame.interface_id,
+                "nodeId": frame.node_id,
+            }),
+        )
+        .await
+        .context("append channel correlation recovery health event")?;
+    }
 
     if !clipping_channels.is_empty() && !*clipping_active {
         *clipping_active = true;
@@ -573,9 +613,43 @@ fn max_rms_dbfs(frame: &MeterFrame) -> Option<f32> {
         .max_by(f32::total_cmp)
 }
 
+fn correlated_channel_pairs(frame: &MeterFrame) -> Vec<Value> {
+    let mut pairs: Vec<Value> = Vec::new();
+
+    for level in &frame.levels {
+        let Some(correlation) = &level.quality.channel_correlation else {
+            continue;
+        };
+
+        if correlation.score.abs() < CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE {
+            continue;
+        }
+
+        let left = level.channel_index.min(correlation.peer_channel_index);
+        let right = level.channel_index.max(correlation.peer_channel_index);
+
+        if pairs.iter().any(|pair| {
+            pair.get("leftChannelIndex").and_then(Value::as_u64) == Some(u64::from(left))
+                && pair.get("rightChannelIndex").and_then(Value::as_u64) == Some(u64::from(right))
+        }) {
+            continue;
+        }
+
+        pairs.push(json!({
+            "leftChannelIndex": left,
+            "phase": correlation.phase,
+            "rightChannelIndex": right,
+            "score": correlation.score,
+        }));
+    }
+
+    pairs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::telemetry::{AudioLevel, AudioQuality, ChannelCorrelation};
 
     #[test]
     fn maps_numeric_alsa_capture_device_to_inventory_id() {
@@ -604,5 +678,54 @@ mod tests {
             MeterFailureKind::classify("Unknown PCM hw:9,9,0: No such device"),
             MeterFailureKind::DeviceUnavailable
         );
+    }
+
+    #[test]
+    fn channel_correlation_pairs_deduplicate_peer_entries() {
+        let frame = MeterFrame {
+            captured_at: "2026-06-18T00:00:00Z".to_string(),
+            interface_id: "iface_1".to_string(),
+            levels: vec![
+                level_with_correlation(1, 2, 0.99, "same"),
+                level_with_correlation(2, 1, 0.99, "same"),
+                level_with_correlation(3, 4, 0.79, "same"),
+            ],
+            node_id: "node_1".to_string(),
+        };
+        let pairs = correlated_channel_pairs(&frame);
+
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0]["leftChannelIndex"], 1);
+        assert_eq!(pairs[0]["rightChannelIndex"], 2);
+        assert_eq!(pairs[0]["phase"], "same");
+    }
+
+    fn level_with_correlation(
+        channel_index: u16,
+        peer_channel_index: u16,
+        score: f32,
+        phase: &'static str,
+    ) -> AudioLevel {
+        AudioLevel {
+            channel_index,
+            clipping: false,
+            label: format!("Input {channel_index}"),
+            peak_dbfs: -12.0,
+            quality: AudioQuality {
+                channel_correlation: Some(ChannelCorrelation {
+                    peer_channel_index,
+                    phase,
+                    score,
+                }),
+                crest_factor_db: 10.0,
+                hum_score: 0.0,
+                noise_score: 0.1,
+                speech_like: true,
+                speech_score: 0.8,
+                static_score: 0.0,
+                zero_crossing_rate: 0.1,
+            },
+            rms_dbfs: -24.0,
+        }
     }
 }

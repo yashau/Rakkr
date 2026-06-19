@@ -36,6 +36,7 @@ const baselinePhrases = [
   "device unavailable/xrun",
   "clipping",
   "flatline",
+  "channel correlation",
   "capture growth failure",
   "cache upload failure",
   "RBAC-gated",
@@ -43,7 +44,7 @@ const baselinePhrases = [
   "quality timelines",
   "Prometheus export",
   "hum/static likelihood",
-  "channel mapping/correlation detection",
+  "policy-tuned channel correlation detection",
   "mise run health:check-watchdog",
 ];
 const sourceSnippets = [
@@ -70,11 +71,13 @@ const sourceSnippets = [
   "rakkr_input_noise_score",
   "rakkr_input_hum_score",
   "rakkr_input_static_score",
+  "rakkr_input_channel_correlation_score",
   "MeterBank",
   "QualityTimeline",
   "speechLabel",
   "agent.meter.clipping",
   "agent.meter.flatline",
+  "agent.meter.channel_correlation",
   "agent.meter.xrun",
   "agent.system.disk_pressure",
   "agent.audio_backend.unavailable",
@@ -87,7 +90,11 @@ const sourceSnippets = [
   "noise_score",
   "hum_score",
   "static_score",
+  "channelCorrelation",
+  "correlated_channel_pairs",
+  "channel_correlation_pairs_deduplicate_peer_entries",
   "estimates_hum_and_static_likelihood_from_pcm_shape",
+  "estimates_same_phase_and_inverted_channel_correlation",
 ];
 const testSnippets = [
   "alerts when scheduled audio is loud but not speech-like",
@@ -101,6 +108,7 @@ const testSnippets = [
   "rakkr_device_xruns_total",
   "rakkr_input_hum_score",
   "rakkr_input_static_score",
+  "rakkr_input_channel_correlation_score",
   "meter channel view exposes level voice and clipping state",
 ];
 const errors = [];
