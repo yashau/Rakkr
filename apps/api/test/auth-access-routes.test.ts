@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import type {
   AccessPolicy,
@@ -12,8 +15,15 @@ import type {
 process.env.DATABASE_URL = "";
 process.env.RAKKR_API_NO_LISTEN = "1";
 process.env.RAKKR_LOCAL_ACCESS_POLICIES = "";
+const authAccessRoot = await mkdtemp(path.join(tmpdir(), "rakkr-auth-access-routes-"));
+process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(authAccessRoot, "upload-queue.json");
 
 const { app } = await import("../src/index.js");
+const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
+
+test.after(async () => {
+  await rm(authAccessRoot, { force: true, recursive: true });
+});
 
 test("access policy updates audit before and after snapshots", async () => {
   const token = await loginToken();
@@ -326,6 +336,46 @@ test("recording resource denies block playback download upload queue and delete 
   }
 });
 
+test("recording resource denies block upload queue retry", async () => {
+  const token = await loginToken();
+  const recordingId = "rec_demo_001";
+  const queued = await enqueueRecordingUpload(cachedRecording(recordingId), {
+    provider: "s3",
+    reason: "manual_retry_seed",
+    target: "s3://rakkr-auth-access-test/recordings",
+  });
+
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "recording_sealed",
+      resourceId: recordingId,
+      resourceType: "recording",
+      subjectType: "everyone",
+    },
+  ]);
+
+  try {
+    const response = await app.request(`/api/v1/upload-queue/${queued.id}/retry`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+    });
+    const event = await deniedAuditEvent(
+      token,
+      "recordings.upload_queue.retry",
+      "recording:control",
+      recordingId,
+    );
+
+    assert.equal(response.status, 403);
+    assert.equal(event?.reason, "access_policy_denied");
+    assert.equal(event?.target.id, recordingId);
+    assert.equal(event?.details.resourceScopeDecision, "access_policy_denied");
+  } finally {
+    await updateAccessPolicies(token, []);
+  }
+});
+
 test("node resource denies hide attached recordings and block recording edits", async () => {
   const token = await loginToken();
   const nodeId = "node_x32_test";
@@ -550,4 +600,21 @@ async function deniedAuditEvent(token: string, action: string, permission: strin
   assert.equal(response.status, 200);
 
   return body.data[0];
+}
+
+function cachedRecording(recordingId: string): RecordingSummary {
+  return {
+    cachePath: `${recordingId}.mp3`,
+    cached: true,
+    checksum: "sha256:auth-access",
+    durationSeconds: 120,
+    folder: "Meetings",
+    healthStatus: "healthy",
+    id: recordingId,
+    name: "Auth Access Retry Seed",
+    recordedAt: "2026-06-18T12:00:00.000Z",
+    source: "ad_hoc",
+    status: "cached",
+    tags: ["voice"],
+  };
 }
