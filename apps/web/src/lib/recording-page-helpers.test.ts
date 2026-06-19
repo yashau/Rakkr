@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { RecordingSummary } from "@rakkr/shared";
+import type { CurrentUser, Permission, RecordingSummary } from "@rakkr/shared";
 
 import {
   clearPlaybackPreview,
@@ -8,6 +8,7 @@ import {
   isTerminalRecording,
   playbackPreviewFromSession,
   recordingFileActionState,
+  recordingPagePermissions,
   replacePlaybackPreview,
   type RecordingPlaybackPreview,
   waveformBarHeightPercent,
@@ -122,6 +123,67 @@ test("recording file action state requires both permission and cached media", ()
   );
 });
 
+test("recording page permissions are closed by default", () => {
+  assert.deepEqual(recordingPagePermissions(undefined), {
+    canControlRecordings: false,
+    canCreateRecordings: false,
+    canDeleteRecordings: false,
+    canDownloadRecordings: false,
+    canEditRecordings: false,
+    canPlaybackRecordings: false,
+    canReadHealth: false,
+    canReadNodes: false,
+    canReadRecordings: false,
+    canReadSettings: false,
+  });
+});
+
+test("recording read permission does not imply related health or settings reads", () => {
+  assert.deepEqual(recordingPagePermissions(user(["recording:read"])), {
+    canControlRecordings: false,
+    canCreateRecordings: false,
+    canDeleteRecordings: false,
+    canDownloadRecordings: false,
+    canEditRecordings: false,
+    canPlaybackRecordings: false,
+    canReadHealth: false,
+    canReadNodes: false,
+    canReadRecordings: true,
+    canReadSettings: false,
+  });
+});
+
+test("recording page permissions mirror granular read and action grants", () => {
+  assert.deepEqual(
+    recordingPagePermissions(
+      user([
+        "health:read",
+        "node:read",
+        "recording:control",
+        "recording:create",
+        "recording:delete",
+        "recording:download",
+        "recording:edit",
+        "recording:playback",
+        "recording:read",
+        "settings:read",
+      ]),
+    ),
+    {
+      canControlRecordings: true,
+      canCreateRecordings: true,
+      canDeleteRecordings: true,
+      canDownloadRecordings: true,
+      canEditRecordings: true,
+      canPlaybackRecordings: true,
+      canReadHealth: true,
+      canReadNodes: true,
+      canReadRecordings: true,
+      canReadSettings: true,
+    },
+  );
+});
+
 test("recording waveform helper clamps peak heights for stable previews", () => {
   assert.equal(waveformBarHeightPercent(-0.5), "10%");
   assert.equal(waveformBarHeightPercent(0), "10%");
@@ -167,5 +229,18 @@ function playbackPreview(objectUrl: string): RecordingPlaybackPreview {
     recordingId: "rec_web_action_test",
     sessionId: "playback_test",
     startedAt: "2026-06-18T12:00:00.000Z",
+  };
+}
+
+function user(permissions: Permission[]): CurrentUser {
+  return {
+    email: "operator@example.test",
+    groups: [],
+    id: "user_operator",
+    name: "Operator",
+    permissions,
+    provider: "local",
+    resourceGrants: [],
+    roles: ["operator"],
   };
 }

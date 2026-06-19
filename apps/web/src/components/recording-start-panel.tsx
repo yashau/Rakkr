@@ -15,6 +15,8 @@ import {
 } from "@/lib/recording-start-helpers";
 
 interface RecordingStartPanelProps {
+  canReadNodes: boolean;
+  canReadSettings: boolean;
   onNotice: (notice: { detail: string; title: string }) => void;
 }
 
@@ -24,18 +26,25 @@ const emptyUploadPolicies: UploadPolicy[] = [];
 const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
-export function RecordingStartPanel({ onNotice }: RecordingStartPanelProps) {
+export function RecordingStartPanel({
+  canReadNodes,
+  canReadSettings,
+  onNotice,
+}: RecordingStartPanelProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<RecordingStartDraft>(emptyRecordingStartDraft);
   const nodesQuery = useQuery({
+    enabled: canReadNodes,
     queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
   const recordingProfilesQuery = useQuery({
+    enabled: canReadSettings,
     queryFn: api.recordingProfiles,
     queryKey: ["recording-profiles"],
   });
   const uploadPoliciesQuery = useQuery({
+    enabled: canReadSettings,
     queryFn: api.uploadPolicies,
     queryKey: ["upload-policies"],
   });
@@ -159,7 +168,13 @@ export function RecordingStartPanel({ onNotice }: RecordingStartPanelProps) {
             ))}
           </select>
           <Button
-            disabled={startMutation.isPending || !selectedNodeId || !selectedRecordingProfileId}
+            disabled={
+              startMutation.isPending ||
+              !canReadNodes ||
+              !canReadSettings ||
+              !selectedNodeId ||
+              !selectedRecordingProfileId
+            }
             type="submit"
           >
             <Radio className="size-4" />

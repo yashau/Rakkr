@@ -47,6 +47,7 @@ export function RecordingCard({
   canDownload,
   canEdit,
   canPlayback,
+  canReadHealth,
   deletePending,
   downloadPending,
   editPending,
@@ -74,6 +75,7 @@ export function RecordingCard({
   canDownload: boolean;
   canEdit: boolean;
   canPlayback: boolean;
+  canReadHealth: boolean;
   deletePending: boolean;
   downloadPending: boolean;
   editPending: boolean;
@@ -335,7 +337,11 @@ export function RecordingCard({
               ))}
             </div>
           ) : null}
-          <QualityTimeline events={events} recording={recording} />
+          {canReadHealth ? (
+            <QualityTimeline events={events} recording={recording} />
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">Quality timeline unavailable.</p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
           {canEdit && !isEditing ? (

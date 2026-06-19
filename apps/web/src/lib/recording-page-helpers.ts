@@ -1,4 +1,5 @@
 import type {
+  CurrentUser,
   HealthEvent,
   RecordingSummary,
   RecordingWaveformPreview,
@@ -56,6 +57,19 @@ export interface RecordingFileActionState {
   canDownload: boolean;
   canPlayback: boolean;
   fileReady: boolean;
+}
+
+export interface RecordingPagePermissions {
+  canControlRecordings: boolean;
+  canCreateRecordings: boolean;
+  canDeleteRecordings: boolean;
+  canDownloadRecordings: boolean;
+  canEditRecordings: boolean;
+  canPlaybackRecordings: boolean;
+  canReadHealth: boolean;
+  canReadNodes: boolean;
+  canReadRecordings: boolean;
+  canReadSettings: boolean;
 }
 
 type RevokeObjectUrl = (url: string) => void;
@@ -214,6 +228,23 @@ export function recordingFileActionState(
     canDownload: permissions.canDownload && fileReady,
     canPlayback: permissions.canPlayback && fileReady,
     fileReady,
+  };
+}
+
+export function recordingPagePermissions(user: CurrentUser | undefined): RecordingPagePermissions {
+  const permissions = user?.permissions ?? [];
+
+  return {
+    canControlRecordings: permissions.includes("recording:control"),
+    canCreateRecordings: permissions.includes("recording:create"),
+    canDeleteRecordings: permissions.includes("recording:delete"),
+    canDownloadRecordings: permissions.includes("recording:download"),
+    canEditRecordings: permissions.includes("recording:edit"),
+    canPlaybackRecordings: permissions.includes("recording:playback"),
+    canReadHealth: permissions.includes("health:read"),
+    canReadNodes: permissions.includes("node:read"),
+    canReadRecordings: permissions.includes("recording:read"),
+    canReadSettings: permissions.includes("settings:read"),
   };
 }
 

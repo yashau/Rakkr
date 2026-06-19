@@ -418,6 +418,7 @@ Current partial implementation:
 - Recording library supports explicit server-side sorting with UI controls.
 - Recording library supports paginated result sets with page-size and previous/next controls.
 - Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
+- Recordings page read queries mirror granular RBAC for library, health, settings, and node context.
 - Recording card action readiness uses tested cached/terminal recording predicates.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
@@ -641,6 +642,7 @@ Current partial implementation:
 109. ✅ Mirror Nodes page reads and health panels against RBAC permissions.
 110. ✅ Mirror Schedules page reads and related lookups against RBAC permissions.
 111. ✅ Mirror Schedule detail reads against granular RBAC permissions.
+112. ✅ Mirror Recordings page reads against granular RBAC permissions.
 
 ## Open Questions
 
