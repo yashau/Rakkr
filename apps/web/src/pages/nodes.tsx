@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HealthEvent, RecorderNode } from "@rakkr/shared";
+import type { HealthEvent } from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
@@ -11,10 +11,10 @@ import {
   MapPin,
   Network,
   PlusCircle,
-  Save,
   TrendingUp,
 } from "lucide-react";
 
+import { NodeIdentityEditor, NodeInterfaceEditor } from "@/components/node-inventory-editors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,16 +37,6 @@ interface EnrollmentDraft {
   sampleRates: string;
   site: string;
   systemName: string;
-  tags: string;
-}
-
-interface NodeIdentityDraft {
-  alias: string;
-  hostname: string;
-  ipAddresses: string;
-  notes: string;
-  room: string;
-  site: string;
   tags: string;
 }
 
@@ -374,96 +364,17 @@ export function NodesPage() {
                 </Button>
                 <NodeIdentityEditor node={node} />
                 {node.interfaces.map((audioInterface) => (
-                  <div
-                    className="rounded-md border border-stone-300 bg-stone-50 px-3 py-2"
+                  <NodeInterfaceEditor
+                    audioInterface={audioInterface}
                     key={audioInterface.id}
-                  >
-                    <div className="font-medium">{audioInterface.alias}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {audioInterface.channelCount} channels /{" "}
-                      {audioInterface.sampleRates.join(", ")} Hz
-                    </div>
-                  </div>
+                    node={node}
+                  />
                 ))}
               </div>
             </div>
           </Card>
         );
       })}
-    </div>
-  );
-}
-
-function NodeIdentityEditor({ node }: { node: RecorderNode }) {
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState(nodeIdentityDraft(node));
-  const mutation = useMutation({
-    mutationFn: () => api.updateNode(node.id, nodeUpdateInput(draft)),
-    onSuccess: ({ data }) => {
-      setDraft(nodeIdentityDraft(data));
-      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
-      void queryClient.invalidateQueries({ queryKey: ["status"] });
-    },
-  });
-
-  useEffect(() => {
-    setDraft(nodeIdentityDraft(node));
-  }, [node]);
-
-  return (
-    <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">Node Details</div>
-        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()} size="sm">
-          <Save className="size-4" />
-          Save
-        </Button>
-      </div>
-      <Field label="Alias">
-        <Input
-          onChange={(event) => setDraftValue(setDraft, "alias", event.target.value)}
-          value={draft.alias}
-        />
-      </Field>
-      <div className="grid gap-2 md:grid-cols-2">
-        <Field label="Site">
-          <Input
-            onChange={(event) => setDraftValue(setDraft, "site", event.target.value)}
-            value={draft.site}
-          />
-        </Field>
-        <Field label="Room">
-          <Input
-            onChange={(event) => setDraftValue(setDraft, "room", event.target.value)}
-            value={draft.room}
-          />
-        </Field>
-      </div>
-      <Field label="Hostname">
-        <Input
-          onChange={(event) => setDraftValue(setDraft, "hostname", event.target.value)}
-          value={draft.hostname}
-        />
-      </Field>
-      <Field label="IP Addresses">
-        <Input
-          onChange={(event) => setDraftValue(setDraft, "ipAddresses", event.target.value)}
-          value={draft.ipAddresses}
-        />
-      </Field>
-      <Field label="Tags">
-        <Input
-          onChange={(event) => setDraftValue(setDraft, "tags", event.target.value)}
-          value={draft.tags}
-        />
-      </Field>
-      <Field label="Notes">
-        <Textarea
-          onChange={(event) => setDraftValue(setDraft, "notes", event.target.value)}
-          value={draft.notes}
-        />
-      </Field>
-      {mutation.isError ? <p className="text-sm text-destructive">Node update failed.</p> : null}
     </div>
   );
 }
@@ -475,32 +386,6 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
       {children}
     </div>
   );
-}
-
-function nodeIdentityDraft(node: RecorderNode): NodeIdentityDraft {
-  return {
-    alias: node.alias,
-    hostname: node.hostname,
-    ipAddresses: node.ipAddresses.join(", "),
-    notes: node.notes ?? "",
-    room: node.location.room,
-    site: node.location.site,
-    tags: node.tags.join(", "),
-  };
-}
-
-function nodeUpdateInput(draft: NodeIdentityDraft) {
-  return {
-    alias: draft.alias.trim(),
-    hostname: draft.hostname.trim(),
-    ipAddresses: parseList(draft.ipAddresses),
-    location: {
-      room: draft.room.trim(),
-      site: draft.site.trim(),
-    },
-    notes: draft.notes.trim() || null,
-    tags: parseList(draft.tags),
-  };
 }
 
 function setDraftValue<Draft>(

@@ -231,6 +231,9 @@ function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
     async rotateCredential() {
       throw new Error("not implemented");
     },
+    async updateInterface() {
+      throw new Error("not implemented");
+    },
     async update() {
       throw new Error("not implemented");
     },
@@ -337,6 +340,7 @@ function recorderNode(): RecorderNode {
         id: "iface_usb_1",
         sampleRates: [48_000],
         systemName: "hw:1,0",
+        systemRef: "usb-1-1",
       },
     ],
     ipAddresses: ["10.1.2.3"],

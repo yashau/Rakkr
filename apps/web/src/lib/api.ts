@@ -217,6 +217,17 @@ export interface NodeMetadataUpdate {
   tags?: string[];
 }
 
+export interface NodeInterfaceMetadataUpdate {
+  alias?: string;
+  channels?: Array<{
+    alias: string;
+    index: number;
+  }>;
+  sampleRates?: number[];
+  systemName?: string;
+  systemRef?: string;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getAuthToken();
@@ -519,6 +530,14 @@ export const api = {
     }),
   updateNode: (nodeId: string, input: NodeMetadataUpdate) =>
     fetchJson<{ data: RecorderNode }>(`/api/v1/nodes/${nodeId}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
+  updateNodeInterface: (nodeId: string, interfaceId: string, input: NodeInterfaceMetadataUpdate) =>
+    fetchJson<{ data: RecorderNode }>(`/api/v1/nodes/${nodeId}/interfaces/${interfaceId}`, {
       body: JSON.stringify(input),
       headers: {
         "Content-Type": "application/json",

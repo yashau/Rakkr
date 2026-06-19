@@ -158,6 +158,9 @@ function memoryNodeStore(nodes: RecorderNode[]) {
     async rotateCredential() {
       throw new Error("not implemented");
     },
+    async updateInterface() {
+      throw new Error("not implemented");
+    },
     async update() {
       throw new Error("not implemented");
     },
@@ -264,6 +267,7 @@ function node(): RecorderNode {
         id: "iface_split",
         sampleRates: [48_000],
         systemName: "hw:1,0",
+        systemRef: "usb-split",
       },
     ],
     ipAddresses: ["127.0.0.1"],

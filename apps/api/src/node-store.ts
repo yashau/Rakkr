@@ -47,6 +47,17 @@ export interface NodeUpdateInput {
   tags?: string[];
 }
 
+export interface NodeInterfaceUpdateInput {
+  alias?: string;
+  channels?: Array<{
+    alias: string;
+    index: number;
+  }>;
+  sampleRates?: number[];
+  systemName?: string;
+  systemRef?: string;
+}
+
 export interface NodeInterfaceInput {
   alias: string;
   backend: AudioInterface["backend"];
@@ -94,6 +105,11 @@ export interface NodeStore {
   find(nodeId: string): Promise<RecorderNode | undefined>;
   list(): Promise<RecorderNode[]>;
   rotateCredential(nodeId: string, actorUserId?: string): Promise<NodeEnrollmentResult | undefined>;
+  updateInterface(
+    nodeId: string,
+    interfaceId: string,
+    input: NodeInterfaceUpdateInput,
+  ): Promise<RecorderNode | undefined>;
   update(nodeId: string, input: NodeUpdateInput): Promise<RecorderNode | undefined>;
 }
 
@@ -126,6 +142,24 @@ class SeedOnlyNodeStore implements NodeStore {
 
   async rotateCredential(): Promise<NodeEnrollmentResult> {
     throw new NodeStoreError("Node credential rotation requires Postgres", "database_unavailable");
+  }
+
+  async updateInterface(nodeId: string, interfaceId: string, input: NodeInterfaceUpdateInput) {
+    const index = this.seedNodes.findIndex((node) => node.id === nodeId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    const updated = updatedNodeInterface(this.seedNodes[index], interfaceId, input);
+
+    if (!updated) {
+      return undefined;
+    }
+
+    this.seedNodes[index] = updated;
+
+    return updated;
   }
 
   async update(nodeId: string, input: NodeUpdateInput) {
@@ -268,6 +302,50 @@ class PostgresNodeStore implements NodeStore {
       credential: await this.createCredential(nodeId, actorUserId),
       node: (await this.find(nodeId)) ?? nodeFromRows(node, [], []),
     };
+  }
+
+  async updateInterface(nodeId: string, interfaceId: string, input: NodeInterfaceUpdateInput) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      throw new NodeStoreError("Node interface storage is unavailable", "database_unavailable");
+    }
+
+    if (!isUuid(interfaceId)) {
+      return undefined;
+    }
+
+    const [audioInterface] = await db
+      .select()
+      .from(audioInterfaces)
+      .where(and(eq(audioInterfaces.id, interfaceId), eq(audioInterfaces.nodeId, nodeId)))
+      .limit(1);
+
+    if (!audioInterface) {
+      return undefined;
+    }
+
+    await db
+      .update(audioInterfaces)
+      .set({
+        alias: input.alias ?? audioInterface.alias,
+        sampleRates: input.sampleRates ?? audioInterface.sampleRates,
+        systemName: input.systemName ?? audioInterface.systemName,
+        systemRef: input.systemRef ?? audioInterface.systemRef,
+        updatedAt: new Date(),
+      })
+      .where(eq(audioInterfaces.id, interfaceId));
+
+    for (const channel of input.channels ?? []) {
+      await db
+        .update(audioChannels)
+        .set({ alias: channel.alias })
+        .where(
+          and(eq(audioChannels.interfaceId, interfaceId), eq(audioChannels.index, channel.index)),
+        );
+    }
+
+    return this.find(nodeId);
   }
 
   async update(nodeId: string, input: NodeUpdateInput) {
@@ -434,6 +512,51 @@ function updatedNode(node: RecorderNode, input: NodeUpdateInput): RecorderNode {
   };
 }
 
+function updatedNodeInterface(
+  node: RecorderNode,
+  interfaceId: string,
+  input: NodeInterfaceUpdateInput,
+): RecorderNode | undefined {
+  const interfaceIndex = node.interfaces.findIndex(
+    (audioInterface) => audioInterface.id === interfaceId,
+  );
+
+  if (interfaceIndex < 0) {
+    return undefined;
+  }
+
+  const audioInterface = node.interfaces[interfaceIndex];
+  const nextInterfaces = [...node.interfaces];
+
+  nextInterfaces[interfaceIndex] = {
+    ...audioInterface,
+    alias: input.alias ?? audioInterface.alias,
+    channels: input.channels
+      ? updatedChannels(audioInterface.channels, input.channels)
+      : audioInterface.channels,
+    sampleRates: input.sampleRates ?? audioInterface.sampleRates,
+    systemName: input.systemName ?? audioInterface.systemName,
+    systemRef: input.systemRef ?? audioInterface.systemRef,
+  };
+
+  return {
+    ...node,
+    interfaces: nextInterfaces,
+  };
+}
+
+function updatedChannels(
+  channels: AudioInterface["channels"],
+  updates: NonNullable<NodeInterfaceUpdateInput["channels"]>,
+) {
+  const updateByIndex = new Map(updates.map((channel) => [channel.index, channel.alias]));
+
+  return channels.map((channel) => ({
+    ...channel,
+    alias: updateByIndex.get(channel.index) ?? channel.alias,
+  }));
+}
+
 function definedLocation(location: NodeUpdateInput["location"]) {
   return Object.fromEntries(
     Object.entries(location ?? {}).filter(([, value]) => value !== undefined),
@@ -457,6 +580,7 @@ function interfaceFromRows(
     id: audioInterface.id,
     sampleRates: numberArray(audioInterface.sampleRates),
     systemName: audioInterface.systemName,
+    systemRef: audioInterface.systemRef,
   };
 }
 

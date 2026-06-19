@@ -216,6 +216,7 @@ export const audioInterfaceSchema = z.object({
   id: z.string().min(1),
   sampleRates: z.array(z.number().int().positive()),
   systemName: z.string().min(1),
+  systemRef: z.string().min(1).optional(),
 });
 
 export const audioQualitySchema = z.object({

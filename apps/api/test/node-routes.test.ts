@@ -11,7 +11,7 @@ import type {
   RequirePermission,
 } from "../src/http-types.js";
 import type { MeterFrameStore } from "../src/meter-store.js";
-import type { NodeStore, NodeUpdateInput } from "../src/node-store.js";
+import type { NodeInterfaceUpdateInput, NodeStore, NodeUpdateInput } from "../src/node-store.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerNodeRoutes } = await import("../src/node-routes.js");
@@ -134,6 +134,52 @@ test("node update changes identity fields and audits before and after", async ()
   assert.equal(event?.permission, "node:manage");
 });
 
+test("node interface update changes device and channel aliases and audits before and after", async () => {
+  const auditStore = createAuditStore("");
+  const nodes = [nodeWithInterface()];
+  const permissionCalls: PermissionCall[] = [];
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes,
+    permissionCalls,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node().id}/interfaces/iface_monitor`, {
+    body: JSON.stringify({
+      alias: "Lectern USB",
+      channels: [{ alias: "Lectern Mic", index: 1 }],
+      sampleRates: [48000, 44100],
+      systemName: "hw:2,0",
+      systemRef: "usb-2-1",
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const body = (await response.json()) as { data: RecorderNode };
+  const [event] = await auditStore.list({ action: "nodes.interfaces.update.succeeded" });
+  const [audioInterface] = body.data.interfaces;
+
+  assert.equal(response.status, 200);
+  assert.equal(audioInterface.alias, "Lectern USB");
+  assert.equal(audioInterface.systemName, "hw:2,0");
+  assert.equal(audioInterface.systemRef, "usb-2-1");
+  assert.deepEqual(audioInterface.sampleRates, [48000, 44100]);
+  assert.deepEqual(audioInterface.channels, [
+    { alias: "Lectern Mic", index: 1 },
+    { alias: "Channel 2", index: 2 },
+  ]);
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "nodes.interfaces.update",
+    permission: "node:manage",
+    target: { id: "iface_monitor", type: "interface" },
+  });
+  assert.equal(event?.before?.alias, "Monitor USB");
+  assert.equal(event?.after?.alias, "Lectern USB");
+  assert.equal(event?.target.type, "interface");
+  assert.equal(event?.details.nodeId, node().id);
+});
+
 interface PermissionCall {
   action: string;
   permission: Permission;
@@ -243,6 +289,45 @@ function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
     async rotateCredential() {
       throw new Error("not implemented");
     },
+    async updateInterface(nodeId: string, interfaceId: string, input: NodeInterfaceUpdateInput) {
+      const index = nodes.findIndex((candidate) => candidate.id === nodeId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      const interfaceIndex = nodes[index].interfaces.findIndex(
+        (candidate) => candidate.id === interfaceId,
+      );
+
+      if (interfaceIndex < 0) {
+        return undefined;
+      }
+
+      const audioInterface = nodes[index].interfaces[interfaceIndex];
+      const channelAliases = new Map(
+        (input.channels ?? []).map((channel) => [channel.index, channel.alias]),
+      );
+      const interfaces = [...nodes[index].interfaces];
+
+      interfaces[interfaceIndex] = {
+        ...audioInterface,
+        alias: input.alias ?? audioInterface.alias,
+        channels: audioInterface.channels.map((channel) => ({
+          ...channel,
+          alias: channelAliases.get(channel.index) ?? channel.alias,
+        })),
+        sampleRates: input.sampleRates ?? audioInterface.sampleRates,
+        systemName: input.systemName ?? audioInterface.systemName,
+        systemRef: input.systemRef ?? audioInterface.systemRef,
+      };
+      nodes[index] = {
+        ...nodes[index],
+        interfaces,
+      };
+
+      return nodes[index];
+    },
     async update(nodeId, input: NodeUpdateInput) {
       const index = nodes.findIndex((candidate) => candidate.id === nodeId);
 
@@ -300,6 +385,27 @@ function node(): RecorderNode {
     },
     status: "online",
     tags: ["voice"],
+  };
+}
+
+function nodeWithInterface(): RecorderNode {
+  return {
+    ...node(),
+    interfaces: [
+      {
+        alias: "Monitor USB",
+        backend: "alsa",
+        channelCount: 2,
+        channels: [
+          { alias: "Channel 1", index: 1 },
+          { alias: "Channel 2", index: 2 },
+        ],
+        id: "iface_monitor",
+        sampleRates: [48_000],
+        systemName: "Monitor USB Interface",
+        systemRef: "usb-1-1",
+      },
+    ],
   };
 }
 

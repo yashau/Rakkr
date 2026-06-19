@@ -83,6 +83,24 @@ const nodeUpdateSchema = z
   })
   .strict()
   .refine(hasNodeUpdate, "At least one node field is required");
+const nodeInterfaceUpdateSchema = z
+  .object({
+    alias: z.string().trim().min(1).max(160).optional(),
+    channels: z
+      .array(
+        z.object({
+          alias: z.string().trim().min(1).max(160),
+          index: z.coerce.number().int().positive().max(256),
+        }),
+      )
+      .max(256)
+      .optional(),
+    sampleRates: z.array(z.coerce.number().int().positive()).max(16).optional(),
+    systemName: z.string().trim().min(1).max(255).optional(),
+    systemRef: z.string().trim().min(1).max(255).optional(),
+  })
+  .strict()
+  .refine(hasNodeUpdate, "At least one interface field is required");
 const monitorChunkDurationMs = 1500;
 const monitorChunkSampleRate = 16_000;
 
@@ -196,6 +214,111 @@ export function registerNodeRoutes({
           id: updated.id,
           name: updated.alias,
           type: "node",
+        },
+      });
+
+      return c.json({ data: updated });
+    },
+  );
+
+  app.patch(
+    "/api/v1/nodes/:nodeId/interfaces/:interfaceId",
+    requirePermission("node:manage", "nodes.interfaces.update", (c) => ({
+      id: c.req.param("interfaceId"),
+      type: "interface",
+    })),
+    async (c) => {
+      const nodeId = c.req.param("nodeId");
+      const interfaceId = c.req.param("interfaceId");
+      const body = nodeInterfaceUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordNodeFailure(
+          c,
+          "nodes.interfaces.update.failed",
+          "invalid_request",
+          interfaceId,
+          {
+            targetId: interfaceId,
+            targetType: "interface",
+          },
+        );
+        return c.json({ error: "Invalid node interface update", issues: body.error.issues }, 400);
+      }
+
+      const beforeNode = await nodeStore.find(nodeId);
+
+      if (!beforeNode) {
+        await recordNodeFailure(c, "nodes.interfaces.update.failed", "node_not_found", nodeId, {
+          targetId: interfaceId,
+          targetType: "interface",
+        });
+        return c.json({ error: "Node not found" }, 404);
+      }
+
+      const before = interfaceSnapshot(beforeNode, interfaceId);
+
+      if (!before) {
+        await recordNodeFailure(
+          c,
+          "nodes.interfaces.update.failed",
+          "interface_not_found",
+          beforeNode.alias,
+          {
+            targetId: interfaceId,
+            targetType: "interface",
+          },
+        );
+        return c.json({ error: "Interface not found" }, 404);
+      }
+
+      const updated = await nodeStore
+        .updateInterface(nodeId, interfaceId, body.data)
+        .catch(async (error: unknown) => {
+          const reason = error instanceof NodeStoreError ? error.code : "interface_update_failed";
+
+          await recordNodeFailure(c, "nodes.interfaces.update.failed", reason, before.alias, {
+            targetId: interfaceId,
+            targetType: "interface",
+          });
+          return "unavailable" as const;
+        });
+
+      if (updated === "unavailable") {
+        return c.json({ error: "Node interface update unavailable" }, 503);
+      }
+
+      const after = updated ? interfaceSnapshot(updated, interfaceId) : undefined;
+
+      if (!updated || !after) {
+        await recordNodeFailure(
+          c,
+          "nodes.interfaces.update.failed",
+          "interface_not_found",
+          before.alias,
+          {
+            targetId: interfaceId,
+            targetType: "interface",
+          },
+        );
+        return c.json({ error: "Interface not found" }, 404);
+      }
+
+      await recordAuditEvent(c, {
+        action: "nodes.interfaces.update.succeeded",
+        after,
+        auth: currentAuth(c),
+        before,
+        details: {
+          nodeAlias: beforeNode.alias,
+          nodeId,
+        },
+        outcome: "succeeded",
+        permission: "node:manage",
+        target: {
+          id: interfaceId,
+          name: after.alias,
+          type: "interface",
         },
       });
 
@@ -438,6 +561,7 @@ export function registerNodeRoutes({
     options: {
       permission?: "listen:monitor" | "node:manage";
       targetId?: string;
+      targetType?: string;
     } = {},
   ) {
     await recordAuditEvent(c, {
@@ -449,7 +573,7 @@ export function registerNodeRoutes({
       target: {
         id: options.targetId,
         name,
-        type: "node",
+        type: options.targetType ?? "node",
       },
     });
   }
@@ -518,6 +642,23 @@ function nodeSnapshot(node: RecorderNode | undefined) {
         notes: node.notes,
         status: node.status,
         tags: node.tags,
+      }
+    : undefined;
+}
+
+function interfaceSnapshot(node: RecorderNode, interfaceId: string) {
+  const audioInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
+
+  return audioInterface
+    ? {
+        alias: audioInterface.alias,
+        backend: audioInterface.backend,
+        channelCount: audioInterface.channelCount,
+        channels: audioInterface.channels,
+        id: audioInterface.id,
+        sampleRates: audioInterface.sampleRates,
+        systemName: audioInterface.systemName,
+        systemRef: audioInterface.systemRef,
       }
     : undefined;
 }

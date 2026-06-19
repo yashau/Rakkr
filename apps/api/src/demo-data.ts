@@ -26,6 +26,7 @@ export const nodes: RecorderNode[] = [
         id: "iface_x32_usb",
         sampleRates: [48000],
         systemName: "Behringer X32 Rack USB",
+        systemRef: "alsa:hw:X32,0",
       },
     ],
     ipAddresses: ["172.22.145.152"],
