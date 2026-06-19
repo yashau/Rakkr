@@ -46,6 +46,7 @@ depends = [
   "recordings:check",
   "health:check-watchdog",
   "storage:check",
+  "operations:check",
   "node:check",
   "node:test",
   "node:lint",
@@ -109,6 +110,10 @@ run = "node scripts/verify-health-watchdog-baseline.mjs"
 [tasks."storage:check"]
 description = "Validate storage upload baseline documentation"
 run = "node scripts/verify-storage-upload-baseline.mjs"
+
+[tasks."operations:check"]
+description = "Validate operations baseline documentation"
+run = "node scripts/verify-operations-baseline.mjs"
 
 [tasks."node:build-libs"]
 description = "Build shared Node workspace libraries"

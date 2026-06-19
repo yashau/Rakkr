@@ -556,10 +556,10 @@ Current partial implementation:
 | --------- | ---- | ------ |
 | 0. Foundation | Monorepo, Docker, API/UI shells, shared types | ✅ |
 | 1. Test rig visibility | Agent identity, meters, loopback validation, node UI | 🟨 |
-| 2. First reliable recording | Start/stop, cache, metadata, playback, download, health | 🟨 |
+| 2. First reliable recording | Start/stop, cache, metadata, playback, download, health | 🚧 |
 | 3. Scheduling | Human scheduler, metadata ownership, execution events | 🟨 |
 | 4. Watchdog reliability | Scheduled health alerts, timelines, metrics | 🟨 |
-| 5. Operations | Organization, templates, audit search/export, upload stubs | 🚧 |
+| 5. Operations | Organization, templates, audit search/export, upload stubs | ✅ |
 | 6. Integrations | SMB/S3, Azure AD OIDC, Iroh, AI quality | 🧊 |
 
 ## Focus Queue
@@ -706,6 +706,7 @@ Current partial implementation:
 140. ✅ Promote Recording Library MVP with checked organization/playback baseline.
 141. ✅ Promote Storage Upload MVP with checked provider/queue/runner baseline.
 142. ✅ Add checked Health Watchdog partial baseline with explicit signal-quality gaps.
+143. ✅ Promote Operations MVP with checked organization/templates/audit/upload baseline.
 
 ## Open Questions
 

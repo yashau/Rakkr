@@ -155,6 +155,167 @@ test("settings read routes deny users without settings read", async () => {
   assert.ok(deniedEvents.every((event) => event.target.type === "settings"));
 });
 
+test("settings manage routes update operational templates and audit snapshots", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer(["settings:read", "settings:manage"]);
+  const settingsStore = createSettingsStore();
+  const uploadProviderStore = createUploadProviderStore();
+  const primaryTemplateId = `channel_map_ops_${randomUUID()}`;
+  const rollbackTemplateId = `channel_map_rollback_${randomUUID()}`;
+  const uploadPolicyId = `upload-policy-ops-${randomUUID()}`;
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allowPermission(),
+    settingsStore,
+    uploadProviderStore,
+  });
+
+  const profileResponse = await requestJson(
+    app,
+    "/api/v1/settings/recording-profiles/voice-mp3-vbr",
+    "PATCH",
+    {
+      maxTrackSeconds: 900,
+      name: "Operations Voice MP3",
+    },
+  );
+  const watchdogResponse = await requestJson(
+    app,
+    "/api/v1/settings/watchdog-policies/scheduled-voice-watchdog",
+    "PATCH",
+    {
+      minSpeechScore: 0.65,
+      name: "Operations Voice Watchdog",
+      qualityMode: "speech_required",
+    },
+  );
+  const providerResponse = await requestJson(
+    app,
+    "/api/v1/settings/upload-providers/stub",
+    "PATCH",
+    {
+      displayName: "Operations Stub",
+      enabled: true,
+      target: "stub://operations",
+    },
+  );
+  const uploadCreateResponse = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    enabled: true,
+    id: uploadPolicyId,
+    maxAttempts: 4,
+    name: "Operations Upload",
+    provider: "stub",
+    target: "stub://operations",
+    trigger: "manual",
+  });
+  const uploadUpdateResponse = await requestJson(
+    app,
+    `/api/v1/settings/upload-policies/${uploadPolicyId}`,
+    "PATCH",
+    {
+      deleteCacheAfterUpload: true,
+      maxAttempts: 6,
+    },
+  );
+  const templateCreateResponse = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-templates",
+    "POST",
+    channelMapInput(primaryTemplateId, "Operations Primary Map"),
+  );
+  const templateUpdateResponse = await requestJson(
+    app,
+    `/api/v1/settings/channel-map-templates/${primaryTemplateId}`,
+    "PATCH",
+    {
+      name: "Operations Primary Map Rev 2",
+      tags: ["voice", "ops"],
+    },
+  );
+  await requestJson(
+    app,
+    "/api/v1/settings/channel-map-templates",
+    "POST",
+    channelMapInput(rollbackTemplateId, "Operations Rollback Map"),
+  );
+  const assignmentResponse = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-assignments",
+    "PUT",
+    {
+      targetId: "node_ops_room",
+      targetType: "node",
+      templateId: primaryTemplateId,
+    },
+  );
+  const reassignmentResponse = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-assignments",
+    "PUT",
+    {
+      targetId: "node_ops_room",
+      targetType: "node",
+      templateId: rollbackTemplateId,
+    },
+  );
+  const rollbackResponse = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-assignments/rollback",
+    "POST",
+    {
+      targetId: "node_ops_room",
+      targetType: "node",
+    },
+  );
+  const audits = await auditStore.list({ outcome: "succeeded", permission: "settings:manage" });
+
+  assert.equal(profileResponse.status, 200);
+  assert.equal(watchdogResponse.status, 200);
+  assert.equal(providerResponse.status, 200);
+  assert.equal(uploadCreateResponse.status, 201);
+  assert.equal(uploadUpdateResponse.status, 200);
+  assert.equal(templateCreateResponse.status, 201);
+  assert.equal(templateUpdateResponse.status, 200);
+  assert.equal(assignmentResponse.status, 200);
+  assert.equal(reassignmentResponse.status, 200);
+  assert.equal(rollbackResponse.status, 200);
+
+  const updatedTemplate = (await templateUpdateResponse.json()) as { data: { revision: number } };
+  const reassignment = (await reassignmentResponse.json()) as {
+    data: { history: Array<{ previousTemplateId?: string }>; templateId: string };
+  };
+  const rollback = (await rollbackResponse.json()) as { data: { templateId: string } };
+
+  assert.equal(updatedTemplate.data.revision, 2);
+  assert.equal(reassignment.data.templateId, rollbackTemplateId);
+  assert.equal(reassignment.data.history.at(-1)?.previousTemplateId, primaryTemplateId);
+  assert.equal(rollback.data.templateId, primaryTemplateId);
+  assert.deepEqual(audits.map((event) => event.action).sort(), [
+    "settings.channel_map_assignments.rollback.succeeded",
+    "settings.channel_map_assignments.update.succeeded",
+    "settings.channel_map_assignments.update.succeeded",
+    "settings.channel_map_templates.create.succeeded",
+    "settings.channel_map_templates.create.succeeded",
+    "settings.channel_map_templates.update.succeeded",
+    "settings.recording_profiles.update.succeeded",
+    "settings.upload_policies.create.succeeded",
+    "settings.upload_policies.update.succeeded",
+    "settings.upload_providers.update.succeeded",
+    "settings.watchdog_policies.update.succeeded",
+  ]);
+
+  const profileAudit = audits.find(
+    (event) => event.action === "settings.recording_profiles.update.succeeded",
+  );
+
+  assert.equal(profileAudit?.before?.name, "Voice MP3 VBR");
+  assert.equal(profileAudit?.after?.name, "Operations Voice MP3");
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   path: string,
@@ -166,6 +327,12 @@ function requestJson(
     headers: { "content-type": "application/json" },
     method,
   });
+}
+
+function allowPermission(): RequirePermission {
+  return () => async (_c, next) => {
+    await next();
+  };
 }
 
 function denyMissingPermission(
@@ -233,5 +400,22 @@ function viewer(permissions = ["settings:read"]): CurrentUser {
     provider: "local",
     resourceGrants: [],
     roles: ["viewer"],
+  };
+}
+
+function channelMapInput(id: string, name: string) {
+  return {
+    channelMode: "mono_to_stereo_mix",
+    entries: [
+      {
+        included: true,
+        label: "Podium Mic",
+        outputChannelIndex: 1,
+        sourceChannelIndex: 1,
+      },
+    ],
+    id,
+    name,
+    tags: ["voice"],
   };
 }
