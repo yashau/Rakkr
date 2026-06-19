@@ -183,6 +183,7 @@ Current partial implementation:
 - RBAC-gated node alias, site/building/floor/room, network, tag, and note edits with audit history.
 - RBAC-gated interface aliases, system refs, sample rates, and channel aliases with audit history.
 - Node-authenticated heartbeat updates status, last seen, OS/kernel/runtime, IPs, and audio backends.
+- Persisted nodes derive offline status after missed heartbeat threshold.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback tasks can fake capture/meter/render before X32 validation resumes.
 - RBAC-gated listen monitor start/stream returns a controller meter-preview WAV for browser playback.
@@ -457,7 +458,8 @@ Examples:
 13. ✅ Add RBAC/audited interface and channel identity edits.
 14. ✅ Add agent runtime heartbeat and node runtime display.
 15. ✅ Add full node location hierarchy editing and display.
-16. ⏸️ Return to X32 hardware validation after device is confirmed.
+16. ✅ Add stale heartbeat offline status derivation.
+17. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

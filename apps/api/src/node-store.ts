@@ -12,6 +12,7 @@ import {
 import type { AudioInterface, NodeRuntime, NodeStatus, RecorderNode } from "@rakkr/shared";
 
 import { hashToken, isUuid } from "./auth-utils.js";
+import { nodeWithDerivedLiveness } from "./node-liveness.js";
 
 type AudioChannelRow = typeof audioChannels.$inferSelect;
 type AudioInterfaceRow = typeof audioInterfaces.$inferSelect;
@@ -315,11 +316,15 @@ class PostgresNodeStore implements NodeStore {
         db.select().from(audioInterfaces),
         db.select().from(audioChannels),
       ]);
+      const now = new Date();
       const persisted = nodeRecords.map((node) =>
-        nodeFromRows(
-          node,
-          interfaceRecords.filter((row) => row.nodeId === node.id),
-          channelRecords,
+        nodeWithDerivedLiveness(
+          nodeFromRows(
+            node,
+            interfaceRecords.filter((row) => row.nodeId === node.id),
+            channelRecords,
+          ),
+          now,
         ),
       );
       const persistedIds = new Set(persisted.map((node) => node.id));
