@@ -38,7 +38,7 @@ test.after(async () => {
   await rm(routeRoot, { force: true, recursive: true });
 });
 
-test("recording facets summarize visible folders and tags", async () => {
+test("recording facets summarize visible library relationships", async () => {
   const auditStore = createAuditStore("");
   const app = recordingApp({
     auditStore,
@@ -46,9 +46,32 @@ test("recording facets summarize visible folders and tags", async () => {
     permissionCalls: [],
     profiles: [defaultVoiceRecordingProfile],
     recordingStore: memoryRecordingStore([
-      recording({ folder: "Meetings/Council", id: "rec_1", tags: ["voice", "council"] }),
-      recording({ folder: "Meetings/Council", id: "rec_2", tags: ["voice"] }),
-      recording({ folder: "Meetings/Planning", id: "rec_3", tags: ["planning"] }),
+      recording({
+        folder: "Meetings/Council",
+        id: "rec_1",
+        nodeId: "node_a",
+        recordingProfileId: "profile_voice",
+        tags: ["voice", "council"],
+        trackGroupId: "track_1",
+        uploadPolicyId: "upload_a",
+      }),
+      recording({
+        folder: "Meetings/Council",
+        id: "rec_2",
+        nodeId: "node_a",
+        recordingProfileId: "profile_voice",
+        tags: ["voice"],
+        uploadPolicyId: "upload_b",
+      }),
+      recording({
+        folder: "Meetings/Planning",
+        id: "rec_3",
+        nodeId: "node_b",
+        recordingProfileId: "profile_archive",
+        tags: ["planning"],
+        trackGroupId: "track_1",
+        uploadPolicyId: "upload_b",
+      }),
     ]),
   });
 
@@ -56,7 +79,11 @@ test("recording facets summarize visible folders and tags", async () => {
   const body = (await response.json()) as {
     data: {
       folders: Array<{ count: number; value: string }>;
+      nodes: Array<{ count: number; value: string }>;
+      recordingProfiles: Array<{ count: number; value: string }>;
       tags: Array<{ count: number; value: string }>;
+      trackGroups: Array<{ count: number; value: string }>;
+      uploadPolicies: Array<{ count: number; value: string }>;
     };
   };
 
@@ -69,6 +96,19 @@ test("recording facets summarize visible folders and tags", async () => {
     { count: 2, value: "voice" },
     { count: 1, value: "council" },
     { count: 1, value: "planning" },
+  ]);
+  assert.deepEqual(body.data.nodes, [
+    { count: 2, value: "node_a" },
+    { count: 1, value: "node_b" },
+  ]);
+  assert.deepEqual(body.data.recordingProfiles, [
+    { count: 2, value: "profile_voice" },
+    { count: 1, value: "profile_archive" },
+  ]);
+  assert.deepEqual(body.data.trackGroups, [{ count: 2, value: "track_1" }]);
+  assert.deepEqual(body.data.uploadPolicies, [
+    { count: 2, value: "upload_b" },
+    { count: 1, value: "upload_a" },
   ]);
 });
 

@@ -134,10 +134,18 @@ export function filterRecordings(recordings: RecordingSummary[], filters: Record
 
 export function recordingFacets(recordings: RecordingSummary[]) {
   const folders = new Map<string, number>();
+  const nodes = new Map<string, number>();
+  const recordingProfiles = new Map<string, number>();
   const tags = new Map<string, number>();
+  const trackGroups = new Map<string, number>();
+  const uploadPolicies = new Map<string, number>();
 
   for (const recording of recordings) {
     folders.set(recording.folder, (folders.get(recording.folder) ?? 0) + 1);
+    incrementFacet(nodes, recording.nodeId);
+    incrementFacet(recordingProfiles, recording.recordingProfileId);
+    incrementFacet(trackGroups, recording.trackGroupId);
+    incrementFacet(uploadPolicies, recording.uploadPolicyId);
 
     for (const tag of recording.tags) {
       tags.set(tag, (tags.get(tag) ?? 0) + 1);
@@ -146,7 +154,11 @@ export function recordingFacets(recordings: RecordingSummary[]) {
 
   return {
     folders: sortedFacets(folders),
+    nodes: sortedFacets(nodes),
+    recordingProfiles: sortedFacets(recordingProfiles),
     tags: sortedFacets(tags),
+    trackGroups: sortedFacets(trackGroups),
+    uploadPolicies: sortedFacets(uploadPolicies),
   };
 }
 
@@ -203,6 +215,14 @@ function sortedFacets(values: Map<string, number>) {
   return [...values.entries()]
     .map(([value, count]) => ({ count, value }))
     .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
+}
+
+function incrementFacet(values: Map<string, number>, value: string | undefined) {
+  if (!value) {
+    return;
+  }
+
+  values.set(value, (values.get(value) ?? 0) + 1);
 }
 
 function includesText(value: string, search: string) {

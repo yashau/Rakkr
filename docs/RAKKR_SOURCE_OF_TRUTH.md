@@ -365,6 +365,7 @@ Current partial implementation:
 - Recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
 - Scoped filters, metadata editing, playback, download, cache attach, and audit events.
 - Recording library exposes scoped folder/tag facets with clickable UI filters.
+- Recording library exposes relationship facets for nodes, profiles, upload policies, and split-track groups.
 - Recording library supports browser-local date-range filters backed by UTC ISO query bounds.
 - Recording library shows removable active filter chips for applied organization/search filters.
 - Recording cards display node, schedule, profile, upload policy, and track relationship badges.
@@ -494,7 +495,8 @@ Examples:
 32. ✅ Add split-track group display and filtering.
 33. ✅ Add recording library sorting controls.
 34. ✅ Add recording library pagination controls.
-35. ⏸️ Return to X32 hardware validation after device is confirmed.
+35. ✅ Add recording relationship facet groups.
+36. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

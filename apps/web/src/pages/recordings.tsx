@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Folder, RotateCcw, Search, Tag, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { HealthEvent, RecordingSummary, UploadPolicy, UploadQueueItem } from "@rakkr/shared";
 
 import { RecordingCard } from "@/components/recording-card";
+import { RecordingFacetPanel } from "@/components/recording-facet-panel";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -303,7 +304,11 @@ export function RecordingsPage() {
   const recordingMeta = recordingsQuery.data?.meta;
   const facets = recordingFacetsQuery.data?.data;
   const topFolders = facets?.folders.slice(0, 8) ?? [];
+  const topNodes = facets?.nodes.slice(0, 8) ?? [];
+  const topRecordingProfiles = facets?.recordingProfiles.slice(0, 8) ?? [];
   const topTags = facets?.tags.slice(0, 12) ?? [];
+  const topTrackGroups = facets?.trackGroups.slice(0, 8) ?? [];
+  const topUploadPolicies = facets?.uploadPolicies.slice(0, 8) ?? [];
   const healthEventsByRecording = groupHealthEventsByRecording(healthEventsQuery.data?.data ?? []);
   const uploadItemsByRecording = groupUploadItemsByRecording(uploadQueueQuery.data?.data ?? []);
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
@@ -326,7 +331,14 @@ export function RecordingsPage() {
     [audioPreview?.url],
   );
 
-  const applyFacetFilter = (patch: Partial<Pick<RecordingFilterDraft, "folder" | "tag">>) => {
+  const applyFacetFilter = (
+    patch: Partial<
+      Pick<
+        RecordingFilterDraft,
+        "folder" | "nodeId" | "recordingProfileId" | "tag" | "trackGroupId" | "uploadPolicyId"
+      >
+    >,
+  ) => {
     const nextDraft = { ...filterDraft, ...patch };
 
     setFilterDraft(nextDraft);
@@ -696,60 +708,20 @@ export function RecordingsPage() {
             </div>
           </div>
         ) : null}
-        {topFolders.length > 0 || topTags.length > 0 ? (
-          <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3 md:grid-cols-2">
-            {topFolders.length > 0 ? (
-              <div className="grid gap-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Folder className="size-4" />
-                  Folders
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {topFolders.map((folder) => (
-                    <Button
-                      className="max-w-full overflow-hidden"
-                      key={folder.value}
-                      onClick={() => applyFacetFilter({ folder: folder.value })}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      <span className="truncate">{folder.value}</span>
-                      <span className="shrink-0 text-muted-foreground tabular-nums">
-                        {folder.count}
-                      </span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {topTags.length > 0 ? (
-              <div className="grid gap-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Tag className="size-4" />
-                  Tags
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {topTags.map((tag) => (
-                    <Button
-                      className="max-w-full overflow-hidden"
-                      key={tag.value}
-                      onClick={() => applyFacetFilter({ tag: tag.value })}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      <span className="truncate">{tag.value}</span>
-                      <span className="shrink-0 text-muted-foreground tabular-nums">
-                        {tag.count}
-                      </span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <RecordingFacetPanel
+          folders={topFolders}
+          nodes={topNodes}
+          onFolder={(folder) => applyFacetFilter({ folder })}
+          onNode={(nodeId) => applyFacetFilter({ nodeId })}
+          onRecordingProfile={(recordingProfileId) => applyFacetFilter({ recordingProfileId })}
+          onTag={(tag) => applyFacetFilter({ tag })}
+          onTrackGroup={(trackGroupId) => applyFacetFilter({ trackGroupId })}
+          onUploadPolicy={(uploadPolicyId) => applyFacetFilter({ uploadPolicyId })}
+          recordingProfiles={topRecordingProfiles}
+          tags={topTags}
+          trackGroups={topTrackGroups}
+          uploadPolicies={topUploadPolicies}
+        />
       </form>
 
       {!recordingsQuery.isPending && recordings.length === 0 ? (

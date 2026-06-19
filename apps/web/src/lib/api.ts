@@ -172,7 +172,11 @@ export interface RecordingFacet {
 
 export interface RecordingFacets {
   folders: RecordingFacet[];
+  nodes: RecordingFacet[];
+  recordingProfiles: RecordingFacet[];
   tags: RecordingFacet[];
+  trackGroups: RecordingFacet[];
+  uploadPolicies: RecordingFacet[];
 }
 
 export interface HealthEventFilters {
