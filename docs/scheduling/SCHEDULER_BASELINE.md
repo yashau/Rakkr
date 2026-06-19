@@ -13,7 +13,7 @@ Status: MVP baseline checked.
 - Scheduled recordings own filename, folder, tags, profile, node target, watchdog policy, and upload policy.
 - Long scheduled windows split into ordered track jobs when the recording profile has a maximum track length.
 - Due schedule execution runs as `system:scheduler` and writes audit events.
-- Schedule read/manage APIs are RBAC-gated.
+- Schedule read/manage APIs are RBAC-gated and successful create, update, run-now, and skip-next actions are audited.
 
 ## Operator Workflow
 
@@ -30,7 +30,7 @@ Status: MVP baseline checked.
 | ----- | -------- |
 | Recurrence engine | `apps/api/test/schedule-engine.test.ts` |
 | Due-run and schedule-owned recordings | `apps/api/test/schedule-runner.test.ts` |
-| Route RBAC | `apps/api/test/schedule-routes.test.ts` |
+| Route RBAC and operator controls | `apps/api/test/schedule-routes.test.ts` |
 | UI permissions | `apps/web/src/lib/schedule-page-helpers.test.ts` |
 | Detail permissions | `apps/web/src/lib/schedule-detail-page-helpers.test.ts` |
 | Quick phrase parsing | `apps/web/src/lib/schedule-draft.test.ts` |

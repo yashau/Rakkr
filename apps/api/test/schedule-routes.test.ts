@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
 import type {
@@ -11,12 +14,20 @@ import type {
   ScheduleSummary,
 } from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
-import { registerScheduleRoutes } from "../src/schedule-routes.js";
 import type { ScheduleStore } from "../src/schedule-store.js";
+
+const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-schedule-routes-"));
+process.env.DATABASE_URL = "";
+process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "recording-jobs.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createNodeStore } = await import("../src/node-store.js");
+const { registerScheduleRoutes } = await import("../src/schedule-routes.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
+
+test.after(async () => {
+  await rm(routeRoot, { force: true, recursive: true });
+});
 
 test("schedule routes deny users without required permissions", async () => {
   const auditStore = createAuditStore("");
@@ -72,6 +83,107 @@ test("schedule routes deny users without required permissions", async () => {
   assert.ok(deniedEvents.every((event) => event.actor.id === deniedUser.id));
 });
 
+test("schedule routes create update run-now and skip-next with audit events", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["recording:read", "schedule:read", "schedule:manage"]);
+  const routeNode = node({ id: `node_schedule_ops_${randomUUID()}` });
+  const schedules: ScheduleSummary[] = [];
+  const store = scheduleStore(schedules);
+  const recordings = recordingStore();
+  const scheduleId = `sched_route_ops_${randomUUID()}`;
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([routeNode]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: recordings,
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: () => store.list(),
+    settingsStore: createSettingsStore(),
+  });
+
+  const created = await requestJson(app, "/api/v1/schedules", "POST", {
+    enabled: true,
+    folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
+    id: scheduleId,
+    name: "Council Route Test",
+    nodeId: routeNode.id,
+    recurrence: {
+      endTime: "10:00",
+      interval: 1,
+      mode: "daily",
+      startEarlySeconds: 300,
+      startTime: "09:00",
+      stopLateSeconds: 120,
+    },
+    recordingProfileId: "voice-mp3-vbr",
+    room: "Council Room",
+    tags: ["voice", "route", "voice"],
+    timezone: "UTC",
+    titleTemplate: "{{date}}_{{time}}_{{schedule.name}}",
+    uploadPolicyId: "upload-policy-stub",
+    watchdogPolicyId: "scheduled-voice-watchdog",
+  });
+  const createdBody = (await created.json()) as { data: ScheduleSummary };
+  const updated = await requestJson(app, `/api/v1/schedules/${scheduleId}`, "PATCH", {
+    name: "Council Route Test Updated",
+    tags: ["updated", "voice", "updated"],
+  });
+  const updatedBody = (await updated.json()) as { data: ScheduleSummary };
+  const occurrences = await app.request(`/api/v1/schedules/${scheduleId}/occurrences?limit=2`);
+  const runNow = await app.request(`/api/v1/schedules/${scheduleId}/run-now`, { method: "POST" });
+  const runNowBody = (await runNow.json()) as {
+    data: RecordingSummary;
+    job: { recordingId: string };
+    segments: Array<{ recordingId: string }>;
+  };
+  const beforeSkip = await store.find(scheduleId);
+  const skipped = await app.request(`/api/v1/schedules/${scheduleId}/skip-next`, {
+    method: "POST",
+  });
+  const skippedBody = (await skipped.json()) as { data: ScheduleSummary };
+  const succeededAudits = await auditStore.list({
+    outcome: "succeeded",
+    permission: "schedule:manage",
+  });
+  const runNowAudit = succeededAudits.find(
+    (event) => event.action === "schedules.run_now.succeeded",
+  );
+
+  assert.equal(created.status, 201);
+  assert.equal(updated.status, 200);
+  assert.equal(occurrences.status, 200);
+  assert.equal(runNow.status, 202);
+  assert.equal(skipped.status, 200);
+  assert.equal(createdBody.data.id, scheduleId);
+  assert.deepEqual(createdBody.data.tags, ["voice", "route"]);
+  assert.equal(updatedBody.data.name, "Council Route Test Updated");
+  assert.deepEqual(updatedBody.data.tags, ["updated", "voice"]);
+  assert.equal(runNowBody.data.scheduleId, scheduleId);
+  assert.equal(runNowBody.job.recordingId, runNowBody.data.id);
+  assert.deepEqual(
+    runNowBody.segments.map((segment) => segment.recordingId),
+    [runNowBody.data.id],
+  );
+  assert.equal((await recordings.list())[0]?.source, "schedule");
+  assert.notEqual(skippedBody.data.nextRunAt, beforeSkip?.nextRunAt);
+  assert.ok(
+    skippedBody.data.recurrence.exceptions?.some((exception) => exception.action === "skip"),
+  );
+  assert.deepEqual(succeededAudits.map((event) => event.action).sort(), [
+    "schedules.create.succeeded",
+    "schedules.run_now.succeeded",
+    "schedules.skip_next.succeeded",
+    "schedules.update.succeeded",
+  ]);
+  assert.equal(runNowAudit?.correlationIds?.scheduleId, scheduleId);
+  assert.equal(runNowAudit?.after?.recordingId, runNowBody.data.id);
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   path: string,
@@ -83,6 +195,12 @@ function requestJson(
     headers: { "content-type": "application/json" },
     method,
   });
+}
+
+function allowPermission(): RequirePermission {
+  return () => async (_c, next) => {
+    await next();
+  };
 }
 
 function denyMissingPermission(
@@ -211,7 +329,7 @@ function user(permissions: Permission[] = ["schedule:read"]): CurrentUser {
   };
 }
 
-function node(): RecorderNode {
+function node(input: Partial<RecorderNode> = {}): RecorderNode {
   return {
     agentVersion: "0.1.0",
     alias: "Schedule Node",
@@ -226,6 +344,7 @@ function node(): RecorderNode {
     },
     status: "online",
     tags: ["voice"],
+    ...input,
   };
 }
 

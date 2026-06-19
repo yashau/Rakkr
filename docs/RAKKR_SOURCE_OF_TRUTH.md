@@ -557,7 +557,7 @@ Current partial implementation:
 | 0. Foundation | Monorepo, Docker, API/UI shells, shared types | ✅ |
 | 1. Test rig visibility | Agent identity, meters, loopback validation, node UI | 🟨 |
 | 2. First reliable recording | Start/stop, cache, metadata, playback, download, health | ✅ |
-| 3. Scheduling | Human scheduler, metadata ownership, execution events | 🟨 |
+| 3. Scheduling | Human scheduler, metadata ownership, execution events | ✅ |
 | 4. Watchdog reliability | Scheduled health alerts, timelines, metrics | 🚧 |
 | 5. Operations | Organization, templates, audit search/export, upload stubs | ✅ |
 | 6. Integrations | SMB/S3, Azure AD OIDC, Iroh, AI quality | 🧊 |
@@ -709,6 +709,7 @@ Current partial implementation:
 143. ✅ Promote Operations MVP with checked organization/templates/audit/upload baseline.
 144. ✅ Promote First Reliable Recording MVP with checked ad-hoc/scheduled lifecycle baseline.
 145. ✅ Add first-pass hum/static quality telemetry, UI display, and Prometheus metrics.
+146. ✅ Promote Scheduling MVP with checked operator route controls and audit coverage.
 
 ## Open Questions
 

@@ -28,6 +28,7 @@ const baselinePhrases = [
   "schedule-owned recordings",
   "system:scheduler",
   "RBAC-gated",
+  "create, update, run-now, and skip-next actions are audited",
   "mise run scheduler:check",
 ];
 const sourceSnippets = [
@@ -39,6 +40,10 @@ const sourceSnippets = [
   "queueScheduledRecordings",
   "schedules.run_now",
   "schedules.skip_next",
+  "schedules.create.succeeded",
+  "schedules.update.succeeded",
+  "schedules.run_now.succeeded",
+  "schedules.skip_next.succeeded",
   "schedules.due_run.succeeded",
   "schedule:read",
   "schedule:manage",
@@ -51,6 +56,7 @@ const testSnippets = [
   "splits scheduled recording windows by profile track length",
   "scheduled recording completes through agent cache attach and exposes schedule-owned media",
   "schedule routes deny users without required permissions",
+  "schedule routes create update run-now and skip-next with audit events",
   "schedule quick phrases produce structured weekly recurrence",
 ];
 const errors = [];
