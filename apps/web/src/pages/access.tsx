@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type LocalUserCreateInput, type UserAccessUpdate } from "@/lib/api";
+import { AccessPolicyComposer } from "@/components/access-policy-composer";
 
 interface AccessDraft {
   groupsText: string;
@@ -178,6 +179,12 @@ export function AccessPage() {
               value={policiesText}
             />
           </div>
+          <AccessPolicyComposer
+            onAppend={(line) => {
+              setPoliciesText((current) => appendPolicyLine(current, line));
+              setPolicyError(undefined);
+            }}
+          />
           {policyError ? <p className="text-sm text-red-700">{policyError}</p> : null}
           {groups.length > 0 ? (
             <div className="flex flex-wrap gap-2">
@@ -501,6 +508,12 @@ function policiesToText(policies: AccessPolicy[]) {
         .join(" | "),
     )
     .join("\n");
+}
+
+function appendPolicyLine(current: string, line: string) {
+  const trimmed = current.trim();
+
+  return trimmed ? `${trimmed}\n${line}` : line;
 }
 
 function policySubject(policy: AccessPolicy) {

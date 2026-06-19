@@ -309,6 +309,7 @@ Current partial implementation:
 - Local users, groups, roles, scopes, access policies, passwords, status.
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
 - Access UI manages users, groups, policies, and scopes.
+- Access UI includes a structured allow/deny policy composer for user, group, and everyone subjects.
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
@@ -504,7 +505,8 @@ Examples:
 37. ✅ Mirror recording library action controls against RBAC permissions.
 38. ✅ Add expandable audit event details.
 39. ✅ Add audit permission and reason filters.
-40. ⏸️ Return to X32 hardware validation after device is confirmed.
+40. ✅ Add structured access policy composer.
+41. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
