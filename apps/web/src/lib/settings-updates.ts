@@ -23,8 +23,11 @@ export function recordingProfileUpdate(profile: RecordingProfile): RecordingProf
 export function watchdogPolicyUpdate(policy: WatchdogPolicy): WatchdogPolicyUpdate {
   return {
     activeDuring: policy.activeDuring,
+    channelCorrelationMode: policy.channelCorrelationMode,
+    channelCorrelationThreshold: policy.channelCorrelationThreshold,
     graceSeconds: policy.graceSeconds,
     metric: policy.metric,
+    minCumulativeChannelCorrelationSeconds: policy.minCumulativeChannelCorrelationSeconds,
     minCumulativeSecondsAboveThreshold: policy.minCumulativeSecondsAboveThreshold,
     name: policy.name,
     repeatEverySeconds: policy.repeatEverySeconds,

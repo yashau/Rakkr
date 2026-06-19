@@ -392,6 +392,23 @@ function WatchdogPolicyCard({ canManage, policy }: { canManage: boolean; policy:
             <option value="percentile_95">Percentile 95</option>
           </select>
         </Field>
+        <Field label="Correlation Mode">
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                channelCorrelationMode: event.target
+                  .value as WatchdogPolicy["channelCorrelationMode"],
+              }))
+            }
+            value={draft.channelCorrelationMode ?? "off"}
+          >
+            <option value="off">Off</option>
+            <option value="alert_on_high">Alert On High</option>
+          </select>
+        </Field>
         <Field label="Threshold dBFS">
           <Input
             disabled={!canManage}
@@ -452,6 +469,39 @@ function WatchdogPolicyCard({ canManage, policy }: { canManage: boolean; policy:
             }
             type="number"
             value={draft.minCumulativeSecondsAboveThreshold}
+          />
+        </Field>
+        <Field label="Correlation Threshold">
+          <Input
+            disabled={!canManage}
+            max={1}
+            min={0}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                channelCorrelationThreshold: Number(event.target.value),
+              }))
+            }
+            step={0.01}
+            type="number"
+            value={draft.channelCorrelationThreshold ?? 0.98}
+          />
+        </Field>
+        <Field label="Min Correlated Seconds">
+          <Input
+            disabled={!canManage}
+            min={0}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                minCumulativeChannelCorrelationSeconds: Number(event.target.value),
+              }))
+            }
+            type="number"
+            value={
+              draft.minCumulativeChannelCorrelationSeconds ??
+              draft.minCumulativeSecondsAboveThreshold
+            }
           />
         </Field>
         <Field label="Severity">

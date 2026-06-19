@@ -188,6 +188,9 @@ test("settings manage routes update operational templates and audit snapshots", 
     "/api/v1/settings/watchdog-policies/scheduled-voice-watchdog",
     "PATCH",
     {
+      channelCorrelationMode: "alert_on_high",
+      channelCorrelationThreshold: 0.97,
+      minCumulativeChannelCorrelationSeconds: 15,
       minSpeechScore: 0.65,
       name: "Operations Voice Watchdog",
       qualityMode: "speech_required",
@@ -314,6 +317,15 @@ test("settings manage routes update operational templates and audit snapshots", 
 
   assert.equal(profileAudit?.before?.name, "Voice MP3 VBR");
   assert.equal(profileAudit?.after?.name, "Operations Voice MP3");
+  const watchdogAudit = audits.find(
+    (event) =>
+      event.action === "settings.watchdog_policies.update.succeeded" &&
+      event.after?.name === "Operations Voice Watchdog",
+  );
+
+  assert.equal(watchdogAudit?.after?.channelCorrelationMode, "alert_on_high");
+  assert.equal(watchdogAudit?.after?.channelCorrelationThreshold, 0.97);
+  assert.equal(watchdogAudit?.after?.minCumulativeChannelCorrelationSeconds, 15);
 });
 
 function requestJson(

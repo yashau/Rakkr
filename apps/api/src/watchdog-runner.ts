@@ -4,7 +4,6 @@ import {
   type AuditEvent,
   type HealthEvent,
   type MeterFrame,
-  type RecorderNode,
   type RecordingSummary,
   type WatchdogPolicy,
 } from "@rakkr/shared";
@@ -12,17 +11,31 @@ import {
 import type { AuditStore } from "./audit-store.js";
 import { buildMeterFrame } from "./demo-data.js";
 import type { HealthEventStore } from "./health-store.js";
-import {
-  nodeHeartbeatAgeSeconds,
-  nodeHeartbeatStale,
-  nodeOfflineAfterSeconds,
-} from "./node-liveness.js";
 import type { NodeStore } from "./node-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { RecordingStore } from "./recording-store.js";
+import { nodeOfflineEventType, reconcileNodeLivenessEvents } from "./watchdog-node-liveness.js";
+import {
+  channelCorrelationIsAbovePolicy,
+  channelCorrelationThreshold,
+  historyFor,
+  minCumulativeChannelCorrelationSeconds,
+  minCumulativeSpeechSeconds,
+  minSpeechScore,
+  pruneHistory,
+  pruneInactiveHistories,
+  signalEvaluation,
+  signalIsBelowPolicy,
+  signalLevelIsBelowPolicy,
+  signalSample,
+  speechIsBelowPolicy,
+  type SignalEvaluation,
+  type SignalHistory,
+} from "./watchdog-signal.js";
 
 export const scheduledLowSignalEventType = "watchdog.scheduled_low_signal";
-export const nodeOfflineEventType = "watchdog.node_offline";
+export const channelCorrelationEventType = "watchdog.channel_correlation";
+export { nodeOfflineEventType };
 
 export type MeterFrameProvider = (
   nodeId: string,
@@ -56,42 +69,6 @@ export interface WatchdogRunResult {
 }
 
 type MaybePromise<T> = Promise<T> | T;
-
-interface SignalHistory {
-  lastSampleAtMs?: number;
-  samples: SignalSample[];
-}
-
-interface SignalSample {
-  capturedAtMs: number;
-  channelIndex?: number;
-  durationSeconds: number;
-  interfaceId?: string;
-  maxNoiseScore: number;
-  maxPeakDbfs: number;
-  maxRmsDbfs: number;
-  maxSpeechScore: number;
-  metricDbfs: number;
-  speechLike: boolean;
-}
-
-interface SignalEvaluation {
-  coverageSeconds: number;
-  cumulativeSecondsAboveThreshold: number;
-  cumulativeSpeechLikeSeconds: number;
-  latestChannelIndex?: number;
-  latestInterfaceId?: string;
-  latestMetricDbfs: number;
-  latestNoiseScore: number;
-  latestPeakDbfs: number;
-  latestRmsDbfs: number;
-  latestSpeechScore: number;
-  maxMetricDbfs: number;
-  maxNoiseScore: number;
-  maxSpeechScore: number;
-  sampleCount: number;
-  windowStartedAt: string;
-}
 
 export function createWatchdogRunner(dependencies: WatchdogRunnerDependencies) {
   const histories = new Map<string, SignalHistory>();
@@ -191,6 +168,7 @@ async function runWatchdogPass(
 
     const evaluation = signalEvaluation(history, policy, now);
     const lowSignal = signalIsBelowPolicy(evaluation, policy);
+    const highChannelCorrelation = channelCorrelationIsAbovePolicy(evaluation, policy);
 
     results.push(
       lowSignal
@@ -204,6 +182,28 @@ async function runWatchdogPass(
             recordingStore,
           })
         : await resolveLowSignalEvent({
+            auditStore,
+            evaluation,
+            healthEventStore,
+            now,
+            policy,
+            recording,
+            recordingStore,
+          }),
+    );
+
+    results.push(
+      highChannelCorrelation
+        ? await writeChannelCorrelationEvent({
+            auditStore,
+            evaluation,
+            healthEventStore,
+            now,
+            policy,
+            recording,
+            recordingStore,
+          })
+        : await resolveChannelCorrelationEvent({
             auditStore,
             evaluation,
             healthEventStore,
@@ -229,156 +229,6 @@ async function runWatchdogPass(
   }
 
   return results;
-}
-
-async function reconcileNodeLivenessEvents({
-  auditStore,
-  healthEventStore,
-  nodes,
-  now,
-}: {
-  auditStore: AuditStore;
-  healthEventStore: HealthEventStore;
-  nodes: RecorderNode[];
-  now: Date;
-}): Promise<WatchdogRunResult[]> {
-  const results: WatchdogRunResult[] = [];
-
-  for (const node of nodes) {
-    const existing = await activeNodeOfflineEvent(healthEventStore, node.id);
-
-    if (nodeHeartbeatStale(node, now)) {
-      results.push(
-        await writeNodeOfflineEvent({
-          auditStore,
-          existing,
-          healthEventStore,
-          node,
-          now,
-        }),
-      );
-      continue;
-    }
-
-    if (existing) {
-      results.push(
-        await resolveNodeOfflineEvent({
-          auditStore,
-          existing,
-          healthEventStore,
-          node,
-          now,
-        }),
-      );
-    }
-  }
-
-  return results;
-}
-
-async function writeNodeOfflineEvent({
-  auditStore,
-  existing,
-  healthEventStore,
-  node,
-  now,
-}: {
-  auditStore: AuditStore;
-  existing?: HealthEvent;
-  healthEventStore: HealthEventStore;
-  node: RecorderNode;
-  now: Date;
-}): Promise<WatchdogRunResult> {
-  const details = nodeOfflineDetails(node, now, existing);
-
-  if (!existing) {
-    const event = await healthEventStore.create({
-      details,
-      nodeId: node.id,
-      severity: "critical",
-      type: nodeOfflineEventType,
-    });
-
-    await appendNodeWatchdogAudit(auditStore, {
-      action: "health.watchdog.node_offline.created",
-      after: healthEventSnapshot(event),
-      event,
-      node,
-      now,
-      outcome: "succeeded",
-    });
-
-    return {
-      eventId: event.id,
-      nodeId: node.id,
-      outcome: "alert_created",
-      reason: "node_heartbeat_stale",
-    };
-  }
-
-  const event = await healthEventStore.update(existing.id, {
-    details,
-    severity: "critical",
-    status: existing.status,
-  });
-
-  return {
-    eventId: event?.id ?? existing.id,
-    nodeId: node.id,
-    outcome: event ? "alert_updated" : "skipped",
-    reason: event ? "node_heartbeat_stale" : "health_event_missing_during_update",
-  };
-}
-
-async function resolveNodeOfflineEvent({
-  auditStore,
-  existing,
-  healthEventStore,
-  node,
-  now,
-}: {
-  auditStore: AuditStore;
-  existing: HealthEvent;
-  healthEventStore: HealthEventStore;
-  node: RecorderNode;
-  now: Date;
-}): Promise<WatchdogRunResult> {
-  const resolved = await healthEventStore.updateLifecycle(existing.id, {
-    details: {
-      ...existing.details,
-      autoResolvedAt: now.toISOString(),
-      autoResolvedReason: "node_heartbeat_recovered",
-      lastSeenAt: node.lastSeenAt,
-    },
-    resolvedAt: now,
-    resolvedBy: "system:watchdog",
-    status: "resolved",
-  });
-
-  if (!resolved) {
-    return {
-      nodeId: node.id,
-      outcome: "skipped",
-      reason: "health_event_missing_during_resolve",
-    };
-  }
-
-  await appendNodeWatchdogAudit(auditStore, {
-    action: "health.watchdog.node_offline.resolved",
-    after: healthEventSnapshot(resolved),
-    before: healthEventSnapshot(existing),
-    event: resolved,
-    node,
-    now,
-    outcome: "succeeded",
-  });
-
-  return {
-    eventId: resolved.id,
-    nodeId: node.id,
-    outcome: "alert_resolved",
-    reason: "node_heartbeat_recovered",
-  };
 }
 
 async function writeLowSignalEvent({
@@ -540,6 +390,168 @@ async function resolveLowSignalEvent({
   };
 }
 
+async function writeChannelCorrelationEvent({
+  auditStore,
+  evaluation,
+  healthEventStore,
+  now,
+  policy,
+  recording,
+  recordingStore,
+}: {
+  auditStore: AuditStore;
+  evaluation: SignalEvaluation;
+  healthEventStore: HealthEventStore;
+  now: Date;
+  policy: WatchdogPolicy;
+  recording: RecordingSummary;
+  recordingStore: RecordingStore;
+}): Promise<WatchdogRunResult> {
+  const existing = await activeChannelCorrelationEvent(healthEventStore, recording.id);
+  const details = channelCorrelationDetails(recording, policy, evaluation, now, existing);
+
+  if (!existing) {
+    const event = await healthEventStore.create({
+      details,
+      nodeId: recording.nodeId,
+      recordingId: recording.id,
+      scheduleId: recording.scheduleId,
+      severity: policy.severity,
+      type: channelCorrelationEventType,
+    });
+
+    await syncRecordingHealth(healthEventStore, recordingStore, recording.id);
+    await appendWatchdogAudit(auditStore, {
+      action: "health.watchdog.channel_correlation.created",
+      after: healthEventSnapshot(event),
+      event,
+      now,
+      outcome: "succeeded",
+      recording,
+    });
+
+    return {
+      eventId: event.id,
+      maxMetricDbfs: evaluation.maxMetricDbfs,
+      outcome: "alert_created",
+      reason: "channel_correlation_above_threshold",
+      recordingId: recording.id,
+      scheduleId: recording.scheduleId,
+    };
+  }
+
+  const repeatDue = shouldRepeat(existing, policy, now);
+  const event = await healthEventStore.update(existing.id, {
+    details,
+    severity: policy.severity,
+    status: existing.status,
+  });
+
+  if (!event) {
+    return {
+      maxMetricDbfs: evaluation.maxMetricDbfs,
+      outcome: "skipped",
+      reason: "health_event_missing_during_update",
+      recordingId: recording.id,
+      scheduleId: recording.scheduleId,
+    };
+  }
+
+  await syncRecordingHealth(healthEventStore, recordingStore, recording.id);
+
+  if (repeatDue) {
+    await appendWatchdogAudit(auditStore, {
+      action: "health.watchdog.channel_correlation.repeated",
+      after: healthEventSnapshot(event),
+      before: healthEventSnapshot(existing),
+      event,
+      now,
+      outcome: "succeeded",
+      recording,
+    });
+  }
+
+  return {
+    eventId: event.id,
+    maxMetricDbfs: evaluation.maxMetricDbfs,
+    outcome: repeatDue ? "alert_repeated" : "alert_updated",
+    reason: "channel_correlation_above_threshold",
+    recordingId: recording.id,
+    scheduleId: recording.scheduleId,
+  };
+}
+
+async function resolveChannelCorrelationEvent({
+  auditStore,
+  evaluation,
+  healthEventStore,
+  now,
+  policy,
+  recording,
+  recordingStore,
+}: {
+  auditStore: AuditStore;
+  evaluation: SignalEvaluation;
+  healthEventStore: HealthEventStore;
+  now: Date;
+  policy: WatchdogPolicy;
+  recording: RecordingSummary;
+  recordingStore: RecordingStore;
+}): Promise<WatchdogRunResult> {
+  const existing = await activeChannelCorrelationEvent(healthEventStore, recording.id);
+
+  if (!existing) {
+    return {
+      maxMetricDbfs: evaluation.maxMetricDbfs,
+      outcome: "healthy",
+      recordingId: recording.id,
+      scheduleId: recording.scheduleId,
+    };
+  }
+
+  const resolved = await healthEventStore.updateLifecycle(existing.id, {
+    details: {
+      ...existing.details,
+      autoResolvedAt: now.toISOString(),
+      autoResolvedReason: "channel_correlation_below_threshold",
+      recoveryEvaluation: channelCorrelationEvaluationDetails(policy, evaluation),
+    },
+    resolvedAt: now,
+    resolvedBy: "system:watchdog",
+    status: "resolved",
+  });
+
+  if (!resolved) {
+    return {
+      maxMetricDbfs: evaluation.maxMetricDbfs,
+      outcome: "skipped",
+      reason: "health_event_missing_during_resolve",
+      recordingId: recording.id,
+      scheduleId: recording.scheduleId,
+    };
+  }
+
+  await syncRecordingHealth(healthEventStore, recordingStore, recording.id);
+  await appendWatchdogAudit(auditStore, {
+    action: "health.watchdog.channel_correlation.resolved",
+    after: healthEventSnapshot(resolved),
+    before: healthEventSnapshot(existing),
+    event: resolved,
+    now,
+    outcome: "succeeded",
+    recording,
+  });
+
+  return {
+    eventId: resolved.id,
+    maxMetricDbfs: evaluation.maxMetricDbfs,
+    outcome: "alert_resolved",
+    reason: "channel_correlation_below_threshold",
+    recordingId: recording.id,
+    scheduleId: recording.scheduleId,
+  };
+}
+
 async function activeLowSignalEvent(healthEventStore: HealthEventStore, recordingId: string) {
   const events = await healthEventStore.list({ limit: 500, recordingId });
 
@@ -548,31 +560,15 @@ async function activeLowSignalEvent(healthEventStore: HealthEventStore, recordin
   );
 }
 
-async function activeNodeOfflineEvent(healthEventStore: HealthEventStore, nodeId: string) {
-  const events = await healthEventStore.list({ limit: 500, nodeId });
+async function activeChannelCorrelationEvent(
+  healthEventStore: HealthEventStore,
+  recordingId: string,
+) {
+  const events = await healthEventStore.list({ limit: 500, recordingId });
 
-  return events.find((event) => event.type === nodeOfflineEventType && event.status !== "resolved");
-}
-
-function nodeOfflineDetails(node: RecorderNode, now: Date, existing?: HealthEvent) {
-  const existingDetails = record(existing?.details) ?? {};
-  const firstObservedAt =
-    stringDetail(existingDetails.firstObservedAt) ?? existing?.openedAt ?? now.toISOString();
-
-  return {
-    ...existingDetails,
-    alias: node.alias,
-    firstObservedAt,
-    hostname: node.hostname,
-    ipAddresses: node.ipAddresses,
-    lastObservedAt: now.toISOString(),
-    lastSeenAt: node.lastSeenAt,
-    location: node.location,
-    offlineAfterSeconds: nodeOfflineAfterSeconds(),
-    offlineForSeconds: nodeHeartbeatAgeSeconds(node, now),
-    reportedStatus: node.status,
-    tags: node.tags,
-  };
+  return events.find(
+    (event) => event.type === channelCorrelationEventType && event.status !== "resolved",
+  );
 }
 
 function lowSignalDetails(
@@ -595,6 +591,39 @@ function lowSignalDetails(
   return {
     ...existingDetails,
     ...evaluationDetails(policy, evaluation),
+    evaluationCount,
+    firstObservedAt,
+    lastObservedAt: now.toISOString(),
+    lastRepeatedAt,
+    nodeId: recording.nodeId,
+    recordingId: recording.id,
+    repeatCount,
+    scheduleId: recording.scheduleId,
+    watchdogPolicyId: policy.id,
+    watchdogPolicyName: policy.name,
+  };
+}
+
+function channelCorrelationDetails(
+  recording: RecordingSummary,
+  policy: WatchdogPolicy,
+  evaluation: SignalEvaluation,
+  now: Date,
+  existing?: HealthEvent,
+) {
+  const existingDetails = record(existing?.details) ?? {};
+  const repeatDue = existing ? shouldRepeat(existing, policy, now) : false;
+  const repeatCount = numberDetail(existingDetails.repeatCount) + (repeatDue ? 1 : 0);
+  const evaluationCount = numberDetail(existingDetails.evaluationCount) + 1;
+  const firstObservedAt =
+    stringDetail(existingDetails.firstObservedAt) ?? existing?.openedAt ?? now.toISOString();
+  const lastRepeatedAt = repeatDue
+    ? now.toISOString()
+    : (stringDetail(existingDetails.lastRepeatedAt) ?? existing?.openedAt);
+
+  return {
+    ...existingDetails,
+    ...channelCorrelationEvaluationDetails(policy, evaluation),
     evaluationCount,
     firstObservedAt,
     lastObservedAt: now.toISOString(),
@@ -637,127 +666,20 @@ function evaluationDetails(policy: WatchdogPolicy, evaluation: SignalEvaluation)
   };
 }
 
-function signalSample(
-  frame: MeterFrame | undefined,
-  policy: WatchdogPolicy,
-  lastSampleAtMs: number | undefined,
-  now: Date,
-): SignalSample {
-  const durationSeconds = lastSampleAtMs
-    ? Math.min(Math.max((now.getTime() - lastSampleAtMs) / 1_000, 0), maxSampleSpanSeconds())
-    : 0;
-
-  if (!frame || frame.levels.length === 0) {
-    return {
-      capturedAtMs: now.getTime(),
-      durationSeconds,
-      maxNoiseScore: 0,
-      maxPeakDbfs: -160,
-      maxRmsDbfs: -160,
-      maxSpeechScore: 0,
-      metricDbfs: -160,
-      speechLike: false,
-    };
-  }
-
-  const maxPeak = Math.max(...frame.levels.map((level) => level.peakDbfs));
-  const maxRms = Math.max(...frame.levels.map((level) => level.rmsDbfs));
-  const maxNoiseScore = Math.max(0, ...frame.levels.map((level) => level.quality?.noiseScore ?? 0));
-  const maxSpeechScore = Math.max(
-    0,
-    ...frame.levels.map((level) => level.quality?.speechScore ?? 0),
-  );
-  const metricLevel =
-    policy.metric === "peak"
-      ? maxBy(frame.levels, (level) => level.peakDbfs)
-      : maxBy(frame.levels, (level) => level.rmsDbfs);
-
+function channelCorrelationEvaluationDetails(policy: WatchdogPolicy, evaluation: SignalEvaluation) {
   return {
-    capturedAtMs: now.getTime(),
-    channelIndex: metricLevel.channelIndex,
-    durationSeconds,
-    interfaceId: frame.interfaceId,
-    maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
-    maxPeakDbfs: Number(maxPeak.toFixed(1)),
-    maxRmsDbfs: Number(maxRms.toFixed(1)),
-    maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
-    metricDbfs: Number(metricValue(frame, policy).toFixed(1)),
-    speechLike: maxSpeechScore >= minSpeechScore(policy),
+    channelCorrelationAboveThreshold: channelCorrelationIsAbovePolicy(evaluation, policy),
+    channelCorrelationMode: policy.channelCorrelationMode ?? "off",
+    channelCorrelationThreshold: channelCorrelationThreshold(policy),
+    coverageSeconds: Number(evaluation.coverageSeconds.toFixed(1)),
+    cumulativeCorrelatedSeconds: Number(evaluation.cumulativeCorrelatedSeconds.toFixed(1)),
+    latestChannelCorrelationPairs: evaluation.latestChannelCorrelationPairs,
+    maxChannelCorrelationScore: evaluation.maxChannelCorrelationScore,
+    minCumulativeChannelCorrelationSeconds: minCumulativeChannelCorrelationSeconds(policy),
+    sampleCount: evaluation.sampleCount,
+    windowSeconds: policy.windowSeconds,
+    windowStartedAt: evaluation.windowStartedAt,
   };
-}
-
-function signalEvaluation(
-  history: SignalHistory,
-  policy: WatchdogPolicy,
-  now: Date,
-): SignalEvaluation {
-  const windowStartMs = now.getTime() - policy.windowSeconds * 1_000;
-  const samples = history.samples.filter((sample) => sample.capturedAtMs >= windowStartMs);
-  const latest = samples.at(-1);
-  const maxMetricDbfs = samples.length
-    ? Math.max(...samples.map((sample) => sample.metricDbfs))
-    : -160;
-  const coverageSeconds = samples.reduce((total, sample) => total + sample.durationSeconds, 0);
-  const cumulativeSecondsAboveThreshold = samples
-    .filter((sample) => sample.metricDbfs >= policy.thresholdDbfs)
-    .reduce((total, sample) => total + sample.durationSeconds, 0);
-  const cumulativeSpeechLikeSeconds = samples
-    .filter((sample) => sample.speechLike)
-    .reduce((total, sample) => total + sample.durationSeconds, 0);
-  const maxNoiseScore = samples.length
-    ? Math.max(...samples.map((sample) => sample.maxNoiseScore))
-    : 0;
-  const maxSpeechScore = samples.length
-    ? Math.max(...samples.map((sample) => sample.maxSpeechScore))
-    : 0;
-
-  return {
-    coverageSeconds,
-    cumulativeSecondsAboveThreshold,
-    cumulativeSpeechLikeSeconds,
-    latestChannelIndex: latest?.channelIndex,
-    latestInterfaceId: latest?.interfaceId,
-    latestMetricDbfs: latest?.metricDbfs ?? -160,
-    latestNoiseScore: latest?.maxNoiseScore ?? 0,
-    latestPeakDbfs: latest?.maxPeakDbfs ?? -160,
-    latestRmsDbfs: latest?.maxRmsDbfs ?? -160,
-    latestSpeechScore: latest?.maxSpeechScore ?? 0,
-    maxMetricDbfs: Number(maxMetricDbfs.toFixed(1)),
-    maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
-    maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
-    sampleCount: samples.length,
-    windowStartedAt: new Date(windowStartMs).toISOString(),
-  };
-}
-
-function signalIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
-  return signalLevelIsBelowPolicy(evaluation, policy) || speechIsBelowPolicy(evaluation, policy);
-}
-
-function signalLevelIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
-  if (evaluation.maxMetricDbfs < policy.thresholdDbfs) {
-    return true;
-  }
-
-  if (evaluation.coverageSeconds < policy.minCumulativeSecondsAboveThreshold) {
-    return false;
-  }
-
-  return evaluation.cumulativeSecondsAboveThreshold < policy.minCumulativeSecondsAboveThreshold;
-}
-
-function speechIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
-  if (policy.qualityMode !== "speech_required") {
-    return false;
-  }
-
-  const requiredSpeechSeconds = minCumulativeSpeechSeconds(policy);
-
-  if (evaluation.coverageSeconds < requiredSpeechSeconds) {
-    return false;
-  }
-
-  return evaluation.cumulativeSpeechLikeSeconds < requiredSpeechSeconds;
 }
 
 function watchdogApplies(policy: WatchdogPolicy, recording: RecordingSummary) {
@@ -781,37 +703,6 @@ function shouldRepeat(event: HealthEvent, policy: WatchdogPolicy, now: Date) {
   const lastRepeatedAt = stringDetail(details.lastRepeatedAt) ?? event.openedAt;
 
   return now.getTime() - Date.parse(lastRepeatedAt) >= policy.repeatEverySeconds * 1_000;
-}
-
-function historyFor(histories: Map<string, SignalHistory>, recordingId: string) {
-  const existing = histories.get(recordingId);
-
-  if (existing) {
-    return existing;
-  }
-
-  const history: SignalHistory = { samples: [] };
-
-  histories.set(recordingId, history);
-
-  return history;
-}
-
-function pruneHistory(history: SignalHistory, policy: WatchdogPolicy, now: Date) {
-  const oldestSampleAt = now.getTime() - policy.windowSeconds * 1_000;
-
-  history.samples = history.samples.filter((sample) => sample.capturedAtMs >= oldestSampleAt);
-}
-
-function pruneInactiveHistories(
-  histories: Map<string, SignalHistory>,
-  activeRecordingIds: Set<string>,
-) {
-  for (const recordingId of histories.keys()) {
-    if (!activeRecordingIds.has(recordingId)) {
-      histories.delete(recordingId);
-    }
-  }
 }
 
 async function appendWatchdogAudit(
@@ -860,49 +751,6 @@ async function appendWatchdogAudit(
   });
 }
 
-async function appendNodeWatchdogAudit(
-  auditStore: AuditStore,
-  input: {
-    action: string;
-    after?: Record<string, unknown>;
-    before?: Record<string, unknown>;
-    event: HealthEvent;
-    node: RecorderNode;
-    now: Date;
-    outcome: AuditEvent["outcome"];
-  },
-) {
-  await auditStore.append({
-    action: input.action,
-    actor: {
-      id: "system:watchdog",
-      name: "Rakkr Watchdog",
-      roles: [],
-      type: "system",
-    },
-    actorContext: {},
-    after: input.after,
-    before: input.before,
-    correlationIds: {
-      healthEventId: input.event.id,
-      nodeId: input.node.id,
-    },
-    createdAt: input.now.toISOString(),
-    details: {
-      lastSeenAt: input.node.lastSeenAt,
-      nodeId: input.node.id,
-    },
-    id: `audit_${randomUUID()}`,
-    outcome: input.outcome,
-    permission: "health:acknowledge",
-    target: {
-      id: input.event.id,
-      name: input.event.type,
-      type: "health_event",
-    },
-  });
-}
-
 function healthEventSnapshot(event: HealthEvent) {
   return {
     acknowledgedAt: event.acknowledgedAt,
@@ -928,36 +776,6 @@ function defaultMeterFrameProvider(nodeId: string) {
   return frame.nodeId === nodeId ? frame : undefined;
 }
 
-function metricValue(frame: MeterFrame, policy: WatchdogPolicy) {
-  if (policy.metric === "peak") {
-    return Math.max(...frame.levels.map((level) => level.peakDbfs));
-  }
-
-  if (policy.metric === "percentile_95") {
-    return percentile(
-      frame.levels.map((level) => level.rmsDbfs),
-      0.95,
-    );
-  }
-
-  return Math.max(...frame.levels.map((level) => level.rmsDbfs));
-}
-
-function percentile(values: number[], percentileValue: number) {
-  if (values.length === 0) {
-    return -160;
-  }
-
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * percentileValue) - 1);
-
-  return sorted[index] ?? -160;
-}
-
-function maxBy<T>(values: T[], selector: (value: T) => number) {
-  return values.reduce((winner, value) => (selector(value) > selector(winner) ? value : winner));
-}
-
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -974,18 +792,6 @@ function stringDetail(value: unknown) {
 
 function watchdogRunnerIntervalMs() {
   return positiveInteger(process.env.RAKKR_WATCHDOG_RUNNER_INTERVAL_SECONDS, 30) * 1_000;
-}
-
-function maxSampleSpanSeconds() {
-  return positiveInteger(process.env.RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS, 30);
-}
-
-function minCumulativeSpeechSeconds(policy: WatchdogPolicy) {
-  return policy.minCumulativeSpeechSeconds ?? policy.minCumulativeSecondsAboveThreshold;
-}
-
-function minSpeechScore(policy: WatchdogPolicy) {
-  return policy.minSpeechScore ?? 0.55;
 }
 
 function positiveInteger(value: string | undefined, fallback: number) {

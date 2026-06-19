@@ -1,0 +1,326 @@
+import type { MeterFrame, WatchdogPolicy } from "@rakkr/shared";
+
+export interface SignalHistory {
+  lastSampleAtMs?: number;
+  samples: SignalSample[];
+}
+
+interface ChannelCorrelationPair {
+  leftChannelIndex: number;
+  phase: "inverted" | "same";
+  rightChannelIndex: number;
+  score: number;
+}
+
+interface SignalSample {
+  capturedAtMs: number;
+  channelCorrelationPairs: ChannelCorrelationPair[];
+  channelIndex?: number;
+  durationSeconds: number;
+  interfaceId?: string;
+  maxChannelCorrelationScore: number;
+  maxNoiseScore: number;
+  maxPeakDbfs: number;
+  maxRmsDbfs: number;
+  maxSpeechScore: number;
+  metricDbfs: number;
+  speechLike: boolean;
+}
+
+export interface SignalEvaluation {
+  coverageSeconds: number;
+  cumulativeCorrelatedSeconds: number;
+  cumulativeSecondsAboveThreshold: number;
+  cumulativeSpeechLikeSeconds: number;
+  latestChannelCorrelationPairs: ChannelCorrelationPair[];
+  latestChannelIndex?: number;
+  latestInterfaceId?: string;
+  latestMetricDbfs: number;
+  latestNoiseScore: number;
+  latestPeakDbfs: number;
+  latestRmsDbfs: number;
+  latestSpeechScore: number;
+  maxChannelCorrelationScore: number;
+  maxMetricDbfs: number;
+  maxNoiseScore: number;
+  maxSpeechScore: number;
+  sampleCount: number;
+  windowStartedAt: string;
+}
+
+export function historyFor(histories: Map<string, SignalHistory>, recordingId: string) {
+  const existing = histories.get(recordingId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const history: SignalHistory = { samples: [] };
+
+  histories.set(recordingId, history);
+
+  return history;
+}
+
+export function pruneHistory(history: SignalHistory, policy: WatchdogPolicy, now: Date) {
+  const oldestSampleAt = now.getTime() - policy.windowSeconds * 1_000;
+
+  history.samples = history.samples.filter((sample) => sample.capturedAtMs >= oldestSampleAt);
+}
+
+export function pruneInactiveHistories(
+  histories: Map<string, SignalHistory>,
+  activeRecordingIds: Set<string>,
+) {
+  for (const recordingId of histories.keys()) {
+    if (!activeRecordingIds.has(recordingId)) {
+      histories.delete(recordingId);
+    }
+  }
+}
+
+export function signalSample(
+  frame: MeterFrame | undefined,
+  policy: WatchdogPolicy,
+  lastSampleAtMs: number | undefined,
+  now: Date,
+): SignalSample {
+  const durationSeconds = lastSampleAtMs
+    ? Math.min(Math.max((now.getTime() - lastSampleAtMs) / 1_000, 0), maxSampleSpanSeconds())
+    : 0;
+
+  if (!frame || frame.levels.length === 0) {
+    return {
+      capturedAtMs: now.getTime(),
+      channelCorrelationPairs: [],
+      durationSeconds,
+      maxChannelCorrelationScore: 0,
+      maxNoiseScore: 0,
+      maxPeakDbfs: -160,
+      maxRmsDbfs: -160,
+      maxSpeechScore: 0,
+      metricDbfs: -160,
+      speechLike: false,
+    };
+  }
+
+  const channelCorrelationPairs = strongestCorrelationPairs(frame);
+  const maxChannelCorrelationScore = Math.max(
+    0,
+    ...channelCorrelationPairs.map((pair) => Math.abs(pair.score)),
+  );
+  const maxPeak = Math.max(...frame.levels.map((level) => level.peakDbfs));
+  const maxRms = Math.max(...frame.levels.map((level) => level.rmsDbfs));
+  const maxNoiseScore = Math.max(0, ...frame.levels.map((level) => level.quality?.noiseScore ?? 0));
+  const maxSpeechScore = Math.max(
+    0,
+    ...frame.levels.map((level) => level.quality?.speechScore ?? 0),
+  );
+  const metricLevel =
+    policy.metric === "peak"
+      ? maxBy(frame.levels, (level) => level.peakDbfs)
+      : maxBy(frame.levels, (level) => level.rmsDbfs);
+
+  return {
+    capturedAtMs: now.getTime(),
+    channelCorrelationPairs,
+    channelIndex: metricLevel.channelIndex,
+    durationSeconds,
+    interfaceId: frame.interfaceId,
+    maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
+    maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
+    maxPeakDbfs: Number(maxPeak.toFixed(1)),
+    maxRmsDbfs: Number(maxRms.toFixed(1)),
+    maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
+    metricDbfs: Number(metricValue(frame, policy).toFixed(1)),
+    speechLike: maxSpeechScore >= minSpeechScore(policy),
+  };
+}
+
+export function signalEvaluation(
+  history: SignalHistory,
+  policy: WatchdogPolicy,
+  now: Date,
+): SignalEvaluation {
+  const windowStartMs = now.getTime() - policy.windowSeconds * 1_000;
+  const samples = history.samples.filter((sample) => sample.capturedAtMs >= windowStartMs);
+  const latest = samples.at(-1);
+  const maxMetricDbfs = samples.length
+    ? Math.max(...samples.map((sample) => sample.metricDbfs))
+    : -160;
+  const coverageSeconds = samples.reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeSecondsAboveThreshold = samples
+    .filter((sample) => sample.metricDbfs >= policy.thresholdDbfs)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeSpeechLikeSeconds = samples
+    .filter((sample) => sample.speechLike)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeCorrelatedSeconds = samples
+    .filter((sample) => sample.maxChannelCorrelationScore >= channelCorrelationThreshold(policy))
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const maxChannelCorrelationScore = samples.length
+    ? Math.max(...samples.map((sample) => sample.maxChannelCorrelationScore))
+    : 0;
+  const maxNoiseScore = samples.length
+    ? Math.max(...samples.map((sample) => sample.maxNoiseScore))
+    : 0;
+  const maxSpeechScore = samples.length
+    ? Math.max(...samples.map((sample) => sample.maxSpeechScore))
+    : 0;
+
+  return {
+    coverageSeconds,
+    cumulativeCorrelatedSeconds,
+    cumulativeSecondsAboveThreshold,
+    cumulativeSpeechLikeSeconds,
+    latestChannelCorrelationPairs: latest?.channelCorrelationPairs ?? [],
+    latestChannelIndex: latest?.channelIndex,
+    latestInterfaceId: latest?.interfaceId,
+    latestMetricDbfs: latest?.metricDbfs ?? -160,
+    latestNoiseScore: latest?.maxNoiseScore ?? 0,
+    latestPeakDbfs: latest?.maxPeakDbfs ?? -160,
+    latestRmsDbfs: latest?.maxRmsDbfs ?? -160,
+    latestSpeechScore: latest?.maxSpeechScore ?? 0,
+    maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
+    maxMetricDbfs: Number(maxMetricDbfs.toFixed(1)),
+    maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
+    maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
+    sampleCount: samples.length,
+    windowStartedAt: new Date(windowStartMs).toISOString(),
+  };
+}
+
+export function signalIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  return signalLevelIsBelowPolicy(evaluation, policy) || speechIsBelowPolicy(evaluation, policy);
+}
+
+export function signalLevelIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  if (evaluation.maxMetricDbfs < policy.thresholdDbfs) {
+    return true;
+  }
+
+  if (evaluation.coverageSeconds < policy.minCumulativeSecondsAboveThreshold) {
+    return false;
+  }
+
+  return evaluation.cumulativeSecondsAboveThreshold < policy.minCumulativeSecondsAboveThreshold;
+}
+
+export function speechIsBelowPolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  if (policy.qualityMode !== "speech_required") {
+    return false;
+  }
+
+  const requiredSpeechSeconds = minCumulativeSpeechSeconds(policy);
+
+  if (evaluation.coverageSeconds < requiredSpeechSeconds) {
+    return false;
+  }
+
+  return evaluation.cumulativeSpeechLikeSeconds < requiredSpeechSeconds;
+}
+
+export function channelCorrelationIsAbovePolicy(
+  evaluation: SignalEvaluation,
+  policy: WatchdogPolicy,
+) {
+  if (policy.channelCorrelationMode !== "alert_on_high") {
+    return false;
+  }
+
+  const requiredSeconds = minCumulativeChannelCorrelationSeconds(policy);
+
+  if (evaluation.coverageSeconds < requiredSeconds) {
+    return false;
+  }
+
+  return evaluation.cumulativeCorrelatedSeconds >= requiredSeconds;
+}
+
+export function channelCorrelationThreshold(policy: WatchdogPolicy) {
+  return policy.channelCorrelationThreshold ?? 0.98;
+}
+
+export function minCumulativeChannelCorrelationSeconds(policy: WatchdogPolicy) {
+  return policy.minCumulativeChannelCorrelationSeconds ?? policy.minCumulativeSecondsAboveThreshold;
+}
+
+export function minCumulativeSpeechSeconds(policy: WatchdogPolicy) {
+  return policy.minCumulativeSpeechSeconds ?? policy.minCumulativeSecondsAboveThreshold;
+}
+
+export function minSpeechScore(policy: WatchdogPolicy) {
+  return policy.minSpeechScore ?? 0.55;
+}
+
+function strongestCorrelationPairs(frame: MeterFrame): ChannelCorrelationPair[] {
+  const pairs = new Map<string, ChannelCorrelationPair>();
+
+  for (const level of frame.levels) {
+    const correlation = level.quality?.channelCorrelation;
+
+    if (!correlation) {
+      continue;
+    }
+
+    const leftChannelIndex = Math.min(level.channelIndex, correlation.peerChannelIndex);
+    const rightChannelIndex = Math.max(level.channelIndex, correlation.peerChannelIndex);
+    const key = `${leftChannelIndex}:${rightChannelIndex}`;
+    const existing = pairs.get(key);
+
+    if (!existing || Math.abs(correlation.score) > Math.abs(existing.score)) {
+      pairs.set(key, {
+        leftChannelIndex,
+        phase: correlation.phase,
+        rightChannelIndex,
+        score: correlation.score,
+      });
+    }
+  }
+
+  return Array.from(pairs.values()).sort(
+    (left, right) =>
+      left.leftChannelIndex - right.leftChannelIndex ||
+      left.rightChannelIndex - right.rightChannelIndex,
+  );
+}
+
+function metricValue(frame: MeterFrame, policy: WatchdogPolicy) {
+  if (policy.metric === "peak") {
+    return Math.max(...frame.levels.map((level) => level.peakDbfs));
+  }
+
+  if (policy.metric === "percentile_95") {
+    return percentile(
+      frame.levels.map((level) => level.rmsDbfs),
+      0.95,
+    );
+  }
+
+  return Math.max(...frame.levels.map((level) => level.rmsDbfs));
+}
+
+function percentile(values: number[], percentileValue: number) {
+  if (values.length === 0) {
+    return -160;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * percentileValue) - 1);
+
+  return sorted[index] ?? -160;
+}
+
+function maxBy<T>(values: T[], selector: (value: T) => number) {
+  return values.reduce((winner, value) => (selector(value) > selector(winner) ? value : winner));
+}
+
+function maxSampleSpanSeconds() {
+  return positiveInteger(process.env.RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS, 30);
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}

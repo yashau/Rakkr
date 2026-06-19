@@ -4,6 +4,8 @@ const baselineFile = "docs/health/HEALTH_WATCHDOG_BASELINE.md";
 const sourceFiles = [
   "packages/shared/src/index.ts",
   "apps/api/src/watchdog-runner.ts",
+  "apps/api/src/watchdog-signal.ts",
+  "apps/api/src/watchdog-node-liveness.ts",
   "apps/api/src/health-store.ts",
   "apps/api/src/health-routes.ts",
   "apps/api/src/health-sync.ts",
@@ -29,6 +31,7 @@ const baselinePhrases = [
   "configurable grace, window, metric, dBFS threshold",
   "open, repeat, and auto-resolve",
   "Speech-required policies",
+  "Channel-correlation policies",
   "hum/static",
   "Node liveness",
   "local JSONL health logs",
@@ -44,7 +47,7 @@ const baselinePhrases = [
   "quality timelines",
   "Prometheus export",
   "hum/static likelihood",
-  "policy-tuned channel correlation detection",
+  "field calibration",
   "mise run health:check-watchdog",
 ];
 const sourceSnippets = [
@@ -56,8 +59,16 @@ const sourceSnippets = [
   "health.watchdog.low_signal.resolved",
   "health.watchdog.node_offline.created",
   "health.watchdog.node_offline.resolved",
+  "health.watchdog.channel_correlation.created",
+  "health.watchdog.channel_correlation.repeated",
+  "health.watchdog.channel_correlation.resolved",
   "signalBelowThreshold",
   "speechBelowThreshold",
+  "channelCorrelationAboveThreshold",
+  "channelCorrelationIsAbovePolicy",
+  "channelCorrelationMode",
+  "channelCorrelationThreshold",
+  "minCumulativeChannelCorrelationSeconds",
   "maxNoiseScore",
   "minCumulativeSpeechSeconds",
   "syncRecordingHealth",
@@ -98,6 +109,7 @@ const sourceSnippets = [
 ];
 const testSnippets = [
   "alerts when scheduled audio is loud but not speech-like",
+  "creates and resolves scheduled channel correlation alerts from policy",
   "repeats unresolved scheduled low-signal alerts after policy interval",
   "resolves scheduled low-signal alerts when signal recovers",
   "creates and resolves stale node heartbeat health events",
@@ -157,7 +169,7 @@ for (const snippet of testSnippets) {
 }
 
 if (/Status:\s*MVP baseline checked/iu.test(baseline)) {
-  errors.push(`${baselineFile} must remain partial until hum/static and correlation gaps close`);
+  errors.push(`${baselineFile} must remain partial until hum/static field calibration closes`);
 }
 
 if (errors.length > 0) {

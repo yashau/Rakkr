@@ -429,9 +429,12 @@ export const scheduleRecurrenceSchema = z.discriminatedUnion("mode", [
 
 export const watchdogPolicySchema = z.object({
   activeDuring: z.enum(["always", "scheduled_recording", "recording"]),
+  channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
+  channelCorrelationThreshold: z.number().min(0).max(1).optional(),
   graceSeconds: z.number().int().nonnegative(),
   id: z.string().min(1),
   metric: z.enum(["peak", "rms", "percentile_95"]),
+  minCumulativeChannelCorrelationSeconds: z.number().nonnegative().optional(),
   minCumulativeSecondsAboveThreshold: z.number().nonnegative(),
   minCumulativeSpeechSeconds: z.number().nonnegative().optional(),
   minSpeechScore: z.number().min(0).max(1).optional(),
@@ -445,8 +448,11 @@ export const watchdogPolicySchema = z.object({
 export const watchdogPolicyUpdateSchema = z
   .object({
     activeDuring: z.enum(["always", "scheduled_recording", "recording"]).optional(),
+    channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
+    channelCorrelationThreshold: z.number().min(0).max(1).optional(),
     graceSeconds: z.number().int().nonnegative().max(86_400).optional(),
     metric: z.enum(["peak", "rms", "percentile_95"]).optional(),
+    minCumulativeChannelCorrelationSeconds: z.number().nonnegative().max(86_400).optional(),
     minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400).optional(),
     minCumulativeSpeechSeconds: z.number().nonnegative().max(86_400).optional(),
     minSpeechScore: z.number().min(0).max(1).optional(),
@@ -739,9 +745,12 @@ export const defaultStubUploadPolicy = {
 
 export const defaultScheduledVoiceWatchdogPolicy = {
   activeDuring: "scheduled_recording",
+  channelCorrelationMode: "alert_on_high",
+  channelCorrelationThreshold: 0.98,
   graceSeconds: 300,
   id: "scheduled-voice-watchdog",
   metric: "rms",
+  minCumulativeChannelCorrelationSeconds: 10,
   minCumulativeSecondsAboveThreshold: 10,
   name: "Scheduled Voice Watchdog",
   repeatEverySeconds: 900,

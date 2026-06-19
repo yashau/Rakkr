@@ -669,11 +669,17 @@ function uploadPolicySnapshot(policy: UploadPolicy) {
 function watchdogSnapshot(policy: WatchdogPolicy) {
   return {
     activeDuring: policy.activeDuring,
+    channelCorrelationMode: policy.channelCorrelationMode ?? "off",
+    channelCorrelationThreshold: policy.channelCorrelationThreshold,
     graceSeconds: policy.graceSeconds,
     id: policy.id,
     metric: policy.metric,
+    minCumulativeChannelCorrelationSeconds: policy.minCumulativeChannelCorrelationSeconds,
     minCumulativeSecondsAboveThreshold: policy.minCumulativeSecondsAboveThreshold,
+    minCumulativeSpeechSeconds: policy.minCumulativeSpeechSeconds,
+    minSpeechScore: policy.minSpeechScore,
     name: policy.name,
+    qualityMode: policy.qualityMode ?? "signal_only",
     repeatEverySeconds: policy.repeatEverySeconds,
     severity: policy.severity,
     thresholdDbfs: policy.thresholdDbfs,
