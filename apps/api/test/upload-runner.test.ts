@@ -149,9 +149,62 @@ test("upload runner routes expose status and run-now control", async () => {
   assert.equal(events[0]?.actor.id, "user_upload_runner_test");
 });
 
+test("upload runner run-now route denies users without recording control", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const providerStore = createUploadProviderStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+
+  registerUploadRunnerRoutes({
+    app,
+    currentAuth: () => ({ user: viewer() }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyMissingPermission(auditStore),
+    uploadRunner: runner,
+  });
+  await enqueueRecordingUpload(recording("rec_upload_runner_denied_route_test"), {
+    provider: "stub",
+    target: "stub://queue-only",
+  });
+
+  const response = await app.request("/api/v1/upload-runner/run", { method: "POST" });
+  const status = runner.status();
+  const events = await auditStore.list({ action: "recordings.upload_runner.run" });
+
+  assert.equal(response.status, 403);
+  assert.equal(status.lastSummary, undefined);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.outcome, "denied");
+  assert.equal(events[0]?.permission, "recording:control");
+  assert.equal(events[0]?.reason, "missing_permission");
+  assert.equal(events[0]?.target.type, "upload_runner");
+});
+
 const allow: RequirePermission = () => async (_c, next) => {
   await next();
 };
+
+function denyMissingPermission(auditStore: ReturnType<typeof createAuditStore>): RequirePermission {
+  return (permission, action, target) => async (c) => {
+    const auditTarget = target ? await target(c) : { type: "controller" as const };
+
+    await recordAuditEvent(auditStore)(c, {
+      action,
+      auth: { user: viewer() },
+      details: {
+        requiredPermission: permission,
+        resourceScope: auditTarget,
+        roles: ["viewer"],
+      },
+      outcome: "denied",
+      permission,
+      reason: "missing_permission",
+      target: auditTarget,
+    });
+
+    return c.json({ error: "Forbidden", permission }, 403);
+  };
+}
 
 function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
   return async (_c, input) => {
@@ -193,6 +246,19 @@ function user(): CurrentUser {
     provider: "local",
     resourceGrants: [],
     roles: ["admin"],
+  };
+}
+
+function viewer(): CurrentUser {
+  return {
+    email: "upload-runner-viewer@example.com",
+    groups: [],
+    id: "user_upload_runner_viewer_test",
+    name: "Upload Runner Viewer Test",
+    permissions: ["recording:read"],
+    provider: "local",
+    resourceGrants: [],
+    roles: ["viewer"],
   };
 }
 

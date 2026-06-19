@@ -321,6 +321,7 @@ Current partial implementation:
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edit/control/delete actions.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
+- Upload runner run-now control has route coverage for missing-permission denial.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
@@ -429,7 +430,7 @@ Current partial implementation:
 - SMB copies cached files to mounted share targets; S3 sends cached files to `s3://` targets.
 - SMB verifies copied bytes with SHA-256; S3 uploads send `ChecksumSHA256`.
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
-- Controller API and Settings UI expose upload runner status and run-now control.
+- Controller API and Settings UI expose upload runner status and RBAC-gated run-now control.
 - Upload policies can delete controller cache after confirmed non-stub upload.
 
 ## Observability
@@ -563,6 +564,7 @@ Current partial implementation:
 67. ✅ Add access-policy deny coverage for upload queue retry.
 68. ✅ Add denied audit coverage for scoped-hidden upload queue retry attempts.
 69. ✅ Add recorder-level deny inheritance coverage for attached recording actions.
+70. ✅ Add upload runner run-now missing-permission coverage.
 
 ## Open Questions
 
