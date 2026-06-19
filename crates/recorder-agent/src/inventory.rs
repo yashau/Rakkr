@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Serialize;
@@ -147,7 +148,7 @@ fn discover_arecord_interfaces() -> Vec<AudioInterfaceInventory> {
                 hardware_path: Some(alsa_hardware_path(device.card, device.device)),
                 id: format!("alsa_hw_{}_{}", device.card, device.device),
                 sample_rates,
-                serial_number: None,
+                serial_number: alsa_serial_number(device.card),
                 system_name: device.system_name,
                 system_ref: Some(format!("hw:{},{}", device.card, device.device)),
             }
@@ -177,7 +178,7 @@ fn discover_proc_asound_interfaces() -> Vec<AudioInterfaceInventory> {
                         hardware_path: Some(alsa_hardware_path(device.card, device.device)),
                         id: format!("alsa_hw_{}_{}", device.card, device.device),
                         sample_rates,
-                        serial_number: None,
+                        serial_number: alsa_serial_number(device.card),
                         system_name: device.system_name,
                         system_ref: Some(format!("hw:{},{}", device.card, device.device)),
                     }
@@ -218,7 +219,46 @@ fn fallback_interface() -> AudioInterfaceInventory {
 }
 
 fn alsa_hardware_path(card: u16, device: u16) -> String {
-    format!("/proc/asound/card{card}/pcm{device}c")
+    canonical_path(format!("/sys/class/sound/card{card}/pcmC{card}D{device}c"))
+        .or_else(|| canonical_path(format!("/sys/class/sound/card{card}/device")))
+        .unwrap_or_else(|| PathBuf::from(format!("/proc/asound/card{card}/pcm{device}c")))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn alsa_serial_number(card: u16) -> Option<String> {
+    let device_path = canonical_path(format!("/sys/class/sound/card{card}/device"))?;
+
+    sysfs_serial_number(&device_path)
+}
+
+fn sysfs_serial_number(path: &Path) -> Option<String> {
+    path.ancestors().find_map(|candidate| {
+        read_trimmed(candidate.join("serial"))
+            .or_else(|| serial_from_uevent(&read_trimmed(candidate.join("uevent"))?))
+    })
+}
+
+fn canonical_path(path: impl AsRef<Path>) -> Option<PathBuf> {
+    fs::canonicalize(path).ok()
+}
+
+fn read_trimmed(path: impl AsRef<Path>) -> Option<String> {
+    let value = fs::read_to_string(path).ok()?.trim().to_string();
+
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn serial_from_uevent(value: &str) -> Option<String> {
+    value.lines().find_map(|line| {
+        let serial = line.strip_prefix("SERIAL=")?.trim();
+
+        if serial.is_empty() {
+            None
+        } else {
+            Some(serial.to_string())
+        }
+    })
 }
 
 fn runtime_details(interfaces: &[AudioInterfaceInventory]) -> NodeRuntime {
@@ -477,6 +517,20 @@ Capture:
                     system_name: "USB Audio".to_string(),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn parses_serial_from_sysfs_uevent() {
+        assert_eq!(
+            serial_from_uevent(
+                r#"
+PRODUCT=1397/50/100
+SERIAL=x32-rack-usb-serial
+TYPE=0/0/0
+"#
+            ),
+            Some("x32-rack-usb-serial".to_string())
         );
     }
 }
