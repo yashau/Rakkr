@@ -1,12 +1,16 @@
 import type { Permission } from "@rakkr/shared";
 
 export interface NodePageActionPermissions {
+  canRead: boolean;
+  canReadHealth: boolean;
   canListen: boolean;
   canManage: boolean;
 }
 
 export function nodePageActionPermissions(permissions: readonly Permission[]) {
   return {
+    canRead: permissions.includes("node:read"),
+    canReadHealth: permissions.includes("health:read"),
     canListen: permissions.includes("listen:monitor"),
     canManage: permissions.includes("node:manage"),
   } satisfies NodePageActionPermissions;

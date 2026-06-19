@@ -190,6 +190,7 @@ Current partial implementation:
 - Node and dashboard UI color-code online/offline/recording/degraded/alerting status.
 - Node API and inventory UI can filter visible nodes by status.
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
+- Nodes page direct access mirrors `node:read`; node health panels mirror `health:read`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
@@ -635,6 +636,7 @@ Current partial implementation:
 106. ✅ Mirror Access page management against RBAC permissions.
 107. ✅ Mirror Audit page reads and export against RBAC permissions.
 108. ✅ Mirror Dashboard reads and meters against RBAC permissions.
+109. ✅ Mirror Nodes page reads and health panels against RBAC permissions.
 
 ## Open Questions
 

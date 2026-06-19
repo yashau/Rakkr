@@ -11,6 +11,7 @@ import {
   MapPin,
   Network,
   PlusCircle,
+  ShieldCheck,
   TrendingUp,
   WifiOff,
 } from "lucide-react";
@@ -88,7 +89,11 @@ export function NodesPage() {
     queryKey: ["auth", "me"],
     staleTime: 30_000,
   });
+  const actionPermissions = nodePageActionPermissions(
+    currentUserQuery.data?.data.permissions ?? [],
+  );
   const nodesQuery = useQuery({
+    enabled: actionPermissions.canRead,
     queryFn: () =>
       api.nodes({
         q: nodeSearch.trim() || undefined,
@@ -98,6 +103,7 @@ export function NodesPage() {
     refetchInterval: 5000,
   });
   const healthEventsQuery = useQuery({
+    enabled: actionPermissions.canReadHealth,
     queryFn: () => api.healthEvents({ limit: 500 }),
     queryKey: ["node-health-events"],
     refetchInterval: 5000,
@@ -156,9 +162,22 @@ export function NodesPage() {
   );
 
   const nodes = nodesQuery.data?.data ?? [];
-  const actionPermissions = nodePageActionPermissions(
-    currentUserQuery.data?.data.permissions ?? [],
-  );
+
+  if (currentUserQuery.isPending) {
+    return <p className="text-sm text-muted-foreground">Loading nodes.</p>;
+  }
+
+  if (!actionPermissions.canRead) {
+    return (
+      <Card className="rounded-lg p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-5 text-muted-foreground" />
+          <h2 className="text-base font-semibold">Nodes</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">Node inventory is unavailable.</p>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid gap-4">
