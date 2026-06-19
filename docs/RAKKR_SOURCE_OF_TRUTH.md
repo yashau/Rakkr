@@ -392,6 +392,7 @@ Current partial implementation:
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
+- Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
 - `mise run check` includes fake-controller agent smoke coverage for `--run-next-job` without audio hardware.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
@@ -536,7 +537,8 @@ Current partial implementation:
 52. ✅ Add controller-side ad-hoc recording lifecycle regression coverage.
 53. ✅ Add fake-device agent CLI lifecycle smoke test.
 54. ✅ Add scheduled recording lifecycle coverage through agent cache attach.
-55. ⏳ Add stop-request lifecycle coverage from controller stop to agent cancellation.
+55. ✅ Add stop-request lifecycle coverage from controller stop to agent cancellation.
+56. ⏳ Add recording health sync coverage for failed/cancelled/cache terminal transitions.
 
 ## Open Questions
 

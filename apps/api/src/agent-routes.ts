@@ -684,7 +684,7 @@ export function registerAgentRoutes({
 
     const updated = {
       ...recording,
-      status: "failed" as const,
+      status: terminalRecordingStatus(recording, terminalState),
     };
 
     await recordingStore.save(updated);
@@ -694,6 +694,19 @@ export function registerAgentRoutes({
       ...updated,
       terminalState,
     };
+  }
+
+  function terminalRecordingStatus(
+    recording: RecordingSummary,
+    terminalState: "cancelled" | "failed",
+  ): RecordingSummary["status"] {
+    if (terminalState === "failed") {
+      return "failed";
+    }
+
+    return recording.status === "cached" || recording.status === "uploaded"
+      ? recording.status
+      : "completed";
   }
 
   async function recordJobSuccess(

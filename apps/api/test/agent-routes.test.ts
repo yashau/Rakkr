@@ -276,6 +276,83 @@ test("ad hoc recording completes through agent cache attach and exposes cached m
   assert.equal(autoQueueAudit?.details.uploadPolicyId, policy.id);
 });
 
+test("controller stop request survives agent cancellation as completed recording", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const lifecycleNode = {
+    ...node(),
+    alias: "Stop Lifecycle Recorder",
+    id: `node_stop_lifecycle_${randomUUID()}`,
+  };
+  const nodeStore = memoryNodeStore([lifecycleNode]);
+  const recordingStore = memoryRecordingStore();
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => auth(),
+    currentUser: () => user(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission(),
+    scopedRecordings: () => recordingStore.list(),
+    settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
+  });
+  registerAgentRoutes({
+    app,
+    healthEventStore,
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
+  });
+
+  const started = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      name: "Stop Lifecycle Recording",
+      nodeId: lifecycleNode.id,
+      tags: ["voice", "stop-lifecycle"],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const startedBody = (await started.json()) as { data: RecordingSummary; job: RecordingJob };
+  const claimed = await app.request(`/api/v1/recording-jobs/${startedBody.job.id}/claim`, {
+    headers: { authorization: "Bearer node-token" },
+    method: "POST",
+  });
+  const stopped = await app.request(`/api/v1/recordings/${startedBody.data.id}/stop`, {
+    method: "POST",
+  });
+  const stoppedBody = (await stopped.json()) as { data: RecordingSummary };
+  const cancelled = await app.request(`/api/v1/recording-jobs/${startedBody.job.id}/cancelled`, {
+    headers: {
+      authorization: "Bearer node-token",
+      "x-rakkr-reason": "controller_stop_requested",
+    },
+    method: "POST",
+  });
+  const cancelledBody = (await cancelled.json()) as { data: RecordingJob };
+  const updated = await recordingStore.find(startedBody.data.id);
+  const [stopAudit] = await auditStore.list({ action: "recordings.stop.succeeded" });
+  const [cancelAudit] = await auditStore.list({
+    action: "recording_jobs.cancelled.succeeded",
+  });
+
+  assert.equal(started.status, 202);
+  assert.equal(claimed.status, 200);
+  assert.equal(stopped.status, 200);
+  assert.equal(stoppedBody.data.status, "completed");
+  assert.equal(stopAudit?.details.jobStatus, "stop_requested");
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelledBody.data.status, "cancelled");
+  assert.equal(updated?.status, "completed");
+  assert.equal(cancelAudit?.details.reason, "controller_stop_requested");
+  assert.equal(cancelAudit?.details.recordingStatus, "completed");
+});
+
 function memoryNodeStore(nodes: RecorderNode[] = [node()]): NodeStore {
   return {
     async authenticateCredential(token) {
