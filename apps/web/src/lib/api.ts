@@ -117,6 +117,10 @@ export interface RecordingBulkMetadataUpdate {
   replaceTags?: string[];
 }
 
+export interface RecordingBulkDeleteInput {
+  recordingIds: string[];
+}
+
 export interface RecordingStartInput {
   folder?: string;
   name?: string;
@@ -552,6 +556,17 @@ export const api = {
   deleteRecording: (recordingId: string) =>
     fetchJson<void>(`/api/v1/recordings/${recordingId}`, {
       method: "DELETE",
+    }),
+  deleteRecordings: (input: RecordingBulkDeleteInput) =>
+    fetchJson<{
+      data: RecordingSummary[];
+      meta: { cacheDeletedCount: number; deletedCount: number };
+    }>("/api/v1/recordings/bulk-delete", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
     }),
   uploadQueue: () => fetchJson<{ data: UploadQueueItem[] }>("/api/v1/upload-queue"),
   uploadRunner: () => fetchJson<{ data: UploadRunnerStatus }>("/api/v1/upload-runner"),

@@ -21,7 +21,7 @@ import {
   recordingsQuerySchema,
 } from "./recording-listing.js";
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
-import { deleteRecording } from "./recording-delete.js";
+import { deleteRecording, deleteRecordings } from "./recording-delete.js";
 import {
   applyRecordingBulkMetadataUpdate,
   applyRecordingMetadataUpdate,
@@ -592,6 +592,22 @@ export function registerRecordingRoutes({
 
       return c.json({ data: updates, meta: { updatedCount: updates.length } });
     },
+  );
+
+  app.post(
+    "/api/v1/recordings/bulk-delete",
+    requirePermission("recording:delete", "recordings.bulk_delete", () => ({
+      id: "recording_collection",
+      type: "recording_collection",
+    })),
+    async (c) =>
+      deleteRecordings(c, {
+        currentAuth,
+        currentUser,
+        recordAuditEvent,
+        recordingStore,
+        scopedRecordings,
+      }),
   );
 
   app.patch(

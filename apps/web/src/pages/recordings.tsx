@@ -316,29 +316,25 @@ export function RecordingsPage() {
     },
   });
   const bulkDeleteRecordingMutation = useMutation({
-    mutationFn: async (recordingIds: string[]) => {
-      for (const recordingId of recordingIds) {
-        await api.deleteRecording(recordingId);
-      }
-
-      return recordingIds;
-    },
+    mutationFn: (recordingIds: string[]) => api.deleteRecordings({ recordingIds }),
     onError: () =>
       setNotice({
         detail: "The selected terminal recordings could not all be deleted.",
         title: "Bulk delete failed",
       }),
-    onSuccess: (recordingIds) => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["audit-events"] });
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
       queryClient.invalidateQueries({ queryKey: ["recording-facets"] });
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
       queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      const deletedIds = new Set(response.data.map((recording) => recording.id));
+
       setSelectedRecordingIds((current) =>
-        current.filter((candidate) => !recordingIds.includes(candidate)),
+        current.filter((candidate) => !deletedIds.has(candidate)),
       );
       setNotice({
-        detail: `${recordingIds.length} recordings were removed.`,
+        detail: `${response.meta.deletedCount} recordings were removed.`,
         title: "Recordings deleted",
       });
     },
