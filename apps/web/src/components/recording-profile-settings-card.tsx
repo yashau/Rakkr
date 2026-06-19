@@ -11,7 +11,13 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { optionalPositiveNumber, recordingProfileUpdate } from "@/lib/settings-updates";
 
-export function RecordingProfileSettingsCard({ profile }: { profile: RecordingProfile }) {
+export function RecordingProfileSettingsCard({
+  canManage,
+  profile,
+}: {
+  canManage: boolean;
+  profile: RecordingProfile;
+}) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(profile);
   const mutation = useMutation({
@@ -42,7 +48,11 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
             {profile.codec.toUpperCase()} / {profile.bitrateKbps} kbps / {profile.channelMode}
           </p>
         </div>
-        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+        <Button
+          disabled={mutation.isPending || !canManage}
+          onClick={() => mutation.mutate()}
+          title={canManage ? "Save recording profile" : "Requires settings manage"}
+        >
           <Save className="size-4" />
           Save
         </Button>
@@ -51,6 +61,7 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="Name">
           <Input
+            disabled={!canManage}
             onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
             value={draft.name}
           />
@@ -58,6 +69,7 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
         <Field label="Codec">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -73,6 +85,7 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
         </Field>
         <Field label="Bitrate">
           <Input
+            disabled={!canManage}
             min={1}
             onChange={(event) =>
               setDraft((current) => ({ ...current, bitrateKbps: Number(event.target.value) }))
@@ -83,6 +96,7 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
         </Field>
         <Field label="Max Track Seconds">
           <Input
+            disabled={!canManage}
             min={1}
             onChange={(event) =>
               setDraft((current) => ({
@@ -98,6 +112,7 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
         <Field label="Channel Mode">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -114,11 +129,13 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
         </Field>
         <Toggle
           checked={draft.vbr}
+          disabled={!canManage}
           label="VBR"
           onChange={(checked) => setDraft((current) => ({ ...current, vbr: checked }))}
         />
         <Toggle
           checked={draft.silenceDetectionEnabled}
+          disabled={!canManage}
           label="Silence Detection"
           onChange={(checked) =>
             setDraft((current) => ({ ...current, silenceDetectionEnabled: checked }))
@@ -126,6 +143,7 @@ export function RecordingProfileSettingsCard({ profile }: { profile: RecordingPr
         />
         <Toggle
           checked={draft.silenceSkipEnabled}
+          disabled={!canManage}
           label="Silence Skip"
           onChange={(checked) =>
             setDraft((current) => ({ ...current, silenceSkipEnabled: checked }))
@@ -149,10 +167,12 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 
 function Toggle({
   checked,
+  disabled = false,
   label,
   onChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   label: string;
   onChange: (checked: boolean) => void;
 }) {
@@ -161,6 +181,7 @@ function Toggle({
       <input
         checked={checked}
         className="size-4"
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         type="checkbox"
       />

@@ -86,7 +86,11 @@ export function SettingsPage() {
 
       <div className="grid gap-4">
         {(profilesQuery.data?.data ?? []).map((profile) => (
-          <RecordingProfileSettingsCard key={profile.id} profile={profile} />
+          <RecordingProfileSettingsCard
+            canManage={canManageSettings}
+            key={profile.id}
+            profile={profile}
+          />
         ))}
       </div>
 
@@ -143,8 +147,9 @@ export function SettingsPage() {
             {channelMapsQuery.data?.data.length ?? 0} templates
           </Badge>
           <Button
-            disabled={createChannelMapMutation.isPending}
+            disabled={createChannelMapMutation.isPending || !canManageSettings}
             onClick={() => createChannelMapMutation.mutate()}
+            title={canManageSettings ? "Create channel map" : "Requires settings manage"}
             variant="outline"
           >
             <PlusCircle className="size-4" />
@@ -157,6 +162,7 @@ export function SettingsPage() {
         {(channelMapsQuery.data?.data ?? []).map((template) => (
           <ChannelMapTemplateCard
             assignments={assignmentsQuery.data?.data ?? []}
+            canManage={canManageSettings}
             key={template.id}
             nodes={nodesQuery.data?.data ?? []}
             template={template}
@@ -435,10 +441,12 @@ function WatchdogPolicyCard({ canManage, policy }: { canManage: boolean; policy:
 
 function ChannelMapTemplateCard({
   assignments,
+  canManage,
   nodes,
   template,
 }: {
   assignments: ChannelMapTemplateAssignment[];
+  canManage: boolean;
   nodes: RecorderNode[];
   template: ChannelMapTemplate;
 }) {
@@ -512,15 +520,17 @@ function ChannelMapTemplateCard({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            disabled={!draftChanged || updateMutation.isPending}
+            disabled={!draftChanged || updateMutation.isPending || !canManage}
             onClick={() => updateMutation.mutate()}
+            title={canManage ? "Promote channel map revision" : "Requires settings manage"}
           >
             <Rocket className="size-4" />
             Promote Rev {nextRevision}
           </Button>
           <Button
-            disabled={!draftChanged || updateMutation.isPending}
+            disabled={!draftChanged || updateMutation.isPending || !canManage}
             onClick={() => setDraft(template)}
+            title={canManage ? "Reset channel map draft" : "Requires settings manage"}
             type="button"
             variant="outline"
           >
@@ -559,6 +569,7 @@ function ChannelMapTemplateCard({
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="Name">
           <Input
+            disabled={!canManage}
             onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
             value={draft.name}
           />
@@ -566,6 +577,7 @@ function ChannelMapTemplateCard({
         <Field label="Mode">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -582,6 +594,7 @@ function ChannelMapTemplateCard({
         </Field>
         <Field label="Tags">
           <Input
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({ ...current, tags: parseTags(event.target.value) }))
             }
@@ -597,6 +610,7 @@ function ChannelMapTemplateCard({
             key={index}
           >
             <Input
+              disabled={!canManage}
               min={1}
               onChange={(event) =>
                 setDraft((current) =>
@@ -609,6 +623,7 @@ function ChannelMapTemplateCard({
               value={entry.sourceChannelIndex}
             />
             <Input
+              disabled={!canManage}
               min={1}
               onChange={(event) =>
                 setDraft((current) =>
@@ -621,6 +636,7 @@ function ChannelMapTemplateCard({
               value={entry.outputChannelIndex ?? ""}
             />
             <Input
+              disabled={!canManage}
               onChange={(event) =>
                 setDraft((current) =>
                   updateChannelEntry(current, index, {
@@ -632,15 +648,17 @@ function ChannelMapTemplateCard({
             />
             <Toggle
               checked={entry.included}
+              disabled={!canManage}
               label="Included"
               onChange={(checked) =>
                 setDraft((current) => updateChannelEntry(current, index, { included: checked }))
               }
             />
             <Button
-              disabled={draft.entries.length <= 1}
+              disabled={draft.entries.length <= 1 || !canManage}
               onClick={() => setDraft((current) => removeChannelEntry(current, index))}
               size="icon"
+              title={canManage ? "Remove channel" : "Requires settings manage"}
               type="button"
               variant="outline"
             >
@@ -650,7 +668,9 @@ function ChannelMapTemplateCard({
         ))}
         <Button
           className="justify-self-start"
+          disabled={!canManage}
           onClick={() => setDraft((current) => addChannelEntry(current))}
+          title={canManage ? "Add channel" : "Requires settings manage"}
           type="button"
           variant="outline"
         >
@@ -663,6 +683,7 @@ function ChannelMapTemplateCard({
         <Field label="Assign Target">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) => setSelectedTarget(event.target.value)}
             value={selectedTarget}
           >
@@ -674,8 +695,9 @@ function ChannelMapTemplateCard({
           </select>
         </Field>
         <Button
-          disabled={!selectedTarget || assignMutation.isPending}
+          disabled={!selectedTarget || assignMutation.isPending || !canManage}
           onClick={() => assignMutation.mutate()}
+          title={canManage ? "Assign channel map" : "Requires settings manage"}
           variant="outline"
         >
           <Cable className="size-4" />
@@ -710,11 +732,13 @@ function ChannelMapTemplateCard({
                 </div>
                 <Button
                   disabled={
+                    !canManage ||
                     rollbackMutation.isPending ||
                     !assignment.history.some((event) => event.previousTemplateId)
                   }
                   onClick={() => rollbackMutation.mutate(assignment)}
                   size="sm"
+                  title={canManage ? "Roll back assignment" : "Requires settings manage"}
                   type="button"
                   variant="outline"
                 >

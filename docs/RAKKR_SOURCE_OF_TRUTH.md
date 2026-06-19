@@ -322,8 +322,7 @@ Current partial implementation:
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Upload runner run-now control has route coverage for missing-permission denial.
-- Upload provider and upload policy Settings UI controls mirror `settings:manage`.
-- Watchdog policy Settings UI controls mirror `settings:manage`.
+- Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
@@ -434,7 +433,6 @@ Current partial implementation:
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
 - Controller API and Settings UI expose upload runner status and RBAC-mirrored run-now control.
 - Upload provider and upload policy Settings UI controls mirror `settings:manage`.
-- Watchdog policy Settings UI controls mirror `settings:manage`.
 - Upload policies can delete controller cache after confirmed non-stub upload.
 
 ## Observability
@@ -572,6 +570,7 @@ Current partial implementation:
 71. ✅ Mirror upload runner run-now UI against RBAC permissions.
 72. ✅ Mirror upload provider and policy Settings UI against RBAC permissions.
 73. ✅ Mirror watchdog policy Settings UI against RBAC permissions.
+74. ✅ Mirror recording profile and channel map Settings UI against RBAC permissions.
 
 ## Open Questions
 
