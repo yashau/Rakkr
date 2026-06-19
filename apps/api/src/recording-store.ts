@@ -292,6 +292,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     id: row.id,
     name: row.name,
     nodeId: row.nodeId ?? undefined,
+    notes: stringOrUndefined(metadata?.notes),
     recordedAt: row.recordedAt.toISOString(),
     recordingProfileId: stringOrUndefined(metadata?.recordingProfileId),
     scheduleId: row.scheduleId ?? undefined,
@@ -310,6 +311,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
 function recordingMetadata(recording: RecordingSummary) {
   return {
     cached: recording.cached,
+    notes: recording.notes,
     recordingProfileId: recording.recordingProfileId,
     trackGroupId: recording.trackGroupId,
     trackIndex: recording.trackIndex,

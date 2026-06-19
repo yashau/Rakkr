@@ -515,6 +515,7 @@ export const recordingSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   nodeId: z.string().min(1).optional(),
+  notes: z.string().max(2000).optional(),
   recordedAt: isoDateTimeSchema,
   recordingProfileId: z.string().min(1).optional(),
   scheduleId: z.string().min(1).optional(),

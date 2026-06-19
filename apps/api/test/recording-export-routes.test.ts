@@ -49,6 +49,7 @@ test("recording export returns scoped filtered manifest and audits access", asyn
         id: "rec_visible",
         name: 'Visible "Council" Recording',
         nodeId: "node_a",
+        notes: "Marked for clerk review",
         tags: ["voice", "council"],
       }),
       recording({ id: "rec_filtered_out", nodeId: "node_a", tags: ["planning"] }),
@@ -66,10 +67,10 @@ test("recording export returns scoped filtered manifest and audits access", asyn
   assert.equal(permissionCalls.at(-1)?.action, "recordings.export");
   assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
   assert.match(response.headers.get("content-disposition") ?? "", /rakkr-recordings-/);
-  assert.match(csv, /^id,name,folder,tags,status,healthStatus,source,recordedAt/m);
+  assert.match(csv, /^id,name,notes,folder,tags,status,healthStatus,source,recordedAt/m);
   assert.match(
     csv,
-    /rec_visible,"Visible ""Council"" Recording","Meetings, Council",voice;council/,
+    /rec_visible,"Visible ""Council"" Recording",Marked for clerk review,"Meetings, Council",voice;council/,
   );
   assert.doesNotMatch(csv, /rec_filtered_out/);
   assert.doesNotMatch(csv, /rec_hidden/);

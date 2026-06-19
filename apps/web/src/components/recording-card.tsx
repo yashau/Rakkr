@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { RecordingMetadataUpdate } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
 import {
@@ -38,6 +39,7 @@ import {
 interface RecordingMetadataDraft {
   folder: string;
   name: string;
+  notes: string;
   tags: string;
 }
 
@@ -135,6 +137,7 @@ export function RecordingCard({
                 void onUpdate({
                   folder: draft.folder.trim(),
                   name: draft.name.trim(),
+                  notes: draft.notes.trim() || null,
                   tags: tagsFromText(draft.tags),
                 })
                   .then(() => setIsEditing(false))
@@ -170,6 +173,17 @@ export function RecordingCard({
                       setDraft((current) => ({ ...current, tags: event.target.value }))
                     }
                     value={draft.tags}
+                  />
+                </div>
+                <div className="grid gap-1.5 md:col-span-2">
+                  <Label htmlFor={`${recording.id}-notes`}>Notes</Label>
+                  <Textarea
+                    id={`${recording.id}-notes`}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, notes: event.target.value }))
+                    }
+                    rows={3}
+                    value={draft.notes}
                   />
                 </div>
               </div>
@@ -237,6 +251,11 @@ export function RecordingCard({
                     </Badge>
                   ))}
                 </div>
+              ) : null}
+              {recording.notes ? (
+                <p className="mt-3 rounded-md border border-border bg-muted/20 p-2 text-sm whitespace-pre-wrap text-muted-foreground">
+                  {recording.notes}
+                </p>
               ) : null}
               {recording.checksum || recording.waveformPreview ? (
                 <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/20 p-2">
@@ -524,6 +543,7 @@ function draftFromRecording(recording: RecordingSummary): RecordingMetadataDraft
   return {
     folder: recording.folder,
     name: recording.name,
+    notes: recording.notes ?? "",
     tags: tagsToText(recording.tags),
   };
 }

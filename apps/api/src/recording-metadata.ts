@@ -7,11 +7,16 @@ export const recordingMetadataUpdateSchema = z
   .object({
     folder: z.string().trim().min(1).max(240).optional(),
     name: z.string().trim().min(1).max(240).optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
     tags: tagsSchema.optional(),
   })
   .strict()
   .refine(
-    (value) => value.folder !== undefined || value.name !== undefined || value.tags !== undefined,
+    (value) =>
+      value.folder !== undefined ||
+      value.name !== undefined ||
+      value.notes !== undefined ||
+      value.tags !== undefined,
     "Expected at least one metadata field",
   );
 
@@ -50,6 +55,7 @@ export function applyRecordingMetadataUpdate(
     ...recording,
     folder: update.folder ?? recording.folder,
     name: update.name ?? recording.name,
+    notes: update.notes === undefined ? recording.notes : update.notes || undefined,
     tags: update.tags ? uniqueTags(update.tags) : recording.tags,
   };
 }
@@ -75,6 +81,7 @@ export function recordingMetadataSnapshot(recording: RecordingSummary) {
   return {
     folder: recording.folder,
     name: recording.name,
+    notes: recording.notes,
     tags: recording.tags,
   };
 }

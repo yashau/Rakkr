@@ -106,6 +106,7 @@ export interface RecordingFileBlob {
 export interface RecordingMetadataUpdate {
   folder?: string;
   name?: string;
+  notes?: string | null;
   tags?: string[];
 }
 

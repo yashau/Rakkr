@@ -196,6 +196,7 @@ export function paginateRecordings(recordings: RecordingSummary[], filters: Reco
 const recordingExportHeaders = [
   "id",
   "name",
+  "notes",
   "folder",
   "tags",
   "status",
@@ -234,6 +235,7 @@ function recordingMatchesSearch(recording: RecordingSummary, search: string) {
     recording.folder,
     recording.id,
     recording.name,
+    recording.notes,
     recording.nodeId,
     recording.recordingProfileId,
     recording.scheduleId,
