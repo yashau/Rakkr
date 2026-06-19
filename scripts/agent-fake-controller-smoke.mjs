@@ -10,39 +10,26 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const smokeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-agent-fake-controller-"));
 const nodeId = "node_fake_controller_smoke";
-const recordingId = "rec_fake_controller_smoke";
-const jobId = "job_fake_controller_smoke";
 const token = "node-token";
-const stateFile = path.join(smokeRoot, "agent-state.json");
-const healthLogFile = path.join(smokeRoot, "health-events.jsonl");
-const observed = {
-  cacheUpload: undefined,
-  channelMapReads: 0,
-  claims: 0,
-  heartbeats: 0,
-  healthEvents: [],
-  jobStatusReads: 0,
-  nextReads: 0,
-};
-const job = {
-  command: {
-    captureChannels: 1,
-    captureDevice: "fake-device",
-    captureFormat: "S16_LE",
-    captureSampleRate: 48000,
-    durationSeconds: 1,
-    outputBitrateKbps: 128,
-    outputCodec: "mp3",
+const scenarios = [
+  {
+    cacheUploadFails: false,
+    expectSuccess: true,
+    jobId: "job_fake_controller_smoke",
+    name: "completed",
     outputFileName: "rec_fake_controller_smoke.mp3",
-    outputVbr: true,
-    type: "alsa_capture",
+    recordingId: "rec_fake_controller_smoke",
   },
-  failureReason: undefined,
-  id: jobId,
-  nodeId,
-  recordingId,
-  status: "queued",
-};
+  {
+    cacheUploadFails: true,
+    expectSuccess: false,
+    jobId: "job_fake_controller_cache_upload_failure",
+    name: "cache-upload-failure",
+    outputFileName: "rec_fake_controller_cache_upload_failure.mp3",
+    recordingId: "rec_fake_controller_cache_upload_failure",
+  },
+];
+let activeScenario;
 
 const server = createServer(async (request, response) => {
   try {
@@ -57,6 +44,24 @@ try {
   const address = await listen(server);
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
+
+  for (const scenario of scenarios) {
+    await runScenario({ address, captureCommand, renderCommand, scenario });
+  }
+
+  console.log("Agent fake-controller smoke passed.");
+} finally {
+  server.close();
+  await rm(smokeRoot, { force: true, recursive: true });
+}
+
+async function runScenario({ address, captureCommand, renderCommand, scenario }) {
+  const stateFile = path.join(smokeRoot, `${scenario.name}-agent-state.json`);
+  const healthLogFile = path.join(smokeRoot, `${scenario.name}-health-events.jsonl`);
+  const job = createJob(scenario);
+  const observed = createObserved();
+
+  activeScenario = { job, observed, scenario };
   const result = await run("cargo", [
     "run",
     "--quiet",
@@ -89,29 +94,32 @@ try {
     "--run-next-job",
   ]);
 
-  if (result.code !== 0) {
+  if (scenario.expectSuccess && result.code !== 0) {
     throw new Error(
-      `agent fake-controller smoke failed with exit ${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      `${scenario.name} fake-controller smoke failed with exit ${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
   }
 
+  if (!scenario.expectSuccess && result.code === 0) {
+    throw new Error(`${scenario.name} fake-controller smoke unexpectedly succeeded`);
+  }
+
   const state = JSON.parse(await readFile(stateFile, "utf8"));
-  const healthLogEvents = (await readFile(healthLogFile, "utf8"))
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
-  const renderedLocalEvent = healthLogEvents.find((event) => event.type === "agent.recording_job.output_rendered");
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const renderedLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.output_rendered",
+  );
 
   invariant(observed.nextReads === 1, "agent did not read the next queued job");
   invariant(observed.claims === 1, "agent did not claim the queued job");
   invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
   invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
   invariant(observed.channelMapReads === 1, "agent did not fetch channel-map assignments");
-  invariant(observed.cacheUpload?.recordingId === recordingId, "agent did not upload cache file");
-  invariant(observed.cacheUpload?.jobId === jobId, "cache upload did not include the job id");
+  invariant(observed.cacheUpload?.recordingId === scenario.recordingId, "agent did not upload cache file");
+  invariant(observed.cacheUpload?.jobId === scenario.jobId, "cache upload did not include the job id");
   invariant(observed.cacheUpload?.durationSeconds === "1", "cache upload did not include duration");
   invariant(
-    observed.cacheUpload?.fileName === "rec_fake_controller_smoke.mp3",
+    observed.cacheUpload?.fileName === scenario.outputFileName,
     "cache upload did not include rendered file name",
   );
   invariant(observed.cacheUpload?.contentType === "audio/mpeg", "cache upload was not MP3");
@@ -122,27 +130,116 @@ try {
   );
   invariant(renderedLocalEvent, "agent local health log did not include rendered output");
   invariant(renderedLocalEvent.severity === "info", "rendered local health event did not record info severity");
-  invariant(renderedLocalEvent.recordingId === recordingId, "rendered local health event recorded the wrong recording");
-  invariant(renderedLocalEvent.details?.jobId === jobId, "rendered local health event recorded the wrong job");
+  invariant(
+    renderedLocalEvent.recordingId === scenario.recordingId,
+    "rendered local health event recorded the wrong recording",
+  );
+  invariant(renderedLocalEvent.details?.jobId === scenario.jobId, "rendered local health event recorded the wrong job");
   invariant(renderedLocalEvent.details?.outputCodec === "mp3", "rendered local health event did not record MP3 output");
   invariant(renderedLocalEvent.details?.outputVbr === true, "rendered local health event did not record VBR output");
+
+  if (scenario.expectSuccess) {
+    assertCompletedScenario({ job, scenario, state });
+  } else {
+    assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  }
+
+  activeScenario = undefined;
+}
+
+function assertCompletedScenario({ job, scenario, state }) {
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
-  invariant(state.jobId === jobId, "agent state file recorded the wrong job id");
-  invariant(state.outputPath?.endsWith("rec_fake_controller_smoke.mp3"), "agent state did not end on rendered MP3");
+  invariant(state.jobId === scenario.jobId, "agent state file recorded the wrong job id");
+  invariant(state.outputPath?.endsWith(scenario.outputFileName), "agent state did not end on rendered MP3");
+}
 
-  console.log("Agent fake-controller smoke passed.");
-} finally {
-  server.close();
-  await rm(smokeRoot, { force: true, recursive: true });
+function assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state }) {
+  const failedLocalEvent = healthLogEvents.find((event) => event.type === "agent.recording_job.cache_upload_failed");
+
+  invariant(job.status === "failed", "fake controller did not mark failed cache upload job failed");
+  invariant(observed.failures === 1, "agent did not mark cache upload failure job failed");
+  invariant(
+    String(observed.failureReason).includes("controller rejected cache file with 503"),
+    "agent failed-job reason did not include rejected cache upload",
+  );
+  invariant(state.status === "failed", "agent state file did not end failed after cache upload failure");
+  invariant(state.jobId === scenario.jobId, "failed agent state file recorded the wrong job id");
+  invariant(state.outputPath?.endsWith(scenario.outputFileName), "failed state did not retain rendered output path");
+  invariant(
+    String(state.reason).includes("controller rejected cache file with 503"),
+    "failed state did not retain cache upload rejection reason",
+  );
+  invariant(
+    observed.healthEvents.some((event) => event.type === "agent.recording_job.cache_upload_failed"),
+    "agent did not report cache upload failure",
+  );
+  invariant(failedLocalEvent, "agent local health log did not include cache upload failure");
+  invariant(failedLocalEvent.severity === "warning", "cache upload local health event did not record warning severity");
+  invariant(
+    failedLocalEvent.recordingId === scenario.recordingId,
+    "cache upload local health event recorded the wrong recording",
+  );
+  invariant(failedLocalEvent.details?.jobId === scenario.jobId, "cache upload local health event recorded the wrong job");
+}
+
+function createJob(scenario) {
+  return {
+    command: {
+      captureChannels: 1,
+      captureDevice: "fake-device",
+      captureFormat: "S16_LE",
+      captureSampleRate: 48000,
+      durationSeconds: 1,
+      outputBitrateKbps: 128,
+      outputCodec: "mp3",
+      outputFileName: scenario.outputFileName,
+      outputVbr: true,
+      type: "alsa_capture",
+    },
+    failureReason: undefined,
+    id: scenario.jobId,
+    nodeId,
+    recordingId: scenario.recordingId,
+    status: "queued",
+  };
+}
+
+function createObserved() {
+  return {
+    cacheUpload: undefined,
+    channelMapReads: 0,
+    claims: 0,
+    failureReason: undefined,
+    failures: 0,
+    heartbeats: 0,
+    healthEvents: [],
+    jobStatusReads: 0,
+    nextReads: 0,
+  };
+}
+
+async function readJsonLines(filePath) {
+  return (await readFile(filePath, "utf8"))
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 async function handleControllerRequest(request, response) {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  const context = activeScenario;
 
   if (request.headers.authorization !== `Bearer ${token}`) {
     return json(response, 401, { error: "invalid token" });
   }
+
+  if (!context) {
+    await readBody(request);
+    return json(response, 503, { error: "no active smoke scenario" });
+  }
+
+  const { job, observed, scenario } = context;
 
   if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/next`) {
     observed.nextReads += 1;
@@ -154,19 +251,27 @@ async function handleControllerRequest(request, response) {
     return json(response, 200, { data: [] });
   }
 
-  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${jobId}/claim`) {
+  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/claim`) {
     observed.claims += 1;
     job.status = "running";
     return json(response, 200, { data: job });
   }
 
-  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${jobId}/heartbeat`) {
+  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/heartbeat`) {
     observed.heartbeats += 1;
     return json(response, 200, { data: job });
   }
 
-  if (request.method === "GET" && url.pathname === `/api/v1/recording-jobs/${jobId}`) {
+  if (request.method === "GET" && url.pathname === `/api/v1/recording-jobs/${job.id}`) {
     observed.jobStatusReads += 1;
+    return json(response, 200, { data: job });
+  }
+
+  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/failed`) {
+    observed.failures += 1;
+    observed.failureReason = request.headers["x-rakkr-reason"];
+    job.failureReason = observed.failureReason;
+    job.status = "failed";
     return json(response, 200, { data: job });
   }
 
@@ -176,7 +281,7 @@ async function handleControllerRequest(request, response) {
     return json(response, 201, { data: { id: `health_${observed.healthEvents.length}` } });
   }
 
-  if (request.method === "PUT" && url.pathname === `/api/v1/recordings/${recordingId}/cache-file`) {
+  if (request.method === "PUT" && url.pathname === `/api/v1/recordings/${job.recordingId}/cache-file`) {
     const body = await readBody(request);
 
     observed.cacheUpload = {
@@ -184,9 +289,14 @@ async function handleControllerRequest(request, response) {
       durationSeconds: request.headers["x-rakkr-duration-seconds"],
       fileName: request.headers["x-rakkr-file-name"],
       jobId: request.headers["x-rakkr-recording-job-id"],
-      recordingId,
+      recordingId: job.recordingId,
       size: body.byteLength,
     };
+
+    if (scenario.cacheUploadFails) {
+      return json(response, 503, { error: "simulated cache upload failure" });
+    }
+
     job.status = "completed";
 
     return json(response, 201, { data: { ok: true } });
