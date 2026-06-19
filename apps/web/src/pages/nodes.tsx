@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type NodeEnrollmentInput, type NodeEnrollmentResult } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 interface EnrollmentDraft {
   agentVersion: string;
@@ -326,10 +327,7 @@ export function NodesPage() {
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <h2 className="text-lg font-semibold">{node.alias}</h2>
-                    <Badge
-                      className="border-emerald-200 bg-emerald-50 text-emerald-700"
-                      variant="outline"
-                    >
+                    <Badge className={nodeStatusBadgeClass(node.status)} variant="outline">
                       {node.status}
                     </Badge>
                     <Badge className={healthBadgeClass(healthSummary.tone)} variant="outline">

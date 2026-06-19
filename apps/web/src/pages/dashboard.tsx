@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 export function DashboardPage() {
   const statusQuery = useQuery({
@@ -86,7 +87,7 @@ export function DashboardPage() {
               <h2 className="text-sm font-semibold">Node</h2>
               <p className="text-xs text-muted-foreground">{node?.location.room ?? "No node"}</p>
             </div>
-            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700" variant="outline">
+            <Badge className={nodeStatusBadgeClass(node?.status)} variant="outline">
               {node?.status ?? "offline"}
             </Badge>
           </div>
