@@ -1,36 +1,61 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, HardDrive, Radio } from "lucide-react";
+import { AlertTriangle, CheckCircle2, HardDrive, Radio, ShieldCheck } from "lucide-react";
 
 import { MeterBank } from "@/components/meter-bank";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { dashboardPagePermissions } from "@/lib/dashboard-page-helpers";
 import { formatDateTime } from "@/lib/dates";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 export function DashboardPage() {
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+  });
+  const pagePermissions = dashboardPagePermissions(currentUserQuery.data?.data);
   const statusQuery = useQuery({
+    enabled: pagePermissions.canRead,
     queryFn: api.status,
     queryKey: ["status"],
     refetchInterval: 5000,
   });
 
   const nodesQuery = useQuery({
+    enabled: pagePermissions.canRead,
     queryFn: () => api.nodes(),
     queryKey: ["nodes"],
     refetchInterval: 5000,
   });
 
+  const firstNodeId = nodesQuery.data?.data[0]?.id;
   const meterQuery = useQuery({
-    enabled: Boolean(nodesQuery.data?.data[0]?.id),
-    queryFn: () => api.meterFrame(nodesQuery.data!.data[0]!.id),
-    queryKey: ["meters", nodesQuery.data?.data[0]?.id],
+    enabled: pagePermissions.canReadMeters && Boolean(firstNodeId),
+    queryFn: () => api.meterFrame(firstNodeId!),
+    queryKey: ["meters", firstNodeId],
     refetchInterval: 1000,
   });
 
   const status = statusQuery.data;
   const node = nodesQuery.data?.data[0];
   const levels = meterQuery.data?.data.levels ?? [];
+
+  if (currentUserQuery.isPending) {
+    return <p className="text-sm text-muted-foreground">Loading dashboard.</p>;
+  }
+
+  if (!pagePermissions.canRead) {
+    return (
+      <Card className="rounded-lg p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-5 text-muted-foreground" />
+          <h2 className="text-base font-semibold">Dashboard</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">Dashboard is unavailable.</p>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid gap-5">

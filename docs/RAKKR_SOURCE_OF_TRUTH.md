@@ -194,6 +194,7 @@ Current partial implementation:
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - RBAC-gated listen monitor start/stream returns a controller meter-preview WAV for browser playback.
+- Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
 - Nodes UI mirrors RBAC for enrollment, token rotation, live listen, and inventory edits.
 
@@ -633,6 +634,7 @@ Current partial implementation:
 105. ✅ Mirror Schedules page write/control actions against RBAC permissions.
 106. ✅ Mirror Access page management against RBAC permissions.
 107. ✅ Mirror Audit page reads and export against RBAC permissions.
+108. ✅ Mirror Dashboard reads and meters against RBAC permissions.
 
 ## Open Questions
 
