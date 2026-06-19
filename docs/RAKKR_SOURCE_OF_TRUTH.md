@@ -345,6 +345,7 @@ Current partial implementation:
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
+- Audit page reads and exports are hidden unless the user has `audit:read`.
 - Audit read/export routes have missing-permission deny coverage.
 - Audit UI exposes event reasons, correlation IDs, details, and before/after snapshots.
 - User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
@@ -631,6 +632,7 @@ Current partial implementation:
 104. ✅ Mirror Nodes page privileged actions against RBAC permissions.
 105. ✅ Mirror Schedules page write/control actions against RBAC permissions.
 106. ✅ Mirror Access page management against RBAC permissions.
+107. ✅ Mirror Audit page reads and export against RBAC permissions.
 
 ## Open Questions
 

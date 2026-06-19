@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Download, RotateCcw, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, RotateCcw, Search, ShieldCheck } from "lucide-react";
 import { Fragment, useState } from "react";
 import { permissions, type AuditEvent, type AuditOutcome, type Permission } from "@rakkr/shared";
 
@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type AuditEventFilters } from "@/lib/api";
+import { auditPagePermissions } from "@/lib/audit-page-helpers";
 import { formatDateTime } from "@/lib/dates";
 
 const outcomes = ["allowed", "denied", "failed", "partial", "succeeded"] as const;
@@ -51,7 +52,13 @@ export function AuditPage() {
   const [draft, setDraft] = useState<AuditFilterDraft>(emptyDraft);
   const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<AuditEventFilters>({});
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+  });
+  const pagePermissions = auditPagePermissions(currentUserQuery.data?.data);
   const auditQuery = useQuery({
+    enabled: pagePermissions.canRead,
     queryFn: () => api.auditEvents(filters),
     queryKey: ["audit-events", filters],
     refetchInterval: 5000,
@@ -79,6 +86,22 @@ export function AuditPage() {
 
       return next;
     });
+
+  if (currentUserQuery.isPending) {
+    return <p className="text-sm text-muted-foreground">Loading audit trail.</p>;
+  }
+
+  if (!pagePermissions.canRead) {
+    return (
+      <Card className="rounded-lg p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-5 text-muted-foreground" />
+          <h2 className="text-base font-semibold">Audit Trail</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">Audit trail is unavailable.</p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden rounded-lg shadow-sm">
@@ -174,7 +197,7 @@ export function AuditPage() {
           </Button>
           <Button
             className="h-9"
-            disabled={auditExportMutation.isPending}
+            disabled={!pagePermissions.canExport || auditExportMutation.isPending}
             onClick={() => auditExportMutation.mutate()}
             type="button"
             variant="outline"
