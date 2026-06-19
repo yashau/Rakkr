@@ -340,6 +340,7 @@ Current partial implementation:
 - Upload runner read and run-now controls have route coverage for missing-permission denial.
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
 - Settings UI read queries and page access mirror `settings:read`.
+- Settings page permission decisions have focused helper coverage for read, manage, and node lookup access.
 - Settings shell navigation mirrors `settings:read`.
 - Settings channel-map assignment target lookup mirrors `node:read`.
 - Shell navigation mirrors page-level read/manage permissions.
@@ -645,6 +646,7 @@ Current partial implementation:
 112. ✅ Mirror Recordings page reads against granular RBAC permissions.
 113. ✅ Mirror Upload runner panel status and run-now against RBAC permissions.
 114. ✅ Mirror Upload policy panel reads against Settings RBAC permissions.
+115. ✅ Add Settings page permission helper coverage.
 
 ## Open Questions
 

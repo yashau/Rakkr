@@ -30,6 +30,7 @@ import { UploadPolicyPanel } from "@/components/upload-policy-panel";
 import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { settingsPagePermissions } from "@/lib/settings-page-helpers";
 import { uploadProviderUpdate, watchdogPolicyUpdate } from "@/lib/settings-updates";
 import { uploadProviderStatusClass } from "@/lib/upload-status";
 
@@ -38,10 +39,10 @@ export function SettingsPage() {
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
   });
-  const currentUserPermissions = currentUserQuery.data?.data.permissions ?? [];
-  const canReadNodes = currentUserPermissions.includes("node:read");
-  const canReadSettings = currentUserPermissions.includes("settings:read");
-  const canManageSettings = currentUserPermissions.includes("settings:manage");
+  const pagePermissions = settingsPagePermissions(currentUserQuery.data?.data);
+  const canReadNodes = pagePermissions.canReadNodes;
+  const canReadSettings = pagePermissions.canReadSettings;
+  const canManageSettings = pagePermissions.canManageSettings;
   const profilesQuery = useQuery({
     enabled: canReadSettings,
     queryFn: api.recordingProfiles,
