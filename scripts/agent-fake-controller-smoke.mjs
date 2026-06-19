@@ -56,6 +56,8 @@ try {
   const result = await run("cargo", [
     "run",
     "--quiet",
+    "--manifest-path",
+    path.join(repoRoot, "Cargo.toml"),
     "-p",
     "rakkr-recorder-agent",
     "--",
@@ -239,7 +241,7 @@ function run(command, args) {
 
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      cwd: repoRoot,
+      cwd: smokeRoot,
       env: { ...process.env, CARGO_TERM_COLOR: "never" },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
