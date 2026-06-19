@@ -12,9 +12,12 @@ import type {
 
 import {
   clearPlaybackPreview,
+  emptyRecordingFilterDraft,
+  filtersFromDraft,
   isCachedRecording,
   isTerminalRecording,
   playbackPreviewFromSession,
+  recordingFilterChips,
   recordingFileActionState,
   recordingPagePermissions,
   recordingRelationshipBadges,
@@ -130,6 +133,15 @@ test("recording file action state requires both permission and cached media", ()
       fileReady: false,
     },
   );
+});
+
+test("recording cache state filters round trip through API filters and chips", () => {
+  const filters = filtersFromDraft({ ...emptyRecordingFilterDraft, cacheState: "missing" });
+
+  assert.equal(filters.cacheState, "missing");
+  assert.deepEqual(recordingFilterChips(filters), [
+    { key: "cacheState", label: "cache", value: "missing" },
+  ]);
 });
 
 test("recording page permissions are closed by default", () => {

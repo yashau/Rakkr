@@ -24,12 +24,17 @@ const recordingSortBySchema = z.enum([
   "status",
 ]);
 const recordingSortOrderSchema = z.enum(["asc", "desc"]);
+const recordingCacheStateSchema = z.enum(["cached", "missing"]);
 const optionalPaginationNumberSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() ? Number(value) : undefined),
   z.number().int().nonnegative().optional(),
 );
 
 export const recordingsQuerySchema = z.object({
+  cacheState: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    recordingCacheStateSchema.optional(),
+  ),
   folder: optionalTextFilterSchema,
   healthStatus: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
@@ -81,6 +86,10 @@ export function filterRecordings(recordings: RecordingSummary[], filters: Record
     }
 
     if (filters.healthStatus && recording.healthStatus !== filters.healthStatus) {
+      return false;
+    }
+
+    if (filters.cacheState && recordingCacheState(recording) !== filters.cacheState) {
       return false;
     }
 
@@ -309,4 +318,11 @@ function compareRecordingField(
   }
 
   return String(left[sortBy]).localeCompare(String(right[sortBy]));
+}
+
+function recordingCacheState(recording: RecordingSummary) {
+  return recording.cachePath &&
+    (recording.cached || recording.status === "cached" || recording.status === "uploaded")
+    ? "cached"
+    : "missing";
 }

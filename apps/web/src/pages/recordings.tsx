@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
+import { RecordingCacheStateFilter } from "@/components/recording-cache-state-filter";
 import { RecordingCard } from "@/components/recording-card";
 import { RecordingFacetPanel } from "@/components/recording-facet-panel";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
@@ -710,6 +711,10 @@ export function RecordingsPage() {
                   ))}
                 </select>
               </div>
+              <RecordingCacheStateFilter
+                onChange={(cacheState) => setFilterDraft((current) => ({ ...current, cacheState }))}
+                value={filterDraft.cacheState}
+              />
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-sort-filter">Sort</Label>
                 <select

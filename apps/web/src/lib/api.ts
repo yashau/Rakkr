@@ -147,6 +147,7 @@ export interface UploadQueueInput {
 }
 
 export interface RecordingFilters {
+  cacheState?: RecordingCacheState;
   folder?: string;
   healthStatus?: RecordingSummary["healthStatus"];
   limit?: number;
@@ -174,6 +175,7 @@ export type RecordingSortBy =
   | "source"
   | "status";
 export type RecordingSortOrder = "asc" | "desc";
+export type RecordingCacheState = "cached" | "missing";
 
 export interface RecordingListMeta {
   hasNextPage: boolean;

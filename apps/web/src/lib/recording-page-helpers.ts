@@ -13,6 +13,7 @@ import type {
 import type {
   RecordingFileBlob,
   RecordingFilters,
+  RecordingCacheState,
   RecordingPlaybackSession,
   RecordingSortBy,
   RecordingSortOrder,
@@ -25,6 +26,7 @@ export interface DownloadableRecordingFile {
 }
 
 export interface RecordingFilterDraft {
+  cacheState: "" | RecordingCacheState;
   folder: string;
   healthStatus: "" | RecordingSummary["healthStatus"];
   nodeId: string;
@@ -87,6 +89,7 @@ export interface RecordingRelationshipReferences {
 type RevokeObjectUrl = (url: string) => void;
 
 export const emptyRecordingFilterDraft: RecordingFilterDraft = {
+  cacheState: "",
   folder: "",
   healthStatus: "",
   nodeId: "",
@@ -131,11 +134,16 @@ export const recordingSortOrders: Array<{ label: string; value: RecordingSortOrd
   { label: "Ascending", value: "asc" },
 ];
 export const recordingPageSizes = [10, 25, 50, 100];
+export const recordingCacheStateOptions: Array<{ label: string; value: RecordingCacheState }> = [
+  { label: "Cached", value: "cached" },
+  { label: "Missing cache", value: "missing" },
+];
 export const defaultRecordingPageSize = 25;
 export const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 export const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilterDraft> = {
+  cacheState: "cacheState",
   folder: "folder",
   healthStatus: "healthStatus",
   nodeId: "nodeId",
@@ -152,6 +160,7 @@ export const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof Recordin
 };
 
 const recordingFilterLabels: Record<RecordingFilterKey, string> = {
+  cacheState: "cache",
   folder: "folder",
   healthStatus: "health",
   nodeId: "node",
@@ -169,6 +178,7 @@ const recordingFilterLabels: Record<RecordingFilterKey, string> = {
 
 const recordingFilterOrder: RecordingFilterKey[] = [
   "search",
+  "cacheState",
   "folder",
   "tag",
   "nodeId",
@@ -355,6 +365,7 @@ export function isCachedRecording(recording: RecordingSummary) {
 
 export function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
   return {
+    cacheState: draft.cacheState || undefined,
     folder: textOrUndefined(draft.folder),
     healthStatus: draft.healthStatus || undefined,
     nodeId: textOrUndefined(draft.nodeId),
