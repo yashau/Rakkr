@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, RotateCcw, Search, ShieldCheck, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
@@ -155,6 +163,21 @@ export function RecordingsPage() {
       setNotice({
         detail: `${response.ticket.fileName} prepared until ${formatDateTime(response.ticket.expiresAt)}`,
         title: "Download prepared",
+      });
+    },
+  });
+  const exportMutation = useMutation({
+    mutationFn: () => api.exportRecordingManifest(recordingFilters),
+    onError: () =>
+      setNotice({
+        detail: "The filtered recording manifest could not be exported.",
+        title: "Export unavailable",
+      }),
+    onSuccess: (file) => {
+      downloadBlob(file);
+      setNotice({
+        detail: `${file.fileName} was prepared from the current filters.`,
+        title: "Manifest exported",
       });
     },
   });
@@ -529,6 +552,15 @@ export function RecordingsPage() {
                 >
                   <RotateCcw className="size-4" />
                   Clear
+                </Button>
+                <Button
+                  disabled={exportMutation.isPending}
+                  onClick={() => exportMutation.mutate()}
+                  type="button"
+                  variant="outline"
+                >
+                  <Download className="size-4" />
+                  Export CSV
                 </Button>
               </div>
             </div>

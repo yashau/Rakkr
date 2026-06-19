@@ -193,6 +193,42 @@ export function paginateRecordings(recordings: RecordingSummary[], filters: Reco
   };
 }
 
+const recordingExportHeaders = [
+  "id",
+  "name",
+  "folder",
+  "tags",
+  "status",
+  "healthStatus",
+  "source",
+  "recordedAt",
+  "durationSeconds",
+  "nodeId",
+  "scheduleId",
+  "recordingProfileId",
+  "uploadPolicyId",
+  "watchdogPolicyId",
+  "trackGroupId",
+  "trackIndex",
+  "trackTotal",
+  "cached",
+  "cachePath",
+  "checksum",
+] as const;
+
+export function recordingManifestCsv(recordings: RecordingSummary[]) {
+  return [
+    recordingExportHeaders.join(","),
+    ...recordings.map((recording) =>
+      recordingExportHeaders
+        .map((header) =>
+          csvCell(header === "tags" ? recording.tags.join(";") : String(recording[header] ?? "")),
+        )
+        .join(","),
+    ),
+  ].join("\n");
+}
+
 function recordingMatchesSearch(recording: RecordingSummary, search: string) {
   const searchableValues = [
     recording.folder,
@@ -227,6 +263,14 @@ function incrementFacet(values: Map<string, number>, value: string | undefined) 
 
 function includesText(value: string, search: string) {
   return value.toLocaleLowerCase().includes(search.toLocaleLowerCase());
+}
+
+function csvCell(value: string) {
+  if (/[",\n\r]/u.test(value)) {
+    return `"${value.replaceAll('"', '""')}"`;
+  }
+
+  return value;
 }
 
 function sortRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {

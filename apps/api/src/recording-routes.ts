@@ -16,6 +16,7 @@ import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recor
 import {
   filterRecordings,
   paginateRecordings,
+  recordingManifestCsv,
   recordingFacets,
   recordingsQuerySchema,
 } from "./recording-listing.js";
@@ -180,6 +181,44 @@ export function registerRecordingRoutes({
     "/api/v1/recordings/facets",
     requirePermission("recording:read", "recordings.facets.read"),
     async (c) => c.json({ data: recordingFacets(await scopedRecordings(currentUser(c))) }),
+  );
+
+  app.get(
+    "/api/v1/recordings/export",
+    requirePermission("recording:read", "recordings.export", () => ({
+      id: "recording_collection",
+      type: "recording_collection",
+    })),
+    async (c) => {
+      const query = recordingsQuerySchema.safeParse(c.req.query());
+
+      if (!query.success) {
+        return c.json({ error: "Invalid recording filters", issues: query.error.issues }, 400);
+      }
+
+      const recordings = filterRecordings(await scopedRecordings(currentUser(c)), query.data);
+      const fileName = recordingExportFileName(new Date());
+
+      await recordAuditEvent(c, {
+        action: "recordings.export.succeeded",
+        auth: currentAuth(c),
+        details: {
+          exportedCount: recordings.length,
+          filters: query.data,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: {
+          id: "recording_collection",
+          type: "recording_collection",
+        },
+      });
+
+      return c.body(recordingManifestCsv(recordings), 200, {
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
   );
 
   app.get(
@@ -730,4 +769,8 @@ function defaultAdHocFolder(now: Date, node: RecorderNode) {
 
 function defaultAdHocName(now: Date, node: RecorderNode) {
   return `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_${node.alias}`;
+}
+
+function recordingExportFileName(now: Date) {
+  return `rakkr-recordings-${now.toISOString().replaceAll(":", "-").replace(".", "-")}.csv`;
 }

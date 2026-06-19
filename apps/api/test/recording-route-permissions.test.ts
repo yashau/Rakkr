@@ -61,6 +61,7 @@ test("recording routes deny users without required permissions", async () => {
 
   const responses = await Promise.all([
     app.request("/api/v1/recordings"),
+    app.request("/api/v1/recordings/export"),
     app.request("/api/v1/recordings/facets"),
     app.request("/api/v1/recording-jobs"),
     app.request("/api/v1/upload-queue"),
@@ -103,6 +104,7 @@ test("recording routes deny users without required permissions", async () => {
       "recordings.delete": "recording:delete",
       "recordings.download.file": "recording:download",
       "recordings.download.prepare": "recording:download",
+      "recordings.export": "recording:read",
       "recordings.facets.read": "recording:read",
       "recordings.metadata.bulk_update": "recording:edit",
       "recordings.metadata.update": "recording:edit",

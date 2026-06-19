@@ -556,6 +556,8 @@ export const api = {
     }),
   recordings: (filters: RecordingFilters = {}) =>
     fetchJson<RecordingListResponse>(withQuery("/api/v1/recordings", filters)),
+  exportRecordingManifest: (filters: RecordingFilters = {}) =>
+    fetchBlob(withQuery("/api/v1/recordings/export", filters)),
   recordingFacets: () => fetchJson<{ data: RecordingFacets }>("/api/v1/recordings/facets"),
   deleteRecording: (recordingId: string) =>
     fetchJson<void>(`/api/v1/recordings/${recordingId}`, {
