@@ -59,7 +59,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | ---------- | ------ | ------------- |
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes, recordings, jobs, schedules, settings, metrics |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes, recordings, jobs, lifecycle coverage, schedules, settings, metrics |
 | Controller UI | 🟨 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -390,6 +390,7 @@ Current partial implementation:
 - Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
+- Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
@@ -530,6 +531,8 @@ Current partial implementation:
 49. ✅ Add playback, download, and upload queue deny audit route coverage.
 50. ✅ Add browser-timezone year-first date helper coverage.
 51. ⏸️ Return to X32 hardware validation after device is confirmed.
+52. ✅ Add controller-side ad-hoc recording lifecycle regression coverage.
+53. ⏳ Add fake-device agent CLI lifecycle smoke test.
 
 ## Open Questions
 

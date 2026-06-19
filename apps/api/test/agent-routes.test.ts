@@ -5,8 +5,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, RecorderNode, RecordingProfile, RecordingSummary } from "@rakkr/shared";
-import type { AppBindings, RecordAuditEvent } from "../src/http-types.js";
+import { defaultVoiceRecordingProfile } from "@rakkr/shared";
+import type {
+  AuditEvent,
+  CurrentUser,
+  Permission,
+  RecorderNode,
+  RecordingJob,
+  RecordingProfile,
+  RecordingSummary,
+} from "@rakkr/shared";
+import type { AuthResult } from "../src/auth-service.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 import type { MeterFrameStore } from "../src/meter-store.js";
 import type { NodeHeartbeatInput, NodeStore } from "../src/node-store.js";
 import type { RecordingStore } from "../src/recording-store.js";
@@ -15,11 +25,16 @@ import type { SettingsStore } from "../src/settings-store.js";
 const agentRoot = await mkdtemp(path.join(tmpdir(), "rakkr-agent-routes-"));
 process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(agentRoot, "jobs.json");
+process.env.RAKKR_RECORDING_CACHE_DIR = path.join(agentRoot, "cache");
+process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(agentRoot, "upload-policies.json");
+process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(agentRoot, "upload-queue.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAgentRoutes } = await import("../src/agent-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
 const { createRecordingJob } = await import("../src/recording-jobs.js");
+const { registerRecordingRoutes } = await import("../src/recording-routes.js");
+const { createUploadPolicy } = await import("../src/upload-policies.js");
 
 test.after(async () => {
   await rm(agentRoot, { force: true, recursive: true });
@@ -130,13 +145,144 @@ test("recording job honors custom output profile", async () => {
   assert.equal(job.command.outputVbr, false);
 });
 
+test("ad hoc recording completes through agent cache attach and exposes cached media", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const lifecycleNode = {
+    ...node(),
+    alias: "Lifecycle Recorder",
+    id: `node_lifecycle_${randomUUID()}`,
+  };
+  const nodeStore = memoryNodeStore([lifecycleNode]);
+  const recordingStore = memoryRecordingStore();
+  const policy = await createUploadPolicy({
+    enabled: true,
+    id: `upload-policy-lifecycle-${randomUUID()}`,
+    maxAttempts: 2,
+    name: "Lifecycle Auto Stub",
+    provider: "stub",
+    target: "stub://lifecycle",
+    trigger: "on_recording_cached",
+  });
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => auth(),
+    currentUser: () => user(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission(),
+    scopedRecordings: () => recordingStore.list(),
+    settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
+  });
+  registerAgentRoutes({
+    app,
+    healthEventStore,
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
+  });
+
+  const started = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      name: "Lifecycle Recording",
+      nodeId: lifecycleNode.id,
+      tags: ["voice", "lifecycle"],
+      uploadPolicyId: policy.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const startedBody = (await started.json()) as { data: RecordingSummary; job: RecordingJob };
+  const next = await app.request(`/api/v1/nodes/${lifecycleNode.id}/recording-jobs/next`, {
+    headers: { authorization: "Bearer node-token" },
+  });
+  const nextBody = (await next.json()) as { data: RecordingJob };
+  const claimed = await app.request(`/api/v1/recording-jobs/${startedBody.job.id}/claim`, {
+    headers: { authorization: "Bearer node-token" },
+    method: "POST",
+  });
+  const heartbeat = await app.request(`/api/v1/recording-jobs/${startedBody.job.id}/heartbeat`, {
+    headers: { authorization: "Bearer node-token" },
+    method: "POST",
+  });
+  const wavBytes = wavFile([0, 12_000, -24_000, 6000]);
+  const attached = await app.request(`/api/v1/recordings/${startedBody.data.id}/cache-file`, {
+    body: wavBytes,
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "audio/wav",
+      "x-rakkr-duration-seconds": "2",
+      "x-rakkr-file-name": "lifecycle.wav",
+      "x-rakkr-recording-job-id": startedBody.job.id,
+    },
+    method: "PUT",
+  });
+  const attachedBody = (await attached.json()) as {
+    data: {
+      recording: RecordingSummary;
+      uploadQueueItem?: { recordingId: string; uploadPolicyId?: string };
+    };
+  };
+  const completedJob = await app.request(`/api/v1/recording-jobs/${startedBody.job.id}`, {
+    headers: { authorization: "Bearer node-token" },
+  });
+  const completedJobBody = (await completedJob.json()) as { data: RecordingJob };
+  const playback = await app.request(`/api/v1/recordings/${startedBody.data.id}/playback`, {
+    method: "POST",
+  });
+  const download = await app.request(`/api/v1/recordings/${startedBody.data.id}/download`, {
+    method: "POST",
+  });
+  const stream = await app.request(`/api/v1/recordings/${startedBody.data.id}/stream`);
+  const file = await app.request(`/api/v1/recordings/${startedBody.data.id}/file`);
+  const cached = await recordingStore.find(startedBody.data.id);
+  const [cacheAudit] = await auditStore.list({ action: "recordings.cache_file.attach.succeeded" });
+  const [autoQueueAudit] = await auditStore.list({
+    action: "recordings.upload_queue.auto_enqueue.succeeded",
+  });
+
+  assert.equal(started.status, 202);
+  assert.equal(next.status, 200);
+  assert.equal(nextBody.data.id, startedBody.job.id);
+  assert.equal(claimed.status, 200);
+  assert.equal(heartbeat.status, 200);
+  assert.equal(attached.status, 201);
+  assert.equal(attachedBody.data.recording.cached, true);
+  assert.equal(attachedBody.data.recording.status, "cached");
+  assert.equal(attachedBody.data.recording.cachePath, `ad-hoc/${startedBody.data.id}.wav`);
+  assert.equal(attachedBody.data.recording.durationSeconds, 2);
+  assert.equal(attachedBody.data.recording.waveformPreview?.peaks.length, 4);
+  assert.equal(attachedBody.data.uploadQueueItem?.recordingId, startedBody.data.id);
+  assert.equal(attachedBody.data.uploadQueueItem?.uploadPolicyId, policy.id);
+  assert.equal(completedJob.status, 200);
+  assert.equal(completedJobBody.data.status, "completed");
+  assert.equal(cached?.status, "cached");
+  assert.equal(playback.status, 202);
+  assert.equal(download.status, 202);
+  assert.equal(stream.status, 200);
+  assert.equal(stream.headers.get("content-type"), "audio/wav");
+  assert.equal((await stream.arrayBuffer()).byteLength, wavBytes.byteLength);
+  assert.equal(file.status, 200);
+  assert.equal(
+    file.headers.get("content-disposition"),
+    'attachment; filename="Lifecycle Recording.wav"',
+  );
+  assert.equal(cacheAudit?.details.jobStatus, "completed");
+  assert.equal(autoQueueAudit?.details.uploadPolicyId, policy.id);
+});
+
 function memoryNodeStore(nodes: RecorderNode[] = [node()]): NodeStore {
   return {
     async authenticateCredential(token) {
       return token === "node-token"
         ? {
             credentialId: "cred_agent_test",
-            nodeId: "node_agent_test",
+            nodeId: nodes[0]?.id ?? "node_agent_test",
             tokenPrefix: "node-token",
           }
         : undefined;
@@ -181,6 +327,12 @@ function memoryNodeStore(nodes: RecorderNode[] = [node()]): NodeStore {
   };
 }
 
+function requirePermission(): RequirePermission {
+  return () => async (_c, next) => {
+    await next();
+  };
+}
+
 function memoryMeterFrameStore(): MeterFrameStore {
   return {
     async latest() {
@@ -195,7 +347,7 @@ function memoryMeterFrameStore(): MeterFrameStore {
   };
 }
 
-function memoryRecordingStore(recordings: RecordingSummary[]): RecordingStore {
+function memoryRecordingStore(recordings: RecordingSummary[] = []): RecordingStore {
   return {
     async create(recording) {
       recordings.unshift(recording);
@@ -245,6 +397,72 @@ function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): Reco
   };
 }
 
+function memorySettingsStore(profiles: RecordingProfile[]): SettingsStore {
+  return {
+    async assignChannelMapTemplate() {
+      throw new Error("not implemented");
+    },
+    async createChannelMapTemplate() {
+      throw new Error("not implemented");
+    },
+    async findChannelMapTemplate() {
+      return undefined;
+    },
+    async findRecordingProfile(profileId) {
+      return profiles.find((profile) => profile.id === profileId);
+    },
+    async findWatchdogPolicy() {
+      return undefined;
+    },
+    async listChannelMapAssignments() {
+      return [];
+    },
+    async listChannelMapTemplates() {
+      return [];
+    },
+    async listRecordingProfiles() {
+      return profiles;
+    },
+    async listWatchdogPolicies() {
+      return [];
+    },
+    async rollbackChannelMapAssignment() {
+      return undefined;
+    },
+    async updateChannelMapTemplate() {
+      return undefined;
+    },
+    async updateRecordingProfile() {
+      return undefined;
+    },
+    async updateWatchdogPolicy() {
+      return undefined;
+    },
+  };
+}
+
+function auth(): AuthResult {
+  return { user: user() };
+}
+
+function user(): CurrentUser {
+  return {
+    email: "agent-route@example.com",
+    groups: [],
+    id: "user_agent_route",
+    name: "Agent Route User",
+    permissions: [
+      "recording:create",
+      "recording:download",
+      "recording:playback",
+      "recording:read",
+    ] satisfies Permission[],
+    provider: "local",
+    resourceGrants: [],
+    roles: ["operator"],
+  };
+}
+
 function node(): RecorderNode {
   return {
     agentVersion: "0.1.0",
@@ -290,4 +508,27 @@ function flacProfile(): RecordingProfile {
     silenceSkipEnabled: false,
     vbr: false,
   };
+}
+
+function wavFile(samples: number[]) {
+  const dataSize = samples.length * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(48_000, 24);
+  buffer.writeUInt32LE(96_000, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataSize, 40);
+
+  samples.forEach((sample, index) => buffer.writeInt16LE(sample, 44 + index * 2));
+
+  return buffer;
 }
