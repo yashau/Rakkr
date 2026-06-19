@@ -636,6 +636,43 @@ mod tests {
     }
 
     #[test]
+    fn calibrates_voice_hum_static_and_silence_fixtures() {
+        let voice_frame = fixture_frame(&voice_like_pcm(4_800), 1);
+        let hum_frame = fixture_frame(&hum_pcm(4_800), 1);
+        let static_frame = fixture_frame(&static_pcm(4_800), 1);
+        let silence_frame = fixture_frame(&silence_pcm(4_800), 1);
+        let voice = &voice_frame.levels[0].quality;
+        let hum = &hum_frame.levels[0].quality;
+        let static_noise = &static_frame.levels[0].quality;
+        let silence = &silence_frame.levels[0].quality;
+
+        assert!(voice.speech_like);
+        assert!(voice.speech_score >= 0.65);
+        assert!(voice.speech_score > voice.noise_score);
+        assert!(voice.hum_score < 0.35);
+        assert!(voice.static_score < 0.35);
+        assert!(!hum.speech_like);
+        assert!(hum.hum_score >= 0.65);
+        assert!(hum.hum_score > hum.speech_score);
+        assert!(hum.hum_score > hum.static_score);
+        assert!(!static_noise.speech_like);
+        assert!(static_noise.static_score >= 0.85);
+        assert!(static_noise.static_score > static_noise.speech_score);
+        assert_eq!(silence.speech_score, 0.0);
+        assert_eq!(silence.noise_score, 0.0);
+        assert_eq!(silence.hum_score, 0.0);
+        assert_eq!(silence.static_score, 0.0);
+    }
+
+    #[test]
+    fn calibration_fixtures_keep_independent_channels_uncorrelated() {
+        let frame = fixture_frame(&independent_stereo_pcm(4_800), 2);
+
+        assert!(frame.levels[0].quality.channel_correlation.is_none());
+        assert!(frame.levels[1].quality.channel_correlation.is_none());
+    }
+
+    #[test]
     fn estimates_same_phase_and_inverted_channel_correlation() {
         let same_phase_pcm = correlated_pcm(false);
         let inverted_phase_pcm = correlated_pcm(true);
@@ -702,5 +739,77 @@ mod tests {
                 [sample, peer].into_iter().flat_map(i16::to_le_bytes)
             })
             .collect()
+    }
+
+    fn fixture_frame(pcm: &[u8], channel_count: u16) -> MeterFrame {
+        pcm_s16le_meter_frame_at(
+            "node_1",
+            "iface_1",
+            pcm,
+            channel_count,
+            -1.0,
+            "2026-06-18T00:00:00Z",
+        )
+        .expect("fixture frame")
+    }
+
+    fn voice_like_pcm(samples: usize) -> Vec<u8> {
+        mono_pcm(samples, |index| {
+            let time = index as f32 / 48_000.0;
+            let phrase_envelope = if index % 43 < 25 { 0.95 } else { 0.28 };
+            let syllable_envelope = 0.55 + 0.45 * (time * 5.0 * std::f32::consts::TAU).sin().abs();
+            let voiced_sign = if index % 10 < 5 { 1.0 } else { -1.0 };
+            let formant_motion = 0.72
+                + (time * 730.0 * std::f32::consts::TAU).sin() * 0.18
+                + (time * 1_800.0 * std::f32::consts::TAU).sin() * 0.1;
+
+            voiced_sign * formant_motion * phrase_envelope * syllable_envelope * 11_000.0
+        })
+    }
+
+    fn hum_pcm(samples: usize) -> Vec<u8> {
+        mono_pcm(samples, |index| {
+            let time = index as f32 / 48_000.0;
+
+            (time * 60.0 * std::f32::consts::TAU).sin() * 12_000.0
+        })
+    }
+
+    fn static_pcm(samples: usize) -> Vec<u8> {
+        mono_pcm(
+            samples,
+            |index| {
+                if index % 2 == 0 { 10_000.0 } else { -10_000.0 }
+            },
+        )
+    }
+
+    fn silence_pcm(samples: usize) -> Vec<u8> {
+        mono_pcm(samples, |_| 0.0)
+    }
+
+    fn independent_stereo_pcm(samples: usize) -> Vec<u8> {
+        (0..samples)
+            .flat_map(|index| {
+                let time = index as f32 / 48_000.0;
+                let left = (time * 230.0 * std::f32::consts::TAU).sin() * 11_000.0;
+                let right = (time * 1_370.0 * std::f32::consts::TAU + 0.7).sin() * 9_000.0;
+
+                [to_i16(left), to_i16(right)]
+                    .into_iter()
+                    .flat_map(i16::to_le_bytes)
+            })
+            .collect()
+    }
+
+    fn mono_pcm(samples: usize, sample: impl Fn(usize) -> f32) -> Vec<u8> {
+        (0..samples)
+            .map(|index| to_i16(sample(index)))
+            .flat_map(i16::to_le_bytes)
+            .collect()
+    }
+
+    fn to_i16(sample: f32) -> i16 {
+        sample.clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
     }
 }

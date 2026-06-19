@@ -46,8 +46,9 @@ const baselinePhrases = [
   "resource-scoped",
   "quality timelines",
   "Prometheus export",
+  "synthetic PCM calibration fixtures",
   "hum/static likelihood",
-  "field calibration",
+  "real-room field calibration",
   "mise run health:check-watchdog",
 ];
 const sourceSnippets = [
@@ -105,6 +106,8 @@ const sourceSnippets = [
   "correlated_channel_pairs",
   "channel_correlation_pairs_deduplicate_peer_entries",
   "estimates_hum_and_static_likelihood_from_pcm_shape",
+  "calibrates_voice_hum_static_and_silence_fixtures",
+  "calibration_fixtures_keep_independent_channels_uncorrelated",
   "estimates_same_phase_and_inverted_channel_correlation",
 ];
 const testSnippets = [
@@ -169,7 +172,7 @@ for (const snippet of testSnippets) {
 }
 
 if (/Status:\s*MVP baseline checked/iu.test(baseline)) {
-  errors.push(`${baselineFile} must remain partial until hum/static field calibration closes`);
+  errors.push(`${baselineFile} must remain partial until real-room field calibration closes`);
 }
 
 if (errors.length > 0) {

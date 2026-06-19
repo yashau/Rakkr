@@ -67,7 +67,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, offline, local-log, metrics, and timeline baseline; field calibration remains |
+| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, offline, local-log, metrics, and timeline baseline; real-room field calibration remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
@@ -254,6 +254,7 @@ Current partial implementation:
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
 - Local meter frames include speech/noise/hum/static scores; speech-required policies can alert on loud non-speech audio.
 - Local meter frames include first-pass same/inverted channel correlation scoring for suspicious channel mapping.
+- Agent telemetry includes synthetic PCM calibration fixtures for voice, silence, hum, static, and independent channels.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high channel correlation.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
@@ -714,6 +715,7 @@ Current partial implementation:
 146. ✅ Promote Scheduling MVP with checked operator route controls and audit coverage.
 147. ✅ Add first-pass channel correlation telemetry, health event, UI cue, and Prometheus metric.
 148. ✅ Add policy-tuned scheduled channel correlation watchdog alerts.
+149. ✅ Add synthetic PCM calibration fixtures for local quality scoring.
 
 ## Open Questions
 
