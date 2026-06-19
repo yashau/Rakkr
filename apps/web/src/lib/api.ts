@@ -17,6 +17,7 @@ import type {
   NodeRuntime,
   RecorderNode,
   OidcPublicConfig,
+  Permission,
   RecordingProfile,
   RecordingProfileUpdate,
   RecordingJob,
@@ -60,6 +61,8 @@ export interface AuditEventFilters {
   from?: string;
   limit?: number;
   outcome?: AuditOutcome;
+  permission?: Permission;
+  reason?: string;
   target?: string;
   to?: string;
 }

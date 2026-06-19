@@ -13,6 +13,8 @@ test("audit routes list events with filters", async () => {
   await auditStore.append(
     auditEvent("recordings.delete.denied", "denied", {
       actorName: "Blocked User",
+      permission: "recording:delete",
+      reason: "access_policy_denied",
       targetName: "Room 202",
     }),
   );
@@ -26,6 +28,19 @@ test("audit routes list events with filters", async () => {
   assert.ok(permissions.includes("audit:read:audit.events.read"));
   assert.equal(body.data.length, 1);
   assert.equal(body.data[0]?.action, "recordings.download.succeeded");
+
+  const deniedResponse = await app.request(
+    "/api/v1/audit-events?permission=recording%3Adelete&reason=access_policy",
+  );
+  const deniedBody = (await deniedResponse.json()) as { data: AuditEvent[] };
+  const invalidResponse = await app.request("/api/v1/audit-events?permission=unknown");
+
+  assert.equal(deniedResponse.status, 200);
+  assert.deepEqual(
+    deniedBody.data.map((event) => event.action),
+    ["recordings.delete.denied"],
+  );
+  assert.equal(invalidResponse.status, 400);
 });
 
 test("audit routes export filtered events as csv", async () => {
@@ -85,6 +100,8 @@ function auditEvent(
   options: {
     actorName?: string;
     details?: Record<string, unknown>;
+    permission?: Permission;
+    reason?: string;
     targetName?: string;
   } = {},
 ): AuditEvent {
@@ -102,7 +119,8 @@ function auditEvent(
     details: options.details ?? {},
     id: `audit_${action}`,
     outcome,
-    permission: "audit:read",
+    permission: options.permission ?? "audit:read",
+    reason: options.reason,
     target: {
       id: "room_101",
       name: options.targetName ?? "Room 101",

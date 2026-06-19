@@ -28,6 +28,8 @@ export interface AuditEventFilters {
   from?: Date;
   limit?: number;
   outcome?: AuditOutcome;
+  permission?: Permission;
+  reason?: string;
   target?: string;
   to?: Date;
 }
@@ -169,6 +171,14 @@ function auditConditions(filters: AuditEventFilters): SQL[] {
     conditions.push(eq(auditEventsTable.outcome, filters.outcome));
   }
 
+  if (filters.permission) {
+    conditions.push(eq(auditEventsTable.permissionId, filters.permission));
+  }
+
+  if (filters.reason) {
+    conditions.push(ilike(auditEventsTable.reason, contains(filters.reason)));
+  }
+
   if (filters.from) {
     conditions.push(gte(auditEventsTable.createdAt, filters.from));
   }
@@ -189,6 +199,8 @@ function matchesAuditFilters(event: AuditEvent, filters: AuditEventFilters) {
       filters.target,
     ) &&
     (!filters.outcome || event.outcome === filters.outcome) &&
+    (!filters.permission || event.permission === filters.permission) &&
+    includesFilter(event.reason ?? "", filters.reason) &&
     (!filters.from || new Date(event.createdAt) >= filters.from) &&
     (!filters.to || new Date(event.createdAt) <= filters.to)
   );

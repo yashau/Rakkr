@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Hono } from "hono";
-import { auditOutcomeSchema, type AuditEvent } from "@rakkr/shared";
+import { auditOutcomeSchema, permissionSchema, type AuditEvent } from "@rakkr/shared";
 
 import type { AuditEventFilters, AuditStore } from "./audit-store.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
@@ -31,6 +31,11 @@ const auditEventsQuerySchema = z.object({
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     auditOutcomeSchema.optional(),
   ),
+  permission: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    permissionSchema.optional(),
+  ),
+  reason: optionalTextFilterSchema,
   target: optionalTextFilterSchema,
   to: optionalDateFilterSchema,
 });
@@ -81,6 +86,8 @@ function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEvent
     from: input.from ? new Date(input.from) : undefined,
     limit: input.limit,
     outcome: input.outcome,
+    permission: input.permission,
+    reason: input.reason,
     target: input.target,
     to: input.to ? new Date(input.to) : undefined,
   };

@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Download, RotateCcw, Search } from "lucide-react";
 import { Fragment, useState } from "react";
-import type { AuditEvent, AuditOutcome } from "@rakkr/shared";
+import { permissions, type AuditEvent, type AuditOutcome, type Permission } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ interface AuditFilterDraft {
   actor: string;
   from: string;
   outcome: "" | AuditOutcome;
+  permission: "" | Permission;
+  reason: string;
   target: string;
   to: string;
 }
@@ -27,6 +29,8 @@ const emptyDraft: AuditFilterDraft = {
   actor: "",
   from: "",
   outcome: "",
+  permission: "",
+  reason: "",
   target: "",
   to: "",
 };
@@ -84,7 +88,7 @@ export function AuditPage() {
       </div>
 
       <form
-        className="grid gap-3 border-b border-border bg-panel px-4 py-3 md:grid-cols-[1fr_1fr_1fr_150px] xl:grid-cols-[1fr_1fr_1fr_150px_190px_190px_auto]"
+        className="grid gap-3 border-b border-border bg-panel px-4 py-3 md:grid-cols-2 xl:grid-cols-4"
         onSubmit={(event) => {
           event.preventDefault();
           setFilters(filtersFromDraft(draft));
@@ -100,10 +104,35 @@ export function AuditPage() {
           onChange={(value) => updateDraft("action", value)}
           value={draft.action}
         />
+        <div className="grid gap-1">
+          <Label className="text-xs text-muted-foreground" htmlFor="audit-permission">
+            Permission
+          </Label>
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            id="audit-permission"
+            onChange={(event) =>
+              updateDraft("permission", event.target.value as AuditFilterDraft["permission"])
+            }
+            value={draft.permission}
+          >
+            <option value="">Any</option>
+            {permissions.map((permission) => (
+              <option key={permission} value={permission}>
+                {permission}
+              </option>
+            ))}
+          </select>
+        </div>
         <FilterInput
           label="Target"
           onChange={(value) => updateDraft("target", value)}
           value={draft.target}
+        />
+        <FilterInput
+          label="Reason"
+          onChange={(value) => updateDraft("reason", value)}
+          value={draft.reason}
         />
 
         <div className="grid gap-1">
@@ -358,6 +387,8 @@ function filtersFromDraft(draft: AuditFilterDraft): AuditEventFilters {
     actor: valueOrUndefined(draft.actor),
     from: dateTimeOrUndefined(draft.from),
     outcome: draft.outcome || undefined,
+    permission: draft.permission || undefined,
+    reason: valueOrUndefined(draft.reason),
     target: valueOrUndefined(draft.target),
     to: dateTimeOrUndefined(draft.to),
   };
