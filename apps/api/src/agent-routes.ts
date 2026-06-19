@@ -1,14 +1,17 @@
 import type { Context, Hono } from "hono";
-import {
-  healthSeveritySchema,
-  meterFrameSchema,
-  nodeRuntimeSchema,
-  nodeStatusSchema,
-  type ChannelMapTemplateAssignment,
-  type RecordingSummary,
-} from "@rakkr/shared";
-import { z } from "zod";
+import { meterFrameSchema, type RecordingSummary } from "@rakkr/shared";
 
+import {
+  assignedChannelMaps,
+  durationFromHeader,
+  nodeActor,
+  nodeHealthEventDetails,
+  nodeHealthEventSchema,
+  nodeHeartbeatChanged,
+  nodeHeartbeatSchema,
+  nodeHeartbeatSnapshot,
+  recordingFileSnapshot,
+} from "./agent-route-helpers.js";
 import { bearerToken } from "./auth-utils.js";
 import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
@@ -547,11 +550,12 @@ export function registerAgentRoutes({
     await recordingStore.save(recording);
     const job = await completeRecordingJob(recording.id, jobId);
     const uploadQueueItem = await queueCachedRecordingUpload(c, auth.credential, recording);
+    const syncedRecording = await syncAndFindRecording(recording);
 
     await recordAuditEvent(c, {
       action: "recordings.cache_file.attach.succeeded",
       actor: nodeActor(auth.credential),
-      after: recordingFileSnapshot(recording),
+      after: recordingFileSnapshot(syncedRecording),
       before,
       details: {
         cachePath: stored.cachePath,
@@ -573,7 +577,7 @@ export function registerAgentRoutes({
       },
     });
 
-    return c.json({ data: { file: stored, recording, uploadQueueItem } }, 201);
+    return c.json({ data: { file: stored, recording: syncedRecording, uploadQueueItem } }, 201);
   });
 
   async function authenticateNode(
@@ -662,9 +666,14 @@ export function registerAgentRoutes({
       return c.json({ error: "Recording job not found" }, 404);
     }
 
-    const recording = await markRecordingJobTerminalRecording(job.recordingId, terminalState);
+    const recording = await markRecordingJobTerminalRecording(job.recordingId, {
+      jobId: job.id,
+      reason,
+      terminalState,
+    });
 
     await recordJobSuccess(c, `recording_jobs.${terminalState}.succeeded`, auth.credential, job, {
+      healthEventId: recording?.healthEventId,
       reason: job.failureReason,
       recordingStatus: recording?.status,
     });
@@ -674,7 +683,11 @@ export function registerAgentRoutes({
 
   async function markRecordingJobTerminalRecording(
     recordingId: string,
-    terminalState: "cancelled" | "failed",
+    input: {
+      jobId: string;
+      reason: string;
+      terminalState: "cancelled" | "failed";
+    },
   ) {
     const recording = await recordingStore.find(recordingId);
 
@@ -682,18 +695,54 @@ export function registerAgentRoutes({
       return undefined;
     }
 
+    const healthEvent = await createTerminalHealthEvent(recording, input);
     const updated = {
       ...recording,
-      status: terminalRecordingStatus(recording, terminalState),
+      status: terminalRecordingStatus(recording, input.terminalState),
     };
 
     await recordingStore.save(updated);
     await syncRecordingHealth(healthEventStore, recordingStore, recordingId);
+    const synced = (await recordingStore.find(recordingId)) ?? updated;
 
     return {
-      ...updated,
-      terminalState,
+      ...synced,
+      healthEventId: healthEvent?.id,
+      terminalState: input.terminalState,
     };
+  }
+
+  async function syncAndFindRecording(recording: RecordingSummary) {
+    await syncRecordingHealth(healthEventStore, recordingStore, recording.id);
+
+    return (await recordingStore.find(recording.id)) ?? recording;
+  }
+
+  async function createTerminalHealthEvent(
+    recording: RecordingSummary,
+    input: {
+      jobId: string;
+      reason: string;
+      terminalState: "cancelled" | "failed";
+    },
+  ) {
+    if (input.terminalState === "cancelled" && input.reason === "controller_stop_requested") {
+      return undefined;
+    }
+
+    return healthEventStore.create({
+      details: {
+        jobId: input.jobId,
+        reason: input.reason,
+        source: "recording_job_terminal",
+        terminalState: input.terminalState,
+      },
+      nodeId: recording.nodeId,
+      recordingId: recording.id,
+      scheduleId: recording.scheduleId,
+      severity: input.terminalState === "failed" ? "critical" : "warning",
+      type: `controller.recording.job_${input.terminalState}`,
+    });
   }
 
   function terminalRecordingStatus(
@@ -874,122 +923,4 @@ export function registerAgentRoutes({
       target: options.target,
     });
   }
-}
-
-const nodeHealthEventSchema = z
-  .object({
-    details: z.record(z.string(), z.unknown()).default({}),
-    id: z.string().trim().min(1).max(160).optional(),
-    openedAt: z
-      .string()
-      .trim()
-      .min(1)
-      .refine((value) => !Number.isNaN(Date.parse(value)), "Expected ISO date/time")
-      .optional(),
-    recordingId: z.string().trim().min(1).max(160).optional(),
-    scheduleId: z.string().trim().min(1).max(160).optional(),
-    severity: healthSeveritySchema,
-    type: z.string().trim().min(1).max(160),
-  })
-  .strict();
-
-const nodeHeartbeatSchema = z
-  .object({
-    agentVersion: z.string().trim().min(1).max(80),
-    hostname: z.string().trim().min(1).max(255),
-    ipAddresses: z.array(z.string().trim().min(1).max(120)).max(16).default([]),
-    runtime: nodeRuntimeSchema.optional(),
-    status: nodeStatusSchema.default("online"),
-  })
-  .passthrough();
-
-function nodeHeartbeatSnapshot(node: Awaited<ReturnType<NodeStore["find"]>> | undefined) {
-  return node
-    ? {
-        agentVersion: node.agentVersion,
-        hostname: node.hostname,
-        ipAddresses: node.ipAddresses,
-        runtime: node.runtime,
-        status: node.status,
-      }
-    : undefined;
-}
-
-function nodeHeartbeatChanged(
-  before: Awaited<ReturnType<NodeStore["find"]>> | undefined,
-  after: NonNullable<Awaited<ReturnType<NodeStore["find"]>>>,
-) {
-  return (
-    JSON.stringify(nodeHeartbeatSnapshot(before)) !== JSON.stringify(nodeHeartbeatSnapshot(after))
-  );
-}
-
-function nodeActor(credential: NodeCredentialAuth) {
-  return {
-    id: credential.nodeId,
-    name: credential.nodeId,
-    roles: [],
-    type: "node" as const,
-  };
-}
-
-function nodeHealthEventDetails(input: z.infer<typeof nodeHealthEventSchema>) {
-  return {
-    ...input.details,
-    localEventId: input.id,
-  };
-}
-
-function recordingFileSnapshot(recording: RecordingSummary) {
-  return {
-    cachePath: recording.cachePath,
-    cached: recording.cached,
-    checksum: recording.checksum,
-    durationSeconds: recording.durationSeconds,
-    status: recording.status,
-    waveformPeaks: recording.waveformPreview?.peaks.length,
-  };
-}
-
-function durationFromHeader(value: string | undefined) {
-  if (!value) {
-    return undefined;
-  }
-
-  const duration = Number(value);
-
-  return Number.isFinite(duration) && duration >= 0 ? Math.round(duration) : "invalid";
-}
-
-async function assignedChannelMaps(
-  node: NonNullable<Awaited<ReturnType<NodeStore["find"]>>>,
-  settingsStore: SettingsStore,
-) {
-  const interfaceIds = new Set(node.interfaces.map((audioInterface) => audioInterface.id));
-  const assignments = (await settingsStore.listChannelMapAssignments()).filter((assignment) =>
-    matchesNodeAssignment(assignment, node.id, interfaceIds),
-  );
-  const result = [];
-
-  for (const assignment of assignments) {
-    const template = await settingsStore.findChannelMapTemplate(assignment.templateId);
-
-    if (template) {
-      result.push({ assignment, template });
-    }
-  }
-
-  return result;
-}
-
-function matchesNodeAssignment(
-  assignment: ChannelMapTemplateAssignment,
-  nodeId: string,
-  interfaceIds: Set<string>,
-) {
-  if (assignment.targetType === "node") {
-    return assignment.targetId === nodeId;
-  }
-
-  return interfaceIds.has(assignment.targetId);
 }

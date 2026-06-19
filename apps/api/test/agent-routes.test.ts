@@ -70,12 +70,62 @@ test("agent failed job marks recording metadata failed", async () => {
     method: "POST",
   });
   const updated = await recordingStore.find("rec_agent_failure");
+  const [healthEvent] = await healthEventStore.list({ recordingId: "rec_agent_failure" });
   const [event] = await auditStore.list({ action: "recording_jobs.failed.succeeded" });
 
   assert.equal(response.status, 200);
   assert.equal(updated?.status, "failed");
+  assert.equal(updated?.healthStatus, "critical");
+  assert.equal(healthEvent?.severity, "critical");
+  assert.equal(healthEvent?.type, "controller.recording.job_failed");
+  assert.equal(healthEvent?.details.reason, "capture_output_stalled");
+  assert.equal(event?.details.healthEventId, healthEvent?.id);
   assert.equal(event?.details.recordingStatus, "failed");
   assert.equal(event?.details.reason, "capture_output_stalled");
+});
+
+test("agent unexpected cancellation marks recording health warning", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const recordingStore = memoryRecordingStore([
+    {
+      ...recording(),
+      id: "rec_agent_cancelled",
+      name: "Agent Cancelled Test",
+    },
+  ]);
+  const job = await createRecordingJob((await recordingStore.list())[0]!);
+
+  registerAgentRoutes({
+    app,
+    healthEventStore,
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(`/api/v1/recording-jobs/${job.id}/cancelled`, {
+    headers: {
+      authorization: "Bearer node-token",
+      "x-rakkr-reason": "capture_process_exited",
+    },
+    method: "POST",
+  });
+  const updated = await recordingStore.find("rec_agent_cancelled");
+  const [healthEvent] = await healthEventStore.list({ recordingId: "rec_agent_cancelled" });
+  const [event] = await auditStore.list({ action: "recording_jobs.cancelled.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(updated?.status, "completed");
+  assert.equal(updated?.healthStatus, "warning");
+  assert.equal(healthEvent?.severity, "warning");
+  assert.equal(healthEvent?.type, "controller.recording.job_cancelled");
+  assert.equal(healthEvent?.details.reason, "capture_process_exited");
+  assert.equal(event?.details.healthEventId, healthEvent?.id);
+  assert.equal(event?.details.recordingStatus, "completed");
 });
 
 test("agent heartbeat updates node runtime details and audits inventory changes", async () => {
@@ -254,6 +304,7 @@ test("ad hoc recording completes through agent cache attach and exposes cached m
   assert.equal(attached.status, 201);
   assert.equal(attachedBody.data.recording.cached, true);
   assert.equal(attachedBody.data.recording.status, "cached");
+  assert.equal(attachedBody.data.recording.healthStatus, "healthy");
   assert.equal(attachedBody.data.recording.cachePath, `ad-hoc/${startedBody.data.id}.wav`);
   assert.equal(attachedBody.data.recording.durationSeconds, 2);
   assert.equal(attachedBody.data.recording.waveformPreview?.peaks.length, 4);
@@ -262,6 +313,7 @@ test("ad hoc recording completes through agent cache attach and exposes cached m
   assert.equal(completedJob.status, 200);
   assert.equal(completedJobBody.data.status, "completed");
   assert.equal(cached?.status, "cached");
+  assert.equal(cached?.healthStatus, "healthy");
   assert.equal(playback.status, 202);
   assert.equal(download.status, 202);
   assert.equal(stream.status, 200);
@@ -336,6 +388,7 @@ test("controller stop request survives agent cancellation as completed recording
   });
   const cancelledBody = (await cancelled.json()) as { data: RecordingJob };
   const updated = await recordingStore.find(startedBody.data.id);
+  const healthEvents = await healthEventStore.list({ recordingId: startedBody.data.id });
   const [stopAudit] = await auditStore.list({ action: "recordings.stop.succeeded" });
   const [cancelAudit] = await auditStore.list({
     action: "recording_jobs.cancelled.succeeded",
@@ -349,6 +402,8 @@ test("controller stop request survives agent cancellation as completed recording
   assert.equal(cancelled.status, 200);
   assert.equal(cancelledBody.data.status, "cancelled");
   assert.equal(updated?.status, "completed");
+  assert.equal(updated?.healthStatus, "healthy");
+  assert.equal(healthEvents.length, 0);
   assert.equal(cancelAudit?.details.reason, "controller_stop_requested");
   assert.equal(cancelAudit?.details.recordingStatus, "completed");
 });
