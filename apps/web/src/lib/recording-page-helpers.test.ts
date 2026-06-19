@@ -21,6 +21,7 @@ import {
   recordingFileActionState,
   recordingPagePermissions,
   recordingRelationshipBadges,
+  uploadQueueStatusSummary,
   replacePlaybackPreview,
   type RecordingPlaybackPreview,
   waveformBarHeightPercent,
@@ -141,6 +142,21 @@ test("recording cache state filters round trip through API filters and chips", (
   assert.equal(filters.cacheState, "missing");
   assert.deepEqual(recordingFilterChips(filters), [
     { key: "cacheState", label: "cache", value: "missing" },
+  ]);
+});
+
+test("upload queue status summary counts visible recording items in operator order", () => {
+  const items = [
+    uploadQueueItem({ id: "upload_queued", recordingId: "rec_visible_a", status: "queued" }),
+    uploadQueueItem({ id: "upload_failed", recordingId: "rec_visible_b", status: "failed" }),
+    uploadQueueItem({ id: "upload_retrying", recordingId: "rec_visible_b", status: "retrying" }),
+    uploadQueueItem({ id: "upload_hidden", recordingId: "rec_hidden", status: "failed" }),
+  ];
+
+  assert.deepEqual(uploadQueueStatusSummary(items, ["rec_visible_a", "rec_visible_b"]), [
+    { count: 1, status: "failed" },
+    { count: 1, status: "retrying" },
+    { count: 1, status: "queued" },
   ]);
 });
 
@@ -364,6 +380,24 @@ function uploadPolicy(): UploadPolicy {
     name: "Stub Upload",
     provider: "stub",
     trigger: "manual",
+    updatedAt: "2026-06-18T12:00:00.000Z",
+  };
+}
+
+function uploadQueueItem(input: {
+  id: string;
+  recordingId: string;
+  status: "cancelled" | "failed" | "queued" | "retrying" | "succeeded";
+}) {
+  return {
+    attemptCount: 0,
+    createdAt: "2026-06-18T12:00:00.000Z",
+    id: input.id,
+    maxAttempts: 5,
+    nextAttemptAt: "2026-06-18T12:00:00.000Z",
+    provider: "stub" as const,
+    recordingId: input.recordingId,
+    status: input.status,
     updatedAt: "2026-06-18T12:00:00.000Z",
   };
 }

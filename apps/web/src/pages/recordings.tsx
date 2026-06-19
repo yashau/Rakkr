@@ -15,6 +15,7 @@ import { RecordingCacheStateFilter } from "@/components/recording-cache-state-fi
 import { RecordingCard } from "@/components/recording-card";
 import { RecordingFacetPanel } from "@/components/recording-facet-panel";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
+import { RecordingUploadQueueSummary } from "@/components/recording-upload-queue-summary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,7 @@ import {
   recordingSortOrders,
   recordingStatuses,
   selectClassName,
+  uploadQueueStatusSummary,
 } from "@/lib/recording-page-helpers";
 
 export function RecordingsPage() {
@@ -381,6 +383,10 @@ export function RecordingsPage() {
     .filter((recording) => isCachedRecording(recording))
     .map((recording) => recording.id);
   const visibleRecordingIds = recordings.map((recording) => recording.id);
+  const uploadStatusCounts = uploadQueueStatusSummary(
+    uploadQueueQuery.data?.data ?? [],
+    visibleRecordingIds,
+  );
   const allVisibleSelected =
     visibleRecordingIds.length > 0 &&
     visibleRecordingIds.every((recordingId) => selectedRecordingIdSet.has(recordingId));
@@ -886,6 +892,7 @@ export function RecordingsPage() {
               trackGroups={topTrackGroups}
               uploadPolicies={topUploadPolicies}
             />
+            <RecordingUploadQueueSummary counts={uploadStatusCounts} />
           </form>
 
           {recordings.length > 0 ? (

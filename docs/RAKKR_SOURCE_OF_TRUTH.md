@@ -423,6 +423,7 @@ Current partial implementation:
 - Recording library supports explicit server-side sorting with UI controls.
 - Recording library supports paginated result sets with page-size and previous/next controls.
 - Recording library can filter recordings by cached versus missing local cache state.
+- Recording library summarizes visible upload queue item counts by status.
 - Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
 - Recordings page read queries mirror granular RBAC for library, health, settings, and node context.
 - Recording library can export a scoped, filtered CSV manifest with audit coverage.
@@ -663,6 +664,7 @@ Current partial implementation:
 121. ✅ Add RBAC-aware friendly relationship labels to recording cards.
 122. ✅ Add selected-recording manifest CSV export.
 123. ✅ Add recording cache-state filter.
+124. ✅ Add visible upload queue status summary.
 
 ## Open Questions
 

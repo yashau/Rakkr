@@ -8,6 +8,7 @@ import type {
   ScheduleSummary,
   UploadPolicy,
   UploadQueueItem,
+  UploadQueueStatus,
 } from "@rakkr/shared";
 
 import type {
@@ -63,6 +64,11 @@ export interface RecordingFileActionState {
   canDownload: boolean;
   canPlayback: boolean;
   fileReady: boolean;
+}
+
+export interface UploadQueueStatusCount {
+  count: number;
+  status: UploadQueueStatus;
 }
 
 export interface RecordingPagePermissions {
@@ -137,6 +143,13 @@ export const recordingPageSizes = [10, 25, 50, 100];
 export const recordingCacheStateOptions: Array<{ label: string; value: RecordingCacheState }> = [
   { label: "Cached", value: "cached" },
   { label: "Missing cache", value: "missing" },
+];
+export const uploadQueueStatusOrder: UploadQueueStatus[] = [
+  "failed",
+  "retrying",
+  "queued",
+  "succeeded",
+  "cancelled",
 ];
 export const defaultRecordingPageSize = 25;
 export const selectClassName =
@@ -350,6 +363,26 @@ export function groupUploadItemsByRecording(items: UploadQueueItem[]) {
   }
 
   return grouped;
+}
+
+export function uploadQueueStatusSummary(
+  items: UploadQueueItem[],
+  visibleRecordingIds: string[],
+): UploadQueueStatusCount[] {
+  const visibleIds = new Set(visibleRecordingIds);
+  const counts = new Map<UploadQueueStatus, number>();
+
+  for (const item of items) {
+    if (visibleIds.has(item.recordingId)) {
+      counts.set(item.status, (counts.get(item.status) ?? 0) + 1);
+    }
+  }
+
+  return uploadQueueStatusOrder.flatMap((status) => {
+    const count = counts.get(status) ?? 0;
+
+    return count > 0 ? [{ count, status }] : [];
+  });
 }
 
 export function isTerminalRecording(recording: RecordingSummary) {
