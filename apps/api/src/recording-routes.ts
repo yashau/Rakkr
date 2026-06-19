@@ -21,6 +21,16 @@ import {
   recordingsQuerySchema,
 } from "./recording-listing.js";
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
+import {
+  applyRecordingBulkMetadataUpdate,
+  applyRecordingMetadataUpdate,
+  bulkMetadataFields,
+  recordingBulkMetadataUpdateSchema,
+  recordingMetadataSnapshot,
+  recordingMetadataUpdateSchema,
+  uniqueRecordingIds,
+  uniqueTags,
+} from "./recording-metadata.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
@@ -46,18 +56,6 @@ interface RecordingRouteDependencies {
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
   settingsStore: SettingsStore;
 }
-
-const recordingMetadataUpdateSchema = z
-  .object({
-    folder: z.string().trim().min(1).max(240).optional(),
-    name: z.string().trim().min(1).max(240).optional(),
-    tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
-  })
-  .strict()
-  .refine(
-    (value) => value.folder !== undefined || value.name !== undefined || value.tags !== undefined,
-    "Expected at least one metadata field",
-  );
 
 const uploadQueueRequestSchema = z
   .object({
@@ -524,6 +522,78 @@ export function registerRecordingRoutes({
   );
 
   app.patch(
+    "/api/v1/recordings/bulk-metadata",
+    requirePermission("recording:edit", "recordings.metadata.bulk_update", () => ({
+      id: "recording_collection",
+      type: "recording_collection",
+    })),
+    async (c) => {
+      const body = recordingBulkMetadataUpdateSchema.safeParse(
+        await c.req.json().catch(() => ({})),
+      );
+
+      if (!body.success) {
+        await recordBulkMetadataFailure(c, "invalid_request");
+        return c.json({ error: "Invalid recording bulk metadata", issues: body.error.issues }, 400);
+      }
+
+      const recordingIds = uniqueRecordingIds(body.data.recordingIds);
+      const visibleIds = new Set(
+        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
+      );
+      const hiddenIds = recordingIds.filter((recordingId) => !visibleIds.has(recordingId));
+
+      if (hiddenIds.length > 0) {
+        await recordBulkMetadataFailure(c, "recording_not_visible", { hiddenIds, recordingIds });
+        return c.json({ error: "One or more recordings are not visible" }, 404);
+      }
+
+      const updates: RecordingSummary[] = [];
+      const before = [];
+      const after = [];
+
+      for (const recordingId of recordingIds) {
+        const recording = await recordingStore.find(recordingId);
+
+        if (!recording) {
+          await recordBulkMetadataFailure(c, "recording_not_found", { recordingIds });
+          return c.json({ error: "One or more recordings were not found" }, 404);
+        }
+
+        const updated = applyRecordingBulkMetadataUpdate(recording, body.data);
+
+        before.push({ id: recording.id, ...recordingMetadataSnapshot(recording) });
+        after.push({ id: updated.id, ...recordingMetadataSnapshot(updated) });
+        await recordingStore.save(updated);
+        updates.push(updated);
+      }
+
+      await recordAuditEvent(c, {
+        action: "recordings.metadata.bulk_update.succeeded",
+        after: { recordings: after },
+        auth: currentAuth(c),
+        before: { recordings: before },
+        correlationIds: Object.fromEntries(
+          recordingIds.map((recordingId, index) => [`recordingId${index + 1}`, recordingId]),
+        ),
+        details: {
+          fields: bulkMetadataFields(body.data),
+          requestedCount: body.data.recordingIds.length,
+          updatedCount: updates.length,
+        },
+        outcome: "succeeded",
+        permission: "recording:edit",
+        target: {
+          id: "recording_collection",
+          type: "recording_collection",
+        },
+      });
+
+      return c.json({ data: updates, meta: { updatedCount: updates.length } });
+    },
+  );
+
+  app.patch(
     "/api/v1/recordings/:recordingId/metadata",
     requirePermission("recording:edit", "recordings.metadata.update", (c) => ({
       id: c.req.param("recordingId"),
@@ -568,12 +638,7 @@ export function registerRecordingRoutes({
       }
 
       const before = recordingMetadataSnapshot(recording);
-      const updated: RecordingSummary = {
-        ...recording,
-        folder: body.data.folder ?? recording.folder,
-        name: body.data.name ?? recording.name,
-        tags: body.data.tags ? uniqueTags(body.data.tags) : recording.tags,
-      };
+      const updated = applyRecordingMetadataUpdate(recording, body.data);
 
       await recordingStore.save(updated);
 
@@ -770,6 +835,25 @@ export function registerRecordingRoutes({
     });
   }
 
+  async function recordBulkMetadataFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action: "recordings.metadata.bulk_update.failed",
+      auth: currentAuth(c),
+      details,
+      outcome: reason === "recording_not_visible" ? "denied" : "failed",
+      permission: "recording:edit",
+      reason,
+      target: {
+        id: "recording_collection",
+        type: "recording_collection",
+      },
+    });
+  }
+
   async function recordUploadQueueFailure(
     c: Context<AppBindings>,
     input: {
@@ -819,30 +903,6 @@ function defaultAdHocFolder(now: Date, node: RecorderNode) {
 
 function defaultAdHocName(now: Date, node: RecorderNode) {
   return `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_${node.alias}`;
-}
-
-function recordingMetadataSnapshot(recording: RecordingSummary) {
-  return {
-    folder: recording.folder,
-    name: recording.name,
-    tags: recording.tags,
-  };
-}
-
-function uniqueTags(tags: string[]) {
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const tag of tags) {
-    const key = tag.toLocaleLowerCase();
-
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(tag);
-    }
-  }
-
-  return result;
 }
 
 function uploadQueueAuditDetails(item: UploadQueueItem) {
