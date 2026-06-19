@@ -38,6 +38,7 @@ import {
   getAuthToken,
   setAuthToken,
 } from "@/lib/api";
+import { rootLayoutPermissions } from "@/lib/root-layout-helpers";
 import { AccessPage } from "@/pages/access";
 import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
@@ -91,14 +92,15 @@ function RootLayout() {
   }
 
   const currentUser = currentUserQuery.data.data;
-  const canCreateRecording = currentUser.permissions.includes("recording:create");
-  const canManageAccess = currentUser.permissions.includes("auth:manage");
-  const canReadAudit = currentUser.permissions.includes("audit:read");
-  const canReadDashboard = currentUser.permissions.includes("node:read");
-  const canReadNodes = currentUser.permissions.includes("node:read");
-  const canReadRecordings = currentUser.permissions.includes("recording:read");
-  const canReadSchedules = currentUser.permissions.includes("schedule:read");
-  const canReadSettings = currentUser.permissions.includes("settings:read");
+  const layoutPermissions = rootLayoutPermissions(currentUser);
+  const canCreateRecording = layoutPermissions.canCreateRecording;
+  const canManageAccess = layoutPermissions.canManageAccess;
+  const canReadAudit = layoutPermissions.canReadAudit;
+  const canReadDashboard = layoutPermissions.canReadDashboard;
+  const canReadNodes = layoutPermissions.canReadNodes;
+  const canReadRecordings = layoutPermissions.canReadRecordings;
+  const canReadSchedules = layoutPermissions.canReadSchedules;
+  const canReadSettings = layoutPermissions.canReadSettings;
   const navItems = [
     ...(canReadDashboard ? [{ icon: Gauge, label: "Dashboard", to: "/" }] : []),
     ...(canReadNodes ? [{ icon: Radio, label: "Nodes", to: "/nodes" }] : []),
