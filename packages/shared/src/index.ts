@@ -218,6 +218,13 @@ export const audioInterfaceSchema = z.object({
   systemName: z.string().min(1),
   systemRef: z.string().min(1).optional(),
 });
+export const nodeRuntimeSchema = z.object({
+  architecture: z.string().min(1).optional(),
+  audioBackends: z.array(z.enum(["alsa", "jack", "pipewire", "unknown"])).default([]),
+  kernelRelease: z.string().min(1).optional(),
+  osName: z.string().min(1).optional(),
+  uptimeSeconds: z.number().int().nonnegative().optional(),
+});
 
 export const audioQualitySchema = z.object({
   crestFactorDb: z.number().min(0).max(80),
@@ -241,6 +248,7 @@ export const recorderNodeSchema = z.object({
     site: z.string().min(1),
   }),
   notes: z.string().optional(),
+  runtime: nodeRuntimeSchema.optional(),
   status: nodeStatusSchema,
   tags: z.array(z.string().min(1)),
 });
@@ -764,6 +772,7 @@ export type HealthEventStatus = z.infer<typeof healthEventStatusSchema>;
 export type HealthSeverity = z.infer<typeof healthSeveritySchema>;
 export type MeterFrame = z.infer<typeof meterFrameSchema>;
 export type NodeStatus = z.infer<typeof nodeStatusSchema>;
+export type NodeRuntime = z.infer<typeof nodeRuntimeSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;
 export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
 export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;

@@ -174,6 +174,16 @@ async fn main() -> anyhow::Result<()> {
                 ).await?;
 
                 if let Some(token) = token {
+                    let heartbeat = inventory::heartbeat_snapshot(&inventory);
+
+                    if let Err(error) = controller::post_node_heartbeat(
+                        &config,
+                        token,
+                        &heartbeat,
+                    ).await {
+                        warn!(error = %error, "failed to post node heartbeat");
+                    }
+
                     match controller::post_meter_frame(&config, token, &frame).await {
                         Ok(()) if meter_sync_failed => {
                             meter_sync_failed = false;

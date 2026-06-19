@@ -13,6 +13,7 @@ import type {
   CurrentUser,
   HealthEvent,
   MeterFrame,
+  NodeRuntime,
   RecorderNode,
   OidcPublicConfig,
   RecordingProfile,
@@ -189,6 +190,7 @@ export interface NodeEnrollmentInput {
     site: string;
   };
   notes?: string;
+  runtime?: NodeRuntime;
   tags: string[];
 }
 

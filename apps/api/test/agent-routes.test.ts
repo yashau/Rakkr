@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import type { AuditEvent, RecorderNode, RecordingProfile, RecordingSummary } from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent } from "../src/http-types.js";
 import type { MeterFrameStore } from "../src/meter-store.js";
-import type { NodeStore } from "../src/node-store.js";
+import type { NodeHeartbeatInput, NodeStore } from "../src/node-store.js";
 import type { RecordingStore } from "../src/recording-store.js";
 import type { SettingsStore } from "../src/settings-store.js";
 
@@ -63,6 +63,56 @@ test("agent failed job marks recording metadata failed", async () => {
   assert.equal(event?.details.reason, "capture_output_stalled");
 });
 
+test("agent heartbeat updates node runtime details and audits inventory changes", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const nodeStore = memoryNodeStore();
+
+  registerAgentRoutes({
+    app,
+    healthEventStore,
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node().id}/heartbeat`, {
+    body: JSON.stringify({
+      agentVersion: "0.2.0",
+      hostname: "agent-route-node-live",
+      ipAddresses: ["10.9.0.8"],
+      runtime: {
+        architecture: "x86_64",
+        audioBackends: ["alsa"],
+        kernelRelease: "6.1.0-test",
+        osName: "Debian GNU/Linux 12",
+        uptimeSeconds: 12345,
+      },
+      status: "online",
+    }),
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  const body = (await response.json()) as { data: RecorderNode };
+  const [event] = await auditStore.list({ action: "nodes.heartbeat.succeeded" });
+
+  assert.equal(response.status, 202);
+  assert.equal(body.data.agentVersion, "0.2.0");
+  assert.equal(body.data.hostname, "agent-route-node-live");
+  assert.deepEqual(body.data.ipAddresses, ["10.9.0.8"]);
+  assert.equal(body.data.runtime?.kernelRelease, "6.1.0-test");
+  assert.equal(body.data.runtime?.uptimeSeconds, 12345);
+  assert.equal(event?.actor.type, "node");
+  assert.equal(event?.permission, "node:control");
+  assert.equal(event?.after?.hostname, "agent-route-node-live");
+});
+
 test("recording job honors custom output profile", async () => {
   const job = await createRecordingJob(
     {
@@ -80,7 +130,7 @@ test("recording job honors custom output profile", async () => {
   assert.equal(job.command.outputVbr, false);
 });
 
-function memoryNodeStore(): NodeStore {
+function memoryNodeStore(nodes: RecorderNode[] = [node()]): NodeStore {
   return {
     async authenticateCredential(token) {
       return token === "node-token"
@@ -95,10 +145,29 @@ function memoryNodeStore(): NodeStore {
       throw new Error("not implemented");
     },
     async find(nodeId) {
-      return node().id === nodeId ? node() : undefined;
+      return nodes.find((candidate) => candidate.id === nodeId);
+    },
+    async heartbeat(nodeId: string, input: NodeHeartbeatInput) {
+      const index = nodes.findIndex((candidate) => candidate.id === nodeId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      nodes[index] = {
+        ...nodes[index],
+        agentVersion: input.agentVersion,
+        hostname: input.hostname,
+        ipAddresses: input.ipAddresses,
+        lastSeenAt: new Date().toISOString(),
+        runtime: input.runtime,
+        status: input.status,
+      };
+
+      return nodes[index];
     },
     async list() {
-      return [node()];
+      return nodes;
     },
     async rotateCredential() {
       throw new Error("not implemented");

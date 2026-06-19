@@ -6,7 +6,8 @@ use serde::Serialize;
 use crate::config::AgentConfig;
 use crate::telemetry::now_rfc3339;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NodeInventory {
     pub agent_version: String,
     pub alias: String,
@@ -16,17 +17,33 @@ pub struct NodeInventory {
     pub ip_addresses: Vec<String>,
     pub last_seen_at: String,
     pub location: NodeLocation,
+    pub runtime: NodeRuntime,
     pub status: String,
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NodeLocation {
     pub room: String,
     pub site: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeRuntime {
+    pub architecture: String,
+    pub audio_backends: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kernel_release: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub os_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uptime_seconds: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioInterfaceInventory {
     pub alias: String,
     pub backend: String,
@@ -35,9 +52,12 @@ pub struct AudioInterfaceInventory {
     pub id: String,
     pub sample_rates: Vec<u32>,
     pub system_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_ref: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioChannelInventory {
     pub alias: String,
     pub index: u16,
@@ -50,6 +70,7 @@ pub fn collect(config: &AgentConfig) -> NodeInventory {
         .unwrap_or_else(|| "unknown-host".to_string());
 
     let interfaces = discover_audio_interfaces();
+    let runtime = runtime_details(&interfaces);
 
     NodeInventory {
         agent_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -63,9 +84,19 @@ pub fn collect(config: &AgentConfig) -> NodeInventory {
             room: config.room.clone(),
             site: config.site.clone(),
         },
+        runtime,
         status: "online".to_string(),
         tags: vec!["recorder-agent".to_string()],
     }
+}
+
+pub fn heartbeat_snapshot(inventory: &NodeInventory) -> NodeInventory {
+    let mut snapshot = inventory.clone();
+
+    snapshot.last_seen_at = now_rfc3339();
+    snapshot.runtime = runtime_details(&snapshot.interfaces);
+
+    snapshot
 }
 
 fn discover_audio_interfaces() -> Vec<AudioInterfaceInventory> {
@@ -112,6 +143,7 @@ fn discover_arecord_interfaces() -> Vec<AudioInterfaceInventory> {
                 id: format!("alsa_hw_{}_{}", device.card, device.device),
                 sample_rates,
                 system_name: device.system_name,
+                system_ref: Some(format!("hw:{},{}", device.card, device.device)),
             }
         })
         .collect()
@@ -139,6 +171,7 @@ fn discover_proc_asound_interfaces() -> Vec<AudioInterfaceInventory> {
                         id: format!("alsa_hw_{}_{}", device.card, device.device),
                         sample_rates,
                         system_name: device.system_name,
+                        system_ref: Some(format!("hw:{},{}", device.card, device.device)),
                     }
                 })
                 .collect()
@@ -170,7 +203,56 @@ fn fallback_interface() -> AudioInterfaceInventory {
         id: "iface_default_capture".to_string(),
         sample_rates: vec![48_000],
         system_name: "Audio backend discovery pending".to_string(),
+        system_ref: None,
     }
+}
+
+fn runtime_details(interfaces: &[AudioInterfaceInventory]) -> NodeRuntime {
+    let mut audio_backends = interfaces
+        .iter()
+        .map(|audio_interface| audio_interface.backend.clone())
+        .collect::<Vec<_>>();
+
+    audio_backends.sort();
+    audio_backends.dedup();
+
+    NodeRuntime {
+        architecture: std::env::consts::ARCH.to_string(),
+        audio_backends,
+        kernel_release: command_stdout("uname", &["-r"]),
+        os_name: linux_pretty_name().or_else(|| command_stdout("uname", &["-s"])),
+        uptime_seconds: linux_uptime_seconds(),
+    }
+}
+
+fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn linux_pretty_name() -> Option<String> {
+    let content = fs::read_to_string("/etc/os-release").ok()?;
+
+    content.lines().find_map(|line| {
+        let value = line.strip_prefix("PRETTY_NAME=")?;
+
+        Some(value.trim_matches('"').to_string())
+    })
+}
+
+fn linux_uptime_seconds() -> Option<u64> {
+    let content = fs::read_to_string("/proc/uptime").ok()?;
+    let first = content.split_whitespace().next()?;
+    let seconds = first.split('.').next()?.parse::<u64>().ok()?;
+
+    Some(seconds)
 }
 
 fn channels(channel_count: u16) -> Vec<AudioChannelInventory> {

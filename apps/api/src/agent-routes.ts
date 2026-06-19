@@ -2,6 +2,8 @@ import type { Context, Hono } from "hono";
 import {
   healthSeveritySchema,
   meterFrameSchema,
+  nodeRuntimeSchema,
+  nodeStatusSchema,
   type ChannelMapTemplateAssignment,
   type RecordingSummary,
 } from "@rakkr/shared";
@@ -12,7 +14,7 @@ import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
 import type { MeterFrameStore } from "./meter-store.js";
-import type { NodeCredentialAuth, NodeStore } from "./node-store.js";
+import { NodeStoreError, type NodeCredentialAuth, type NodeStore } from "./node-store.js";
 import {
   cancelRecordingJob,
   claimRecordingJob,
@@ -109,6 +111,86 @@ export function registerAgentRoutes({
     });
 
     return c.json({ data: assignments });
+  });
+
+  app.post("/api/v1/nodes/:nodeId/heartbeat", async (c) => {
+    const nodeId = c.req.param("nodeId");
+    const auth = await authenticateNode(c, "nodes.heartbeat", {
+      id: nodeId,
+      type: "node",
+    });
+
+    if (auth.response) {
+      return auth.response;
+    }
+
+    if (auth.credential.nodeId !== nodeId) {
+      await recordNodeCredentialFailure(c, "nodes.heartbeat.failed", "node_scope_denied", {
+        actor: auth.credential,
+        permission: "node:control",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Node credential cannot access this node" }, 403);
+    }
+
+    const body = nodeHeartbeatSchema.safeParse(await c.req.json().catch(() => ({})));
+
+    if (!body.success) {
+      await recordNodeCredentialFailure(c, "nodes.heartbeat.failed", "invalid_request", {
+        actor: auth.credential,
+        permission: "node:control",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Invalid node heartbeat", issues: body.error.issues }, 400);
+    }
+
+    const before = await nodeStore.find(nodeId);
+    const updated = await nodeStore.heartbeat(nodeId, body.data).catch(async (error: unknown) => {
+      if (error instanceof NodeStoreError) {
+        return error;
+      }
+
+      return new NodeStoreError("Node heartbeat failed", "database_unavailable");
+    });
+
+    if (updated instanceof NodeStoreError) {
+      await recordNodeCredentialFailure(c, "nodes.heartbeat.failed", updated.code, {
+        actor: auth.credential,
+        permission: "node:control",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Node heartbeat unavailable" }, 503);
+    }
+
+    if (!updated) {
+      await recordNodeCredentialFailure(c, "nodes.heartbeat.failed", "node_not_found", {
+        actor: auth.credential,
+        permission: "node:control",
+        target: { id: nodeId, type: "node" },
+      });
+      return c.json({ error: "Node not found" }, 404);
+    }
+
+    if (nodeHeartbeatChanged(before, updated)) {
+      await recordAuditEvent(c, {
+        action: "nodes.heartbeat.succeeded",
+        actor: nodeActor(auth.credential),
+        after: nodeHeartbeatSnapshot(updated),
+        before: nodeHeartbeatSnapshot(before),
+        details: {
+          runtime: updated.runtime,
+        },
+        outcome: "succeeded",
+        permission: "node:control",
+        target: {
+          id: updated.id,
+          name: updated.alias,
+          type: "node",
+        },
+      });
+    }
+
+    return c.json({ data: updated }, 202);
   });
 
   app.post("/api/v1/nodes/:nodeId/meter-frame", async (c) => {
@@ -797,6 +879,37 @@ const nodeHealthEventSchema = z
     type: z.string().trim().min(1).max(160),
   })
   .strict();
+
+const nodeHeartbeatSchema = z
+  .object({
+    agentVersion: z.string().trim().min(1).max(80),
+    hostname: z.string().trim().min(1).max(255),
+    ipAddresses: z.array(z.string().trim().min(1).max(120)).max(16).default([]),
+    runtime: nodeRuntimeSchema.optional(),
+    status: nodeStatusSchema.default("online"),
+  })
+  .passthrough();
+
+function nodeHeartbeatSnapshot(node: Awaited<ReturnType<NodeStore["find"]>> | undefined) {
+  return node
+    ? {
+        agentVersion: node.agentVersion,
+        hostname: node.hostname,
+        ipAddresses: node.ipAddresses,
+        runtime: node.runtime,
+        status: node.status,
+      }
+    : undefined;
+}
+
+function nodeHeartbeatChanged(
+  before: Awaited<ReturnType<NodeStore["find"]>> | undefined,
+  after: NonNullable<Awaited<ReturnType<NodeStore["find"]>>>,
+) {
+  return (
+    JSON.stringify(nodeHeartbeatSnapshot(before)) !== JSON.stringify(nodeHeartbeatSnapshot(after))
+  );
+}
 
 function nodeActor(credential: NodeCredentialAuth) {
   return {

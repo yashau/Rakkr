@@ -9,7 +9,7 @@ import {
   nodeCredentials,
   nodes as nodeRows,
 } from "@rakkr/db";
-import type { AudioInterface, RecorderNode } from "@rakkr/shared";
+import type { AudioInterface, NodeRuntime, NodeStatus, RecorderNode } from "@rakkr/shared";
 
 import { hashToken, isUuid } from "./auth-utils.js";
 
@@ -30,7 +30,16 @@ export interface NodeEnrollmentInput {
     site: string;
   };
   notes?: string;
+  runtime?: NodeRuntime;
   tags: string[];
+}
+
+export interface NodeHeartbeatInput {
+  agentVersion: string;
+  hostname: string;
+  ipAddresses: string[];
+  runtime?: NodeRuntime;
+  status: NodeStatus;
 }
 
 export interface NodeUpdateInput {
@@ -103,6 +112,7 @@ export interface NodeStore {
   authenticateCredential(token: string): Promise<NodeCredentialAuth | undefined>;
   enroll(input: NodeEnrollmentInput, actorUserId?: string): Promise<NodeEnrollmentResult>;
   find(nodeId: string): Promise<RecorderNode | undefined>;
+  heartbeat(nodeId: string, input: NodeHeartbeatInput): Promise<RecorderNode | undefined>;
   list(): Promise<RecorderNode[]>;
   rotateCredential(nodeId: string, actorUserId?: string): Promise<NodeEnrollmentResult | undefined>;
   updateInterface(
@@ -134,6 +144,18 @@ class SeedOnlyNodeStore implements NodeStore {
 
   async find(nodeId: string) {
     return this.seedNodes.find((node) => node.id === nodeId);
+  }
+
+  async heartbeat(nodeId: string, input: NodeHeartbeatInput) {
+    const index = this.seedNodes.findIndex((node) => node.id === nodeId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    this.seedNodes[index] = updatedNodeHeartbeat(this.seedNodes[index], input);
+
+    return this.seedNodes[index];
   }
 
   async list() {
@@ -248,6 +270,35 @@ class PostgresNodeStore implements NodeStore {
 
   async find(nodeId: string) {
     return (await this.list()).find((node) => node.id === nodeId);
+  }
+
+  async heartbeat(nodeId: string, input: NodeHeartbeatInput) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      throw new NodeStoreError("Node heartbeat storage is unavailable", "database_unavailable");
+    }
+
+    const [row] = await db.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).limit(1);
+
+    if (!row) {
+      return undefined;
+    }
+
+    await db
+      .update(nodeRows)
+      .set({
+        agentVersion: input.agentVersion,
+        hostname: input.hostname,
+        lastSeenAt: new Date(),
+        metadata: nodeMetadata(row.metadata, nodeRuntimeFromInput(input.runtime, row.metadata)),
+        network: { ipAddresses: input.ipAddresses },
+        status: input.status,
+        updatedAt: new Date(),
+      })
+      .where(eq(nodeRows.id, nodeId));
+
+    return this.find(nodeId);
   }
 
   async list() {
@@ -450,9 +501,7 @@ function nodeInputToRow(input: NodeEnrollmentInput): typeof nodeRows.$inferInser
     hostname: input.hostname,
     id: `node_${randomUUID()}`,
     location: input.location,
-    metadata: {
-      enrolledAt: new Date().toISOString(),
-    },
+    metadata: nodeMetadata({ enrolledAt: new Date().toISOString() }, input.runtime),
     network: {
       ipAddresses: input.ipAddresses,
     },
@@ -492,8 +541,21 @@ function nodeFromRows(
     lastSeenAt: (node.lastSeenAt ?? node.createdAt).toISOString(),
     location: locationFromValue(node.location),
     notes: node.notes ?? undefined,
+    runtime: nodeRuntimeFromMetadata(node.metadata),
     status: node.status,
     tags: stringArray(node.tags),
+  };
+}
+
+function updatedNodeHeartbeat(node: RecorderNode, input: NodeHeartbeatInput): RecorderNode {
+  return {
+    ...node,
+    agentVersion: input.agentVersion,
+    hostname: input.hostname,
+    ipAddresses: input.ipAddresses,
+    lastSeenAt: new Date().toISOString(),
+    runtime: input.runtime ?? node.runtime,
+    status: input.status,
   };
 }
 
@@ -606,14 +668,55 @@ function locationFromValue(value: unknown): RecorderNode["location"] {
   };
 }
 
+function nodeMetadata(existingMetadata: unknown, runtime: NodeRuntime | undefined) {
+  return {
+    ...record(existingMetadata),
+    ...(runtime ? { runtime } : {}),
+  };
+}
+
+function nodeRuntimeFromInput(runtime: NodeRuntime | undefined, existingMetadata: unknown) {
+  return runtime ?? nodeRuntimeFromMetadata(existingMetadata);
+}
+
+function nodeRuntimeFromMetadata(metadata: unknown): NodeRuntime | undefined {
+  const runtime = record(metadata)?.runtime;
+  const parsed = record(runtime);
+
+  if (!parsed) {
+    return undefined;
+  }
+
+  return {
+    architecture: stringOrUndefined(parsed.architecture),
+    audioBackends: audioBackends(parsed.audioBackends),
+    kernelRelease: stringOrUndefined(parsed.kernelRelease),
+    osName: stringOrUndefined(parsed.osName),
+    uptimeSeconds: nonNegativeIntegerOrUndefined(parsed.uptimeSeconds),
+  };
+}
+
 function backend(value: string): AudioInterface["backend"] {
   return value === "alsa" || value === "jack" || value === "pipewire" ? value : "unknown";
+}
+
+function audioBackends(value: unknown): NodeRuntime["audioBackends"] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is NodeRuntime["audioBackends"][number] =>
+          item === "alsa" || item === "jack" || item === "pipewire" || item === "unknown",
+      )
+    : [];
 }
 
 function numberArray(value: unknown) {
   return Array.isArray(value)
     ? value.filter((item): item is number => typeof item === "number")
     : [];
+}
+
+function nonNegativeIntegerOrUndefined(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 function stringArray(value: unknown) {

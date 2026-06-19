@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HealthEvent } from "@rakkr/shared";
+import type { HealthEvent, NodeRuntime } from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
@@ -315,6 +315,12 @@ export function NodesPage() {
                       <Cpu className="size-4" />
                       Agent {node.agentVersion} / seen {formatDateTime(node.lastSeenAt)}
                     </div>
+                    {node.runtime ? (
+                      <div className="flex items-center gap-2">
+                        <HardDrive className="size-4" />
+                        {runtimeSummary(node.runtime)}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -439,6 +445,29 @@ function parseNumbers(value: string) {
   return parseList(value)
     .map(Number)
     .filter((item) => Number.isInteger(item) && item > 0);
+}
+
+function runtimeSummary(runtime: NodeRuntime) {
+  return [
+    runtime.osName,
+    runtime.kernelRelease ? `kernel ${runtime.kernelRelease}` : undefined,
+    runtime.architecture,
+    runtime.audioBackends.length > 0 ? runtime.audioBackends.join(", ") : undefined,
+    runtime.uptimeSeconds === undefined ? undefined : `uptime ${uptime(runtime.uptimeSeconds)}`,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function uptime(seconds: number) {
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3600);
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+
+  return `${hours}h`;
 }
 
 function HealthSummaryTile({

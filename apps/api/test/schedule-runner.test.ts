@@ -152,6 +152,9 @@ function memoryNodeStore(nodes: RecorderNode[]) {
     async find(nodeId: string) {
       return nodes.find((node) => node.id === nodeId);
     },
+    async heartbeat() {
+      throw new Error("not implemented");
+    },
     async list() {
       return nodes;
     },

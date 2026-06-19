@@ -36,6 +36,12 @@ export const nodes: RecorderNode[] = [
       site: "Main Office",
     },
     notes: "Initial Debian test rig with X32 Rack over USB.",
+    runtime: {
+      architecture: "x86_64",
+      audioBackends: ["alsa"],
+      kernelRelease: "test-rig-pending",
+      osName: "Debian",
+    },
     status: "online",
     tags: ["x32", "voice", "test-rig"],
   },

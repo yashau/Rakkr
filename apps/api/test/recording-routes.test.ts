@@ -225,6 +225,9 @@ function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
     async find(nodeId) {
       return nodes.find((node) => node.id === nodeId);
     },
+    async heartbeat() {
+      throw new Error("not implemented");
+    },
     async list() {
       return nodes;
     },

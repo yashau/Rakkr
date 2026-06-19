@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import type { MeterFrame, RecorderNode } from "@rakkr/shared";
+import { nodeRuntimeSchema, type MeterFrame, type RecorderNode } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import { buildMeterFrame } from "./demo-data.js";
@@ -61,6 +61,7 @@ const nodeEnrollmentSchema = z
       site: z.string().trim().min(1).max(160),
     }),
     notes: z.string().trim().max(2000).optional(),
+    runtime: nodeRuntimeSchema.optional(),
     tags: z.array(z.string().trim().min(1).max(48)).max(32).default([]),
   })
   .strict();
@@ -640,6 +641,7 @@ function nodeSnapshot(node: RecorderNode | undefined) {
         ipAddresses: node.ipAddresses,
         location: node.location,
         notes: node.notes,
+        runtime: node.runtime,
         status: node.status,
         tags: node.tags,
       }

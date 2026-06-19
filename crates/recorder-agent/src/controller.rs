@@ -10,6 +10,7 @@ use crate::capture::spawn_capture_plan;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
 use crate::config::AgentConfig;
 use crate::health_log::{self, AgentHealthEvent};
+use crate::inventory::NodeInventory;
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 
@@ -640,6 +641,31 @@ pub async fn post_meter_frame(
         let body = response.text().await.unwrap_or_default();
 
         anyhow::bail!("controller rejected meter frame with {status}: {body}");
+    }
+
+    Ok(())
+}
+
+pub async fn post_node_heartbeat(
+    config: &AgentConfig,
+    token: &str,
+    inventory: &NodeInventory,
+) -> anyhow::Result<()> {
+    config.validate_controller_transport()?;
+    let url = node_url(&config.controller_url, &config.node_id, "heartbeat");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .json(inventory)
+        .send()
+        .await
+        .context("post node heartbeat to controller")?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected node heartbeat with {status}: {body}");
     }
 
     Ok(())
