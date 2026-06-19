@@ -193,6 +193,70 @@ test("recording resource denies block stop control and audit the denial", async 
   }
 });
 
+test("recording resource denies block playback download and upload queue actions", async () => {
+  const token = await loginToken();
+  const recordingId = "rec_demo_001";
+
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "recording_sealed",
+      resourceId: recordingId,
+      resourceType: "recording",
+      subjectType: "everyone",
+    },
+  ]);
+
+  try {
+    const playbackResponse = await app.request(`/api/v1/recordings/${recordingId}/playback`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+    });
+    const downloadResponse = await app.request(`/api/v1/recordings/${recordingId}/download`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+    });
+    const uploadResponse = await app.request(`/api/v1/recordings/${recordingId}/upload-queue`, {
+      body: JSON.stringify({ reason: "manual_retry" }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const playbackEvent = await deniedAuditEvent(
+      token,
+      "recordings.playback.start",
+      "recording:playback",
+      recordingId,
+    );
+    const downloadEvent = await deniedAuditEvent(
+      token,
+      "recordings.download.prepare",
+      "recording:download",
+      recordingId,
+    );
+    const uploadEvent = await deniedAuditEvent(
+      token,
+      "recordings.upload_queue.enqueue",
+      "recording:control",
+      recordingId,
+    );
+
+    assert.equal(playbackResponse.status, 403);
+    assert.equal(downloadResponse.status, 403);
+    assert.equal(uploadResponse.status, 403);
+    assert.equal(playbackEvent?.reason, "access_policy_denied");
+    assert.equal(downloadEvent?.reason, "access_policy_denied");
+    assert.equal(uploadEvent?.reason, "access_policy_denied");
+    assert.equal(playbackEvent?.target.id, recordingId);
+    assert.equal(downloadEvent?.target.id, recordingId);
+    assert.equal(uploadEvent?.target.id, recordingId);
+  } finally {
+    await updateAccessPolicies(token, []);
+  }
+});
+
 test("node resource denies hide attached recordings and block recording edits", async () => {
   const token = await loginToken();
   const nodeId = "node_x32_test";
@@ -400,4 +464,21 @@ async function updateAccessPolicies(token: string, policies: AccessPolicyInput[]
     },
     method: "PATCH",
   });
+}
+
+async function deniedAuditEvent(token: string, action: string, permission: string, target: string) {
+  const params = new URLSearchParams({
+    action,
+    outcome: "denied",
+    permission,
+    target,
+  });
+  const response = await app.request(`/api/v1/audit-events?${params}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const body = (await response.json()) as { data: AuditEvent[] };
+
+  assert.equal(response.status, 200);
+
+  return body.data[0];
 }
