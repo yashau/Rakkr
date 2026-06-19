@@ -70,7 +70,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
 | Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
-| Transport security | 🟨 | Optional controller HTTPS; agent blocks non-loopback plaintext unless explicitly allowed |
+| Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
 | Observability | ✅ | Local logs, central events, metrics, alerts, Mimir config, Grafana baseline |
 
 ---
@@ -383,11 +383,12 @@ Required encrypted flows:
 - local event log sync;
 - health and alert updates.
 
-Current partial implementation:
+Current implementation baseline:
 
 - Controller can start HTTPS when TLS cert/key paths are configured.
 - Agent rejects non-loopback `http://` controller URLs unless explicitly allowed for development.
 - Localhost HTTP remains available for local development.
+- `docs/security/TRANSPORT_SECURITY_BASELINE.md` defines the checked MVP transport baseline.
 
 ---
 
@@ -695,6 +696,7 @@ Current partial implementation:
 135. ✅ Promote Observability MVP with checked runbook.
 136. ✅ Add checked RBAC/audit MVP baseline matrix.
 137. ✅ Add checked Azure AD OIDC MVP baseline setup.
+138. ✅ Add checked transport security MVP baseline.
 
 ## Open Questions
 
