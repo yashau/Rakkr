@@ -193,7 +193,7 @@ test("recording resource denies block stop control and audit the denial", async 
   }
 });
 
-test("recording resource denies block playback download and upload queue actions", async () => {
+test("recording resource denies block playback download upload queue and delete actions", async () => {
   const token = await loginToken();
   const recordingId = "rec_demo_001";
 
@@ -224,6 +224,10 @@ test("recording resource denies block playback download and upload queue actions
       },
       method: "POST",
     });
+    const deleteResponse = await app.request(`/api/v1/recordings/${recordingId}`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "DELETE",
+    });
     const playbackEvent = await deniedAuditEvent(
       token,
       "recordings.playback.start",
@@ -242,16 +246,25 @@ test("recording resource denies block playback download and upload queue actions
       "recording:control",
       recordingId,
     );
+    const deleteEvent = await deniedAuditEvent(
+      token,
+      "recordings.delete",
+      "recording:delete",
+      recordingId,
+    );
 
     assert.equal(playbackResponse.status, 403);
     assert.equal(downloadResponse.status, 403);
     assert.equal(uploadResponse.status, 403);
+    assert.equal(deleteResponse.status, 403);
     assert.equal(playbackEvent?.reason, "access_policy_denied");
     assert.equal(downloadEvent?.reason, "access_policy_denied");
     assert.equal(uploadEvent?.reason, "access_policy_denied");
+    assert.equal(deleteEvent?.reason, "access_policy_denied");
     assert.equal(playbackEvent?.target.id, recordingId);
     assert.equal(downloadEvent?.target.id, recordingId);
     assert.equal(uploadEvent?.target.id, recordingId);
+    assert.equal(deleteEvent?.target.id, recordingId);
   } finally {
     await updateAccessPolicies(token, []);
   }
