@@ -11,9 +11,9 @@ Status: Partial baseline checked.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, filterable, and audited.
-- UI exposes live meter speech/noise/clipping cues plus recording and schedule quality timelines.
-- Prometheus export covers health totals, active watchdog alerts, node-offline alerts, xrun totals, clipping, speech score, and noise score.
-- Remaining gaps: classifier-grade hum/static likelihood and channel mapping/correlation detection are not complete.
+- UI exposes live meter speech/noise/hum/static/clipping cues plus recording and schedule quality timelines.
+- Prometheus export covers health totals, active watchdog alerts, node-offline alerts, xrun totals, clipping, speech score, noise score, hum score, and static score.
+- Remaining gaps: classifier-grade hum/static likelihood validation and channel mapping/correlation detection are not complete.
 
 ## Checked By
 
@@ -23,10 +23,10 @@ Status: Partial baseline checked.
 | Health route RBAC and lifecycle denials | `apps/api/test/health-routes.test.ts` |
 | Health event type filtering | `apps/api/test/health-store.test.ts` |
 | Health/watchdog/xrun Prometheus metrics | `apps/api/test/metrics.test.ts` |
-| Meter speech/noise/clipping UI helpers | `apps/web/src/lib/meter-helpers.test.ts` |
+| Meter speech/noise/hum/static/clipping UI helpers | `apps/web/src/lib/meter-helpers.test.ts` |
 | Recording and schedule quality timelines | `apps/web/src/components/quality-timeline.tsx` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
-| Agent meter quality, speech/noise, clipping | `crates/recorder-agent/src/telemetry.rs` |
+| Agent meter quality, speech/noise/hum/static, clipping | `crates/recorder-agent/src/telemetry.rs` |
 | Agent clipping, flatline, xrun, system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
 | Agent capture growth and cache upload health smoke | `scripts/agent-fake-controller-smoke.mjs` |
 

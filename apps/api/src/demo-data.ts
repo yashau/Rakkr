@@ -114,9 +114,11 @@ export function buildMeterFrame(): MeterFrame {
         peakDbfs: Number(peakDbfs.toFixed(1)),
         quality: {
           crestFactorDb: Number((peakDbfs - rmsDbfs).toFixed(2)),
+          humScore: Number(Math.max(0, Math.abs(bump) * 0.09).toFixed(2)),
           noiseScore: Number(Math.max(0, 0.3 - Math.abs(wave) * 0.12).toFixed(2)),
           speechLike: rmsDbfs > -55,
           speechScore: Number(Math.max(0, Math.min(1, (rmsDbfs + 65) / 35)).toFixed(2)),
+          staticScore: Number(Math.max(0, Math.abs(wave) * 0.06).toFixed(2)),
           zeroCrossingRate: Number((0.08 + Math.abs(bump) * 0.08).toFixed(2)),
         },
         rmsDbfs: Number(rmsDbfs.toFixed(1)),

@@ -82,6 +82,14 @@ test("renders store-backed Prometheus gauges", () => {
   );
   assert.match(
     output,
+    /rakkr_input_hum_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.34/,
+  );
+  assert.match(
+    output,
+    /rakkr_input_static_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.08/,
+  );
+  assert.match(
+    output,
     /rakkr_audit_events_total\{action="recordings\.download\.succeeded",actor_type="user",outcome="succeeded",permission="recording:download"\} 2/,
   );
   assert.match(
@@ -205,9 +213,11 @@ function meterFrame(): MeterFrame {
         peakDbfs: -2.1,
         quality: {
           crestFactorDb: 16.4,
+          humScore: 0.34,
           noiseScore: 0.12,
           speechLike: true,
           speechScore: 0.82,
+          staticScore: 0.08,
           zeroCrossingRate: 0.09,
         },
         rmsDbfs: -18.5,

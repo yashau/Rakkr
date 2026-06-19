@@ -67,7 +67,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Checked low-signal, speech/noise, offline, local-log, metrics, and timeline baseline; hum/static and correlation gaps remain |
+| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static telemetry, offline, local-log, metrics, and timeline baseline; correlation gaps remain |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
@@ -252,7 +252,7 @@ Current partial implementation:
 
 - Lifecycle health events in Postgres plus local node JSONL logs.
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
-- Local meter frames include speech/noise scores; speech-required policies can alert on loud non-speech audio.
+- Local meter frames include speech/noise/hum/static scores; speech-required policies can alert on loud non-speech audio.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
@@ -708,6 +708,7 @@ Current partial implementation:
 142. ✅ Add checked Health Watchdog partial baseline with explicit signal-quality gaps.
 143. ✅ Promote Operations MVP with checked organization/templates/audit/upload baseline.
 144. ✅ Promote First Reliable Recording MVP with checked ad-hoc/scheduled lifecycle baseline.
+145. ✅ Add first-pass hum/static quality telemetry, UI display, and Prometheus metrics.
 
 ## Open Questions
 

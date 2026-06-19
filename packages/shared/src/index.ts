@@ -230,9 +230,11 @@ export const nodeRuntimeSchema = z.object({
 
 export const audioQualitySchema = z.object({
   crestFactorDb: z.number().min(0).max(80),
+  humScore: z.number().min(0).max(1).optional(),
   noiseScore: z.number().min(0).max(1),
   speechLike: z.boolean(),
   speechScore: z.number().min(0).max(1),
+  staticScore: z.number().min(0).max(1).optional(),
   zeroCrossingRate: z.number().min(0).max(1),
 });
 export const recorderNodeSchema = z.object({

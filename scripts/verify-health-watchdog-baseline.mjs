@@ -29,6 +29,7 @@ const baselinePhrases = [
   "configurable grace, window, metric, dBFS threshold",
   "open, repeat, and auto-resolve",
   "Speech-required policies",
+  "hum/static",
   "Node liveness",
   "local JSONL health logs",
   "meter capture failure/recovery",
@@ -67,6 +68,8 @@ const sourceSnippets = [
   "rakkr_input_clipping_ratio",
   "rakkr_input_speech_score",
   "rakkr_input_noise_score",
+  "rakkr_input_hum_score",
+  "rakkr_input_static_score",
   "MeterBank",
   "QualityTimeline",
   "speechLabel",
@@ -82,6 +85,9 @@ const sourceSnippets = [
   "cache upload local health event",
   "speech_score",
   "noise_score",
+  "hum_score",
+  "static_score",
+  "estimates_hum_and_static_likelihood_from_pcm_shape",
 ];
 const testSnippets = [
   "alerts when scheduled audio is loud but not speech-like",
@@ -93,6 +99,8 @@ const testSnippets = [
   "rakkr_recording_watchdog_alerts_active",
   "rakkr_node_offline_alerts_active",
   "rakkr_device_xruns_total",
+  "rakkr_input_hum_score",
+  "rakkr_input_static_score",
   "meter channel view exposes level voice and clipping state",
 ];
 const errors = [];

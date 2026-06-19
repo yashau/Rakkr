@@ -29,9 +29,11 @@ pub struct AudioLevel {
 #[serde(rename_all = "camelCase")]
 pub struct AudioQuality {
     pub crest_factor_db: f32,
+    pub hum_score: f32,
     pub noise_score: f32,
     pub speech_like: bool,
     pub speech_score: f32,
+    pub static_score: f32,
     pub zero_crossing_rate: f32,
 }
 
@@ -274,13 +276,18 @@ impl ChannelStats {
         let zcr_score = band_score(zero_crossing_rate, 0.015, 0.22);
         let crest_score = band_score(crest_factor_db, 4.0, 22.0);
         let speech_score = clamp_01(audible_score * (0.2 + zcr_score * 0.45 + crest_score * 0.35));
-        let noise_score = clamp_01(audible_score * (1.0 - speech_score));
+        let hum_score = hum_likelihood(audible_score, zero_crossing_rate, crest_factor_db);
+        let static_score = static_likelihood(audible_score, zero_crossing_rate, crest_factor_db);
+        let noise_score =
+            clamp_01(audible_score * (1.0 - speech_score).max(hum_score * 0.85).max(static_score));
 
         AudioQuality {
             crest_factor_db: round_2(crest_factor_db.min(80.0)),
+            hum_score: round_2(hum_score),
             noise_score: round_2(noise_score),
             speech_like: speech_score >= 0.55,
             speech_score: round_2(speech_score),
+            static_score: round_2(static_score),
             zero_crossing_rate: round_2(zero_crossing_rate),
         }
     }
@@ -309,11 +316,27 @@ fn synthetic_quality(rms_dbfs: f32, peak_dbfs: f32, phase: f32) -> AudioQuality 
 
     AudioQuality {
         crest_factor_db: round_2((peak_dbfs - rms_dbfs).max(0.0)),
+        hum_score: round_2(clamp_01(audible_score * phase.cos().abs() * 0.12)),
         noise_score: round_2(noise_score),
         speech_like: speech_score >= 0.55,
         speech_score: round_2(speech_score),
+        static_score: round_2(clamp_01(audible_score * phase.sin().abs() * 0.08)),
         zero_crossing_rate: round_2(0.08 + phase.cos().abs() * 0.08),
     }
+}
+
+fn hum_likelihood(audible_score: f32, zero_crossing_rate: f32, crest_factor_db: f32) -> f32 {
+    let low_zcr_score = falling_score(zero_crossing_rate, 0.02, 0.08);
+    let steady_tone_score = falling_score(crest_factor_db, 8.0, 18.0);
+
+    clamp_01(audible_score * low_zcr_score * steady_tone_score)
+}
+
+fn static_likelihood(audible_score: f32, zero_crossing_rate: f32, crest_factor_db: f32) -> f32 {
+    let high_zcr_score = rising_score(zero_crossing_rate, 0.35, 0.7);
+    let flat_noise_score = falling_score(crest_factor_db, 10.0, 24.0);
+
+    clamp_01(audible_score * high_zcr_score * flat_noise_score)
 }
 
 fn rising_score(value: f32, floor: f32, ceiling: f32) -> f32 {
@@ -330,6 +353,10 @@ fn band_score(value: f32, low: f32, high: f32) -> f32 {
     }
 
     1.0
+}
+
+fn falling_score(value: f32, floor: f32, ceiling: f32) -> f32 {
+    clamp_01(1.0 - ((value - floor) / (ceiling - floor)))
 }
 
 fn clamp_01(value: f32) -> f32 {
@@ -389,6 +416,8 @@ mod tests {
         assert_eq!(frame.levels[1].peak_dbfs, -160.0);
         assert_eq!(frame.levels[0].quality.speech_score, 0.0);
         assert_eq!(frame.levels[0].quality.noise_score, 0.0);
+        assert_eq!(frame.levels[0].quality.hum_score, 0.0);
+        assert_eq!(frame.levels[0].quality.static_score, 0.0);
         assert!(!frame.levels[0].clipping);
     }
 
@@ -409,5 +438,52 @@ mod tests {
 
         assert!(frame.levels[0].quality.speech_score > frame.levels[0].quality.noise_score);
         assert!(frame.levels[0].quality.speech_like);
+    }
+
+    #[test]
+    fn estimates_hum_and_static_likelihood_from_pcm_shape() {
+        let hum_pcm = (0..960)
+            .map(|index| {
+                let phase = index as f32 / 80.0 * std::f32::consts::TAU;
+
+                (phase.sin() * 12_000.0) as i16
+            })
+            .flat_map(i16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let static_pcm = (0..960)
+            .map(|index| {
+                if index % 2 == 0 {
+                    10_000_i16
+                } else {
+                    -10_000_i16
+                }
+            })
+            .flat_map(i16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let hum_frame = pcm_s16le_meter_frame_at(
+            "node_1",
+            "iface_1",
+            &hum_pcm,
+            1,
+            -1.0,
+            "2026-06-18T00:00:00Z",
+        )
+        .expect("hum-like frame");
+        let static_frame = pcm_s16le_meter_frame_at(
+            "node_1",
+            "iface_1",
+            &static_pcm,
+            1,
+            -1.0,
+            "2026-06-18T00:00:00Z",
+        )
+        .expect("static-like frame");
+
+        assert!(hum_frame.levels[0].quality.hum_score > 0.4);
+        assert!(hum_frame.levels[0].quality.hum_score > hum_frame.levels[0].quality.static_score);
+        assert!(static_frame.levels[0].quality.static_score > 0.8);
+        assert!(
+            static_frame.levels[0].quality.static_score > static_frame.levels[0].quality.hum_score
+        );
     }
 }

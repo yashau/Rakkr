@@ -105,6 +105,12 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
                     {channel.noisePercent !== undefined ? (
                       <span>noise {channel.noisePercent}%</span>
                     ) : null}
+                    {channel.humPercent !== undefined ? (
+                      <span>hum {channel.humPercent}%</span>
+                    ) : null}
+                    {channel.staticPercent !== undefined ? (
+                      <span>static {channel.staticPercent}%</span>
+                    ) : null}
                   </div>
                   <span aria-hidden />
                 </>

@@ -121,6 +121,10 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
   pushType(lines, "rakkr_input_speech_score", "gauge");
   pushHelp(lines, "rakkr_input_noise_score", "Latest local non-speech noise score by channel.");
   pushType(lines, "rakkr_input_noise_score", "gauge");
+  pushHelp(lines, "rakkr_input_hum_score", "Latest local hum-likelihood score by channel.");
+  pushType(lines, "rakkr_input_hum_score", "gauge");
+  pushHelp(lines, "rakkr_input_static_score", "Latest local static-likelihood score by channel.");
+  pushType(lines, "rakkr_input_static_score", "gauge");
   for (const frame of input.meterFrames) {
     for (const level of frame.levels) {
       const labels = {
@@ -136,6 +140,8 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
       if (level.quality) {
         pushMetric(lines, "rakkr_input_speech_score", labels, level.quality.speechScore);
         pushMetric(lines, "rakkr_input_noise_score", labels, level.quality.noiseScore);
+        pushOptionalMetric(lines, "rakkr_input_hum_score", labels, level.quality.humScore);
+        pushOptionalMetric(lines, "rakkr_input_static_score", labels, level.quality.staticScore);
       }
     }
   }
@@ -454,6 +460,17 @@ function pushMetric(lines: string[], name: string, labels: MetricLabels, value: 
       : "";
 
   lines.push(`${name}${labelText} ${metricValue(value)}`);
+}
+
+function pushOptionalMetric(
+  lines: string[],
+  name: string,
+  labels: MetricLabels,
+  value: number | undefined,
+) {
+  if (value !== undefined) {
+    pushMetric(lines, name, labels, value);
+  }
 }
 
 function escapeLabel(value: boolean | number | string) {

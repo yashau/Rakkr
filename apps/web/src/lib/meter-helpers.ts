@@ -5,6 +5,7 @@ const meterCeilingDbfs = -3;
 
 export interface MeterChannelView {
   clipping: boolean;
+  humPercent?: number;
   noisePercent?: number;
   peakDbfs: string;
   peakPercent: number;
@@ -12,6 +13,7 @@ export interface MeterChannelView {
   rmsPercent: number;
   speechLabel: "speech" | "non-speech" | "unknown";
   speechPercent?: number;
+  staticPercent?: number;
   toneClass: string;
 }
 
@@ -34,6 +36,7 @@ export function meterChannelView(level: AudioLevel): MeterChannelView {
 
   return {
     clipping: level.clipping,
+    humPercent: scoreToPercent(level.quality?.humScore),
     noisePercent: scoreToPercent(noiseScore),
     peakDbfs: formatDbfs(level.peakDbfs),
     peakPercent: dbfsToPercent(level.peakDbfs),
@@ -42,6 +45,7 @@ export function meterChannelView(level: AudioLevel): MeterChannelView {
     speechLabel:
       level.quality === undefined ? "unknown" : level.quality.speechLike ? "speech" : "non-speech",
     speechPercent: scoreToPercent(speechScore),
+    staticPercent: scoreToPercent(level.quality?.staticScore),
     toneClass: meterToneClass(level),
   };
 }
