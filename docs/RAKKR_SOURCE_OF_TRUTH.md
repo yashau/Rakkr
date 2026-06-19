@@ -309,6 +309,7 @@ Current partial implementation:
 - Local users, groups, roles, scopes, access policies, passwords, status.
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
 - Access UI manages users, groups, policies, and scopes.
+- Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
@@ -496,7 +497,8 @@ Examples:
 33. ✅ Add recording library sorting controls.
 34. ✅ Add recording library pagination controls.
 35. ✅ Add recording relationship facet groups.
-36. ⏸️ Return to X32 hardware validation after device is confirmed.
+36. ✅ Add RBAC deny-precedence regression coverage.
+37. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
