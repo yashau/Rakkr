@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type LocalUserCreateInput, type UserAccessUpdate } from "@/lib/api";
 import { AccessPolicyComposer } from "@/components/access-policy-composer";
+import { ResourceGrantComposer } from "@/components/resource-grant-composer";
 
 interface AccessDraft {
   groupsText: string;
@@ -181,7 +182,7 @@ export function AccessPage() {
           </div>
           <AccessPolicyComposer
             onAppend={(line) => {
-              setPoliciesText((current) => appendPolicyLine(current, line));
+              setPoliciesText((current) => appendTextLine(current, line));
               setPolicyError(undefined);
             }}
           />
@@ -280,6 +281,14 @@ export function AccessPage() {
                 }
                 placeholder="node:node_x32_test"
                 value={createDraft.grantsText}
+              />
+              <ResourceGrantComposer
+                onAppend={(line) =>
+                  setCreateDraft((current) => ({
+                    ...current,
+                    grantsText: appendTextLine(current.grantsText, line),
+                  }))
+                }
               />
             </div>
           </div>
@@ -380,6 +389,14 @@ export function AccessPage() {
                       })
                     }
                     value={draft.grantsText}
+                  />
+                  <ResourceGrantComposer
+                    onAppend={(line) =>
+                      updateDraft(user.id, setDrafts, {
+                        ...draft,
+                        grantsText: appendTextLine(draft.grantsText, line),
+                      })
+                    }
                   />
                 </div>
                 <Button disabled={updateMutation.isPending} type="submit">
@@ -510,7 +527,7 @@ function policiesToText(policies: AccessPolicy[]) {
     .join("\n");
 }
 
-function appendPolicyLine(current: string, line: string) {
+function appendTextLine(current: string, line: string) {
   const trimmed = current.trim();
 
   return trimmed ? `${trimmed}\n${line}` : line;
