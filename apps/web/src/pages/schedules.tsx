@@ -10,6 +10,7 @@ import {
   Repeat2,
   RotateCcw,
   Save,
+  ShieldCheck,
   SkipForward,
   Sparkles,
   Trash2,
@@ -50,18 +51,23 @@ export function SchedulesPage() {
   const [draft, setDraft] = useState<ScheduleDraft>(() => defaultDraft());
   const [quickRecurrence, setQuickRecurrence] = useState("");
   const [quickRecurrenceError, setQuickRecurrenceError] = useState(false);
-  const schedulesQuery = useQuery({
-    queryFn: api.schedules,
-    queryKey: ["schedules"],
-  });
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
     staleTime: 30_000,
   });
+  const actionPermissions = schedulePageActionPermissions(
+    currentUserQuery.data?.data.permissions ?? [],
+  );
+  const schedulesQuery = useQuery({
+    enabled: actionPermissions.canRead,
+    queryFn: api.schedules,
+    queryKey: ["schedules"],
+  });
   const schedules = useMemo(() => schedulesQuery.data?.data ?? [], [schedulesQuery.data?.data]);
   const occurrenceQueries = useQueries({
     queries: schedules.map((schedule) => ({
+      enabled: actionPermissions.canRead,
       queryFn: () => api.scheduleOccurrences(schedule.id, 4),
       queryKey: ["schedule-occurrences", schedule.id],
       refetchInterval: 5000,
@@ -78,20 +84,19 @@ export function SchedulesPage() {
     [occurrenceQueries, schedules],
   );
   const scheduleAuditQuery = useQuery({
+    enabled: actionPermissions.canReadAudit,
     queryFn: () => api.auditEvents({ action: "schedules.", limit: 100 }),
     queryKey: ["audit-events", "schedules-timeline"],
     refetchInterval: 5000,
   });
   const scheduleAuditEvents = scheduleAuditQuery.data?.data ?? [];
   const nodesQuery = useQuery({
+    enabled: actionPermissions.canManage && actionPermissions.canReadNodes,
     queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
   const nodes = useMemo(() => nodesQuery.data?.data ?? [], [nodesQuery.data?.data]);
   const firstNode = nodes[0];
-  const actionPermissions = schedulePageActionPermissions(
-    currentUserQuery.data?.data.permissions ?? [],
-  );
   const saveScheduleMutation = useMutation({
     mutationFn: ({ input, scheduleId }: { input: ScheduleInput; scheduleId?: string }) =>
       scheduleId ? api.updateSchedule(scheduleId, input) : api.createSchedule(input),
@@ -199,6 +204,22 @@ export function SchedulesPage() {
       setDraft(nextDraft);
       setQuickRecurrence("");
     }
+  }
+
+  if (currentUserQuery.isPending) {
+    return <p className="text-sm text-muted-foreground">Loading schedules.</p>;
+  }
+
+  if (!actionPermissions.canRead) {
+    return (
+      <Card className="rounded-lg p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-5 text-muted-foreground" />
+          <h2 className="text-base font-semibold">Schedules</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">Schedules are unavailable.</p>
+      </Card>
+    );
   }
 
   return (

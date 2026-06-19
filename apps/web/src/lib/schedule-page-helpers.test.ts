@@ -6,16 +6,28 @@ import { scheduleActionState, schedulePageActionPermissions } from "./schedule-p
 
 test("schedule page permissions require schedule manage for write actions", () => {
   assert.deepEqual(schedulePageActionPermissions(["schedule:read"]), {
+    canRead: true,
+    canReadAudit: false,
+    canReadNodes: false,
     canManage: false,
   });
-  assert.deepEqual(schedulePageActionPermissions(["schedule:read", "schedule:manage"]), {
-    canManage: true,
-  });
+  assert.deepEqual(
+    schedulePageActionPermissions(["audit:read", "node:read", "schedule:read", "schedule:manage"]),
+    {
+      canRead: true,
+      canReadAudit: true,
+      canReadNodes: true,
+      canManage: true,
+    },
+  );
 });
 
 test("schedule action state mirrors enabled and next-run readiness", () => {
   assert.deepEqual(
     scheduleActionState(schedule({ enabled: true, nextRunAt: "2026-06-19T15:30:00.000Z" }), {
+      canRead: true,
+      canReadAudit: true,
+      canReadNodes: true,
       canManage: true,
     }),
     {
@@ -27,6 +39,9 @@ test("schedule action state mirrors enabled and next-run readiness", () => {
   );
   assert.deepEqual(
     scheduleActionState(schedule({ enabled: false, nextRunAt: "2026-06-19T15:30:00.000Z" }), {
+      canRead: true,
+      canReadAudit: true,
+      canReadNodes: true,
       canManage: true,
     }),
     {
@@ -38,6 +53,9 @@ test("schedule action state mirrors enabled and next-run readiness", () => {
   );
   assert.deepEqual(
     scheduleActionState(schedule({ enabled: true, nextRunAt: undefined }), {
+      canRead: true,
+      canReadAudit: true,
+      canReadNodes: true,
       canManage: true,
     }),
     {
@@ -49,6 +67,9 @@ test("schedule action state mirrors enabled and next-run readiness", () => {
   );
   assert.deepEqual(
     scheduleActionState(schedule({ enabled: true, nextRunAt: "2026-06-19T15:30:00.000Z" }), {
+      canRead: true,
+      canReadAudit: false,
+      canReadNodes: false,
       canManage: false,
     }),
     {

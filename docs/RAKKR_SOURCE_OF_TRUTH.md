@@ -221,6 +221,7 @@ Current partial implementation:
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
 - Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
 - Schedules UI mirrors RBAC for create, edit, run-now, skip-next, and delete actions.
+- Schedules page reads, occurrences, audit timeline, and node lookup mirror granular RBAC.
 
 ## Health Watchdog
 
@@ -637,6 +638,7 @@ Current partial implementation:
 107. ✅ Mirror Audit page reads and export against RBAC permissions.
 108. ✅ Mirror Dashboard reads and meters against RBAC permissions.
 109. ✅ Mirror Nodes page reads and health panels against RBAC permissions.
+110. ✅ Mirror Schedules page reads and related lookups against RBAC permissions.
 
 ## Open Questions
 
