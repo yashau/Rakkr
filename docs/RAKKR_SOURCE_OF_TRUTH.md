@@ -318,6 +318,7 @@ Current partial implementation:
 - Access policy denies have route coverage for recording stop controls.
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edits.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
+- Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
@@ -520,7 +521,8 @@ Examples:
 45. ✅ Add recording stop deny audit route coverage.
 46. ✅ Add recorder-level deny inheritance coverage for recordings.
 47. ✅ Add schedule run-now deny audit route coverage.
-48. ⏸️ Return to X32 hardware validation after device is confirmed.
+48. ✅ Add alert acknowledgement deny audit route coverage.
+49. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

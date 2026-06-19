@@ -4,6 +4,7 @@ import type {
   AccessPolicy,
   AccessPolicyInput,
   AuditEvent,
+  HealthEvent,
   RecordingSummary,
   ScheduleSummary,
 } from "@rakkr/shared";
@@ -296,6 +297,79 @@ test("schedule resource denies hide schedules and block run-now control", async 
     assert.equal(event?.permission, "schedule:manage");
     assert.equal(event?.reason, "access_policy_denied");
     assert.equal(event?.target.id, scheduleId);
+  } finally {
+    await updateAccessPolicies(token, []);
+  }
+});
+
+test("node resource denies hide health events and block alert acknowledgement", async () => {
+  const token = await loginToken();
+  const nodeId = "node_x32_test";
+  const createResponse = await app.request("/api/v1/health-events", {
+    body: JSON.stringify({
+      details: { source: "rbac-test" },
+      nodeId,
+      severity: "critical",
+      type: "watchdog.test_node_alert",
+    }),
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  const createBody = (await createResponse.json()) as { data: HealthEvent };
+  const eventId = createBody.data.id;
+
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "alert_room_restricted",
+      resourceId: nodeId,
+      resourceType: "node",
+      subjectType: "everyone",
+    },
+  ]);
+
+  try {
+    const listResponse = await app.request("/api/v1/health-events", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const listBody = (await listResponse.json()) as { data: HealthEvent[] };
+    const acknowledgeResponse = await app.request(`/api/v1/health-events/${eventId}/acknowledge`, {
+      body: JSON.stringify({ note: "blocked" }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const eventsResponse = await app.request(
+      [
+        "/api/v1/audit-events",
+        "?action=health.events.acknowledge.failed",
+        "&outcome=denied",
+        "&permission=health%3Aacknowledge",
+        `&target=${eventId}`,
+      ].join(""),
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    const eventsBody = (await eventsResponse.json()) as { data: AuditEvent[] };
+    const [event] = eventsBody.data;
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(listResponse.status, 200);
+    assert.equal(
+      listBody.data.some((healthEvent) => healthEvent.id === eventId),
+      false,
+    );
+    assert.equal(acknowledgeResponse.status, 403);
+    assert.equal(event?.permission, "health:acknowledge");
+    assert.equal(event?.reason, "missing_resource_scope");
+    assert.equal(event?.target.id, eventId);
+    assert.equal(event?.target.type, "health_event");
   } finally {
     await updateAccessPolicies(token, []);
   }
