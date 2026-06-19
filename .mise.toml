@@ -33,6 +33,7 @@ run = "pnpm -r --parallel --filter @rakkr/api --filter @rakkr/web dev"
 
 [tasks.check]
 depends = [
+  "auth:check-oidc",
   "check:loc",
   "db:verify",
   "ops:check-alerts",
@@ -51,6 +52,10 @@ depends = [
   "rust:miri",
 ]
 description = "Run all repository checks"
+
+[tasks."auth:check-oidc"]
+description = "Validate Azure AD OIDC baseline documentation"
+run = "node scripts/verify-oidc-baseline.mjs"
 
 [tasks.build]
 depends = ["node:build", "rust:build"]

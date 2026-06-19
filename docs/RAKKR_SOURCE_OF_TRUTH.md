@@ -69,7 +69,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Recording library | 🟨 | Metadata, tags/folders/search, playback, download, checksum, waveform preview, encoded cache output |
 | Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
 | Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
-| OIDC | 🟨 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |
+| OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | 🟨 | Optional controller HTTPS; agent blocks non-loopback plaintext unless explicitly allowed |
 | Observability | ✅ | Local logs, central events, metrics, alerts, Mimir config, Grafana baseline |
 
@@ -318,6 +318,7 @@ Current implementation baseline:
 
 - Local users, groups, roles, scopes, access policies, passwords, status.
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
+- `docs/auth/AZURE_AD_OIDC_BASELINE.md` defines a checked Azure AD OIDC setup and behavior baseline.
 - Access UI manages users, groups, policies, and scopes.
 - `docs/security/RBAC_AUDIT_BASELINE.md` defines a checked permission matrix for the MVP RBAC/audit baseline.
 - Access page management is hidden unless the user has `auth:manage`.
@@ -693,6 +694,7 @@ Current partial implementation:
 134. ✅ Add checked Grafana operations dashboard example.
 135. ✅ Promote Observability MVP with checked runbook.
 136. ✅ Add checked RBAC/audit MVP baseline matrix.
+137. ✅ Add checked Azure AD OIDC MVP baseline setup.
 
 ## Open Questions
 
