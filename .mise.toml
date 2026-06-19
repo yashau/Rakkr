@@ -43,6 +43,7 @@ depends = [
   "security:check-rbac",
   "security:check-transport",
   "scheduler:check",
+  "recordings:check",
   "node:check",
   "node:test",
   "node:lint",
@@ -94,6 +95,10 @@ run = "node scripts/verify-transport-security-baseline.mjs"
 [tasks."scheduler:check"]
 description = "Validate scheduler baseline documentation"
 run = "node scripts/verify-scheduler-baseline.mjs"
+
+[tasks."recordings:check"]
+description = "Validate recording library baseline documentation"
+run = "node scripts/verify-recording-library-baseline.mjs"
 
 [tasks."node:build-libs"]
 description = "Build shared Node workspace libraries"

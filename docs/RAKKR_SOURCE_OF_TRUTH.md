@@ -66,7 +66,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
-| Recording library | 🟨 | Metadata, tags/folders/search, playback, download, checksum, waveform preview, encoded cache output |
+| Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
 | Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
@@ -410,10 +410,11 @@ Required features:
 - search/filtering;
 - checksums;
 - cache/upload status;
-- future preview/transcode assets.
+- MVP waveform preview assets; optional generated transcode derivatives remain deferred.
 
-Current partial implementation:
+Current implementation baseline:
 
+- `docs/recordings/RECORDING_LIBRARY_BASELINE.md` defines the checked MVP recording-library baseline.
 - Recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
 - Scoped filters, metadata editing, playback, download, cache attach, and audit events.
 - Recording library exposes scoped folder/tag facets with clickable UI filters.
@@ -699,6 +700,7 @@ Current partial implementation:
 137. ✅ Add checked Azure AD OIDC MVP baseline setup.
 138. ✅ Add checked transport security MVP baseline.
 139. ✅ Promote Scheduler MVP with checked human-friendly baseline.
+140. ✅ Promote Recording Library MVP with checked organization/playback baseline.
 
 ## Open Questions
 
@@ -710,4 +712,4 @@ Current partial implementation:
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 
-Last updated: `2026-06-19`
+Last updated: `2026-06-20`
