@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -27,6 +27,7 @@ import type { SettingsStore } from "../src/settings-store.js";
 
 const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-recording-routes-"));
 process.env.DATABASE_URL = "";
+process.env.RAKKR_RECORDING_CACHE_DIR = path.join(routeRoot, "recording-cache");
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(routeRoot, "upload-policies.json");
 
@@ -406,6 +407,87 @@ test("bulk metadata update rejects recordings outside scoped visibility", async 
   assert.deepEqual(event?.details.hiddenIds, ["rec_hidden"]);
 });
 
+test("recording delete removes terminal metadata cached file and audits snapshot", async () => {
+  const auditStore = createAuditStore("");
+  const cachePath = "ad-hoc/rec_delete_cached.mp3";
+  const cacheFilePath = path.join(routeRoot, "recording-cache", cachePath);
+  const recordingStore = memoryRecordingStore([
+    recording({
+      cached: true,
+      cachePath,
+      id: "rec_delete_cached",
+      name: "Delete Cached Recording",
+      status: "cached",
+    }),
+  ]);
+  const permissionCalls: PermissionCall[] = [];
+  const app = recordingApp({
+    auditStore,
+    nodes: [recorderNode()],
+    permissionCalls,
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  await mkdir(path.dirname(cacheFilePath), { recursive: true });
+  await writeFile(cacheFilePath, Buffer.from("cached audio"));
+
+  const response = await app.request("/api/v1/recordings/rec_delete_cached", {
+    method: "DELETE",
+  });
+  const stored = await recordingStore.find("rec_delete_cached");
+  const [event] = await auditStore.list({ action: "recordings.delete.succeeded" });
+  const before = event?.before as { recording?: RecordingSummary } | undefined;
+
+  assert.equal(response.status, 204);
+  assert.equal(stored, undefined);
+  await assert.rejects(
+    readFile(cacheFilePath),
+    (error) => error instanceof Error && "code" in error && error.code === "ENOENT",
+  );
+  assert.equal(permissionCalls.at(-1)?.permission, "recording:delete");
+  assert.equal(permissionCalls.at(-1)?.action, "recordings.delete");
+  assert.deepEqual(permissionCalls.at(-1)?.target, {
+    id: "rec_delete_cached",
+    type: "recording",
+  });
+  assert.equal(event?.permission, "recording:delete");
+  assert.equal(event?.target.id, "rec_delete_cached");
+  assert.equal(event?.details.cacheDeleted, true);
+  assert.equal(event?.details.cached, true);
+  assert.equal(before?.recording?.id, "rec_delete_cached");
+});
+
+test("recording delete rejects active recordings and audits failure", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore([
+    recording({
+      id: "rec_delete_active",
+      name: "Active Recording",
+      status: "recording",
+    }),
+  ]);
+  const app = recordingApp({
+    auditStore,
+    nodes: [recorderNode()],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings/rec_delete_active", {
+    method: "DELETE",
+  });
+  const stored = await recordingStore.find("rec_delete_active");
+  const [event] = await auditStore.list({ action: "recordings.delete.failed" });
+
+  assert.equal(response.status, 409);
+  assert.equal(stored?.id, "rec_delete_active");
+  assert.equal(event?.permission, "recording:delete");
+  assert.equal(event?.reason, "recording_active");
+  assert.equal(event?.target.id, "rec_delete_active");
+});
+
 test("ad hoc recording start uses requested node profile policy and metadata", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();
@@ -623,6 +705,17 @@ function memoryRecordingStore(recordings: RecordingSummary[] = []): RecordingSto
   return {
     async create(recording) {
       recordings.unshift(recording);
+    },
+    async delete(recordingId) {
+      const index = recordings.findIndex((recording) => recording.id === recordingId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      const [deleted] = recordings.splice(index, 1);
+
+      return deleted;
     },
     async find(recordingId) {
       return recordings.find((recording) => recording.id === recordingId);

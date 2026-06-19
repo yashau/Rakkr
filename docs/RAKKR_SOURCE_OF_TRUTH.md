@@ -325,6 +325,7 @@ Current partial implementation:
 - Audit API/UI can filter by permission and reason for denial investigations.
 - Audit UI exposes event reasons, correlation IDs, details, and before/after snapshots.
 - User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
+- Recording delete is RBAC-gated and audited, with active-recording protection.
 
 ## Security And Transport
 
@@ -390,6 +391,7 @@ Current partial implementation:
 - Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
+- Recording library API deletes terminal recordings and cached files with audit snapshots.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
@@ -544,6 +546,7 @@ Current partial implementation:
 56. ✅ Add recording health sync coverage for failed/cancelled/cache terminal transitions.
 57. ✅ Add RBAC-gated bulk recording folder/tag organization API.
 58. ✅ Add bulk recording organization UI for visible library results.
+59. ✅ Add RBAC-gated recording delete API with cache cleanup and active-recording guard.
 
 ## Open Questions
 

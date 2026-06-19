@@ -484,6 +484,17 @@ function memoryRecordingStore(recordings: RecordingSummary[] = []): RecordingSto
     async create(recording) {
       recordings.unshift(recording);
     },
+    async delete(recordingId) {
+      const index = recordings.findIndex((candidate) => candidate.id === recordingId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      const [deleted] = recordings.splice(index, 1);
+
+      return deleted;
+    },
     async find(recordingId) {
       return recordings.find((candidate) => candidate.id === recordingId);
     },

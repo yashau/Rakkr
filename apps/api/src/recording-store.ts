@@ -8,6 +8,7 @@ type RecordingRow = typeof recordingsTable.$inferSelect;
 
 export interface RecordingStore {
   create(recording: RecordingSummary): Promise<void>;
+  delete(recordingId: string): Promise<RecordingSummary | undefined>;
   find(recordingId: string): Promise<RecordingSummary | undefined>;
   list(): Promise<RecordingSummary[]>;
   save(recording: RecordingSummary): Promise<void>;
@@ -34,6 +35,20 @@ class JsonRecordingStore implements RecordingStore {
   async create(recording: RecordingSummary) {
     this.recordings.unshift(recording);
     this.persist();
+  }
+
+  async delete(recordingId: string) {
+    const index = this.recordings.findIndex((recording) => recording.id === recordingId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    const [deleted] = this.recordings.splice(index, 1);
+
+    this.persist();
+
+    return deleted;
   }
 
   async find(recordingId: string) {
@@ -98,6 +113,28 @@ class PostgresRecordingStore implements RecordingStore {
     } catch (error) {
       await this.failover("recording metadata persistence unavailable; using JSON store", error);
       await this.fallback.create(recording);
+    }
+  }
+
+  async delete(recordingId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.delete(recordingId);
+    }
+
+    try {
+      await this.seedIfEmpty();
+      const existing = await this.find(recordingId);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      await this.db.delete(recordingsTable).where(eq(recordingsTable.id, recordingId));
+
+      return existing;
+    } catch (error) {
+      await this.failover("recording metadata delete unavailable; using JSON store", error);
+      return this.fallback.delete(recordingId);
     }
   }
 
