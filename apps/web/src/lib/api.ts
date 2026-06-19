@@ -122,6 +122,10 @@ export interface RecordingBulkDeleteInput {
   recordingIds: string[];
 }
 
+export interface RecordingSelectedExportInput {
+  recordingIds: string[];
+}
+
 export interface RecordingBulkUploadQueueInput extends UploadQueueInput {
   recordingIds: string[];
 }
@@ -559,6 +563,14 @@ export const api = {
     fetchJson<RecordingListResponse>(withQuery("/api/v1/recordings", filters)),
   exportRecordingManifest: (filters: RecordingFilters = {}) =>
     fetchBlob(withQuery("/api/v1/recordings/export", filters)),
+  exportSelectedRecordingManifest: (input: RecordingSelectedExportInput) =>
+    fetchBlob("/api/v1/recordings/export", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   recordingFacets: () => fetchJson<{ data: RecordingFacets }>("/api/v1/recordings/facets"),
   deleteRecording: (recordingId: string) =>
     fetchJson<void>(`/api/v1/recordings/${recordingId}`, {

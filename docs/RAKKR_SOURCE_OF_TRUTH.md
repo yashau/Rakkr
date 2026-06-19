@@ -425,6 +425,7 @@ Current partial implementation:
 - Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
 - Recordings page read queries mirror granular RBAC for library, health, settings, and node context.
 - Recording library can export a scoped, filtered CSV manifest with audit coverage.
+- Recording library can export selected visible recordings as a scoped, audited CSV manifest.
 - Recording metadata supports searchable operator notes with audit snapshots and manifest export.
 - Recording card action readiness uses tested cached/terminal recording predicates.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
@@ -659,6 +660,7 @@ Current partial implementation:
 119. ✅ Add RBAC/audited recording manifest CSV export.
 120. ✅ Add searchable operator notes to recording metadata.
 121. ✅ Add RBAC-aware friendly relationship labels to recording cards.
+122. ✅ Add selected-recording manifest CSV export.
 
 ## Open Questions
 

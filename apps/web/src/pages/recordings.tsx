@@ -196,6 +196,22 @@ export function RecordingsPage() {
       });
     },
   });
+  const selectedExportMutation = useMutation({
+    mutationFn: (recordingIds: string[]) => api.exportSelectedRecordingManifest({ recordingIds }),
+    onError: () =>
+      setNotice({
+        detail: "The selected recording manifest could not be exported.",
+        title: "Export unavailable",
+      }),
+    onSuccess: (file, recordingIds) => {
+      queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      downloadBlob(file);
+      setNotice({
+        detail: `${file.fileName} was prepared from ${recordingIds.length} selected recordings.`,
+        title: "Selected manifest exported",
+      });
+    },
+  });
   const updateMetadataMutation = useMutation({
     mutationFn: ({ input, recordingId }: { input: RecordingMetadataUpdate; recordingId: string }) =>
       api.updateRecordingMetadata(recordingId, input),
@@ -867,23 +883,26 @@ export function RecordingsPage() {
             />
           </form>
 
-          {(canEditRecordings || canDeleteRecordings || canControlRecordings) &&
-          recordings.length > 0 ? (
+          {recordings.length > 0 ? (
             <RecordingBulkOrganizer
               allVisibleSelected={allVisibleSelected}
               canDelete={canDeleteRecordings}
               canEdit={canEditRecordings}
+              canExport={pagePermissions.canReadRecordings}
               canUpload={canControlRecordings}
               deleteDisabled={bulkDeleteRecordingMutation.isPending}
               deleteEligibleCount={selectedTerminalRecordingIds.length}
               disabled={
                 bulkMetadataMutation.isPending ||
                 bulkDeleteRecordingMutation.isPending ||
-                bulkEnqueueUploadMutation.isPending
+                bulkEnqueueUploadMutation.isPending ||
+                selectedExportMutation.isPending
               }
+              exportDisabled={selectedExportMutation.isPending}
               onApply={(input) => bulkMetadataMutation.mutate(input)}
               onClear={() => setSelectedRecordingIds([])}
               onDeleteSelected={deleteSelectedRecordings}
+              onExportSelected={() => selectedExportMutation.mutate(selectedRecordingIds)}
               onSelectVisible={selectVisibleRecordings}
               onUploadSelected={uploadSelectedRecordings}
               selectedCount={selectedRecordingIds.length}
@@ -929,11 +948,7 @@ export function RecordingsPage() {
                   enqueueUploadMutation.mutate({ recordingId: recording.id, uploadPolicyId })
                 }
                 onRetryUpload={(itemId) => retryUploadMutation.mutate(itemId)}
-                onSelectedChange={
-                  canEditRecordings || canDeleteRecordings || canControlRecordings
-                    ? (selected) => setRecordingSelected(recording.id, selected)
-                    : undefined
-                }
+                onSelectedChange={(selected) => setRecordingSelected(recording.id, selected)}
                 onStop={() => stopMutation.mutate(recording.id)}
                 onUpdate={(input) =>
                   updateMetadataMutation.mutateAsync({

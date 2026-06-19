@@ -79,6 +79,70 @@ test("recording export returns scoped filtered manifest and audits access", asyn
   assert.deepEqual(event?.details.filters, { sortBy: "name", tag: "voice" });
 });
 
+test("selected recording export preserves requested order and audits selection", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const app = recordingExportApp({
+    auditStore,
+    permissionCalls,
+    recordingStore: memoryRecordingStore([
+      recording({ id: "rec_first", name: "First", tags: ["one"] }),
+      recording({ id: "rec_second", name: "Second", tags: ["two"] }),
+      recording({ id: "rec_hidden", name: "Hidden" }),
+    ]),
+    visibleRecordingIds: ["rec_first", "rec_second"],
+  });
+
+  const response = await app.request("/api/v1/recordings/export", {
+    body: JSON.stringify({ recordingIds: ["rec_second", "rec_first", "rec_second"] }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const csv = await response.text();
+  const [event] = await auditStore.list({ action: "recordings.export_selected.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(permissionCalls.at(-1)?.permission, "recording:read");
+  assert.equal(permissionCalls.at(-1)?.action, "recordings.export_selected");
+  assert.match(response.headers.get("content-disposition") ?? "", /rakkr-recordings-/);
+  assert.ok(csv.indexOf("rec_second") < csv.indexOf("rec_first"));
+  assert.doesNotMatch(csv, /rec_hidden/);
+  assert.equal(event?.permission, "recording:read");
+  assert.equal(event?.details.exportedCount, 2);
+  assert.equal(event?.details.requestedCount, 3);
+  assert.equal(event?.correlationIds?.recordingId1, "rec_second");
+  assert.equal(event?.correlationIds?.recordingId2, "rec_first");
+});
+
+test("selected recording export rejects recordings outside scoped visibility", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const app = recordingExportApp({
+    auditStore,
+    permissionCalls,
+    recordingStore: memoryRecordingStore([
+      recording({ id: "rec_visible", name: "Visible" }),
+      recording({ id: "rec_hidden", name: "Hidden" }),
+    ]),
+    visibleRecordingIds: ["rec_visible"],
+  });
+
+  const response = await app.request("/api/v1/recordings/export", {
+    body: JSON.stringify({ recordingIds: ["rec_visible", "rec_hidden"] }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "recordings.export_selected.failed" });
+
+  assert.equal(response.status, 404);
+  assert.equal(permissionCalls.at(-1)?.permission, "recording:read");
+  assert.equal(permissionCalls.at(-1)?.action, "recordings.export_selected");
+  assert.equal(event?.outcome, "denied");
+  assert.equal(event?.reason, "recording_not_visible");
+  assert.deepEqual(event?.details.hiddenIds, ["rec_hidden"]);
+  assert.deepEqual(event?.details.recordingIds, ["rec_visible", "rec_hidden"]);
+});
+
 interface PermissionCall {
   action: string;
   permission: Permission;

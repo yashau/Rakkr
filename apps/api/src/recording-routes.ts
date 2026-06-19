@@ -62,6 +62,11 @@ const recordingStartRequestSchema = z
 const recordingStartTargetSchema = z.object({
   nodeId: z.string().trim().min(1).max(160),
 });
+const recordingSelectedExportSchema = z
+  .object({
+    recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
+  })
+  .strict();
 
 export function registerRecordingRoutes({
   app,
@@ -205,6 +210,65 @@ export function registerRecordingRoutes({
         details: {
           exportedCount: recordings.length,
           filters: query.data,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: {
+          id: "recording_collection",
+          type: "recording_collection",
+        },
+      });
+
+      return c.body(recordingManifestCsv(recordings), 200, {
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
+  );
+
+  app.post(
+    "/api/v1/recordings/export",
+    requirePermission("recording:read", "recordings.export_selected", () => ({
+      id: "recording_collection",
+      type: "recording_collection",
+    })),
+    async (c) => {
+      const body = recordingSelectedExportSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSelectedExportFailure(c, "invalid_request");
+        return c.json(
+          { error: "Invalid recording export request", issues: body.error.issues },
+          400,
+        );
+      }
+
+      const recordingIds = uniqueRecordingIds(body.data.recordingIds);
+      const visibleRecordings = new Map(
+        (await scopedRecordings(currentUser(c))).map((recording) => [recording.id, recording]),
+      );
+      const hiddenIds = recordingIds.filter((recordingId) => !visibleRecordings.has(recordingId));
+
+      if (hiddenIds.length > 0) {
+        await recordSelectedExportFailure(c, "recording_not_visible", {
+          hiddenIds,
+          recordingIds,
+        });
+        return c.json({ error: "One or more recordings are not visible" }, 404);
+      }
+
+      const recordings = recordingIds.map((recordingId) => visibleRecordings.get(recordingId)!);
+      const fileName = recordingExportFileName(new Date());
+
+      await recordAuditEvent(c, {
+        action: "recordings.export_selected.succeeded",
+        auth: currentAuth(c),
+        correlationIds: Object.fromEntries(
+          recordingIds.map((recordingId, index) => [`recordingId${index + 1}`, recordingId]),
+        ),
+        details: {
+          exportedCount: recordings.length,
+          requestedCount: body.data.recordingIds.length,
         },
         outcome: "succeeded",
         permission: "recording:read",
@@ -740,6 +804,25 @@ export function registerRecordingRoutes({
       details,
       outcome: reason === "recording_not_visible" ? "denied" : "failed",
       permission: "recording:edit",
+      reason,
+      target: {
+        id: "recording_collection",
+        type: "recording_collection",
+      },
+    });
+  }
+
+  async function recordSelectedExportFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action: "recordings.export_selected.failed",
+      auth: currentAuth(c),
+      details,
+      outcome: reason === "recording_not_visible" ? "denied" : "failed",
+      permission: "recording:read",
       reason,
       target: {
         id: "recording_collection",

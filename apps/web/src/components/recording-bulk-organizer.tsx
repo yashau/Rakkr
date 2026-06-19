@@ -1,4 +1,4 @@
-import { CheckSquare, RotateCcw, Trash2, UploadCloud, X } from "lucide-react";
+import { CheckSquare, Download, RotateCcw, Trash2, UploadCloud, X } from "lucide-react";
 import { useState } from "react";
 import type { UploadPolicy } from "@rakkr/shared";
 
@@ -26,13 +26,16 @@ export function RecordingBulkOrganizer({
   allVisibleSelected,
   canDelete,
   canEdit,
+  canExport,
   canUpload,
   deleteDisabled,
   deleteEligibleCount,
   disabled,
+  exportDisabled,
   onApply,
   onClear,
   onDeleteSelected,
+  onExportSelected,
   onSelectVisible,
   onUploadSelected,
   selectedCount,
@@ -44,13 +47,16 @@ export function RecordingBulkOrganizer({
   allVisibleSelected: boolean;
   canDelete: boolean;
   canEdit: boolean;
+  canExport: boolean;
   canUpload: boolean;
   deleteDisabled: boolean;
   deleteEligibleCount: number;
   disabled: boolean;
+  exportDisabled: boolean;
   onApply: (input: Omit<RecordingBulkMetadataUpdate, "recordingIds">) => void;
   onClear: () => void;
   onDeleteSelected: () => void;
+  onExportSelected: () => void;
   onSelectVisible: () => void;
   onUploadSelected: (uploadPolicyId?: string) => void;
   selectedCount: number;
@@ -64,6 +70,7 @@ export function RecordingBulkOrganizer({
   const input = bulkInputFromDraft(draft);
   const applyDisabled = disabled || selectedCount === 0 || Object.keys(input).length === 0;
   const bulkDeleteDisabled = deleteDisabled || selectedCount === 0 || deleteEligibleCount === 0;
+  const bulkExportDisabled = exportDisabled || selectedCount === 0;
   const bulkUploadDisabled = uploadDisabled || selectedCount === 0 || uploadEligibleCount === 0;
   const uploadPolicyId = selectedUploadPolicyId || uploadPolicies[0]?.id;
 
@@ -88,6 +95,17 @@ export function RecordingBulkOrganizer({
             <X className="size-4" />
             Clear
           </Button>
+          {canExport ? (
+            <Button
+              disabled={bulkExportDisabled}
+              onClick={onExportSelected}
+              type="button"
+              variant="outline"
+            >
+              <Download className="size-4" />
+              Export selected
+            </Button>
+          ) : null}
         </div>
       </div>
       {canEdit ? (
