@@ -183,6 +183,7 @@ Current partial implementation:
 - RBAC-gated node alias, site/building/floor/room, network, tag, and note edits with audit history.
 - RBAC-gated interface aliases, hardware paths, serials, system refs, sample rates, and channel aliases with audit history.
 - Node-authenticated heartbeat updates status, last seen, OS/kernel/runtime, IPs, and audio backends.
+- Agent service routes audit missing node credentials with route-specific permission families.
 - Persisted nodes derive offline status after missed heartbeat threshold.
 - Watchdog creates and resolves central health events when node heartbeats go stale/recover.
 - Node UI summarizes connectivity/offline health alongside disk, CPU, and audio.
@@ -605,6 +606,7 @@ Current partial implementation:
 91. ✅ Add ops route missing-permission coverage.
 92. ✅ Add auth management route missing-permission coverage.
 93. ✅ Add upload runner read route missing-permission coverage.
+94. ✅ Add agent service-route missing credential audit coverage.
 
 ## Open Questions
 

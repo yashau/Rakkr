@@ -178,6 +178,101 @@ test("agent heartbeat updates node runtime details and audits inventory changes"
   assert.equal(event?.after?.hostname, "agent-route-node-live");
 });
 
+test("agent service routes audit missing node credentials with route permissions", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    settingsStore: {} as SettingsStore,
+  });
+
+  const requests = [
+    {
+      action: "nodes.channel_map_assignments.read.failed",
+      path: "/api/v1/nodes/node_agent_test/channel-map-assignments",
+      permission: "node:control",
+    },
+    {
+      action: "nodes.heartbeat.failed",
+      method: "POST",
+      path: "/api/v1/nodes/node_agent_test/heartbeat",
+      permission: "node:control",
+    },
+    {
+      action: "nodes.meter_frame.ingest.failed",
+      method: "POST",
+      path: "/api/v1/nodes/node_agent_test/meter-frame",
+      permission: "node:control",
+    },
+    {
+      action: "nodes.health_events.sync.failed",
+      method: "POST",
+      path: "/api/v1/nodes/node_agent_test/health-events",
+      permission: "health:acknowledge",
+    },
+    {
+      action: "recording_jobs.next.failed",
+      path: "/api/v1/nodes/node_agent_test/recording-jobs/next",
+      permission: "recording:control",
+    },
+    {
+      action: "recording_jobs.claim.failed",
+      method: "POST",
+      path: "/api/v1/recording-jobs/job_agent_missing_token/claim",
+      permission: "recording:control",
+    },
+    {
+      action: "recording_jobs.heartbeat.failed",
+      method: "POST",
+      path: "/api/v1/recording-jobs/job_agent_missing_token/heartbeat",
+      permission: "recording:control",
+    },
+    {
+      action: "recording_jobs.read_one.failed",
+      path: "/api/v1/recording-jobs/job_agent_missing_token",
+      permission: "recording:control",
+    },
+    {
+      action: "recording_jobs.cancelled.failed",
+      method: "POST",
+      path: "/api/v1/recording-jobs/job_agent_missing_token/cancelled",
+      permission: "recording:control",
+    },
+    {
+      action: "recording_jobs.failed.failed",
+      method: "POST",
+      path: "/api/v1/recording-jobs/job_agent_missing_token/failed",
+      permission: "recording:control",
+    },
+    {
+      action: "recordings.cache_file.attach.failed",
+      method: "PUT",
+      path: "/api/v1/recordings/rec_agent_missing_token/cache-file",
+      permission: "recording:control",
+    },
+  ];
+  const responses = await Promise.all(
+    requests.map((request) => app.request(request.path, { method: request.method ?? "GET" })),
+  );
+  const deniedEvents = await auditStore.list({ outcome: "denied" });
+
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    Array.from({ length: requests.length }, () => 401),
+  );
+  assert.deepEqual(
+    Object.fromEntries(deniedEvents.map((event) => [event.action, event.permission]).sort()),
+    Object.fromEntries(requests.map((request) => [request.action, request.permission]).sort()),
+  );
+  assert.ok(deniedEvents.every((event) => event.reason === "missing_node_token"));
+});
+
 test("recording job honors custom output profile", async () => {
   const job = await createRecordingJob(
     {

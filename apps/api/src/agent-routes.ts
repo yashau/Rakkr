@@ -46,6 +46,7 @@ interface AgentRouteDependencies {
 type AuthenticatedNode =
   | { credential: NodeCredentialAuth; response?: never }
   | { credential?: never; response: Response };
+type NodeServicePermission = "health:acknowledge" | "node:control" | "recording:control";
 
 export function registerAgentRoutes({
   app,
@@ -58,10 +59,15 @@ export function registerAgentRoutes({
 }: AgentRouteDependencies) {
   app.get("/api/v1/nodes/:nodeId/channel-map-assignments", async (c) => {
     const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(c, "nodes.channel_map_assignments.read", {
-      id: nodeId,
-      type: "node",
-    });
+    const auth = await authenticateNode(
+      c,
+      "nodes.channel_map_assignments.read",
+      {
+        id: nodeId,
+        type: "node",
+      },
+      "node:control",
+    );
 
     if (auth.response) {
       return auth.response;
@@ -118,10 +124,15 @@ export function registerAgentRoutes({
 
   app.post("/api/v1/nodes/:nodeId/heartbeat", async (c) => {
     const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(c, "nodes.heartbeat", {
-      id: nodeId,
-      type: "node",
-    });
+    const auth = await authenticateNode(
+      c,
+      "nodes.heartbeat",
+      {
+        id: nodeId,
+        type: "node",
+      },
+      "node:control",
+    );
 
     if (auth.response) {
       return auth.response;
@@ -198,10 +209,15 @@ export function registerAgentRoutes({
 
   app.post("/api/v1/nodes/:nodeId/meter-frame", async (c) => {
     const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(c, "nodes.meter_frame.ingest", {
-      id: nodeId,
-      type: "node",
-    });
+    const auth = await authenticateNode(
+      c,
+      "nodes.meter_frame.ingest",
+      {
+        id: nodeId,
+        type: "node",
+      },
+      "node:control",
+    );
 
     if (auth.response) {
       return auth.response;
@@ -243,10 +259,15 @@ export function registerAgentRoutes({
 
   app.post("/api/v1/nodes/:nodeId/health-events", async (c) => {
     const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(c, "nodes.health_events.sync", {
-      id: nodeId,
-      type: "node",
-    });
+    const auth = await authenticateNode(
+      c,
+      "nodes.health_events.sync",
+      {
+        id: nodeId,
+        type: "node",
+      },
+      "health:acknowledge",
+    );
 
     if (auth.response) {
       return auth.response;
@@ -584,18 +605,25 @@ export function registerAgentRoutes({
     c: Context<AppBindings>,
     action: string,
     target: AuditTarget,
+    permission: NodeServicePermission = "recording:control",
   ): Promise<AuthenticatedNode> {
     const token = bearerToken(c.req.header("authorization"));
 
     if (!token) {
-      await recordNodeCredentialFailure(c, `${action}.failed`, "missing_node_token", { target });
+      await recordNodeCredentialFailure(c, `${action}.failed`, "missing_node_token", {
+        permission,
+        target,
+      });
       return { response: c.json({ error: "Node credential required" }, 401) };
     }
 
     const credential = await nodeStore.authenticateCredential(token).catch(async () => undefined);
 
     if (!credential) {
-      await recordNodeCredentialFailure(c, `${action}.failed`, "invalid_node_token", { target });
+      await recordNodeCredentialFailure(c, `${action}.failed`, "invalid_node_token", {
+        permission,
+        target,
+      });
       return { response: c.json({ error: "Invalid node credential" }, 401) };
     }
 
