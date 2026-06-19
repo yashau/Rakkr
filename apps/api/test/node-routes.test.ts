@@ -77,6 +77,69 @@ test("node list searches inventory identity fields", async () => {
   );
 });
 
+test("node routes deny users without required permissions", async () => {
+  const auditStore = createAuditStore("");
+  const deniedUser = user([]);
+  const app = nodeApp({
+    auditStore,
+    currentUser: deniedUser,
+    frames: [meterFrame()],
+    nodes: [nodeWithInterface()],
+    permissionCalls: [],
+    permissionMiddleware: denyMissingPermission(auditStore, deniedUser),
+  });
+
+  const responses = await Promise.all([
+    app.request("/api/v1/nodes"),
+    app.request(`/api/v1/nodes/${node().id}/meters`),
+    app.request("/api/v1/meter-events"),
+    app.request(`/api/v1/nodes/${node().id}/listen`, { method: "POST" }),
+    app.request(`/api/v1/nodes/${node().id}/listen/stream`),
+    app.request("/api/v1/nodes/enroll", {
+      body: JSON.stringify({
+        alias: "Blocked Node",
+        hostname: "blocked-node",
+        location: {
+          room: "Blocked Room",
+          site: "Main Site",
+        },
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    }),
+    app.request(`/api/v1/nodes/${node().id}`, {
+      body: JSON.stringify({ alias: "Blocked Rename" }),
+      headers: { "content-type": "application/json" },
+      method: "PATCH",
+    }),
+    app.request(`/api/v1/nodes/${node().id}/interfaces/iface_monitor`, {
+      body: JSON.stringify({ alias: "Blocked Interface" }),
+      headers: { "content-type": "application/json" },
+      method: "PATCH",
+    }),
+    app.request(`/api/v1/nodes/${node().id}/credentials/rotate`, { method: "POST" }),
+  ]);
+  const deniedEvents = await auditStore.list({ outcome: "denied" });
+
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [403, 403, 403, 403, 403, 403, 403, 403, 403],
+  );
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "listen.monitor.start",
+    "listen.monitor.stream",
+    "meters.read",
+    "meters.stream",
+    "nodes.credentials.rotate",
+    "nodes.enroll",
+    "nodes.interfaces.update",
+    "nodes.read",
+    "nodes.update",
+  ]);
+  assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
+  assert.ok(deniedEvents.every((event) => event.actor.id === deniedUser.id));
+});
+
 test("listen start returns a monitor stream URL and audits access", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
@@ -257,26 +320,30 @@ interface PermissionCall {
 
 function nodeApp({
   auditStore,
+  currentUser = user(),
   frames,
   nodes,
   permissionCalls,
+  permissionMiddleware,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
+  currentUser?: CurrentUser;
   frames: MeterFrame[];
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
+  permissionMiddleware?: RequirePermission;
 }) {
   const app = new Hono<AppBindings>();
 
   registerNodeRoutes({
     app,
-    currentAuth: () => auth(),
-    currentUser: () => user(),
+    currentAuth: () => auth(currentUser),
+    currentUser: () => currentUser,
     hasResourceScope: async () => true,
     meterFrameStore: memoryMeterFrameStore(frames),
     nodeStore: memoryNodeStore(nodes),
     recordAuditEvent: recordAuditEvent(auditStore),
-    requirePermission: requirePermission(permissionCalls),
+    requirePermission: permissionMiddleware ?? requirePermission(permissionCalls),
     scopedNodes: async () => nodes,
   });
 
@@ -293,6 +360,31 @@ function requirePermission(calls: PermissionCall[]): RequirePermission {
       });
       await next();
     };
+  };
+}
+
+function denyMissingPermission(
+  auditStore: ReturnType<typeof createAuditStore>,
+  currentUser: CurrentUser,
+): RequirePermission {
+  return (permission, action, target) => async (c) => {
+    const auditTarget = target ? await target(c) : { type: "controller" as const };
+
+    await recordAuditEvent(auditStore)(c, {
+      action,
+      auth: { user: currentUser },
+      details: {
+        requiredPermission: permission,
+        resourceScope: auditTarget,
+        roles: currentUser.roles,
+      },
+      outcome: "denied",
+      permission,
+      reason: "missing_permission",
+      target: auditTarget,
+    });
+
+    return c.json({ error: "Forbidden", permission }, 403);
   };
 }
 
@@ -433,17 +525,17 @@ function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
   };
 }
 
-function auth(): AuthResult {
-  return { user: user() };
+function auth(currentUser = user()): AuthResult {
+  return { user: currentUser };
 }
 
-function user(): CurrentUser {
+function user(permissions: Permission[] = ["listen:monitor", "node:read"]): CurrentUser {
   return {
     email: "node-route@example.com",
     groups: [],
     id: "user_node_route",
     name: "Node Route User",
-    permissions: ["listen:monitor", "node:read"],
+    permissions,
     provider: "local",
     resourceGrants: [],
     roles: ["operator"],

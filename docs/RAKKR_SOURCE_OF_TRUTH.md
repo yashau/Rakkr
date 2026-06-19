@@ -321,6 +321,7 @@ Current partial implementation:
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edit/control/delete actions.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
+- Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
 - Upload runner run-now control has route coverage for missing-permission denial.
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
 - Settings UI read queries and page access mirror `settings:read`.
@@ -587,6 +588,7 @@ Current partial implementation:
 81. ✅ Mirror Settings channel-map target lookup against node read permission.
 82. ✅ Mirror primary shell navigation against RBAC permissions.
 83. ✅ Mirror header recording shortcut against RBAC permissions.
+84. ✅ Add node route missing-permission coverage.
 
 ## Open Questions
 
