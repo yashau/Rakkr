@@ -7,6 +7,8 @@ import type {
   UploadQueueItem,
 } from "@rakkr/shared";
 
+import { nodeOfflineEventType, scheduledLowSignalEventType } from "./watchdog-runner.js";
+
 export interface PrometheusMetricsInput {
   healthEvents: HealthEvent[];
   meterFrames: MeterFrame[];
@@ -126,11 +128,32 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
       { severity },
       input.healthEvents.filter(
         (event) =>
-          event.type.startsWith("watchdog.") &&
+          event.type === scheduledLowSignalEventType &&
           event.severity === severity &&
           event.status !== "resolved",
       ).length,
     );
+  }
+
+  pushHelp(lines, "rakkr_node_offline_alerts_active", "Unresolved node-offline health events.");
+  pushType(lines, "rakkr_node_offline_alerts_active", "gauge");
+  for (const node of input.nodes) {
+    for (const severity of ["warning", "critical"]) {
+      for (const status of ["open", "acknowledged", "suppressed"]) {
+        pushMetric(
+          lines,
+          "rakkr_node_offline_alerts_active",
+          { node_id: node.id, severity, status },
+          input.healthEvents.filter(
+            (event) =>
+              event.nodeId === node.id &&
+              event.type === nodeOfflineEventType &&
+              event.severity === severity &&
+              event.status === status,
+          ).length,
+        );
+      }
+    }
   }
 
   pushHelp(lines, "rakkr_device_xruns_active", "Unresolved audio xrun health events.");

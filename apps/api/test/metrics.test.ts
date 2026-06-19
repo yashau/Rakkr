@@ -13,7 +13,7 @@ import { renderPrometheusMetrics } from "../src/metrics.js";
 
 test("renders store-backed Prometheus gauges", () => {
   const output = renderPrometheusMetrics({
-    healthEvents: [healthEvent()],
+    healthEvents: [healthEvent(), nodeOfflineHealthEvent()],
     meterFrames: [meterFrame()],
     nodes: [node()],
     recordingJobs: [recordingJob()],
@@ -46,8 +46,12 @@ test("renders store-backed Prometheus gauges", () => {
     output,
     /rakkr_input_noise_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.12/,
   );
-  assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 1/);
+  assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 2/);
   assert.match(output, /rakkr_recording_watchdog_alerts_active\{severity="critical"\} 1/);
+  assert.match(
+    output,
+    /rakkr_node_offline_alerts_active\{node_id="node_x32_test",severity="critical",status="open"\} 1/,
+  );
   assert.match(output, /rakkr_upload_queue_depth\{provider="stub",status="failed"\} 1/);
   assert.match(output, /rakkr_upload_failures_total\{provider="stub"\} 3/);
 });
@@ -143,6 +147,22 @@ function healthEvent(): HealthEvent {
     suppressedAt: null,
     suppressedUntil: null,
     type: "watchdog.scheduled_low_signal",
+  };
+}
+
+function nodeOfflineHealthEvent(): HealthEvent {
+  return {
+    acknowledgedAt: null,
+    details: {},
+    id: "health_node_offline",
+    nodeId: "node_x32_test",
+    openedAt: "2026-06-18T12:05:00.000Z",
+    resolvedAt: null,
+    severity: "critical",
+    status: "open",
+    suppressedAt: null,
+    suppressedUntil: null,
+    type: "watchdog.node_offline",
   };
 }
 

@@ -400,6 +400,7 @@ Telemetry surfaces:
 Important metric names:
 
 - `rakkr_node_online`
+- `rakkr_node_offline_alerts_active`
 - `rakkr_input_rms_dbfs`
 - `rakkr_input_peak_dbfs`
 - `rakkr_input_clipping_ratio`
@@ -461,7 +462,8 @@ Examples:
 15. ✅ Add full node location hierarchy editing and display.
 16. ✅ Add stale heartbeat offline status derivation.
 17. ✅ Add stale node heartbeat health-event lifecycle.
-18. ⏸️ Return to X32 hardware validation after device is confirmed.
+18. ✅ Add node-offline Prometheus alert metric.
+19. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
