@@ -42,6 +42,7 @@ depends = [
   "ops:check-prometheus",
   "security:check-rbac",
   "security:check-transport",
+  "scheduler:check",
   "node:check",
   "node:test",
   "node:lint",
@@ -89,6 +90,10 @@ run = "node scripts/verify-rbac-audit-baseline.mjs"
 [tasks."security:check-transport"]
 description = "Validate transport security baseline documentation"
 run = "node scripts/verify-transport-security-baseline.mjs"
+
+[tasks."scheduler:check"]
+description = "Validate scheduler baseline documentation"
+run = "node scripts/verify-scheduler-baseline.mjs"
 
 [tasks."node:build-libs"]
 description = "Build shared Node workspace libraries"

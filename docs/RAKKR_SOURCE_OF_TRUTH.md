@@ -65,7 +65,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
-| Scheduler | 🟨 | Persistent schedules, recurrence, buffers, run-now, skip-next, metadata ownership |
+| Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | 🟨 | Metadata, tags/folders/search, playback, download, checksum, waveform preview, encoded cache output |
 | Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
 | Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
@@ -213,10 +213,11 @@ Scheduler rules:
 - No arbitrary product limit on schedule count.
 - Scheduled recordings inherit schedule-owned filename, folder, tags, profile, targets, watchdog, retention, and future upload policy.
 
-Current partial implementation:
+Current implementation baseline:
 
 - Drizzle/Postgres schedule store.
 - Preview, create, edit, run-now, skip-next, delete.
+- `docs/scheduling/SCHEDULER_BASELINE.md` defines the checked MVP scheduler baseline.
 - Recurrence tests for buffers, pauses, monthly clamping, overnight duration, and skip-next.
 - Runner creates jobs under `system:scheduler` and audits outcomes.
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
@@ -697,6 +698,7 @@ Current partial implementation:
 136. ✅ Add checked RBAC/audit MVP baseline matrix.
 137. ✅ Add checked Azure AD OIDC MVP baseline setup.
 138. ✅ Add checked transport security MVP baseline.
+139. ✅ Promote Scheduler MVP with checked human-friendly baseline.
 
 ## Open Questions
 
