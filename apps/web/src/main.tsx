@@ -91,15 +91,22 @@ function RootLayout() {
   }
 
   const currentUser = currentUserQuery.data.data;
+  const canCreateRecording = currentUser.permissions.includes("recording:create");
+  const canManageAccess = currentUser.permissions.includes("auth:manage");
+  const canReadAudit = currentUser.permissions.includes("audit:read");
+  const canReadDashboard = currentUser.permissions.includes("node:read");
+  const canReadNodes = currentUser.permissions.includes("node:read");
+  const canReadRecordings = currentUser.permissions.includes("recording:read");
+  const canReadSchedules = currentUser.permissions.includes("schedule:read");
   const canReadSettings = currentUser.permissions.includes("settings:read");
   const navItems = [
-    { icon: Gauge, label: "Dashboard", to: "/" },
-    { icon: Radio, label: "Nodes", to: "/nodes" },
-    { icon: CalendarDays, label: "Schedules", to: "/schedules" },
-    { icon: Database, label: "Recordings", to: "/recordings" },
+    ...(canReadDashboard ? [{ icon: Gauge, label: "Dashboard", to: "/" }] : []),
+    ...(canReadNodes ? [{ icon: Radio, label: "Nodes", to: "/nodes" }] : []),
+    ...(canReadSchedules ? [{ icon: CalendarDays, label: "Schedules", to: "/schedules" }] : []),
+    ...(canReadRecordings ? [{ icon: Database, label: "Recordings", to: "/recordings" }] : []),
     ...(canReadSettings ? [{ icon: Settings, label: "Settings", to: "/settings" }] : []),
-    { icon: ShieldCheck, label: "Audit", to: "/audit" },
-    { icon: Users, label: "Access", to: "/access" },
+    ...(canReadAudit ? [{ icon: ShieldCheck, label: "Audit", to: "/audit" }] : []),
+    ...(canManageAccess ? [{ icon: Users, label: "Access", to: "/access" }] : []),
   ] as const;
 
   return (
@@ -160,7 +167,10 @@ function RootLayout() {
                 <LogOut className="size-4" />
                 Logout
               </Button>
-              <Button>
+              <Button
+                disabled={!canCreateRecording}
+                title={canCreateRecording ? "Start recording" : "Requires recording create"}
+              >
                 <Radio className="size-4" />
                 Record
               </Button>

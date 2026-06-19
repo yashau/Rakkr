@@ -326,6 +326,8 @@ Current partial implementation:
 - Settings UI read queries and page access mirror `settings:read`.
 - Settings shell navigation mirrors `settings:read`.
 - Settings channel-map assignment target lookup mirrors `node:read`.
+- Shell navigation mirrors page-level read/manage permissions.
+- Header recording shortcut mirrors `recording:create`.
 - Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
@@ -583,6 +585,8 @@ Current partial implementation:
 79. ✅ Mirror Settings page reads against RBAC permissions.
 80. ✅ Mirror Settings shell navigation against RBAC permissions.
 81. ✅ Mirror Settings channel-map target lookup against node read permission.
+82. ✅ Mirror primary shell navigation against RBAC permissions.
+83. ✅ Mirror header recording shortcut against RBAC permissions.
 
 ## Open Questions
 
