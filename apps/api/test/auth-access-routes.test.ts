@@ -51,7 +51,7 @@ test("access policy updates audit before and after snapshots", async () => {
   );
 });
 
-test("recording resource denies block metadata edits and audit the denial", async () => {
+test("recording resource denies block metadata edits and bulk organization", async () => {
   const token = await loginToken();
   const recordingId = "rec_demo_001";
 
@@ -74,6 +74,17 @@ test("recording resource denies block metadata edits and audit the denial", asyn
       },
       method: "PATCH",
     });
+    const bulkResponse = await app.request("/api/v1/recordings/bulk-metadata", {
+      body: JSON.stringify({
+        folder: "Blocked",
+        recordingIds: [recordingId],
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      method: "PATCH",
+    });
     const eventsResponse = await app.request(
       [
         "/api/v1/audit-events",
@@ -88,14 +99,23 @@ test("recording resource denies block metadata edits and audit the denial", asyn
     );
     const eventsBody = (await eventsResponse.json()) as { data: AuditEvent[] };
     const [event] = eventsBody.data;
+    const bulkEvent = await deniedAuditEvent(
+      token,
+      "recordings.metadata.bulk_update.failed",
+      "recording:edit",
+      "recording_collection",
+    );
 
     assert.equal(response.status, 403);
+    assert.equal(bulkResponse.status, 404);
     assert.equal(eventsResponse.status, 200);
     assert.equal(event?.permission, "recording:edit");
     assert.equal(event?.reason, "access_policy_denied");
     assert.equal(event?.target.id, recordingId);
     assert.equal(event?.target.type, "recording");
     assert.equal(event?.details.resourceScopeDecision, "access_policy_denied");
+    assert.equal(bulkEvent?.reason, "recording_not_visible");
+    assert.deepEqual(bulkEvent?.details.hiddenIds, [recordingId]);
   } finally {
     await updateAccessPolicies(token, []);
   }

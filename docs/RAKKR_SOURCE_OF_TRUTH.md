@@ -313,7 +313,7 @@ Current partial implementation:
 - Access UI includes a structured resource-scope composer for local user grants.
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
 - Access policy update routes have regression coverage for before/after audit snapshots.
-- Access policy denies have route coverage for protected recording metadata writes.
+- Access policy denies have route coverage for protected recording metadata writes and bulk organization.
 - Access policy denies have route coverage for live-listen monitor starts.
 - Access policy denies have route coverage for recording stop controls.
 - Access policy denies have route coverage for recording playback, download, and upload queue actions.
@@ -556,6 +556,7 @@ Current partial implementation:
 62. ✅ Add selected-recording bulk delete UI for terminal recordings.
 63. ✅ Add RBAC-gated bulk recording delete API and wire UI to it.
 64. ✅ Add access-policy deny coverage for bulk recording delete.
+65. ✅ Add access-policy deny coverage for bulk recording organization.
 
 ## Open Questions
 
