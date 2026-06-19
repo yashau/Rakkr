@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type LocalUserCreateInput, type UserAccessUpdate } from "@/lib/api";
+import { canManageAccessPage } from "@/lib/access-page-helpers";
 import { AccessPolicyComposer } from "@/components/access-policy-composer";
 import { ResourceGrantComposer } from "@/components/resource-grant-composer";
 
@@ -56,15 +57,19 @@ export function AccessPage() {
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
   });
+  const canManageAccess = canManageAccessPage(currentUserQuery.data?.data);
   const usersQuery = useQuery({
+    enabled: canManageAccess,
     queryFn: api.accessUsers,
     queryKey: ["access-users"],
   });
   const groupsQuery = useQuery({
+    enabled: canManageAccess,
     queryFn: api.accessGroups,
     queryKey: ["access-groups"],
   });
   const policiesQuery = useQuery({
+    enabled: canManageAccess,
     queryFn: api.accessPolicies,
     queryKey: ["access-policies"],
   });
@@ -144,6 +149,22 @@ export function AccessPage() {
       return next;
     });
   }, [users]);
+
+  if (currentUserQuery.isPending) {
+    return <p className="text-sm text-muted-foreground">Loading access.</p>;
+  }
+
+  if (!canManageAccess) {
+    return (
+      <Card className="rounded-lg p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-5 text-muted-foreground" />
+          <h2 className="text-base font-semibold">Access</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">Access management is unavailable.</p>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid gap-4">

@@ -314,6 +314,7 @@ Current partial implementation:
 - Local users, groups, roles, scopes, access policies, passwords, status.
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
 - Access UI manages users, groups, policies, and scopes.
+- Access page management is hidden unless the user has `auth:manage`.
 - Access UI includes a structured allow/deny policy composer for user, group, and everyone subjects.
 - Access UI includes a structured resource-scope composer for local user grants.
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
@@ -629,6 +630,7 @@ Current partial implementation:
 103. ✅ Add dashboard meter bank dBFS and voice/noise display coverage.
 104. ✅ Mirror Nodes page privileged actions against RBAC permissions.
 105. ✅ Mirror Schedules page write/control actions against RBAC permissions.
+106. ✅ Mirror Access page management against RBAC permissions.
 
 ## Open Questions
 
