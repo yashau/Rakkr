@@ -44,6 +44,7 @@ depends = [
   "security:check-transport",
   "scheduler:check",
   "recordings:check",
+  "recordings:check-first-reliable",
   "health:check-watchdog",
   "storage:check",
   "operations:check",
@@ -102,6 +103,10 @@ run = "node scripts/verify-scheduler-baseline.mjs"
 [tasks."recordings:check"]
 description = "Validate recording library baseline documentation"
 run = "node scripts/verify-recording-library-baseline.mjs"
+
+[tasks."recordings:check-first-reliable"]
+description = "Validate first reliable recording baseline documentation"
+run = "node scripts/verify-first-reliable-recording-baseline.mjs"
 
 [tasks."health:check-watchdog"]
 description = "Validate health watchdog partial baseline documentation"

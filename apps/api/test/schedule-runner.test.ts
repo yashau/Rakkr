@@ -191,6 +191,12 @@ test("scheduled recording completes through agent cache attach and exposes sched
   const file = await app.request(`/api/v1/recordings/${created?.id}/file`);
   const [cacheAudit] = await auditStore.list({ action: "recordings.cache_file.attach.succeeded" });
   const dueRunEvents = await auditStore.list({ action: "schedules.due_run.succeeded" });
+  const playback = await app.request(`/api/v1/recordings/${created?.id}/playback`, {
+    method: "POST",
+  });
+  const download = await app.request(`/api/v1/recordings/${created?.id}/download`, {
+    method: "POST",
+  });
 
   assert.equal(result?.outcome, "succeeded");
   assert.equal(result?.recordingId, created?.id);
@@ -208,6 +214,8 @@ test("scheduled recording completes through agent cache attach and exposes sched
   assert.equal(attachedBody.data.recording.uploadPolicyId, scheduledPolicy.id);
   assert.equal(attachedBody.data.recording.watchdogPolicyId, "scheduled-voice-watchdog");
   assert.equal(attachedBody.data.uploadQueueItem?.uploadPolicyId, scheduledPolicy.id);
+  assert.equal(playback.status, 202);
+  assert.equal(download.status, 202);
   assert.equal(stream.status, 200);
   assert.equal(stream.headers.get("content-type"), "audio/wav");
   assert.equal((await stream.arrayBuffer()).byteLength, attachBytes.byteLength);
