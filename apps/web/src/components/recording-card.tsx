@@ -82,6 +82,7 @@ export function RecordingCard({
   const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(
     recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "",
   );
+  const relationships = recordingRelationships(recording);
 
   useEffect(() => {
     if (!isEditing) {
@@ -182,6 +183,20 @@ export function RecordingCard({
                 <span>{formatDuration(recording.durationSeconds)}</span>
                 <span>{recording.source}</span>
               </div>
+              {relationships.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {relationships.map((item) => (
+                    <Badge
+                      className="max-w-full gap-1 overflow-hidden bg-background"
+                      key={`${item.label}-${item.value}`}
+                      variant="outline"
+                    >
+                      <span className="text-muted-foreground">{item.label}</span>
+                      <span className="truncate font-mono">{item.value}</span>
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
               {recording.tags.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {recording.tags.map((tag) => (
@@ -384,6 +399,32 @@ function uploadStatusClass(status: UploadQueueItem["status"]) {
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function recordingRelationships(recording: RecordingSummary) {
+  const items: Array<{ label: string; value: string }> = [];
+
+  if (recording.nodeId) {
+    items.push({ label: "node", value: recording.nodeId });
+  }
+
+  if (recording.scheduleId) {
+    items.push({ label: "schedule", value: recording.scheduleId });
+  }
+
+  if (recording.recordingProfileId) {
+    items.push({ label: "profile", value: recording.recordingProfileId });
+  }
+
+  if (recording.uploadPolicyId) {
+    items.push({ label: "upload", value: recording.uploadPolicyId });
+  }
+
+  if (recording.trackIndex && recording.trackTotal) {
+    items.push({ label: "track", value: `${recording.trackIndex}/${recording.trackTotal}` });
+  }
+
+  return items;
 }
 
 function draftFromRecording(recording: RecordingSummary): RecordingMetadataDraft {
