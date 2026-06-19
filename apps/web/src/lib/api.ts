@@ -125,7 +125,9 @@ export interface UploadQueueInput {
 export interface RecordingFilters {
   folder?: string;
   healthStatus?: RecordingSummary["healthStatus"];
+  limit?: number;
   nodeId?: string;
+  offset?: number;
   recordedFrom?: string;
   recordedTo?: string;
   recordingProfileId?: string;
@@ -148,6 +150,20 @@ export type RecordingSortBy =
   | "source"
   | "status";
 export type RecordingSortOrder = "asc" | "desc";
+
+export interface RecordingListMeta {
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  limit?: number;
+  offset: number;
+  returned: number;
+  total: number;
+}
+
+export interface RecordingListResponse {
+  data: RecordingSummary[];
+  meta: RecordingListMeta;
+}
 
 export interface RecordingFacet {
   count: number;
@@ -516,7 +532,7 @@ export const api = {
       method: "PATCH",
     }),
   recordings: (filters: RecordingFilters = {}) =>
-    fetchJson<{ data: RecordingSummary[] }>(withQuery("/api/v1/recordings", filters)),
+    fetchJson<RecordingListResponse>(withQuery("/api/v1/recordings", filters)),
   recordingFacets: () => fetchJson<{ data: RecordingFacets }>("/api/v1/recordings/facets"),
   uploadQueue: () => fetchJson<{ data: UploadQueueItem[] }>("/api/v1/upload-queue"),
   uploadRunner: () => fetchJson<{ data: UploadRunnerStatus }>("/api/v1/upload-runner"),

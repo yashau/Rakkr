@@ -150,6 +150,53 @@ test("recording list sorts by requested field and order", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("recording list paginates sorted results", async () => {
+  const auditStore = createAuditStore("");
+  const app = recordingApp({
+    auditStore,
+    nodes: [recorderNode()],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore([
+      recording({ id: "rec_1", name: "Alpha" }),
+      recording({ id: "rec_2", name: "Bravo" }),
+      recording({ id: "rec_3", name: "Charlie" }),
+      recording({ id: "rec_4", name: "Delta" }),
+    ]),
+  });
+
+  const response = await app.request(
+    "/api/v1/recordings?sortBy=name&sortOrder=asc&limit=2&offset=1",
+  );
+  const body = (await response.json()) as {
+    data: RecordingSummary[];
+    meta: {
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+      limit: number;
+      offset: number;
+      returned: number;
+      total: number;
+    };
+  };
+  const invalidResponse = await app.request("/api/v1/recordings?limit=0");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.data.map((item) => item.id),
+    ["rec_2", "rec_3"],
+  );
+  assert.deepEqual(body.meta, {
+    hasNextPage: true,
+    hasPreviousPage: true,
+    limit: 2,
+    offset: 1,
+    returned: 2,
+    total: 4,
+  });
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("recording list filters by profile upload policy and track group", async () => {
   const auditStore = createAuditStore("");
   const app = recordingApp({

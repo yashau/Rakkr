@@ -24,6 +24,10 @@ const recordingSortBySchema = z.enum([
   "status",
 ]);
 const recordingSortOrderSchema = z.enum(["asc", "desc"]);
+const optionalPaginationNumberSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() ? Number(value) : undefined),
+  z.number().int().nonnegative().optional(),
+);
 
 export const recordingsQuerySchema = z.object({
   folder: optionalTextFilterSchema,
@@ -31,7 +35,12 @@ export const recordingsQuerySchema = z.object({
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     z.enum(["healthy", "warning", "critical", "unknown"]).optional(),
   ),
+  limit: optionalPaginationNumberSchema.refine(
+    (value) => value === undefined || (value >= 1 && value <= 200),
+    "Expected limit between 1 and 200",
+  ),
   nodeId: optionalTextFilterSchema,
+  offset: optionalPaginationNumberSchema,
   recordedFrom: optionalIsoFilterSchema,
   recordedTo: optionalIsoFilterSchema,
   recordingProfileId: optionalTextFilterSchema,
@@ -55,6 +64,15 @@ export const recordingsQuerySchema = z.object({
 });
 
 type RecordingsQuery = z.infer<typeof recordingsQuerySchema>;
+
+export interface RecordingPaginationMeta {
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  limit?: number;
+  offset: number;
+  returned: number;
+  total: number;
+}
 
 export function filterRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
   const filtered = recordings.filter((recording) => {
@@ -129,6 +147,37 @@ export function recordingFacets(recordings: RecordingSummary[]) {
   return {
     folders: sortedFacets(folders),
     tags: sortedFacets(tags),
+  };
+}
+
+export function paginateRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
+  const offset = filters.offset ?? 0;
+
+  if (!filters.limit) {
+    return {
+      data: recordings,
+      meta: {
+        hasNextPage: false,
+        hasPreviousPage: offset > 0,
+        offset,
+        returned: recordings.length,
+        total: recordings.length,
+      },
+    };
+  }
+
+  const data = recordings.slice(offset, offset + filters.limit);
+
+  return {
+    data,
+    meta: {
+      hasNextPage: offset + data.length < recordings.length,
+      hasPreviousPage: offset > 0,
+      limit: filters.limit,
+      offset,
+      returned: data.length,
+      total: recordings.length,
+    },
   };
 }
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Folder, RotateCcw, Search, Tag, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, RotateCcw, Search, Tag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { HealthEvent, RecordingSummary, UploadPolicy, UploadQueueItem } from "@rakkr/shared";
 
@@ -35,7 +35,7 @@ interface RecordingFilterDraft {
   uploadPolicyId: string;
 }
 
-type RecordingFilterKey = keyof RecordingFilters;
+type RecordingFilterKey = Exclude<keyof RecordingFilters, "limit" | "offset" | "sortOrder">;
 
 interface ActiveRecordingFilterChip {
   key: RecordingFilterKey;
@@ -88,6 +88,8 @@ const recordingSortOrders: Array<{ label: string; value: RecordingSortOrder }> =
   { label: "Descending", value: "desc" },
   { label: "Ascending", value: "asc" },
 ];
+const recordingPageSizes = [10, 25, 50, 100];
+const defaultRecordingPageSize = 25;
 const emptyUploadPolicies: UploadPolicy[] = [];
 
 const selectClassName =
@@ -103,7 +105,6 @@ const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilter
   scheduleId: "scheduleId",
   search: "search",
   sortBy: "sortBy",
-  sortOrder: "sortOrder",
   status: "status",
   tag: "tag",
   trackGroupId: "trackGroupId",
@@ -120,7 +121,6 @@ const recordingFilterLabels: Record<RecordingFilterKey, string> = {
   scheduleId: "schedule",
   search: "search",
   sortBy: "sort",
-  sortOrder: "order",
   status: "status",
   tag: "tag",
   trackGroupId: "track group",
@@ -147,7 +147,11 @@ export function RecordingsPage() {
   const queryClient = useQueryClient();
   const [audioPreview, setAudioPreview] = useState<{ name: string; url: string }>();
   const [filterDraft, setFilterDraft] = useState<RecordingFilterDraft>(emptyRecordingFilterDraft);
-  const [recordingFilters, setRecordingFilters] = useState<RecordingFilters>({});
+  const [pageSize, setPageSize] = useState(defaultRecordingPageSize);
+  const [recordingFilters, setRecordingFilters] = useState<RecordingFilters>({
+    limit: defaultRecordingPageSize,
+    offset: 0,
+  });
   const [notice, setNotice] = useState<{ detail: string; title: string }>();
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -296,6 +300,7 @@ export function RecordingsPage() {
   const canControlRecordings =
     currentUserQuery.data?.data.permissions.includes("recording:control") ?? false;
   const recordings = recordingsQuery.data?.data ?? [];
+  const recordingMeta = recordingsQuery.data?.meta;
   const facets = recordingFacetsQuery.data?.data;
   const topFolders = facets?.folders.slice(0, 8) ?? [];
   const topTags = facets?.tags.slice(0, 12) ?? [];
@@ -304,6 +309,13 @@ export function RecordingsPage() {
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
   const activeFilterChips = recordingFilterChips(recordingFilters);
   const activeFilterCount = activeFilterChips.length;
+  const paginationLimit = recordingMeta?.limit ?? pageSize;
+  const paginationOffset = recordingMeta?.offset ?? 0;
+  const currentPage = Math.floor(paginationOffset / paginationLimit) + 1;
+  const totalPages = Math.max(
+    1,
+    Math.ceil((recordingMeta?.total ?? recordings.length) / paginationLimit),
+  );
 
   useEffect(
     () => () => {
@@ -318,7 +330,7 @@ export function RecordingsPage() {
     const nextDraft = { ...filterDraft, ...patch };
 
     setFilterDraft(nextDraft);
-    setRecordingFilters(filtersFromDraft(nextDraft));
+    setRecordingFilters({ ...filtersFromDraft(nextDraft), limit: pageSize, offset: 0 });
   };
 
   const clearActiveFilter = (key: RecordingFilterKey) => {
@@ -328,11 +340,34 @@ export function RecordingsPage() {
     if (key === "sortBy") {
       delete nextFilters.sortOrder;
     }
+    nextFilters.limit = pageSize;
+    nextFilters.offset = 0;
     setRecordingFilters(nextFilters);
     setFilterDraft((current) => ({
       ...current,
       [recordingFilterDraftKeys[key]]: "",
       ...(key === "sortBy" ? { sortOrder: "desc" as const } : {}),
+    }));
+  };
+
+  const applyRecordingFilters = (nextDraft: RecordingFilterDraft) => {
+    setRecordingFilters({ ...filtersFromDraft(nextDraft), limit: pageSize, offset: 0 });
+  };
+
+  const changePageSize = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setRecordingFilters((current) => ({
+      ...current,
+      limit: nextPageSize,
+      offset: 0,
+    }));
+  };
+
+  const changePage = (offset: number) => {
+    setRecordingFilters((current) => ({
+      ...current,
+      limit: pageSize,
+      offset,
     }));
   };
 
@@ -364,14 +399,16 @@ export function RecordingsPage() {
         className="grid gap-3 rounded-lg border border-border bg-panel p-4 shadow-sm"
         onSubmit={(event) => {
           event.preventDefault();
-          setRecordingFilters(filtersFromDraft(filterDraft));
+          applyRecordingFilters(filterDraft);
         }}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-semibold">Library filters</h3>
             <p className="text-xs text-muted-foreground">
-              {recordings.length} result{recordings.length === 1 ? "" : "s"}
+              {recordingMeta
+                ? `${recordingMeta.returned} of ${recordingMeta.total} results`
+                : `${recordings.length} result${recordings.length === 1 ? "" : "s"}`}
               {activeFilterCount > 0 ? `, ${activeFilterCount} filter active` : ""}
             </p>
           </div>
@@ -383,7 +420,7 @@ export function RecordingsPage() {
             <Button
               onClick={() => {
                 setFilterDraft(emptyRecordingFilterDraft);
-                setRecordingFilters({});
+                setRecordingFilters({ limit: pageSize, offset: 0 });
               }}
               type="button"
               variant="outline"
@@ -613,6 +650,50 @@ export function RecordingsPage() {
                 </button>
               </Badge>
             ))}
+          </div>
+        ) : null}
+        {recordingMeta ? (
+          <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border border-border bg-muted/20 p-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="recording-page-size">Page size</Label>
+              <select
+                className={selectClassName}
+                id="recording-page-size"
+                onChange={(event) => changePageSize(Number(event.target.value))}
+                value={pageSize}
+              >
+                {recordingPageSizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                disabled={!recordingMeta.hasPreviousPage}
+                onClick={() => changePage(Math.max(0, paginationOffset - paginationLimit))}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <ChevronLeft className="size-4" />
+                Previous
+              </Button>
+              <Button
+                disabled={!recordingMeta.hasNextPage}
+                onClick={() => changePage(paginationOffset + paginationLimit)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Next
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
           </div>
         ) : null}
         {topFolders.length > 0 || topTags.length > 0 ? (

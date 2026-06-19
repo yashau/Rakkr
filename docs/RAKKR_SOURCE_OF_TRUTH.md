@@ -372,6 +372,7 @@ Current partial implementation:
 - Recording job rows display capture interface, channel-map template, mode, and source channels.
 - Recording library can display, search, and filter scheduled split recordings by track group.
 - Recording library supports explicit server-side sorting with UI controls.
+- Recording library supports paginated result sets with page-size and previous/next controls.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
@@ -492,7 +493,8 @@ Examples:
 31. ✅ Add recording job interface and channel-map details.
 32. ✅ Add split-track group display and filtering.
 33. ✅ Add recording library sorting controls.
-34. ⏸️ Return to X32 hardware validation after device is confirmed.
+34. ✅ Add recording library pagination controls.
+35. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

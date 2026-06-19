@@ -14,7 +14,12 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-ty
 import type { NodeStore } from "./node-store.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
-import { filterRecordings, recordingFacets, recordingsQuerySchema } from "./recording-listing.js";
+import {
+  filterRecordings,
+  paginateRecordings,
+  recordingFacets,
+  recordingsQuerySchema,
+} from "./recording-listing.js";
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -183,9 +188,10 @@ export function registerRecordingRoutes({
         return c.json({ error: "Invalid recording filters", issues: query.error.issues }, 400);
       }
 
-      return c.json({
-        data: filterRecordings(await scopedRecordings(currentUser(c)), query.data),
-      });
+      const filtered = filterRecordings(await scopedRecordings(currentUser(c)), query.data);
+      const page = paginateRecordings(filtered, query.data);
+
+      return c.json(page);
     },
   );
 
