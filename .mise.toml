@@ -36,6 +36,7 @@ depends = [
   "check:loc",
   "db:verify",
   "ops:check-alerts",
+  "ops:check-prometheus",
   "node:check",
   "node:test",
   "node:lint",
@@ -59,6 +60,10 @@ run = "node scripts/check-loc.mjs"
 [tasks."ops:check-alerts"]
 description = "Validate Prometheus alert rules"
 run = "node scripts/verify-prometheus-alerts.mjs"
+
+[tasks."ops:check-prometheus"]
+description = "Validate Prometheus scrape and Mimir remote write config"
+run = "node scripts/verify-prometheus-config.mjs"
 
 [tasks."node:build-libs"]
 description = "Build shared Node workspace libraries"

@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: rakkr-local
+    service: rakkr
+
+rule_files:
+  - rakkr-alerts.yml
+
+scrape_configs:
+  - job_name: rakkr-controller
+    scheme: https
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - rakkr-controller:8787
+        labels:
+          component: controller
+
+remote_write:
+  - name: rakkr-mimir
+    url: https://mimir.example.com/api/v1/push
+    headers:
+      X-Scope-OrgID: rakkr
+    basic_auth:
+      username: rakkr
+      password_file: /run/secrets/rakkr_mimir_api_token
