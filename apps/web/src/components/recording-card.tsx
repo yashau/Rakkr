@@ -28,7 +28,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { RecordingMetadataUpdate } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
-import { isCachedRecording, isTerminalRecording } from "@/lib/recording-page-helpers";
+import {
+  isCachedRecording,
+  isTerminalRecording,
+  waveformBarHeightPercent,
+  waveformPreviewSummary,
+} from "@/lib/recording-page-helpers";
 
 interface RecordingMetadataDraft {
   folder: string;
@@ -244,7 +249,12 @@ export function RecordingCard({
                   {recording.waveformPreview ? (
                     <div className="flex items-center gap-2">
                       <Waves className="size-4 shrink-0 text-muted-foreground" />
-                      <WaveformPreview recording={recording} />
+                      <div className="grid min-w-0 flex-1 gap-1">
+                        <WaveformPreview recording={recording} />
+                        <span className="truncate text-xs text-muted-foreground">
+                          {waveformPreviewSummary(recording.waveformPreview)}
+                        </span>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -401,7 +411,7 @@ function WaveformPreview({ recording }: { recording: RecordingSummary }) {
         <span
           className="w-1 shrink-0 rounded-full bg-sky-500"
           key={`${recording.id}-${index}`}
-          style={{ height: `${Math.max(10, Math.round(peak * 100))}%` }}
+          style={{ height: waveformBarHeightPercent(peak) }}
         />
       ))}
     </div>

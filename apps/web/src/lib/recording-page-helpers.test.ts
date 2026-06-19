@@ -9,6 +9,8 @@ import {
   playbackPreviewFromSession,
   replacePlaybackPreview,
   type RecordingPlaybackPreview,
+  waveformBarHeightPercent,
+  waveformPreviewSummary,
 } from "./recording-page-helpers";
 
 test("recording action helpers identify cached files for playback download and upload", () => {
@@ -81,6 +83,27 @@ test("recording playback preview cleanup can clear the active object URL", () =>
     undefined,
   );
   assert.deepEqual(revoked, ["blob:preview-active"]);
+});
+
+test("recording waveform helper clamps peak heights for stable previews", () => {
+  assert.equal(waveformBarHeightPercent(-0.5), "10%");
+  assert.equal(waveformBarHeightPercent(0), "10%");
+  assert.equal(waveformBarHeightPercent(0.42), "42%");
+  assert.equal(waveformBarHeightPercent(1.5), "100%");
+});
+
+test("recording waveform summary exposes preview metadata", () => {
+  assert.equal(
+    waveformPreviewSummary({
+      channelCount: 2,
+      generatedAt: "2026-06-18T12:00:00.000Z",
+      peaks: [0.1, 0.5, 1],
+      sampleCount: 96000,
+      sampleRate: 48000,
+      source: "ffmpeg_decoded_peak",
+    }),
+    "3 peaks · 2 ch · 48000 Hz · decoded",
+  );
 });
 
 function recording(input: Partial<RecordingSummary> = {}): RecordingSummary {

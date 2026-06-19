@@ -1,4 +1,9 @@
-import type { HealthEvent, RecordingSummary, UploadQueueItem } from "@rakkr/shared";
+import type {
+  HealthEvent,
+  RecordingSummary,
+  RecordingWaveformPreview,
+  UploadQueueItem,
+} from "@rakkr/shared";
 
 import type {
   RecordingFileBlob,
@@ -191,6 +196,18 @@ export function clearPlaybackPreview(
   }
 
   return undefined;
+}
+
+export function waveformBarHeightPercent(peak: number) {
+  const clamped = Math.min(1, Math.max(0, peak));
+
+  return `${Math.max(10, Math.round(clamped * 100))}%`;
+}
+
+export function waveformPreviewSummary(waveform: RecordingWaveformPreview) {
+  const source = waveform.source === "ffmpeg_decoded_peak" ? "decoded" : "wav";
+
+  return `${waveform.peaks.length} peaks · ${waveform.channelCount} ch · ${waveform.sampleRate} Hz · ${source}`;
 }
 
 export function groupHealthEventsByRecording(events: HealthEvent[]) {

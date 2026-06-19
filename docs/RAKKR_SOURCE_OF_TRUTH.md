@@ -417,6 +417,7 @@ Current partial implementation:
 - Recording library API supports audited bulk delete with scoped visibility checks.
 - Recording library can bulk-queue selected cached recordings for upload with scoped visibility checks.
 - Recording library playback panel shows browser audio controls with session metadata and explicit close/cleanup.
+- Recording card waveform previews show peak bars plus sample/channel/source metadata.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Ad-hoc start UI shows node room/status/IP context before queueing a recording.
@@ -619,6 +620,7 @@ Current partial implementation:
 98. ✅ Add fake-controller controller-stop smoke coverage.
 99. ✅ Add recording playback panel session and cleanup coverage.
 100. ✅ Add ad-hoc start node context and metadata helper coverage.
+101. ✅ Add recording waveform metadata and scaling coverage.
 
 ## Open Questions
 
