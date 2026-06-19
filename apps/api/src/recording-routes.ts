@@ -77,6 +77,7 @@ const recordingsQuerySchema = z.object({
   nodeId: optionalTextFilterSchema,
   recordedFrom: optionalIsoFilterSchema,
   recordedTo: optionalIsoFilterSchema,
+  recordingProfileId: optionalTextFilterSchema,
   scheduleId: optionalTextFilterSchema,
   search: optionalTextFilterSchema,
   status: z.preprocess(
@@ -84,6 +85,7 @@ const recordingsQuerySchema = z.object({
     recordingStatusSchema.optional(),
   ),
   tag: optionalTextFilterSchema,
+  uploadPolicyId: optionalTextFilterSchema,
 });
 
 type RecordingsQuery = z.infer<typeof recordingsQuerySchema>;
@@ -882,6 +884,10 @@ function filterRecordings(recordings: RecordingSummary[], filters: RecordingsQue
       return false;
     }
 
+    if (filters.recordingProfileId && recording.recordingProfileId !== filters.recordingProfileId) {
+      return false;
+    }
+
     if (filters.scheduleId && recording.scheduleId !== filters.scheduleId) {
       return false;
     }
@@ -891,6 +897,10 @@ function filterRecordings(recordings: RecordingSummary[], filters: RecordingsQue
     }
 
     if (filters.status && recording.status !== filters.status) {
+      return false;
+    }
+
+    if (filters.uploadPolicyId && recording.uploadPolicyId !== filters.uploadPolicyId) {
       return false;
     }
 
@@ -907,9 +917,11 @@ function recordingMatchesSearch(recording: RecordingSummary, search: string) {
     recording.id,
     recording.name,
     recording.nodeId,
+    recording.recordingProfileId,
     recording.scheduleId,
     recording.source,
     recording.status,
+    recording.uploadPolicyId,
     ...recording.tags,
   ];
 

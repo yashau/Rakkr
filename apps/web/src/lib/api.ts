@@ -128,10 +128,12 @@ export interface RecordingFilters {
   nodeId?: string;
   recordedFrom?: string;
   recordedTo?: string;
+  recordingProfileId?: string;
   scheduleId?: string;
   search?: string;
   status?: RecordingSummary["status"];
   tag?: string;
+  uploadPolicyId?: string;
 }
 
 export interface RecordingFacet {

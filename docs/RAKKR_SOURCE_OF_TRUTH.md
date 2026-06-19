@@ -368,6 +368,7 @@ Current partial implementation:
 - Recording library supports browser-local date-range filters backed by UTC ISO query bounds.
 - Recording library shows removable active filter chips for applied organization/search filters.
 - Recording cards display node, schedule, profile, upload policy, and track relationship badges.
+- Recording library can filter/search by recording profile and upload policy relationships.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
@@ -484,7 +485,8 @@ Examples:
 27. ✅ Add recording library date-range filters.
 28. ✅ Add recording relationship badges.
 29. ✅ Add removable active recording filter chips.
-30. ⏸️ Return to X32 hardware validation after device is confirmed.
+30. ✅ Add recording profile and upload policy filters.
+31. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

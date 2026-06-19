@@ -18,10 +18,12 @@ interface RecordingFilterDraft {
   nodeId: string;
   recordedFromDate: string;
   recordedToDate: string;
+  recordingProfileId: string;
   scheduleId: string;
   search: string;
   status: "" | RecordingSummary["status"];
   tag: string;
+  uploadPolicyId: string;
 }
 
 type RecordingFilterKey = keyof RecordingFilters;
@@ -38,10 +40,12 @@ const emptyRecordingFilterDraft: RecordingFilterDraft = {
   nodeId: "",
   recordedFromDate: "",
   recordedToDate: "",
+  recordingProfileId: "",
   scheduleId: "",
   search: "",
   status: "",
   tag: "",
+  uploadPolicyId: "",
 };
 
 const healthStatuses: Array<RecordingSummary["healthStatus"]> = [
@@ -70,10 +74,12 @@ const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilter
   nodeId: "nodeId",
   recordedFrom: "recordedFromDate",
   recordedTo: "recordedToDate",
+  recordingProfileId: "recordingProfileId",
   scheduleId: "scheduleId",
   search: "search",
   status: "status",
   tag: "tag",
+  uploadPolicyId: "uploadPolicyId",
 };
 
 const recordingFilterLabels: Record<RecordingFilterKey, string> = {
@@ -82,10 +88,12 @@ const recordingFilterLabels: Record<RecordingFilterKey, string> = {
   nodeId: "node",
   recordedFrom: "from",
   recordedTo: "to",
+  recordingProfileId: "profile",
   scheduleId: "schedule",
   search: "search",
   status: "status",
   tag: "tag",
+  uploadPolicyId: "upload",
 };
 
 const recordingFilterOrder: RecordingFilterKey[] = [
@@ -94,6 +102,8 @@ const recordingFilterOrder: RecordingFilterKey[] = [
   "tag",
   "nodeId",
   "scheduleId",
+  "recordingProfileId",
+  "uploadPolicyId",
   "status",
   "healthStatus",
   "recordedFrom",
@@ -354,7 +364,7 @@ export function RecordingsPage() {
               onChange={(event) =>
                 setFilterDraft((current) => ({ ...current, search: event.target.value }))
               }
-              placeholder="Name, folder, tag, ID, node, schedule"
+              placeholder="Name, folder, tag, ID, node, schedule, profile, upload policy"
               value={filterDraft.search}
             />
           </div>
@@ -396,6 +406,32 @@ export function RecordingsPage() {
                 setFilterDraft((current) => ({ ...current, scheduleId: event.target.value }))
               }
               value={filterDraft.scheduleId}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-profile-filter">Profile</Label>
+            <Input
+              id="recording-profile-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  recordingProfileId: event.target.value,
+                }))
+              }
+              value={filterDraft.recordingProfileId}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-upload-policy-filter">Upload Policy</Label>
+            <Input
+              id="recording-upload-policy-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  uploadPolicyId: event.target.value,
+                }))
+              }
+              value={filterDraft.uploadPolicyId}
             />
           </div>
           <div className="grid gap-1.5">
@@ -607,10 +643,12 @@ function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
     nodeId: textOrUndefined(draft.nodeId),
     recordedFrom: localDateBoundaryIso(draft.recordedFromDate, "start"),
     recordedTo: localDateBoundaryIso(draft.recordedToDate, "end"),
+    recordingProfileId: textOrUndefined(draft.recordingProfileId),
     scheduleId: textOrUndefined(draft.scheduleId),
     search: textOrUndefined(draft.search),
     status: draft.status || undefined,
     tag: textOrUndefined(draft.tag),
+    uploadPolicyId: textOrUndefined(draft.uploadPolicyId),
   };
 }
 

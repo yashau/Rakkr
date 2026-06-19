@@ -102,6 +102,54 @@ test("recording list filters by recorded date range", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("recording list filters by profile and upload policy", async () => {
+  const auditStore = createAuditStore("");
+  const app = recordingApp({
+    auditStore,
+    nodes: [recorderNode()],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore([
+      recording({
+        id: "rec_default",
+        recordingProfileId: defaultVoiceRecordingProfile.id,
+        uploadPolicyId: "upload-policy-stub",
+      }),
+      recording({
+        id: "rec_archive",
+        recordingProfileId: "profile_archive",
+        uploadPolicyId: "upload-policy-archive",
+      }),
+      recording({
+        id: "rec_manual",
+        recordingProfileId: "profile_archive",
+        uploadPolicyId: "upload-policy-manual",
+      }),
+    ]),
+  });
+  const filteredParams = new URLSearchParams({
+    recordingProfileId: "profile_archive",
+    uploadPolicyId: "upload-policy-archive",
+  });
+  const searchParams = new URLSearchParams({ search: "upload-policy-manual" });
+
+  const filteredResponse = await app.request(`/api/v1/recordings?${filteredParams}`);
+  const filteredBody = (await filteredResponse.json()) as { data: RecordingSummary[] };
+  const searchResponse = await app.request(`/api/v1/recordings?${searchParams}`);
+  const searchBody = (await searchResponse.json()) as { data: RecordingSummary[] };
+
+  assert.equal(filteredResponse.status, 200);
+  assert.deepEqual(
+    filteredBody.data.map((item) => item.id),
+    ["rec_archive"],
+  );
+  assert.equal(searchResponse.status, 200);
+  assert.deepEqual(
+    searchBody.data.map((item) => item.id),
+    ["rec_manual"],
+  );
+});
+
 test("ad hoc recording start uses requested node profile policy and metadata", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();
