@@ -213,8 +213,10 @@ export const audioInterfaceSchema = z.object({
   backend: z.enum(["alsa", "jack", "pipewire", "unknown"]),
   channelCount: z.number().int().nonnegative(),
   channels: z.array(audioChannelSchema),
+  hardwarePath: z.string().min(1).optional(),
   id: z.string().min(1),
   sampleRates: z.array(z.number().int().positive()),
+  serialNumber: z.string().min(1).optional(),
   systemName: z.string().min(1),
   systemRef: z.string().min(1).optional(),
 });

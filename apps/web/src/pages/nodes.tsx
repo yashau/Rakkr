@@ -32,12 +32,14 @@ interface EnrollmentDraft {
   building: string;
   channelCount: string;
   floor: string;
+  hardwarePath: string;
   hostname: string;
   interfaceAlias: string;
   ipAddresses: string;
   notes: string;
   room: string;
   sampleRates: string;
+  serialNumber: string;
   site: string;
   systemName: string;
   tags: string;
@@ -50,12 +52,14 @@ const emptyDraft: EnrollmentDraft = {
   building: "",
   channelCount: "0",
   floor: "",
+  hardwarePath: "",
   hostname: "",
   interfaceAlias: "",
   ipAddresses: "",
   notes: "",
   room: "",
   sampleRates: "",
+  serialNumber: "",
   site: "",
   systemName: "",
   tags: "",
@@ -250,6 +254,19 @@ export function NodesPage() {
                 value={draft.systemName}
               />
             </Field>
+            <Field label="Hardware Path">
+              <Input
+                onChange={(event) => setDraftValue(setDraft, "hardwarePath", event.target.value)}
+                placeholder="/proc/asound/card1/pcm0c"
+                value={draft.hardwarePath}
+              />
+            </Field>
+            <Field label="Serial Number">
+              <Input
+                onChange={(event) => setDraftValue(setDraft, "serialNumber", event.target.value)}
+                value={draft.serialNumber}
+              />
+            </Field>
             <Field label="Sample Rates">
               <Input
                 onChange={(event) => setDraftValue(setDraft, "sampleRates", event.target.value)}
@@ -441,7 +458,9 @@ function enrollmentInput(draft: EnrollmentDraft): NodeEnrollmentInput {
             backend: draft.backend,
             channelCount: Number.isFinite(channelCount) ? Math.max(0, channelCount) : 0,
             channels: [],
+            hardwarePath: draft.hardwarePath.trim() || undefined,
             sampleRates: parseNumbers(draft.sampleRates),
+            serialNumber: draft.serialNumber.trim() || undefined,
             systemName: systemName || interfaceAlias || "Unknown Audio Interface",
           },
         ]

@@ -153,7 +153,9 @@ test("node interface update changes device and channel aliases and audits before
     body: JSON.stringify({
       alias: "Lectern USB",
       channels: [{ alias: "Lectern Mic", index: 1 }],
+      hardwarePath: "/proc/asound/card2/pcm0c",
       sampleRates: [48000, 44100],
+      serialNumber: "X32-USB-1234",
       systemName: "hw:2,0",
       systemRef: "usb-2-1",
     }),
@@ -166,6 +168,8 @@ test("node interface update changes device and channel aliases and audits before
 
   assert.equal(response.status, 200);
   assert.equal(audioInterface.alias, "Lectern USB");
+  assert.equal(audioInterface.hardwarePath, "/proc/asound/card2/pcm0c");
+  assert.equal(audioInterface.serialNumber, "X32-USB-1234");
   assert.equal(audioInterface.systemName, "hw:2,0");
   assert.equal(audioInterface.systemRef, "usb-2-1");
   assert.deepEqual(audioInterface.sampleRates, [48000, 44100]);
@@ -324,7 +328,15 @@ function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
           ...channel,
           alias: channelAliases.get(channel.index) ?? channel.alias,
         })),
+        hardwarePath:
+          input.hardwarePath === undefined
+            ? audioInterface.hardwarePath
+            : (input.hardwarePath ?? undefined),
         sampleRates: input.sampleRates ?? audioInterface.sampleRates,
+        serialNumber:
+          input.serialNumber === undefined
+            ? audioInterface.serialNumber
+            : (input.serialNumber ?? undefined),
         systemName: input.systemName ?? audioInterface.systemName,
         systemRef: input.systemRef ?? audioInterface.systemRef,
       };
@@ -407,8 +419,10 @@ function nodeWithInterface(): RecorderNode {
           { alias: "Channel 1", index: 1 },
           { alias: "Channel 2", index: 2 },
         ],
+        hardwarePath: "/proc/asound/card1/pcm0c",
         id: "iface_monitor",
         sampleRates: [48_000],
+        serialNumber: "MONITOR-USB-1",
         systemName: "Monitor USB Interface",
         systemRef: "usb-1-1",
       },

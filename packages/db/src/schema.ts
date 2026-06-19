@@ -282,6 +282,7 @@ export const audioInterfaces = pgTable(
     backend: varchar("backend", { length: 40 }).notNull(),
     channelCount: integer("channel_count").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    hardwarePath: varchar("hardware_path", { length: 500 }),
     id: uuid("id").primaryKey().defaultRandom(),
     nodeId: varchar("node_id", { length: 160 })
       .notNull()
@@ -289,6 +290,7 @@ export const audioInterfaces = pgTable(
     sampleRates: jsonb("sample_rates")
       .notNull()
       .default(sql`'[]'::jsonb`),
+    serialNumber: varchar("serial_number", { length: 255 }),
     systemName: varchar("system_name", { length: 255 }).notNull(),
     systemRef: varchar("system_ref", { length: 255 }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

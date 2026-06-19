@@ -43,7 +43,9 @@ const nodeInterfaceSchema = z.object({
       }),
     )
     .default([]),
+  hardwarePath: z.string().trim().min(1).max(500).optional(),
   sampleRates: z.array(z.coerce.number().int().positive()).max(16).default([]),
+  serialNumber: z.string().trim().min(1).max(255).optional(),
   systemName: z.string().trim().min(1).max(255),
   systemRef: z.string().trim().min(1).max(255).optional(),
 });
@@ -96,7 +98,9 @@ const nodeInterfaceUpdateSchema = z
       )
       .max(256)
       .optional(),
+    hardwarePath: z.string().trim().min(1).max(500).nullable().optional(),
     sampleRates: z.array(z.coerce.number().int().positive()).max(16).optional(),
+    serialNumber: z.string().trim().min(1).max(255).nullable().optional(),
     systemName: z.string().trim().min(1).max(255).optional(),
     systemRef: z.string().trim().min(1).max(255).optional(),
   })
@@ -657,8 +661,10 @@ function interfaceSnapshot(node: RecorderNode, interfaceId: string) {
         backend: audioInterface.backend,
         channelCount: audioInterface.channelCount,
         channels: audioInterface.channels,
+        hardwarePath: audioInterface.hardwarePath,
         id: audioInterface.id,
         sampleRates: audioInterface.sampleRates,
+        serialNumber: audioInterface.serialNumber,
         systemName: audioInterface.systemName,
         systemRef: audioInterface.systemRef,
       }

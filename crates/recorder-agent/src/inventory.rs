@@ -49,8 +49,12 @@ pub struct AudioInterfaceInventory {
     pub backend: String,
     pub channel_count: u16,
     pub channels: Vec<AudioChannelInventory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hardware_path: Option<String>,
     pub id: String,
     pub sample_rates: Vec<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serial_number: Option<String>,
     pub system_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_ref: Option<String>,
@@ -140,8 +144,10 @@ fn discover_arecord_interfaces() -> Vec<AudioInterfaceInventory> {
                 backend: "alsa".to_string(),
                 channel_count,
                 channels: channels(channel_count),
+                hardware_path: Some(alsa_hardware_path(device.card, device.device)),
                 id: format!("alsa_hw_{}_{}", device.card, device.device),
                 sample_rates,
+                serial_number: None,
                 system_name: device.system_name,
                 system_ref: Some(format!("hw:{},{}", device.card, device.device)),
             }
@@ -168,8 +174,10 @@ fn discover_proc_asound_interfaces() -> Vec<AudioInterfaceInventory> {
                         backend: "alsa".to_string(),
                         channel_count,
                         channels: channels(channel_count),
+                        hardware_path: Some(alsa_hardware_path(device.card, device.device)),
                         id: format!("alsa_hw_{}_{}", device.card, device.device),
                         sample_rates,
+                        serial_number: None,
                         system_name: device.system_name,
                         system_ref: Some(format!("hw:{},{}", device.card, device.device)),
                     }
@@ -200,11 +208,17 @@ fn fallback_interface() -> AudioInterfaceInventory {
         backend: "unknown".to_string(),
         channel_count: 2,
         channels: channels(2),
+        hardware_path: None,
         id: "iface_default_capture".to_string(),
         sample_rates: vec![48_000],
+        serial_number: None,
         system_name: "Audio backend discovery pending".to_string(),
         system_ref: None,
     }
+}
+
+fn alsa_hardware_path(card: u16, device: u16) -> String {
+    format!("/proc/asound/card{card}/pcm{device}c")
 }
 
 fn runtime_details(interfaces: &[AudioInterfaceInventory]) -> NodeRuntime {

@@ -181,7 +181,7 @@ Current partial implementation:
 
 - RBAC-gated node list, enroll, credential rotation, status, and health routes.
 - RBAC-gated node alias, site/building/floor/room, network, tag, and note edits with audit history.
-- RBAC-gated interface aliases, system refs, sample rates, and channel aliases with audit history.
+- RBAC-gated interface aliases, hardware paths, serials, system refs, sample rates, and channel aliases with audit history.
 - Node-authenticated heartbeat updates status, last seen, OS/kernel/runtime, IPs, and audio backends.
 - Persisted nodes derive offline status after missed heartbeat threshold.
 - Watchdog creates and resolves central health events when node heartbeats go stale/recover.
@@ -467,7 +467,8 @@ Examples:
 18. ✅ Add node-offline Prometheus alert metric.
 19. ✅ Add event-type health filtering.
 20. ✅ Add node connectivity health summary UI.
-21. ⏸️ Return to X32 hardware validation after device is confirmed.
+21. ✅ Add explicit interface hardware path and serial inventory fields.
+22. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

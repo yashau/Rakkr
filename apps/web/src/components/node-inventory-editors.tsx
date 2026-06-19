@@ -28,7 +28,9 @@ interface NodeInterfaceDraft {
     alias: string;
     index: number;
   }>;
+  hardwarePath: string;
   sampleRates: string;
+  serialNumber: string;
   systemName: string;
   systemRef: string;
 }
@@ -181,6 +183,19 @@ export function NodeInterfaceEditor({
           value={draft.systemRef}
         />
       </Field>
+      <Field label="Hardware Path">
+        <Input
+          onChange={(event) => setDraftValue(setDraft, "hardwarePath", event.target.value)}
+          placeholder="/proc/asound/card1/pcm0c or USB path"
+          value={draft.hardwarePath}
+        />
+      </Field>
+      <Field label="Serial Number">
+        <Input
+          onChange={(event) => setDraftValue(setDraft, "serialNumber", event.target.value)}
+          value={draft.serialNumber}
+        />
+      </Field>
       <Field label="Sample Rates">
         <Input
           onChange={(event) => setDraftValue(setDraft, "sampleRates", event.target.value)}
@@ -270,13 +285,17 @@ function nodeInterfaceDraft(audioInterface: AudioInterface): NodeInterfaceDraft 
   return {
     alias: audioInterface.alias,
     channels: audioInterface.channels.map((channel) => ({ ...channel })),
+    hardwarePath: audioInterface.hardwarePath ?? "",
     sampleRates: audioInterface.sampleRates.join(", "),
+    serialNumber: audioInterface.serialNumber ?? "",
     systemName: audioInterface.systemName,
     systemRef: audioInterface.systemRef ?? "",
   };
 }
 
 function nodeInterfaceUpdateInput(draft: NodeInterfaceDraft) {
+  const hardwarePath = draft.hardwarePath.trim();
+  const serialNumber = draft.serialNumber.trim();
   const systemRef = draft.systemRef.trim();
 
   return {
@@ -285,7 +304,9 @@ function nodeInterfaceUpdateInput(draft: NodeInterfaceDraft) {
       alias: channel.alias.trim() || `Channel ${channel.index}`,
       index: channel.index,
     })),
+    hardwarePath: hardwarePath || null,
     sampleRates: parseNumbers(draft.sampleRates),
+    serialNumber: serialNumber || null,
     systemName: draft.systemName.trim(),
     systemRef: systemRef || undefined,
   };

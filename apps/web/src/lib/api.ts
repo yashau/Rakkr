@@ -179,7 +179,9 @@ export interface NodeEnrollmentInput {
       alias: string;
       index: number;
     }>;
+    hardwarePath?: string;
     sampleRates: number[];
+    serialNumber?: string;
     systemName: string;
     systemRef?: string;
   }>;
@@ -226,7 +228,9 @@ export interface NodeInterfaceMetadataUpdate {
     alias: string;
     index: number;
   }>;
+  hardwarePath?: string | null;
   sampleRates?: number[];
+  serialNumber?: string | null;
   systemName?: string;
   systemRef?: string;
 }

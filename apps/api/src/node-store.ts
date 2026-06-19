@@ -63,7 +63,9 @@ export interface NodeInterfaceUpdateInput {
     alias: string;
     index: number;
   }>;
+  hardwarePath?: string | null;
   sampleRates?: number[];
+  serialNumber?: string | null;
   systemName?: string;
   systemRef?: string;
 }
@@ -76,7 +78,9 @@ export interface NodeInterfaceInput {
     alias: string;
     index: number;
   }>;
+  hardwarePath?: string;
   sampleRates: number[];
+  serialNumber?: string;
   systemName: string;
   systemRef?: string;
 }
@@ -385,7 +389,11 @@ class PostgresNodeStore implements NodeStore {
       .update(audioInterfaces)
       .set({
         alias: input.alias ?? audioInterface.alias,
+        hardwarePath:
+          input.hardwarePath === undefined ? audioInterface.hardwarePath : input.hardwarePath,
         sampleRates: input.sampleRates ?? audioInterface.sampleRates,
+        serialNumber:
+          input.serialNumber === undefined ? audioInterface.serialNumber : input.serialNumber,
         systemName: input.systemName ?? audioInterface.systemName,
         systemRef: input.systemRef ?? audioInterface.systemRef,
         updatedAt: new Date(),
@@ -524,8 +532,10 @@ function interfaceInputToRow(
     alias: input.alias,
     backend: input.backend,
     channelCount: input.channelCount,
+    hardwarePath: input.hardwarePath ?? null,
     nodeId,
     sampleRates: input.sampleRates,
+    serialNumber: input.serialNumber ?? null,
     systemName: input.systemName,
     systemRef: input.systemRef ?? input.systemName,
   };
@@ -601,7 +611,15 @@ function updatedNodeInterface(
     channels: input.channels
       ? updatedChannels(audioInterface.channels, input.channels)
       : audioInterface.channels,
+    hardwarePath:
+      input.hardwarePath === undefined
+        ? audioInterface.hardwarePath
+        : (input.hardwarePath ?? undefined),
     sampleRates: input.sampleRates ?? audioInterface.sampleRates,
+    serialNumber:
+      input.serialNumber === undefined
+        ? audioInterface.serialNumber
+        : (input.serialNumber ?? undefined),
     systemName: input.systemName ?? audioInterface.systemName,
     systemRef: input.systemRef ?? audioInterface.systemRef,
   };
@@ -652,8 +670,10 @@ function interfaceFromRows(
         alias: channel.alias,
         index: channel.index,
       })),
+    hardwarePath: audioInterface.hardwarePath ?? undefined,
     id: audioInterface.id,
     sampleRates: numberArray(audioInterface.sampleRates),
+    serialNumber: audioInterface.serialNumber ?? undefined,
     systemName: audioInterface.systemName,
     systemRef: audioInterface.systemRef,
   };
