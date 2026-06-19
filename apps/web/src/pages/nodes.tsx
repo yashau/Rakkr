@@ -12,6 +12,7 @@ import {
   Network,
   PlusCircle,
   TrendingUp,
+  WifiOff,
 } from "lucide-react";
 
 import { NodeIdentityEditor, NodeInterfaceEditor } from "@/components/node-inventory-editors";
@@ -340,7 +341,12 @@ export function NodesPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-4">
+                  <HealthSummaryTile
+                    event={healthSummary.connectivity}
+                    icon={<WifiOff className="size-4" />}
+                    label="Connectivity"
+                  />
                   <HealthSummaryTile
                     event={healthSummary.disk}
                     icon={<HardDrive className="size-4" />}
@@ -613,6 +619,7 @@ function NodeHealthTrend({ events }: { events: HealthEvent[] }) {
 }
 
 function nodeHealthSummary(events: HealthEvent[]) {
+  const connectivity = latestHealthEvent(events, ["watchdog.node_offline"]);
   const disk = latestHealthEvent(events, [
     "agent.system.disk_pressure",
     "agent.system.disk_recovered",
@@ -625,13 +632,13 @@ function nodeHealthSummary(events: HealthEvent[]) {
     "agent.audio_backend.unavailable",
     "agent.audio_backend.recovered",
   ]);
-  const tone = [disk, cpu, audio].reduce<"critical" | "healthy" | "unknown" | "warning">(
-    (current, event) => highestTone(current, healthTone(event)),
-    "unknown",
-  );
+  const tone = [connectivity, disk, cpu, audio].reduce<
+    "critical" | "healthy" | "unknown" | "warning"
+  >((current, event) => highestTone(current, healthTone(event)), "unknown");
 
   return {
     audio,
+    connectivity,
     cpu,
     disk,
     label: healthSummaryLabel(tone),
@@ -707,6 +714,10 @@ function healthTone(event: HealthEvent | undefined) {
     return "unknown";
   }
 
+  if (event.status === "resolved") {
+    return "healthy";
+  }
+
   if (event.type.endsWith("_recovered") || event.severity === "info") {
     return "healthy";
   }
@@ -752,6 +763,18 @@ function healthDetail(event: HealthEvent | undefined) {
 }
 
 function healthMetric(event: HealthEvent) {
+  if (event.type === "watchdog.node_offline") {
+    const offlineForSeconds = numericDetail(event.details.offlineForSeconds);
+
+    if (offlineForSeconds !== undefined) {
+      return `${durationLabel(offlineForSeconds)} offline`;
+    }
+
+    const lastSeenAt = stringDetail(event.details.lastSeenAt);
+
+    return lastSeenAt ? `last seen ${formatDateTime(lastSeenAt)}` : undefined;
+  }
+
   if (event.type.includes("disk")) {
     const usedPercent = numericDetail(event.details.usedPercent);
 
@@ -792,10 +815,41 @@ function healthEventDetails(event: HealthEvent) {
 }
 
 function readableHealthType(type: string) {
+  if (type === "watchdog.node_offline") {
+    return "node offline";
+  }
+
   return type
     .replace(/^agent\./, "")
     .replaceAll("_", " ")
     .replaceAll(".", " ");
+}
+
+function durationLabel(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+
+  if (safeSeconds >= 86_400) {
+    const days = Math.floor(safeSeconds / 86_400);
+    const hours = Math.floor((safeSeconds % 86_400) / 3600);
+
+    return `${days}d ${hours}h`;
+  }
+
+  if (safeSeconds >= 3600) {
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (safeSeconds >= 60) {
+    const minutes = Math.floor(safeSeconds / 60);
+    const remainingSeconds = safeSeconds % 60;
+
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+
+  return `${safeSeconds}s`;
 }
 
 function healthBadgeClass(tone: HealthTone) {
