@@ -486,6 +486,7 @@ Telemetry surfaces:
 - Prometheus `/metrics`;
 - checked Prometheus alert rules;
 - checked Prometheus scrape and Mimir remote-write example;
+- checked Grafana operations dashboard example;
 - future OpenTelemetry/Mimir guidance.
 
 Important metric names:
@@ -513,6 +514,7 @@ Current partial implementation:
 - Prometheus export covers controller, node, recording duration/cache bytes, meter, audit totals, health totals/active counts, watchdog, upload queue depth/failures, and upload overdue age.
 - `docs/observability/rakkr-alerts.yml` defines checked Prometheus alerts for offline nodes, watchdog criticals, upload stalls/failures, XRUNs, and denied-action spikes.
 - `docs/observability/prometheus-mimir.example.yml` defines a checked HTTPS controller scrape and Mimir `remote_write` path using a secret file.
+- `docs/observability/grafana-dashboard.example.json` defines a checked operations dashboard for node status, audio levels, recordings, uploads, XRUNs, and denied actions.
 - Recorder agent local JSONL health logs rotate by size and keep a configured number of retained files.
 - Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata and cache-upload failures.
 
@@ -684,6 +686,7 @@ Current partial implementation:
 131. ✅ Add audit-event total Prometheus metric.
 132. ✅ Add checked Prometheus alert rules.
 133. ✅ Add checked Prometheus scrape and Mimir remote-write example.
+134. ✅ Add checked Grafana operations dashboard example.
 
 ## Open Questions
 
