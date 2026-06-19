@@ -228,6 +228,14 @@ test("recording resource denies block playback download upload queue and delete 
       headers: { authorization: `Bearer ${token}` },
       method: "DELETE",
     });
+    const bulkDeleteResponse = await app.request("/api/v1/recordings/bulk-delete", {
+      body: JSON.stringify({ recordingIds: [recordingId] }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
     const playbackEvent = await deniedAuditEvent(
       token,
       "recordings.playback.start",
@@ -252,19 +260,29 @@ test("recording resource denies block playback download upload queue and delete 
       "recording:delete",
       recordingId,
     );
+    const bulkDeleteEvent = await deniedAuditEvent(
+      token,
+      "recordings.bulk_delete.failed",
+      "recording:delete",
+      "recording_collection",
+    );
 
     assert.equal(playbackResponse.status, 403);
     assert.equal(downloadResponse.status, 403);
     assert.equal(uploadResponse.status, 403);
     assert.equal(deleteResponse.status, 403);
+    assert.equal(bulkDeleteResponse.status, 404);
     assert.equal(playbackEvent?.reason, "access_policy_denied");
     assert.equal(downloadEvent?.reason, "access_policy_denied");
     assert.equal(uploadEvent?.reason, "access_policy_denied");
     assert.equal(deleteEvent?.reason, "access_policy_denied");
+    assert.equal(bulkDeleteEvent?.reason, "recording_not_visible");
     assert.equal(playbackEvent?.target.id, recordingId);
     assert.equal(downloadEvent?.target.id, recordingId);
     assert.equal(uploadEvent?.target.id, recordingId);
     assert.equal(deleteEvent?.target.id, recordingId);
+    assert.equal(bulkDeleteEvent?.target.id, "recording_collection");
+    assert.deepEqual(bulkDeleteEvent?.details.hiddenIds, [recordingId]);
   } finally {
     await updateAccessPolicies(token, []);
   }

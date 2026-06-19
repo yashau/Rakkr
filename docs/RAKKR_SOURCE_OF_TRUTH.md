@@ -317,7 +317,7 @@ Current partial implementation:
 - Access policy denies have route coverage for live-listen monitor starts.
 - Access policy denies have route coverage for recording stop controls.
 - Access policy denies have route coverage for recording playback, download, and upload queue actions.
-- Access policy denies have route coverage for recording delete actions.
+- Access policy denies have route coverage for recording delete and bulk delete actions.
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edits.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
@@ -555,6 +555,7 @@ Current partial implementation:
 61. ✅ Add access-policy deny coverage for recording delete.
 62. ✅ Add selected-recording bulk delete UI for terminal recordings.
 63. ✅ Add RBAC-gated bulk recording delete API and wire UI to it.
+64. ✅ Add access-policy deny coverage for bulk recording delete.
 
 ## Open Questions
 
