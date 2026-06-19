@@ -47,11 +47,13 @@ export function RecordingCard({
   onPlayback,
   onQueueUpload,
   onRetryUpload,
+  onSelectedChange,
   onStop,
   onUpdate,
   playbackPending,
   recording,
   retryUploadPending,
+  selected = false,
   stopPending,
   uploadItems,
   uploadPolicies,
@@ -69,11 +71,13 @@ export function RecordingCard({
   onPlayback: () => void;
   onQueueUpload: (uploadPolicyId?: string) => void;
   onRetryUpload: (itemId: string) => void;
+  onSelectedChange?: (selected: boolean) => void;
   onStop: () => void;
   onUpdate: (input: RecordingMetadataUpdate) => Promise<unknown>;
   playbackPending: boolean;
   recording: RecordingSummary;
   retryUploadPending: boolean;
+  selected?: boolean;
   stopPending: boolean;
   uploadItems: UploadQueueItem[];
   uploadPolicies: UploadPolicy[];
@@ -168,6 +172,15 @@ export function RecordingCard({
           ) : (
             <>
               <div className="mb-2 flex flex-wrap items-center gap-2">
+                {onSelectedChange ? (
+                  <input
+                    aria-label={`Select ${recording.name}`}
+                    checked={selected}
+                    className="size-4 rounded border-input accent-primary"
+                    onChange={(event) => onSelectedChange(event.target.checked)}
+                    type="checkbox"
+                  />
+                ) : null}
                 <h2 className="truncate text-base font-semibold">{recording.name}</h2>
                 <Badge
                   className={

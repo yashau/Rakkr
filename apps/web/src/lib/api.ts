@@ -109,6 +109,14 @@ export interface RecordingMetadataUpdate {
   tags?: string[];
 }
 
+export interface RecordingBulkMetadataUpdate {
+  addTags?: string[];
+  folder?: string;
+  recordingIds: string[];
+  removeTags?: string[];
+  replaceTags?: string[];
+}
+
 export interface RecordingStartInput {
   folder?: string;
   name?: string;
@@ -642,6 +650,17 @@ export const api = {
       },
       method: "PATCH",
     }),
+  updateRecordingBulkMetadata: (input: RecordingBulkMetadataUpdate) =>
+    fetchJson<{ data: RecordingSummary[]; meta: { updatedCount: number } }>(
+      "/api/v1/recordings/bulk-metadata",
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      },
+    ),
   updateSchedule: (scheduleId: string, input: ScheduleUpdate) =>
     fetchJson<{ data: ScheduleSummary }>(`/api/v1/schedules/${scheduleId}`, {
       body: JSON.stringify(input),

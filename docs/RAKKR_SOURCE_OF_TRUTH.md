@@ -389,6 +389,7 @@ Current partial implementation:
 - Recording library supports paginated result sets with page-size and previous/next controls.
 - Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
+- Recording library UI supports selecting visible recordings and bulk folder/tag organization.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
@@ -542,6 +543,7 @@ Current partial implementation:
 55. ✅ Add stop-request lifecycle coverage from controller stop to agent cancellation.
 56. ✅ Add recording health sync coverage for failed/cancelled/cache terminal transitions.
 57. ✅ Add RBAC-gated bulk recording folder/tag organization API.
+58. ✅ Add bulk recording organization UI for visible library results.
 
 ## Open Questions
 

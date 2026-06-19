@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { HealthEvent, RecordingSummary, UploadPolicy, UploadQueueItem } from "@rakkr/shared";
 
+import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
 import { RecordingCard } from "@/components/recording-card";
 import { RecordingFacetPanel } from "@/components/recording-facet-panel";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   api,
+  type RecordingBulkMetadataUpdate,
   type RecordingFilters,
   type RecordingMetadataUpdate,
   type RecordingSortBy,
@@ -153,6 +155,7 @@ export function RecordingsPage() {
     limit: defaultRecordingPageSize,
     offset: 0,
   });
+  const [selectedRecordingIds, setSelectedRecordingIds] = useState<string[]>([]);
   const [notice, setNotice] = useState<{ detail: string; title: string }>();
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -262,6 +265,28 @@ export function RecordingsPage() {
       });
     },
   });
+  const bulkMetadataMutation = useMutation({
+    mutationFn: (input: Omit<RecordingBulkMetadataUpdate, "recordingIds">) =>
+      api.updateRecordingBulkMetadata({
+        ...input,
+        recordingIds: selectedRecordingIds,
+      }),
+    onError: () =>
+      setNotice({
+        detail: "The selected recordings could not be organized.",
+        title: "Bulk update failed",
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-facets"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      setSelectedRecordingIds([]);
+      setNotice({
+        detail: `${response.meta.updatedCount} recordings were updated.`,
+        title: "Recordings organized",
+      });
+    },
+  });
   const enqueueUploadMutation = useMutation({
     mutationFn: (input: { recordingId: string; uploadPolicyId?: string }) =>
       api.enqueueRecordingUpload(input.recordingId, { uploadPolicyId: input.uploadPolicyId }),
@@ -314,6 +339,11 @@ export function RecordingsPage() {
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
   const activeFilterChips = recordingFilterChips(recordingFilters);
   const activeFilterCount = activeFilterChips.length;
+  const selectedRecordingIdSet = new Set(selectedRecordingIds);
+  const visibleRecordingIds = recordings.map((recording) => recording.id);
+  const allVisibleSelected =
+    visibleRecordingIds.length > 0 &&
+    visibleRecordingIds.every((recordingId) => selectedRecordingIdSet.has(recordingId));
   const paginationLimit = recordingMeta?.limit ?? pageSize;
   const paginationOffset = recordingMeta?.offset ?? 0;
   const currentPage = Math.floor(paginationOffset / paginationLimit) + 1;
@@ -330,6 +360,16 @@ export function RecordingsPage() {
     },
     [audioPreview?.url],
   );
+
+  useEffect(() => {
+    const visibleIds = new Set(visibleRecordingIds);
+
+    setSelectedRecordingIds((current) => {
+      const next = current.filter((recordingId) => visibleIds.has(recordingId));
+
+      return next.length === current.length ? current : next;
+    });
+  }, [visibleRecordingIds]);
 
   const applyFacetFilter = (
     patch: Partial<
@@ -381,6 +421,18 @@ export function RecordingsPage() {
       limit: pageSize,
       offset,
     }));
+  };
+
+  const selectVisibleRecordings = () => {
+    setSelectedRecordingIds((current) => [...new Set([...current, ...visibleRecordingIds])]);
+  };
+
+  const setRecordingSelected = (recordingId: string, selected: boolean) => {
+    setSelectedRecordingIds((current) =>
+      selected
+        ? [...new Set([...current, recordingId])]
+        : current.filter((candidate) => candidate !== recordingId),
+    );
   };
 
   return (
@@ -724,6 +776,18 @@ export function RecordingsPage() {
         />
       </form>
 
+      {canEditRecordings && recordings.length > 0 ? (
+        <RecordingBulkOrganizer
+          allVisibleSelected={allVisibleSelected}
+          disabled={bulkMetadataMutation.isPending}
+          onApply={(input) => bulkMetadataMutation.mutate(input)}
+          onClear={() => setSelectedRecordingIds([])}
+          onSelectVisible={selectVisibleRecordings}
+          selectedCount={selectedRecordingIds.length}
+          visibleCount={recordings.length}
+        />
+      ) : null}
+
       {!recordingsQuery.isPending && recordings.length === 0 ? (
         <section className="rounded-lg border border-border bg-panel px-4 py-8 text-center text-sm text-muted-foreground">
           No recordings match the current filters.
@@ -751,6 +815,11 @@ export function RecordingsPage() {
               enqueueUploadMutation.mutate({ recordingId: recording.id, uploadPolicyId })
             }
             onRetryUpload={(itemId) => retryUploadMutation.mutate(itemId)}
+            onSelectedChange={
+              canEditRecordings
+                ? (selected) => setRecordingSelected(recording.id, selected)
+                : undefined
+            }
             onStop={() => stopMutation.mutate(recording.id)}
             onUpdate={(input) =>
               updateMetadataMutation.mutateAsync({
@@ -761,6 +830,7 @@ export function RecordingsPage() {
             playbackPending={playbackMutation.isPending}
             recording={recording}
             retryUploadPending={retryUploadMutation.isPending}
+            selected={selectedRecordingIdSet.has(recording.id)}
             stopPending={stopMutation.isPending}
             uploadItems={uploadItemsByRecording.get(recording.id) ?? []}
             uploadPolicies={uploadPolicies}
