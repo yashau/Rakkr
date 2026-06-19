@@ -60,7 +60,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     refetchInterval: 5000,
   });
   const nodesQuery = useQuery({
-    queryFn: api.nodes,
+    queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
 

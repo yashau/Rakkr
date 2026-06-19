@@ -16,6 +16,30 @@ import type { NodeInterfaceUpdateInput, NodeStore, NodeUpdateInput } from "../sr
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerNodeRoutes } = await import("../src/node-routes.js");
 
+test("node list filters by status", async () => {
+  const auditStore = createAuditStore("");
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes: [
+      node({ alias: "Online Room", id: "node_online", status: "online" }),
+      node({ alias: "Offline Room", id: "node_offline", status: "offline" }),
+    ],
+    permissionCalls: [],
+  });
+
+  const response = await app.request("/api/v1/nodes?status=offline");
+  const body = (await response.json()) as { data: RecorderNode[] };
+  const invalidResponse = await app.request("/api/v1/nodes?status=unknown");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.data.map((item) => item.id),
+    ["node_offline"],
+  );
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("listen start returns a monitor stream URL and audits access", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
@@ -389,7 +413,7 @@ function user(): CurrentUser {
   };
 }
 
-function node(): RecorderNode {
+function node(input: Partial<RecorderNode> = {}): RecorderNode {
   return {
     agentVersion: "0.1.0",
     alias: "Monitor Room",
@@ -404,6 +428,7 @@ function node(): RecorderNode {
     },
     status: "online",
     tags: ["voice"],
+    ...input,
   };
 }
 

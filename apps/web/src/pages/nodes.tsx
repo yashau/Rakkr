@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HealthEvent, NodeRuntime } from "@rakkr/shared";
+import type { HealthEvent, NodeRuntime, NodeStatus } from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
@@ -66,9 +66,14 @@ const emptyDraft: EnrollmentDraft = {
   tags: "",
 };
 
+const nodeStatuses: NodeStatus[] = ["online", "recording", "degraded", "alerting", "offline"];
+const selectClassName =
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
 export function NodesPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(emptyDraft);
+  const [nodeStatusFilter, setNodeStatusFilter] = useState<"" | NodeStatus>("");
   const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
   const [listenPreview, setListenPreview] = useState<{
     nodeAlias: string;
@@ -77,8 +82,8 @@ export function NodesPage() {
     url: string;
   }>();
   const nodesQuery = useQuery({
-    queryFn: api.nodes,
-    queryKey: ["nodes"],
+    queryFn: () => api.nodes({ status: nodeStatusFilter || undefined }),
+    queryKey: ["nodes", nodeStatusFilter],
     refetchInterval: 5000,
   });
   const healthEventsQuery = useQuery({
@@ -138,6 +143,8 @@ export function NodesPage() {
     },
     [listenPreview?.url],
   );
+
+  const nodes = nodesQuery.data?.data ?? [];
 
   return (
     <div className="grid gap-4">
@@ -314,7 +321,38 @@ export function NodesPage() {
         </section>
       ) : null}
 
-      {nodesQuery.data?.data.map((node) => {
+      <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Recorder Nodes</h2>
+            <p className="text-xs text-muted-foreground">{nodes.length} shown</p>
+          </div>
+          <div className="w-full md:max-w-56">
+            <Field label="Status">
+              <select
+                className={selectClassName}
+                onChange={(event) => setNodeStatusFilter(event.target.value as "" | NodeStatus)}
+                value={nodeStatusFilter}
+              >
+                <option value="">all statuses</option>
+                {nodeStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        </div>
+      </section>
+
+      {nodesQuery.isSuccess && nodes.length === 0 ? (
+        <Card className="rounded-lg p-4 text-sm text-muted-foreground shadow-sm">
+          No nodes match the current status filter.
+        </Card>
+      ) : null}
+
+      {nodes.map((node) => {
         const healthEvents = (healthEventsQuery.data?.data ?? []).filter(
           (event) => event.nodeId === node.id,
         );

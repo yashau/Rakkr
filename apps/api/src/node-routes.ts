@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { nodeRuntimeSchema, type MeterFrame, type RecorderNode } from "@rakkr/shared";
+import {
+  nodeRuntimeSchema,
+  nodeStatusSchema,
+  type MeterFrame,
+  type RecorderNode,
+} from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import { buildMeterFrame } from "./demo-data.js";
@@ -106,6 +111,11 @@ const nodeInterfaceUpdateSchema = z
   })
   .strict()
   .refine(hasNodeUpdate, "At least one interface field is required");
+const nodeListFilterSchema = z
+  .object({
+    status: nodeStatusSchema.optional(),
+  })
+  .strict();
 const monitorChunkDurationMs = 1500;
 const monitorChunkSampleRate = 16_000;
 
@@ -120,9 +130,20 @@ export function registerNodeRoutes({
   requirePermission,
   scopedNodes,
 }: NodeRouteDependencies) {
-  app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), async (c) =>
-    c.json({ data: await scopedNodes(currentUser(c)) }),
-  );
+  app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), async (c) => {
+    const filters = nodeListFilterSchema.safeParse(c.req.query());
+
+    if (!filters.success) {
+      return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
+    }
+
+    const nodes = await scopedNodes(currentUser(c));
+    const filteredNodes = filters.data.status
+      ? nodes.filter((node) => node.status === filters.data.status)
+      : nodes;
+
+    return c.json({ data: filteredNodes });
+  });
 
   app.post(
     "/api/v1/nodes/enroll",

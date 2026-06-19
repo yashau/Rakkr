@@ -55,7 +55,7 @@ export function SettingsPage() {
     queryKey: ["channel-map-assignments"],
   });
   const nodesQuery = useQuery({
-    queryFn: api.nodes,
+    queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
   const queryClient = useQueryClient();

@@ -16,7 +16,7 @@ export function DashboardPage() {
   });
 
   const nodesQuery = useQuery({
-    queryFn: api.nodes,
+    queryFn: () => api.nodes(),
     queryKey: ["nodes"],
     refetchInterval: 5000,
   });

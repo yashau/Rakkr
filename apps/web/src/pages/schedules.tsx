@@ -78,7 +78,7 @@ export function SchedulesPage() {
   });
   const scheduleAuditEvents = scheduleAuditQuery.data?.data ?? [];
   const nodesQuery = useQuery({
-    queryFn: api.nodes,
+    queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
   const nodes = useMemo(() => nodesQuery.data?.data ?? [], [nodesQuery.data?.data]);

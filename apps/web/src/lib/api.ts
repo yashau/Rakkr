@@ -13,6 +13,7 @@ import type {
   CurrentUser,
   HealthEvent,
   MeterFrame,
+  NodeStatus,
   NodeRuntime,
   RecorderNode,
   OidcPublicConfig,
@@ -61,6 +62,10 @@ export interface AuditEventFilters {
   outcome?: AuditOutcome;
   target?: string;
   to?: string;
+}
+
+export interface NodeFilters {
+  status?: NodeStatus;
 }
 
 export interface RecordingDownloadTicket {
@@ -383,7 +388,8 @@ export const api = {
       },
       method: "POST",
     }),
-  nodes: () => fetchJson<{ data: RecorderNode[] }>("/api/v1/nodes"),
+  nodes: (filters: NodeFilters = {}) =>
+    fetchJson<{ data: RecorderNode[] }>(withQuery("/api/v1/nodes", filters)),
   prepareRecordingDownload: (recordingId: string) =>
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
       method: "POST",

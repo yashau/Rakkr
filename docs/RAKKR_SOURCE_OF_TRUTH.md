@@ -187,6 +187,7 @@ Current partial implementation:
 - Watchdog creates and resolves central health events when node heartbeats go stale/recover.
 - Node UI summarizes connectivity/offline health alongside disk, CPU, and audio.
 - Node and dashboard UI color-code online/offline/recording/degraded/alerting status.
+- Node API and inventory UI can filter visible nodes by status.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback tasks can fake capture/meter/render before X32 validation resumes.
@@ -472,7 +473,8 @@ Examples:
 21. ✅ Add explicit interface hardware path and serial inventory fields.
 22. ✅ Prefer sysfs device paths and serials in agent inventory.
 23. ✅ Add status-aware node badges across dashboard and inventory.
-24. ⏸️ Return to X32 hardware validation after device is confirmed.
+24. ✅ Add node inventory status filtering.
+25. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

@@ -39,7 +39,7 @@ export function RecordingStartPanel({ onNotice }: RecordingStartPanelProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<RecordingStartDraft>(emptyRecordingStartDraft);
   const nodesQuery = useQuery({
-    queryFn: api.nodes,
+    queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
   const recordingProfilesQuery = useQuery({
