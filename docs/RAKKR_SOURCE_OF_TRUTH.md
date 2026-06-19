@@ -419,6 +419,7 @@ Current partial implementation:
 - Recording library playback panel shows browser audio controls with session metadata and explicit close/cleanup.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
+- Ad-hoc start UI shows node room/status/IP context before queueing a recording.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
 - Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
@@ -617,6 +618,7 @@ Current partial implementation:
 97. ✅ Add fake-controller cache-upload failure smoke coverage.
 98. ✅ Add fake-controller controller-stop smoke coverage.
 99. ✅ Add recording playback panel session and cleanup coverage.
+100. ✅ Add ad-hoc start node context and metadata helper coverage.
 
 ## Open Questions
 

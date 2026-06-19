@@ -6,29 +6,18 @@ import type { RecorderNode, RecordingProfile, UploadPolicy } from "@rakkr/shared
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api, type RecordingStartInput } from "@/lib/api";
-
-interface RecordingStartDraft {
-  folder: string;
-  name: string;
-  nodeId: string;
-  recordingProfileId: string;
-  tags: string;
-  uploadPolicyId: string;
-}
+import { api } from "@/lib/api";
+import {
+  emptyRecordingStartDraft,
+  recordingStartNodeLabel,
+  startInputFromDraft,
+  type RecordingStartDraft,
+} from "@/lib/recording-start-helpers";
 
 interface RecordingStartPanelProps {
   onNotice: (notice: { detail: string; title: string }) => void;
 }
 
-const emptyRecordingStartDraft: RecordingStartDraft = {
-  folder: "",
-  name: "",
-  nodeId: "",
-  recordingProfileId: "",
-  tags: "ad-hoc, voice",
-  uploadPolicyId: "",
-};
 const emptyNodes: RecorderNode[] = [];
 const emptyRecordingProfiles: RecordingProfile[] = [];
 const emptyUploadPolicies: UploadPolicy[] = [];
@@ -100,7 +89,7 @@ export function RecordingStartPanel({ onNotice }: RecordingStartPanelProps) {
         >
           {nodes.map((node) => (
             <option key={node.id} value={node.id}>
-              {node.alias}
+              {recordingStartNodeLabel(node)}
             </option>
           ))}
         </select>
@@ -180,38 +169,4 @@ export function RecordingStartPanel({ onNotice }: RecordingStartPanelProps) {
       </div>
     </form>
   );
-}
-
-function startInputFromDraft(draft: RecordingStartDraft): RecordingStartInput {
-  return {
-    folder: textOrUndefined(draft.folder),
-    name: textOrUndefined(draft.name),
-    nodeId: draft.nodeId,
-    recordingProfileId: textOrUndefined(draft.recordingProfileId),
-    tags: tagsFromText(draft.tags),
-    uploadPolicyId: textOrUndefined(draft.uploadPolicyId),
-  };
-}
-
-function textOrUndefined(value: string) {
-  const trimmed = value.trim();
-
-  return trimmed || undefined;
-}
-
-function tagsFromText(value: string) {
-  const seen = new Set<string>();
-  const tags: string[] = [];
-
-  for (const tag of value.split(",")) {
-    const trimmed = tag.trim();
-    const key = trimmed.toLocaleLowerCase();
-
-    if (trimmed && !seen.has(key)) {
-      seen.add(key);
-      tags.push(trimmed);
-    }
-  }
-
-  return tags;
 }
