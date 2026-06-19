@@ -19,7 +19,9 @@ const observed = {
   cacheUpload: undefined,
   channelMapReads: 0,
   claims: 0,
+  heartbeats: 0,
   healthEvents: [],
+  jobStatusReads: 0,
   nextReads: 0,
 };
 const job = {
@@ -97,6 +99,8 @@ try {
 
   invariant(observed.nextReads === 1, "agent did not read the next queued job");
   invariant(observed.claims === 1, "agent did not claim the queued job");
+  invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
+  invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
   invariant(observed.channelMapReads === 1, "agent did not fetch channel-map assignments");
   invariant(observed.cacheUpload?.recordingId === recordingId, "agent did not upload cache file");
   invariant(observed.cacheUpload?.jobId === jobId, "cache upload did not include the job id");
@@ -146,10 +150,12 @@ async function handleControllerRequest(request, response) {
   }
 
   if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${jobId}/heartbeat`) {
+    observed.heartbeats += 1;
     return json(response, 200, { data: job });
   }
 
   if (request.method === "GET" && url.pathname === `/api/v1/recording-jobs/${jobId}`) {
+    observed.jobStatusReads += 1;
     return json(response, 200, { data: job });
   }
 
@@ -212,6 +218,7 @@ if (!outputPath || outputPath.startsWith("-")) {
 
 mkdirSync(path.dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, wavFile([0, 12000, -12000, 6000, -6000, 3000]));
+await new Promise((resolve) => setTimeout(resolve, 750));
 
 function wavFile(samples) {
   const dataSize = samples.length * 2;
