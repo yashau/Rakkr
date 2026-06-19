@@ -314,6 +314,7 @@ Current partial implementation:
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
 - Access policy update routes have regression coverage for before/after audit snapshots.
 - Access policy denies have route coverage for protected recording metadata writes.
+- Access policy denies have route coverage for live-listen monitor starts.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
@@ -512,7 +513,8 @@ Examples:
 41. ✅ Add structured user scope composer.
 42. ✅ Add access policy audit snapshot route coverage.
 43. ✅ Add recording metadata deny audit route coverage.
-44. ⏸️ Return to X32 hardware validation after device is confirmed.
+44. ✅ Add live-listen deny audit route coverage.
+45. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

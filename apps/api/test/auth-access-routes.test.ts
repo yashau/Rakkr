@@ -94,6 +94,52 @@ test("recording resource denies block metadata edits and audit the denial", asyn
   }
 });
 
+test("node resource denies block live listen and audit the denial", async () => {
+  const token = await loginToken();
+  const nodeId = "node_x32_test";
+
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "room_restricted",
+      resourceId: nodeId,
+      resourceType: "node",
+      subjectType: "everyone",
+    },
+  ]);
+
+  try {
+    const response = await app.request(`/api/v1/nodes/${nodeId}/listen`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+    });
+    const eventsResponse = await app.request(
+      [
+        "/api/v1/audit-events",
+        "?action=listen.monitor.start",
+        "&outcome=denied",
+        "&permission=listen%3Amonitor",
+        `&target=${nodeId}`,
+      ].join(""),
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    const eventsBody = (await eventsResponse.json()) as { data: AuditEvent[] };
+    const [event] = eventsBody.data;
+
+    assert.equal(response.status, 403);
+    assert.equal(eventsResponse.status, 200);
+    assert.equal(event?.permission, "listen:monitor");
+    assert.equal(event?.reason, "access_policy_denied");
+    assert.equal(event?.target.id, nodeId);
+    assert.equal(event?.target.type, "node");
+    assert.equal(event?.details.resourceScopeDecision, "access_policy_denied");
+  } finally {
+    await updateAccessPolicies(token, []);
+  }
+});
+
 async function loginToken() {
   const response = await app.request("/api/v1/auth/login", {
     body: JSON.stringify({
