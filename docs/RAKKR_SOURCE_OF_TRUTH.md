@@ -312,6 +312,7 @@ Current partial implementation:
 - Access UI includes a structured allow/deny policy composer for user, group, and everyone subjects.
 - Access UI includes a structured resource-scope composer for local user grants.
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
+- Access policy update routes have regression coverage for before/after audit snapshots.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
@@ -508,7 +509,8 @@ Examples:
 39. ✅ Add audit permission and reason filters.
 40. ✅ Add structured access policy composer.
 41. ✅ Add structured user scope composer.
-42. ⏸️ Return to X32 hardware validation after device is confirmed.
+42. ✅ Add access policy audit snapshot route coverage.
+43. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 
