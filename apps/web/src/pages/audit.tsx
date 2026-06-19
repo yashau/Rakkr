@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Download, RotateCcw, Search } from "lucide-react";
-import { useState } from "react";
-import type { AuditOutcome } from "@rakkr/shared";
+import { ChevronDown, ChevronRight, Download, RotateCcw, Search } from "lucide-react";
+import { Fragment, useState } from "react";
+import type { AuditEvent, AuditOutcome } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ function outcomeClass(outcome: string) {
 
 export function AuditPage() {
   const [draft, setDraft] = useState<AuditFilterDraft>(emptyDraft);
+  const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<AuditEventFilters>({});
   const auditQuery = useQuery({
     queryFn: () => api.auditEvents(filters),
@@ -62,6 +63,18 @@ export function AuditPage() {
       ...current,
       [key]: value,
     }));
+  const toggleEvent = (eventId: string) =>
+    setExpandedEventIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+
+      return next;
+    });
 
   return (
     <Card className="overflow-hidden rounded-lg shadow-sm">
@@ -165,40 +178,82 @@ export function AuditPage() {
               <th className="px-4 py-3 font-medium">Permission</th>
               <th className="px-4 py-3 font-medium">Target</th>
               <th className="px-4 py-3 font-medium">Outcome</th>
+              <th className="px-4 py-3 font-medium">Reason</th>
+              <th className="px-4 py-3 font-medium">Details</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {events.length === 0 ? (
               <tr>
-                <td className="px-4 py-5 text-muted-foreground" colSpan={6}>
+                <td className="px-4 py-5 text-muted-foreground" colSpan={8}>
                   No audit events yet.
                 </td>
               </tr>
             ) : (
-              events.map((event) => (
-                <tr className="bg-panel" key={event.id}>
-                  <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(event.createdAt)}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{event.actor.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {event.actor.roles.join(", ")}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">{event.action}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{event.permission ?? "n/a"}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">
-                      {event.target.name ?? event.target.id ?? event.target.type}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{event.target.type}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge className={outcomeClass(event.outcome)} variant="outline">
-                      {event.outcome}
-                    </Badge>
-                  </td>
-                </tr>
-              ))
+              events.map((event) => {
+                const expanded = expandedEventIds.has(event.id);
+                const hasDetails = hasAuditDetails(event);
+
+                return (
+                  <Fragment key={event.id}>
+                    <tr className="bg-panel">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {formatDateTime(event.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{event.actor.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {event.actor.roles.join(", ")}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{event.action}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{event.permission ?? "n/a"}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">
+                          {event.target.name ?? event.target.id ?? event.target.type}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{event.target.type}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge className={outcomeClass(event.outcome)} variant="outline">
+                          {event.outcome}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                        {event.reason ?? "n/a"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {hasDetails ? (
+                          <Button
+                            aria-expanded={expanded}
+                            aria-label={`${expanded ? "Hide" : "Show"} audit event details`}
+                            onClick={() => toggleEvent(event.id)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            {expanded ? (
+                              <ChevronDown className="size-4" />
+                            ) : (
+                              <ChevronRight className="size-4" />
+                            )}
+                            Inspect
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">n/a</span>
+                        )}
+                      </td>
+                    </tr>
+                    {expanded ? (
+                      <tr className="bg-muted/20">
+                        <td className="px-4 py-3" colSpan={8}>
+                          <AuditEventDetails event={event} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -215,6 +270,59 @@ function downloadAuditExport(file: Awaited<ReturnType<typeof api.auditEventsExpo
   link.download = file.fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function AuditEventDetails({ event }: { event: AuditEvent }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <AuditDetailBlock title="Reason" value={event.reason} />
+      <AuditDetailBlock title="Correlation IDs" value={event.correlationIds} />
+      <AuditDetailBlock title="Details" value={event.details} />
+      <AuditDetailBlock title="Before" value={event.before} />
+      <AuditDetailBlock title="After" value={event.after} />
+    </div>
+  );
+}
+
+function AuditDetailBlock({ title, value }: { title: string; value: unknown }) {
+  return (
+    <div className="grid gap-1 rounded-md border border-border bg-background p-3">
+      <div className="text-xs font-medium text-muted-foreground">{title}</div>
+      <pre className="max-h-40 overflow-auto text-xs whitespace-pre-wrap text-foreground">
+        {jsonPreview(value)}
+      </pre>
+    </div>
+  );
+}
+
+function hasAuditDetails(event: AuditEvent) {
+  return Boolean(
+    event.reason ||
+    valueHasContent(event.correlationIds) ||
+    valueHasContent(event.details) ||
+    valueHasContent(event.before) ||
+    valueHasContent(event.after),
+  );
+}
+
+function valueHasContent(value: unknown) {
+  if (!value) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  return typeof value === "object" ? Object.keys(value).length > 0 : true;
+}
+
+function jsonPreview(value: unknown) {
+  if (!valueHasContent(value)) {
+    return "n/a";
+  }
+
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 function FilterInput({
