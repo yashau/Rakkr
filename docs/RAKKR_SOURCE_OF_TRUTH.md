@@ -218,6 +218,7 @@ Current partial implementation:
 - Runner creates jobs under `system:scheduler` and audits outcomes.
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
 - Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
+- Schedules UI mirrors RBAC for create, edit, run-now, skip-next, and delete actions.
 
 ## Health Watchdog
 
@@ -627,6 +628,7 @@ Current partial implementation:
 102. ✅ Add schedule-detail playback/download controls for cached recordings.
 103. ✅ Add dashboard meter bank dBFS and voice/noise display coverage.
 104. ✅ Mirror Nodes page privileged actions against RBAC permissions.
+105. ✅ Mirror Schedules page write/control actions against RBAC permissions.
 
 ## Open Questions
 

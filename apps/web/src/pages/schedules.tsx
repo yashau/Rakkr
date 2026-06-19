@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { scheduleActionState, schedulePageActionPermissions } from "@/lib/schedule-page-helpers";
 import {
   addPauseRangeToDraft,
   applyNaturalLanguageSchedule,
@@ -52,6 +53,11 @@ export function SchedulesPage() {
   const schedulesQuery = useQuery({
     queryFn: api.schedules,
     queryKey: ["schedules"],
+  });
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+    staleTime: 30_000,
   });
   const schedules = useMemo(() => schedulesQuery.data?.data ?? [], [schedulesQuery.data?.data]);
   const occurrenceQueries = useQueries({
@@ -83,6 +89,9 @@ export function SchedulesPage() {
   });
   const nodes = useMemo(() => nodesQuery.data?.data ?? [], [nodesQuery.data?.data]);
   const firstNode = nodes[0];
+  const actionPermissions = schedulePageActionPermissions(
+    currentUserQuery.data?.data.permissions ?? [],
+  );
   const saveScheduleMutation = useMutation({
     mutationFn: ({ input, scheduleId }: { input: ScheduleInput; scheduleId?: string }) =>
       scheduleId ? api.updateSchedule(scheduleId, input) : api.createSchedule(input),
@@ -194,366 +203,371 @@ export function SchedulesPage() {
 
   return (
     <div className="grid gap-4">
-      <Card className="rounded-lg p-4 shadow-sm">
-        <form className="grid gap-4" onSubmit={submitSchedule}>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2">
-              {editingId ? (
-                <Pencil className="size-5 text-teal-700" />
-              ) : (
-                <PlusCircle className="size-5 text-teal-700" />
-              )}
-              <h2 className="text-base font-semibold">
-                {editingId ? "Edit Schedule" : "Create Schedule"}
-              </h2>
-              {editingId ? <Badge variant="outline">{editingId}</Badge> : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={saveScheduleMutation.isPending}>
-                <Save className="size-4" />
-                {editingId ? "Save" : "Create"}
-              </Button>
-              <Button onClick={() => resetDraft()} type="button" variant="outline">
-                <RotateCcw className="size-4" />
-                Reset
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-name">Name</Label>
-              <Input
-                id="schedule-name"
-                onChange={(event) => updateDraft("name", event.target.value)}
-                required
-                value={draft.name}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-node">Recorder Node</Label>
-              <select
-                className={selectClass}
-                id="schedule-node"
-                onChange={(event) => selectNode(event.target.value)}
-                required
-                value={draft.nodeId}
-              >
-                <option value="">Select a recorder</option>
-                {nodes.map((node) => (
-                  <option key={node.id} value={node.id}>
-                    {node.alias} / {node.location.room}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-room">Room</Label>
-              <Input
-                id="schedule-room"
-                onChange={(event) => updateDraft("room", event.target.value)}
-                required
-                value={draft.room}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-timezone">Timezone</Label>
-              <Input
-                id="schedule-timezone"
-                onChange={(event) => updateDraft("timezone", event.target.value)}
-                required
-                value={draft.timezone}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-recurrence-mode">Recurrence</Label>
-              <select
-                className={selectClass}
-                id="schedule-recurrence-mode"
-                onChange={(event) =>
-                  updateDraft(
-                    "recurrenceMode",
-                    event.target.value as ScheduleDraft["recurrenceMode"],
-                  )
-                }
-                value={draft.recurrenceMode}
-              >
-                <option value="manual">Manual next run</option>
-                <option value="once">One-off</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="always_on">Always on</option>
-              </select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-quick-recurrence">Quick Recurrence</Label>
-              <div className="flex gap-2">
-                <Input
-                  aria-invalid={quickRecurrenceError}
-                  id="schedule-quick-recurrence"
-                  onChange={(event) => {
-                    setQuickRecurrence(event.target.value);
-                    setQuickRecurrenceError(false);
-                  }}
-                  placeholder="weekdays 9am-10am"
-                  value={quickRecurrence}
-                />
-                <Button onClick={applyQuickRecurrence} type="button" variant="outline">
-                  <Sparkles className="size-4" />
-                  Apply
+      {actionPermissions.canManage ? (
+        <Card className="rounded-lg p-4 shadow-sm">
+          <form className="grid gap-4" onSubmit={submitSchedule}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2">
+                {editingId ? (
+                  <Pencil className="size-5 text-teal-700" />
+                ) : (
+                  <PlusCircle className="size-5 text-teal-700" />
+                )}
+                <h2 className="text-base font-semibold">
+                  {editingId ? "Edit Schedule" : "Create Schedule"}
+                </h2>
+                {editingId ? <Badge variant="outline">{editingId}</Badge> : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" disabled={saveScheduleMutation.isPending}>
+                  <Save className="size-4" />
+                  {editingId ? "Save" : "Create"}
+                </Button>
+                <Button onClick={() => resetDraft()} type="button" variant="outline">
+                  <RotateCcw className="size-4" />
+                  Reset
                 </Button>
               </div>
             </div>
 
-            {draft.recurrenceMode === "manual" ? (
+            <div className="grid gap-3 md:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="schedule-next-run">Manual Next Run</Label>
+                <Label htmlFor="schedule-name">Name</Label>
                 <Input
-                  id="schedule-next-run"
-                  onChange={(event) => updateDraft("nextRunAt", event.target.value)}
-                  type="datetime-local"
-                  value={draft.nextRunAt}
-                />
-              </div>
-            ) : null}
-
-            {draft.recurrenceMode === "once" ? (
-              <div className="grid gap-2">
-                <Label htmlFor="schedule-start-at">Start At</Label>
-                <Input
-                  id="schedule-start-at"
-                  onChange={(event) => updateDraft("recurrenceStartAt", event.target.value)}
+                  id="schedule-name"
+                  onChange={(event) => updateDraft("name", event.target.value)}
                   required
-                  type="datetime-local"
-                  value={draft.recurrenceStartAt}
+                  value={draft.name}
                 />
               </div>
-            ) : null}
 
-            {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
-              <>
-                <div className="grid gap-2">
-                  <Label htmlFor="schedule-start-time">Start Time</Label>
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-node">Recorder Node</Label>
+                <select
+                  className={selectClass}
+                  id="schedule-node"
+                  onChange={(event) => selectNode(event.target.value)}
+                  required
+                  value={draft.nodeId}
+                >
+                  <option value="">Select a recorder</option>
+                  {nodes.map((node) => (
+                    <option key={node.id} value={node.id}>
+                      {node.alias} / {node.location.room}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-room">Room</Label>
+                <Input
+                  id="schedule-room"
+                  onChange={(event) => updateDraft("room", event.target.value)}
+                  required
+                  value={draft.room}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-timezone">Timezone</Label>
+                <Input
+                  id="schedule-timezone"
+                  onChange={(event) => updateDraft("timezone", event.target.value)}
+                  required
+                  value={draft.timezone}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-recurrence-mode">Recurrence</Label>
+                <select
+                  className={selectClass}
+                  id="schedule-recurrence-mode"
+                  onChange={(event) =>
+                    updateDraft(
+                      "recurrenceMode",
+                      event.target.value as ScheduleDraft["recurrenceMode"],
+                    )
+                  }
+                  value={draft.recurrenceMode}
+                >
+                  <option value="manual">Manual next run</option>
+                  <option value="once">One-off</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="always_on">Always on</option>
+                </select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-quick-recurrence">Quick Recurrence</Label>
+                <div className="flex gap-2">
                   <Input
-                    id="schedule-start-time"
-                    onChange={(event) => updateDraft("startTime", event.target.value)}
-                    required
-                    type="time"
-                    value={draft.startTime}
+                    aria-invalid={quickRecurrenceError}
+                    id="schedule-quick-recurrence"
+                    onChange={(event) => {
+                      setQuickRecurrence(event.target.value);
+                      setQuickRecurrenceError(false);
+                    }}
+                    placeholder="weekdays 9am-10am"
+                    value={quickRecurrence}
+                  />
+                  <Button onClick={applyQuickRecurrence} type="button" variant="outline">
+                    <Sparkles className="size-4" />
+                    Apply
+                  </Button>
+                </div>
+              </div>
+
+              {draft.recurrenceMode === "manual" ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="schedule-next-run">Manual Next Run</Label>
+                  <Input
+                    id="schedule-next-run"
+                    onChange={(event) => updateDraft("nextRunAt", event.target.value)}
+                    type="datetime-local"
+                    value={draft.nextRunAt}
                   />
                 </div>
+              ) : null}
+
+              {draft.recurrenceMode === "once" ? (
                 <div className="grid gap-2">
-                  <Label htmlFor="schedule-end-time">End Time</Label>
+                  <Label htmlFor="schedule-start-at">Start At</Label>
                   <Input
-                    id="schedule-end-time"
-                    onChange={(event) => updateDraft("endTime", event.target.value)}
+                    id="schedule-start-at"
+                    onChange={(event) => updateDraft("recurrenceStartAt", event.target.value)}
                     required
-                    type="time"
-                    value={draft.endTime}
+                    type="datetime-local"
+                    value={draft.recurrenceStartAt}
                   />
                 </div>
+              ) : null}
+
+              {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
+                <>
+                  <div className="grid gap-2">
+                    <Label htmlFor="schedule-start-time">Start Time</Label>
+                    <Input
+                      id="schedule-start-time"
+                      onChange={(event) => updateDraft("startTime", event.target.value)}
+                      required
+                      type="time"
+                      value={draft.startTime}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="schedule-end-time">End Time</Label>
+                    <Input
+                      id="schedule-end-time"
+                      onChange={(event) => updateDraft("endTime", event.target.value)}
+                      required
+                      type="time"
+                      value={draft.endTime}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="schedule-interval">Every</Label>
+                    <Input
+                      id="schedule-interval"
+                      min={1}
+                      onChange={(event) => updateDraft("interval", Number(event.target.value))}
+                      required
+                      type="number"
+                      value={draft.interval}
+                    />
+                  </div>
+                </>
+              ) : null}
+
+              {draft.recurrenceMode !== "manual" && draft.recurrenceMode !== "always_on" ? (
                 <div className="grid gap-2">
-                  <Label htmlFor="schedule-interval">Every</Label>
+                  <Label htmlFor="schedule-start-early">Start Early Minutes</Label>
                   <Input
-                    id="schedule-interval"
+                    id="schedule-start-early"
+                    min={0}
+                    onChange={(event) =>
+                      updateDraft("startEarlyMinutes", Number(event.target.value))
+                    }
+                    type="number"
+                    value={draft.startEarlyMinutes}
+                  />
+                </div>
+              ) : null}
+
+              {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="schedule-stop-late">Stop Late Minutes</Label>
+                  <Input
+                    id="schedule-stop-late"
+                    min={0}
+                    onChange={(event) => updateDraft("stopLateMinutes", Number(event.target.value))}
+                    type="number"
+                    value={draft.stopLateMinutes}
+                  />
+                </div>
+              ) : null}
+
+              {draft.recurrenceMode === "monthly" ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="schedule-day-of-month">Day Of Month</Label>
+                  <Input
+                    id="schedule-day-of-month"
+                    max={31}
                     min={1}
-                    onChange={(event) => updateDraft("interval", Number(event.target.value))}
+                    onChange={(event) => updateDraft("dayOfMonth", Number(event.target.value))}
                     required
                     type="number"
-                    value={draft.interval}
+                    value={draft.dayOfMonth}
                   />
                 </div>
-              </>
-            ) : null}
+              ) : null}
 
-            {draft.recurrenceMode !== "manual" && draft.recurrenceMode !== "always_on" ? (
-              <div className="grid gap-2">
-                <Label htmlFor="schedule-start-early">Start Early Minutes</Label>
-                <Input
-                  id="schedule-start-early"
-                  min={0}
-                  onChange={(event) => updateDraft("startEarlyMinutes", Number(event.target.value))}
-                  type="number"
-                  value={draft.startEarlyMinutes}
-                />
-              </div>
-            ) : null}
+              {draft.recurrenceMode === "weekly" ? (
+                <div className="grid gap-2 md:col-span-2">
+                  <Label>Days Of Week</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {dayOptions.map((day) => {
+                      const selected = draft.daysOfWeek.includes(day.id);
 
-            {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
-              <div className="grid gap-2">
-                <Label htmlFor="schedule-stop-late">Stop Late Minutes</Label>
-                <Input
-                  id="schedule-stop-late"
-                  min={0}
-                  onChange={(event) => updateDraft("stopLateMinutes", Number(event.target.value))}
-                  type="number"
-                  value={draft.stopLateMinutes}
-                />
-              </div>
-            ) : null}
-
-            {draft.recurrenceMode === "monthly" ? (
-              <div className="grid gap-2">
-                <Label htmlFor="schedule-day-of-month">Day Of Month</Label>
-                <Input
-                  id="schedule-day-of-month"
-                  max={31}
-                  min={1}
-                  onChange={(event) => updateDraft("dayOfMonth", Number(event.target.value))}
-                  required
-                  type="number"
-                  value={draft.dayOfMonth}
-                />
-              </div>
-            ) : null}
-
-            {draft.recurrenceMode === "weekly" ? (
-              <div className="grid gap-2 md:col-span-2">
-                <Label>Days Of Week</Label>
-                <div className="flex flex-wrap gap-2">
-                  {dayOptions.map((day) => {
-                    const selected = draft.daysOfWeek.includes(day.id);
-
-                    return (
-                      <Button
-                        aria-pressed={selected}
-                        key={day.id}
-                        onClick={() => toggleDay(day.id)}
-                        type="button"
-                        variant={selected ? "default" : "outline"}
-                      >
-                        {day.label}
-                      </Button>
-                    );
-                  })}
+                      return (
+                        <Button
+                          aria-pressed={selected}
+                          key={day.id}
+                          onClick={() => toggleDay(day.id)}
+                          type="button"
+                          variant={selected ? "default" : "outline"}
+                        >
+                          {day.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
                 </div>
+              ) : null}
+
+              <div className="flex items-center gap-2 pt-7">
+                <Input
+                  checked={draft.enabled}
+                  className="size-4 accent-teal-700"
+                  id="schedule-enabled"
+                  onChange={(event) => updateDraft("enabled", event.target.checked)}
+                  type="checkbox"
+                />
+                <Label htmlFor="schedule-enabled">Enabled</Label>
               </div>
-            ) : null}
-
-            <div className="flex items-center gap-2 pt-7">
-              <Input
-                checked={draft.enabled}
-                className="size-4 accent-teal-700"
-                id="schedule-enabled"
-                onChange={(event) => updateDraft("enabled", event.target.checked)}
-                type="checkbox"
-              />
-              <Label htmlFor="schedule-enabled">Enabled</Label>
             </div>
-          </div>
 
-          <div className="grid gap-3">
-            <Label>Paused Date Ranges</Label>
-            <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
-              <Input
-                aria-label="Pause start date"
-                onChange={(event) => updateDraft("pauseStartDate", event.target.value)}
-                type="date"
-                value={draft.pauseStartDate}
-              />
-              <Input
-                aria-label="Pause end date"
-                onChange={(event) => updateDraft("pauseEndDate", event.target.value)}
-                type="date"
-                value={draft.pauseEndDate}
-              />
-              <Input
-                aria-label="Pause reason"
-                onChange={(event) => updateDraft("pauseReason", event.target.value)}
-                value={draft.pauseReason}
-              />
-              <Button onClick={() => setDraft(addPauseRangeToDraft(draft))} type="button">
-                <PlusCircle className="size-4" />
-                Add Pause
-              </Button>
-            </div>
-            {draft.exceptions.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {draft.exceptions.map((exception, index) => (
-                  <Button
-                    key={`${exception.action}-${exception.action === "skip" ? exception.date : `${exception.startDate}-${exception.endDate}`}`}
-                    onClick={() => setDraft(removeExceptionFromDraft(draft, index))}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Trash2 className="size-3" />
-                    {exception.action === "skip"
-                      ? `Skip ${exception.date}`
-                      : `Pause ${exception.startDate}-${exception.endDate}`}
-                  </Button>
-                ))}
+            <div className="grid gap-3">
+              <Label>Paused Date Ranges</Label>
+              <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
+                <Input
+                  aria-label="Pause start date"
+                  onChange={(event) => updateDraft("pauseStartDate", event.target.value)}
+                  type="date"
+                  value={draft.pauseStartDate}
+                />
+                <Input
+                  aria-label="Pause end date"
+                  onChange={(event) => updateDraft("pauseEndDate", event.target.value)}
+                  type="date"
+                  value={draft.pauseEndDate}
+                />
+                <Input
+                  aria-label="Pause reason"
+                  onChange={(event) => updateDraft("pauseReason", event.target.value)}
+                  value={draft.pauseReason}
+                />
+                <Button onClick={() => setDraft(addPauseRangeToDraft(draft))} type="button">
+                  <PlusCircle className="size-4" />
+                  Add Pause
+                </Button>
               </div>
-            ) : null}
-          </div>
+              {draft.exceptions.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {draft.exceptions.map((exception, index) => (
+                    <Button
+                      key={`${exception.action}-${exception.action === "skip" ? exception.date : `${exception.startDate}-${exception.endDate}`}`}
+                      onClick={() => setDraft(removeExceptionFromDraft(draft, index))}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Trash2 className="size-3" />
+                      {exception.action === "skip"
+                        ? `Skip ${exception.date}`
+                        : `Pause ${exception.startDate}-${exception.endDate}`}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-title-template">Title Template</Label>
-              <Textarea
-                id="schedule-title-template"
-                onChange={(event) => updateDraft("titleTemplate", event.target.value)}
-                required
-                value={draft.titleTemplate}
-              />
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-title-template">Title Template</Label>
+                <Textarea
+                  id="schedule-title-template"
+                  onChange={(event) => updateDraft("titleTemplate", event.target.value)}
+                  required
+                  value={draft.titleTemplate}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-folder-template">Folder Template</Label>
+                <Textarea
+                  id="schedule-folder-template"
+                  onChange={(event) => updateDraft("folderTemplate", event.target.value)}
+                  required
+                  value={draft.folderTemplate}
+                />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-folder-template">Folder Template</Label>
-              <Textarea
-                id="schedule-folder-template"
-                onChange={(event) => updateDraft("folderTemplate", event.target.value)}
-                required
-                value={draft.folderTemplate}
-              />
-            </div>
-          </div>
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-profile">Recording Profile</Label>
-              <Input
-                id="schedule-profile"
-                onChange={(event) => updateDraft("recordingProfileId", event.target.value)}
-                required
-                value={draft.recordingProfileId}
-              />
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-profile">Recording Profile</Label>
+                <Input
+                  id="schedule-profile"
+                  onChange={(event) => updateDraft("recordingProfileId", event.target.value)}
+                  required
+                  value={draft.recordingProfileId}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
+                <Input
+                  id="schedule-watchdog"
+                  onChange={(event) => updateDraft("watchdogPolicyId", event.target.value)}
+                  required
+                  value={draft.watchdogPolicyId}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-upload-policy">Upload Policy</Label>
+                <Input
+                  id="schedule-upload-policy"
+                  onChange={(event) => updateDraft("uploadPolicyId", event.target.value)}
+                  required
+                  value={draft.uploadPolicyId}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-tags">Tags</Label>
+                <Input
+                  id="schedule-tags"
+                  onChange={(event) => updateDraft("tags", event.target.value)}
+                  value={draft.tags}
+                />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
-              <Input
-                id="schedule-watchdog"
-                onChange={(event) => updateDraft("watchdogPolicyId", event.target.value)}
-                required
-                value={draft.watchdogPolicyId}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-upload-policy">Upload Policy</Label>
-              <Input
-                id="schedule-upload-policy"
-                onChange={(event) => updateDraft("uploadPolicyId", event.target.value)}
-                required
-                value={draft.uploadPolicyId}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-tags">Tags</Label>
-              <Input
-                id="schedule-tags"
-                onChange={(event) => updateDraft("tags", event.target.value)}
-                value={draft.tags}
-              />
-            </div>
-          </div>
-        </form>
-      </Card>
+          </form>
+        </Card>
+      ) : null}
 
       {schedules.map((schedule) => {
+        const actions = scheduleActionState(schedule, actionPermissions);
         const occurrences = occurrencesBySchedule.get(schedule.id) ?? [];
         const timelineEvents = scheduleTimelineEvents(schedule.id, scheduleAuditEvents);
 
@@ -655,43 +669,47 @@ export function SchedulesPage() {
                       Details
                     </Link>
                   </Button>
-                  <Button onClick={() => editSchedule(schedule)} type="button" variant="outline">
-                    <Pencil className="size-4" />
-                    Edit
-                  </Button>
-                  <Button
-                    disabled={runNowMutation.isPending || !schedule.enabled}
-                    onClick={() => runNowMutation.mutate(schedule.id)}
-                    type="button"
-                    variant="outline"
-                  >
-                    <CalendarPlus className="size-4" />
-                    Run Now
-                  </Button>
-                  <Button
-                    disabled={
-                      skipNextMutation.isPending || !schedule.enabled || !schedule.nextRunAt
-                    }
-                    onClick={() => skipNextMutation.mutate(schedule.id)}
-                    type="button"
-                    variant="outline"
-                  >
-                    <SkipForward className="size-4" />
-                    Skip Next
-                  </Button>
-                  <Button
-                    disabled={deleteScheduleMutation.isPending}
-                    onClick={() => {
-                      if (window.confirm(`Delete schedule "${schedule.name}"?`)) {
-                        deleteScheduleMutation.mutate(schedule.id);
-                      }
-                    }}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Trash2 className="size-4" />
-                    Delete
-                  </Button>
+                  {actions.canEdit ? (
+                    <Button onClick={() => editSchedule(schedule)} type="button" variant="outline">
+                      <Pencil className="size-4" />
+                      Edit
+                    </Button>
+                  ) : null}
+                  {actionPermissions.canManage ? (
+                    <>
+                      <Button
+                        disabled={runNowMutation.isPending || !actions.canRunNow}
+                        onClick={() => runNowMutation.mutate(schedule.id)}
+                        type="button"
+                        variant="outline"
+                      >
+                        <CalendarPlus className="size-4" />
+                        Run Now
+                      </Button>
+                      <Button
+                        disabled={skipNextMutation.isPending || !actions.canSkipNext}
+                        onClick={() => skipNextMutation.mutate(schedule.id)}
+                        type="button"
+                        variant="outline"
+                      >
+                        <SkipForward className="size-4" />
+                        Skip Next
+                      </Button>
+                      <Button
+                        disabled={deleteScheduleMutation.isPending || !actions.canDelete}
+                        onClick={() => {
+                          if (window.confirm(`Delete schedule "${schedule.name}"?`)) {
+                            deleteScheduleMutation.mutate(schedule.id);
+                          }
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        <Trash2 className="size-4" />
+                        Delete
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2 md:justify-end">
                   {schedule.tags.map((tag) => (
