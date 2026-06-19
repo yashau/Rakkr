@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RecordingSummary, RecordingWaveformPreview } from "@rakkr/shared";
 
@@ -51,6 +51,22 @@ export async function loadRecordingFile(recording: RecordingSummary): Promise<Ca
     mimeType: mimeTypeFor(filePath),
     size: bytes.byteLength,
   };
+}
+
+export async function recordingCacheFileSize(recording: RecordingSummary) {
+  if (!recordingHasCachedFile(recording)) {
+    return undefined;
+  }
+
+  try {
+    return (await stat(resolvedCachePath(recording))).size;
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return undefined;
+    }
+
+    throw error;
+  }
 }
 
 export async function deleteRecordingCacheFile(recording: RecordingSummary) {

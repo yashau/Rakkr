@@ -17,6 +17,9 @@ test("renders store-backed Prometheus gauges", () => {
     meterFrames: [meterFrame()],
     nodes: [node()],
     observedAt: new Date("2026-06-18T12:16:00.000Z"),
+    recordingCacheBytes: {
+      rec_demo_001: 4096,
+    },
     recordingJobs: [recordingJob()],
     recordings: [recording()],
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
@@ -46,6 +49,14 @@ test("renders store-backed Prometheus gauges", () => {
   );
   assert.match(output, /rakkr_recording_active\{node_id="node_x32_test"\} 1/);
   assert.match(output, /rakkr_recording_cached\{node_id="node_x32_test"\} 1/);
+  assert.match(
+    output,
+    /rakkr_recording_duration_seconds\{node_id="node_x32_test",recording_id="rec_demo_001",source="schedule",status="recording"\} 300/,
+  );
+  assert.match(
+    output,
+    /rakkr_recording_bytes_written\{node_id="node_x32_test",recording_id="rec_demo_001",source="schedule",status="recording"\} 4096/,
+  );
   assert.match(output, /rakkr_recording_jobs\{node_id="node_x32_test",status="running"\} 1/);
   assert.match(
     output,

@@ -14,6 +14,7 @@ import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.j
 import type { MeterFrameStore } from "./meter-store.js";
 import { renderPrometheusMetrics } from "./metrics.js";
 import type { NodeStore } from "./node-store.js";
+import { recordingCacheFileSize } from "./recording-cache.js";
 import { listRecordingJobs } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import { listUploadQueueItems } from "./upload-queue.js";
@@ -74,12 +75,14 @@ async function controllerPrometheusMetrics(
     scopedUploadQueueItems(user, dependencies),
   ]);
   const meterFrames = await scopedMeterFrames(nodes, dependencies);
+  const recordingCacheBytes = await recordingCacheByteMap(recordings);
 
   return renderPrometheusMetrics({
     healthEvents,
     meterFrames,
     nodes,
     observedAt: new Date(),
+    recordingCacheBytes,
     recordingJobs,
     recordings,
     startedAt: dependencies.startedAt,
@@ -164,6 +167,14 @@ async function scopedMeterFrames(nodes: RecorderNode[], dependencies: MetricsSco
   );
 
   return frames.filter((frame): frame is MeterFrame => Boolean(frame));
+}
+
+async function recordingCacheByteMap(recordings: RecordingSummary[]) {
+  const entries = await Promise.all(
+    recordings.map(async (recording) => [recording.id, await recordingCacheFileSize(recording)]),
+  );
+
+  return Object.fromEntries(entries);
 }
 
 async function canReadHealthEvent(

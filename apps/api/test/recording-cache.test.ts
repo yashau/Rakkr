@@ -9,7 +9,7 @@ import type { RecordingSummary } from "@rakkr/shared";
 const cacheRoot = await mkdtemp(path.join(tmpdir(), "rakkr-cache-"));
 process.env.RAKKR_RECORDING_CACHE_DIR = cacheRoot;
 
-const { storeRecordingFile } = await import("../src/recording-cache.js");
+const { recordingCacheFileSize, storeRecordingFile } = await import("../src/recording-cache.js");
 const fakeAudioToolPath = path.join(cacheRoot, "fake-audio-tool.mjs");
 
 await writeFile(fakeAudioToolPath, fakeAudioToolScript());
@@ -36,6 +36,16 @@ test("stores checksum and wav waveform preview for cached recordings", async () 
   assert.equal(stored.waveformPreview?.sampleCount, 4);
   assert.equal(stored.waveformPreview?.sampleRate, 48_000);
   assert.deepEqual(stored.waveformPreview?.peaks, [0, 0.5, 1, 0.25]);
+  assert.equal(
+    await recordingCacheFileSize({
+      ...recording(),
+      cached: true,
+      cachePath: stored.cachePath,
+      status: "cached",
+    }),
+    bytes.byteLength,
+  );
+  assert.equal(await recordingCacheFileSize(recording()), undefined);
 });
 
 test("extracts duration and decoded waveform preview for encoded recordings", async () => {

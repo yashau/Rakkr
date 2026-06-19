@@ -22,6 +22,7 @@ export interface PrometheusMetricsInput {
   meterFrames: MeterFrame[];
   nodes: RecorderNode[];
   observedAt: Date;
+  recordingCacheBytes: Record<string, number | undefined>;
   recordingJobs: RecordingJob[];
   recordings: RecordingSummary[];
   startedAt: Date;
@@ -62,6 +63,29 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
       "rakkr_recording_cached",
       { node_id: node.id },
       cachedRecordings(node, input),
+    );
+  }
+
+  pushHelp(lines, "rakkr_recording_duration_seconds", "Recording duration by recording.");
+  pushType(lines, "rakkr_recording_duration_seconds", "gauge");
+  pushHelp(
+    lines,
+    "rakkr_recording_bytes_written",
+    "Controller cached recording bytes by recording.",
+  );
+  pushType(lines, "rakkr_recording_bytes_written", "gauge");
+  for (const recording of input.recordings) {
+    pushMetric(
+      lines,
+      "rakkr_recording_duration_seconds",
+      recordingLabels(recording),
+      recording.durationSeconds,
+    );
+    pushMetric(
+      lines,
+      "rakkr_recording_bytes_written",
+      recordingLabels(recording),
+      input.recordingCacheBytes[recording.id] ?? 0,
     );
   }
 
@@ -265,6 +289,15 @@ function nodeLabels(node: RecorderNode): MetricLabels {
     room: node.location.room,
     site: node.location.site,
     status: node.status,
+  };
+}
+
+function recordingLabels(recording: RecordingSummary): MetricLabels {
+  return {
+    node_id: recording.nodeId,
+    recording_id: recording.id,
+    source: recording.source,
+    status: recording.status,
   };
 }
 
