@@ -75,6 +75,14 @@ test("renders store-backed Prometheus gauges", () => {
     /rakkr_input_noise_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.12/,
   );
   assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 2/);
+  assert.match(
+    output,
+    /rakkr_health_events_total\{event_type="audio\.alsa_xrun",severity="warning",status="resolved"\} 1/,
+  );
+  assert.match(
+    output,
+    /rakkr_health_events_total\{event_type="watchdog\.scheduled_low_signal",severity="critical",status="open"\} 1/,
+  );
   assert.match(output, /rakkr_recording_watchdog_alerts_active\{severity="critical"\} 1/);
   assert.match(output, /rakkr_recording_watchdog_alerts_total\{severity="critical"\} 1/);
   assert.match(

@@ -152,6 +152,25 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
     }
   }
 
+  pushHelp(
+    lines,
+    "rakkr_health_events_total",
+    "Health events by event type, severity, and status.",
+  );
+  pushType(lines, "rakkr_health_events_total", "counter");
+  for (const count of healthEventTotalCounts(input.healthEvents)) {
+    pushMetric(
+      lines,
+      "rakkr_health_events_total",
+      {
+        event_type: count.eventType,
+        severity: count.severity,
+        status: count.status,
+      },
+      count.total,
+    );
+  }
+
   pushHelp(lines, "rakkr_recording_watchdog_alerts_active", "Unresolved watchdog health events.");
   pushType(lines, "rakkr_recording_watchdog_alerts_active", "gauge");
   for (const severity of ["warning", "critical"]) {
@@ -292,6 +311,38 @@ function activeRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
 function cachedRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
   return input.recordings.filter((recording) => recording.nodeId === node.id && recording.cached)
     .length;
+}
+
+function healthEventTotalCounts(events: HealthEvent[]) {
+  const counts = new Map<
+    string,
+    {
+      eventType: string;
+      severity: HealthEvent["severity"];
+      status: HealthEvent["status"];
+      total: number;
+    }
+  >();
+
+  for (const event of events) {
+    const key = `${event.type}\u0000${event.severity}\u0000${event.status}`;
+    const current = counts.get(key) ?? {
+      eventType: event.type,
+      severity: event.severity,
+      status: event.status,
+      total: 0,
+    };
+
+    current.total += 1;
+    counts.set(key, current);
+  }
+
+  return Array.from(counts.values()).sort(
+    (left, right) =>
+      left.eventType.localeCompare(right.eventType) ||
+      left.severity.localeCompare(right.severity) ||
+      left.status.localeCompare(right.status),
+  );
 }
 
 function oldestDueSeconds(
