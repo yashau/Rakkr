@@ -222,6 +222,7 @@ Current partial implementation:
 - Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
 - Schedules UI mirrors RBAC for create, edit, run-now, skip-next, and delete actions.
 - Schedules page reads, occurrences, audit timeline, and node lookup mirror granular RBAC.
+- Schedule detail reads recordings, jobs, health, audit, occurrences, and node context only with matching RBAC permissions.
 
 ## Health Watchdog
 
@@ -639,6 +640,7 @@ Current partial implementation:
 108. ✅ Mirror Dashboard reads and meters against RBAC permissions.
 109. ✅ Mirror Nodes page reads and health panels against RBAC permissions.
 110. ✅ Mirror Schedules page reads and related lookups against RBAC permissions.
+111. ✅ Mirror Schedule detail reads against granular RBAC permissions.
 
 ## Open Questions
 

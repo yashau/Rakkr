@@ -13,6 +13,7 @@ import {
   History,
   Play,
   RotateCcw,
+  ShieldCheck,
   ShieldOff,
   X,
 } from "lucide-react";
@@ -32,6 +33,7 @@ import {
   replacePlaybackPreview,
   type RecordingPlaybackPreview,
 } from "@/lib/recording-page-helpers";
+import { scheduleDetailPagePermissions } from "@/lib/schedule-detail-page-helpers";
 import { occurrenceWindow, recurrenceSummary, timelineAction } from "@/lib/schedule-draft";
 
 export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
@@ -44,36 +46,44 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     queryKey: ["auth", "me"],
     staleTime: 30_000,
   });
+  const pagePermissions = scheduleDetailPagePermissions(currentUserQuery.data?.data);
   const schedulesQuery = useQuery({
+    enabled: pagePermissions.canReadSchedule,
     queryFn: api.schedules,
     queryKey: ["schedules"],
   });
   const recordingsQuery = useQuery({
+    enabled: pagePermissions.canReadRecordings,
     queryFn: () => api.recordings({ scheduleId }),
     queryKey: ["recordings", { scheduleId }],
     refetchInterval: 5000,
   });
   const jobsQuery = useQuery({
+    enabled: pagePermissions.canReadRecordings,
     queryFn: api.recordingJobs,
     queryKey: ["recording-jobs"],
     refetchInterval: 3000,
   });
   const healthQuery = useQuery({
+    enabled: pagePermissions.canReadHealth,
     queryFn: () => api.healthEvents({ limit: 100, scheduleId }),
     queryKey: ["health-events", { scheduleId }],
     refetchInterval: 5000,
   });
   const auditQuery = useQuery({
+    enabled: pagePermissions.canReadAudit,
     queryFn: () => api.auditEvents({ limit: 100, target: scheduleId }),
     queryKey: ["audit-events", "schedule-detail", scheduleId],
     refetchInterval: 5000,
   });
   const occurrencesQuery = useQuery({
+    enabled: pagePermissions.canReadSchedule,
     queryFn: () => api.scheduleOccurrences(scheduleId, 8),
     queryKey: ["schedule-occurrences", scheduleId],
     refetchInterval: 5000,
   });
   const nodesQuery = useQuery({
+    enabled: pagePermissions.canReadNodes,
     queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
@@ -91,10 +101,9 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   const healthEvents = healthQuery.data?.data ?? [];
   const auditEvents = auditQuery.data?.data ?? [];
   const node = nodesQuery.data?.data.find((candidate) => candidate.id === schedule?.nodeId);
-  const currentUserPermissions = currentUserQuery.data?.data.permissions ?? [];
-  const canDownloadRecordings = currentUserPermissions.includes("recording:download");
-  const canPlaybackRecordings = currentUserPermissions.includes("recording:playback");
-  const canManageHealth = currentUserPermissions.includes("health:acknowledge");
+  const canDownloadRecordings = pagePermissions.canDownloadRecordings;
+  const canPlaybackRecordings = pagePermissions.canPlaybackRecordings;
+  const canManageHealth = pagePermissions.canAcknowledgeHealth;
   const closeAudioPreview = () => {
     setAudioPreview((current) => {
       const next = clearPlaybackPreview(current);
@@ -188,6 +197,30 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     [],
   );
 
+  if (currentUserQuery.isPending) {
+    return <p className="text-sm text-muted-foreground">Loading schedule.</p>;
+  }
+
+  if (!pagePermissions.canReadSchedule) {
+    return (
+      <div className="grid gap-4">
+        <Button asChild className="w-fit" variant="outline">
+          <Link to="/schedules">
+            <ArrowLeft className="size-4" />
+            Schedules
+          </Link>
+        </Button>
+        <Card className="rounded-lg p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-5 text-muted-foreground" />
+            <h2 className="text-base font-semibold">Schedule</h2>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">Schedule details are unavailable.</p>
+        </Card>
+      </div>
+    );
+  }
+
   if (schedulesQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading schedule.</p>;
   }
@@ -243,25 +276,33 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
         <SummaryTile
           icon={FileAudio}
           label="Recordings"
-          value={String(recordings.length)}
+          value={pagePermissions.canReadRecordings ? String(recordings.length) : "Unavailable"}
           tone={summary.failedRecordings > 0 ? "critical" : "neutral"}
         />
         <SummaryTile
           icon={ClipboardList}
           label="Jobs"
-          value={`${summary.activeJobs} active / ${jobs.length} total`}
+          value={
+            pagePermissions.canReadRecordings
+              ? `${summary.activeJobs} active / ${jobs.length} total`
+              : "Unavailable"
+          }
           tone={summary.failedJobs > 0 ? "critical" : "neutral"}
         />
         <SummaryTile
           icon={HeartPulse}
           label="Health"
-          value={`${summary.openHealthEvents} open / ${healthEvents.length} total`}
+          value={
+            pagePermissions.canReadHealth
+              ? `${summary.openHealthEvents} open / ${healthEvents.length} total`
+              : "Unavailable"
+          }
           tone={summary.criticalHealthEvents > 0 ? "critical" : "healthy"}
         />
         <SummaryTile
           icon={History}
           label="Timeline"
-          value={`${auditEvents.length} events`}
+          value={pagePermissions.canReadAudit ? `${auditEvents.length} events` : "Unavailable"}
           tone="neutral"
         />
       </section>
@@ -330,7 +371,9 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
                 recording={recording}
               />
             ))}
-            {!recordingsQuery.isPending && recordings.length === 0 ? (
+            {!pagePermissions.canReadRecordings ? (
+              <p className="text-sm text-muted-foreground">Recording details are unavailable.</p>
+            ) : !recordingsQuery.isPending && recordings.length === 0 ? (
               <p className="text-sm text-muted-foreground">No recordings are linked yet.</p>
             ) : null}
           </div>
@@ -352,7 +395,9 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
                 pending={healthLifecycleMutation.isPending}
               />
             ))}
-            {!healthQuery.isPending && healthEvents.length === 0 ? (
+            {!pagePermissions.canReadHealth ? (
+              <p className="text-sm text-muted-foreground">Health events are unavailable.</p>
+            ) : !healthQuery.isPending && healthEvents.length === 0 ? (
               <p className="text-sm text-muted-foreground">No health events are linked yet.</p>
             ) : null}
           </div>
@@ -370,7 +415,9 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
                 <div className="text-muted-foreground">{auditEventLine(event)}</div>
               </li>
             ))}
-            {!auditQuery.isPending && auditEvents.length === 0 ? (
+            {!pagePermissions.canReadAudit ? (
+              <li className="text-muted-foreground">Audit events are unavailable.</li>
+            ) : !auditQuery.isPending && auditEvents.length === 0 ? (
               <li className="text-muted-foreground">No audit events are linked yet.</li>
             ) : null}
           </ol>
