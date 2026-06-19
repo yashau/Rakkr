@@ -322,6 +322,7 @@ Current partial implementation:
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Schedule read/manage routes have missing-permission deny coverage.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
+- Health read and lifecycle routes have missing-permission deny coverage.
 - Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
 - Upload runner run-now control has route coverage for missing-permission denial.
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
@@ -596,6 +597,7 @@ Current partial implementation:
 86. ✅ Add audit route missing-permission coverage.
 87. ✅ Add rendered MP3/VBR fake-controller agent smoke coverage.
 88. ✅ Add recording UI action-readiness helper coverage.
+89. ✅ Add health route missing-permission coverage.
 
 ## Open Questions
 
