@@ -500,11 +500,13 @@ Important metric names:
 - `rakkr_recording_bytes_written`
 - `rakkr_recording_watchdog_alerts_total`
 - `rakkr_upload_queue_depth`
+- `rakkr_upload_queue_oldest_due_seconds`
 - `rakkr_upload_failures_total`
 - `rakkr_device_xruns_total`
 
 Current partial implementation:
 
+- Prometheus export covers controller, node, recording, meter, health, watchdog, upload queue depth/failures, and upload overdue age.
 - Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata and cache-upload failures.
 
 ## Date And Time Rules
@@ -667,6 +669,7 @@ Current partial implementation:
 123. ✅ Add recording cache-state filter.
 124. ✅ Add visible upload queue status summary.
 125. ✅ Add upload queue read filters.
+126. ✅ Add upload queue overdue Prometheus metric.
 
 ## Open Questions
 

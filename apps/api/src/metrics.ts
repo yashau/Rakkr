@@ -9,10 +9,19 @@ import type {
 
 import { nodeOfflineEventType, scheduledLowSignalEventType } from "./watchdog-runner.js";
 
+const uploadProviders = ["stub", "smb", "s3"] as const satisfies UploadQueueItem["provider"][];
+const uploadDueStatuses = ["queued", "retrying"] as const satisfies UploadQueueItem["status"][];
+const uploadDepthStatuses = [
+  "queued",
+  "retrying",
+  "failed",
+] as const satisfies UploadQueueItem["status"][];
+
 export interface PrometheusMetricsInput {
   healthEvents: HealthEvent[];
   meterFrames: MeterFrame[];
   nodes: RecorderNode[];
+  observedAt: Date;
   recordingJobs: RecordingJob[];
   recordings: RecordingSummary[];
   startedAt: Date;
@@ -168,8 +177,8 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
 
   pushHelp(lines, "rakkr_upload_queue_depth", "Upload queue items by provider and status.");
   pushType(lines, "rakkr_upload_queue_depth", "gauge");
-  for (const provider of ["stub", "smb", "s3"]) {
-    for (const status of ["queued", "retrying", "failed"]) {
+  for (const provider of uploadProviders) {
+    for (const status of uploadDepthStatuses) {
       pushMetric(
         lines,
         "rakkr_upload_queue_depth",
@@ -181,9 +190,26 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
     }
   }
 
+  pushHelp(
+    lines,
+    "rakkr_upload_queue_oldest_due_seconds",
+    "Oldest overdue upload queue item age by provider and status.",
+  );
+  pushType(lines, "rakkr_upload_queue_oldest_due_seconds", "gauge");
+  for (const provider of uploadProviders) {
+    for (const status of uploadDueStatuses) {
+      pushMetric(
+        lines,
+        "rakkr_upload_queue_oldest_due_seconds",
+        { provider, status },
+        oldestDueSeconds(input.uploadQueueItems, provider, status, input.observedAt),
+      );
+    }
+  }
+
   pushHelp(lines, "rakkr_upload_failures_total", "Failed upload queue attempts.");
   pushType(lines, "rakkr_upload_failures_total", "counter");
-  for (const provider of ["stub", "smb", "s3"]) {
+  for (const provider of uploadProviders) {
     pushMetric(
       lines,
       "rakkr_upload_failures_total",
@@ -216,6 +242,20 @@ function activeRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
 function cachedRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
   return input.recordings.filter((recording) => recording.nodeId === node.id && recording.cached)
     .length;
+}
+
+function oldestDueSeconds(
+  items: UploadQueueItem[],
+  provider: UploadQueueItem["provider"],
+  status: Extract<UploadQueueItem["status"], "queued" | "retrying">,
+  observedAt: Date,
+) {
+  const observedMs = observedAt.getTime();
+  const dueAges = items
+    .filter((item) => item.provider === provider && item.status === status)
+    .map((item) => Math.max(0, Math.floor((observedMs - Date.parse(item.nextAttemptAt)) / 1000)));
+
+  return Math.max(0, ...dueAges);
 }
 
 function nodeLabels(node: RecorderNode): MetricLabels {

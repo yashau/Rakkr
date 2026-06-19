@@ -16,10 +16,27 @@ test("renders store-backed Prometheus gauges", () => {
     healthEvents: [healthEvent(), nodeOfflineHealthEvent()],
     meterFrames: [meterFrame()],
     nodes: [node()],
+    observedAt: new Date("2026-06-18T12:16:00.000Z"),
     recordingJobs: [recordingJob()],
     recordings: [recording()],
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
-    uploadQueueItems: [uploadQueueItem()],
+    uploadQueueItems: [
+      uploadQueueItem(),
+      uploadQueueItem({
+        attemptCount: 0,
+        id: "upload_due_s3",
+        nextAttemptAt: "2026-06-18T12:14:30.000Z",
+        provider: "s3",
+        status: "queued",
+      }),
+      uploadQueueItem({
+        attemptCount: 1,
+        id: "upload_future_s3",
+        nextAttemptAt: "2026-06-18T12:20:00.000Z",
+        provider: "s3",
+        status: "retrying",
+      }),
+    ],
   });
 
   assert.match(output, /rakkr_controller_started_at_seconds 1781784000/);
@@ -53,6 +70,11 @@ test("renders store-backed Prometheus gauges", () => {
     /rakkr_node_offline_alerts_active\{node_id="node_x32_test",severity="critical",status="open"\} 1/,
   );
   assert.match(output, /rakkr_upload_queue_depth\{provider="stub",status="failed"\} 1/);
+  assert.match(output, /rakkr_upload_queue_oldest_due_seconds\{provider="s3",status="queued"\} 90/);
+  assert.match(
+    output,
+    /rakkr_upload_queue_oldest_due_seconds\{provider="s3",status="retrying"\} 0/,
+  );
   assert.match(output, /rakkr_upload_failures_total\{provider="stub"\} 3/);
 });
 
@@ -166,7 +188,7 @@ function nodeOfflineHealthEvent(): HealthEvent {
   };
 }
 
-function uploadQueueItem(): UploadQueueItem {
+function uploadQueueItem(input: Partial<UploadQueueItem> = {}): UploadQueueItem {
   return {
     attemptCount: 3,
     cachePath: "scheduled/rec_demo_001.wav",
@@ -181,5 +203,6 @@ function uploadQueueItem(): UploadQueueItem {
     recordingId: "rec_demo_001",
     status: "failed",
     updatedAt: "2026-06-18T12:05:00.000Z",
+    ...input,
   };
 }

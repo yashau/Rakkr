@@ -79,6 +79,7 @@ async function controllerPrometheusMetrics(
     healthEvents,
     meterFrames,
     nodes,
+    observedAt: new Date(),
     recordingJobs,
     recordings,
     startedAt: dependencies.startedAt,
