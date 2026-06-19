@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AccessPolicy, AccessPolicyInput, AuditEvent } from "@rakkr/shared";
+import type { AccessPolicy, AccessPolicyInput, AuditEvent, RecordingSummary } from "@rakkr/shared";
 
 process.env.DATABASE_URL = "";
 process.env.RAKKR_API_NO_LISTEN = "1";
@@ -181,6 +181,63 @@ test("recording resource denies block stop control and audit the denial", async 
     assert.equal(event?.target.id, recordingId);
     assert.equal(event?.target.type, "recording");
     assert.equal(event?.details.resourceScopeDecision, "access_policy_denied");
+  } finally {
+    await updateAccessPolicies(token, []);
+  }
+});
+
+test("node resource denies hide attached recordings and block recording edits", async () => {
+  const token = await loginToken();
+  const nodeId = "node_x32_test";
+  const recordingId = "rec_demo_001";
+
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "recorder_quarantined",
+      resourceId: nodeId,
+      resourceType: "node",
+      subjectType: "everyone",
+    },
+  ]);
+
+  try {
+    const listResponse = await app.request("/api/v1/recordings", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const listBody = (await listResponse.json()) as { data: RecordingSummary[] };
+    const editResponse = await app.request(`/api/v1/recordings/${recordingId}/metadata`, {
+      body: JSON.stringify({ tags: ["blocked"] }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      method: "PATCH",
+    });
+    const eventsResponse = await app.request(
+      [
+        "/api/v1/audit-events",
+        "?action=recordings.metadata.update",
+        "&outcome=denied",
+        "&permission=recording%3Aedit",
+        `&target=${recordingId}`,
+      ].join(""),
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    const eventsBody = (await eventsResponse.json()) as { data: AuditEvent[] };
+    const [event] = eventsBody.data;
+
+    assert.equal(listResponse.status, 200);
+    assert.equal(
+      listBody.data.some((recording) => recording.id === recordingId),
+      false,
+    );
+    assert.equal(editResponse.status, 403);
+    assert.equal(event?.permission, "recording:edit");
+    assert.equal(event?.reason, "access_policy_denied");
+    assert.equal(event?.target.id, recordingId);
   } finally {
     await updateAccessPolicies(token, []);
   }
