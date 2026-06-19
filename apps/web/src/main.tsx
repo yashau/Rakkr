@@ -70,16 +70,6 @@ function RootLayout() {
       queryClient.clear();
     },
   });
-  const navItems = [
-    { icon: Gauge, label: "Dashboard", to: "/" },
-    { icon: Radio, label: "Nodes", to: "/nodes" },
-    { icon: CalendarDays, label: "Schedules", to: "/schedules" },
-    { icon: Database, label: "Recordings", to: "/recordings" },
-    { icon: Settings, label: "Settings", to: "/settings" },
-    { icon: ShieldCheck, label: "Audit", to: "/audit" },
-    { icon: Users, label: "Access", to: "/access" },
-  ] as const;
-
   if (!authToken || currentUserQuery.isError) {
     return (
       <LoginScreen
@@ -101,6 +91,16 @@ function RootLayout() {
   }
 
   const currentUser = currentUserQuery.data.data;
+  const canReadSettings = currentUser.permissions.includes("settings:read");
+  const navItems = [
+    { icon: Gauge, label: "Dashboard", to: "/" },
+    { icon: Radio, label: "Nodes", to: "/nodes" },
+    { icon: CalendarDays, label: "Schedules", to: "/schedules" },
+    { icon: Database, label: "Recordings", to: "/recordings" },
+    ...(canReadSettings ? [{ icon: Settings, label: "Settings", to: "/settings" }] : []),
+    { icon: ShieldCheck, label: "Audit", to: "/audit" },
+    { icon: Users, label: "Access", to: "/access" },
+  ] as const;
 
   return (
     <div className="min-h-screen bg-stone-100 text-foreground">
@@ -144,12 +144,14 @@ function RootLayout() {
                 <div className="font-medium">{currentUser.name}</div>
                 <div className="text-xs text-muted-foreground">{currentUser.roles.join(", ")}</div>
               </div>
-              <Button asChild variant="outline">
-                <Link to="/settings">
-                  <Settings className="size-4" />
-                  Settings
-                </Link>
-              </Button>
+              {canReadSettings ? (
+                <Button asChild variant="outline">
+                  <Link to="/settings">
+                    <Settings className="size-4" />
+                    Settings
+                  </Link>
+                </Button>
+              ) : null}
               <Button
                 disabled={logoutMutation.isPending}
                 onClick={() => logoutMutation.mutate()}

@@ -324,6 +324,7 @@ Current partial implementation:
 - Upload runner run-now control has route coverage for missing-permission denial.
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
 - Settings UI read queries and page access mirror `settings:read`.
+- Settings shell navigation mirrors `settings:read`.
 - Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
@@ -579,6 +580,7 @@ Current partial implementation:
 77. ✅ Complete Settings write route deny coverage for update endpoints.
 78. ✅ Add Settings read route missing-permission coverage.
 79. ✅ Mirror Settings page reads against RBAC permissions.
+80. ✅ Mirror Settings shell navigation against RBAC permissions.
 
 ## Open Questions
 
