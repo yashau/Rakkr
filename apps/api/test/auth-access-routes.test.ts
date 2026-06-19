@@ -376,7 +376,7 @@ test("recording resource denies block upload queue retry", async () => {
   }
 });
 
-test("node resource denies hide attached recordings and block recording edits", async () => {
+test("node resource denies hide attached recordings and block recording actions", async () => {
   const token = await loginToken();
   const nodeId = "node_x32_test";
   const recordingId = "rec_demo_001";
@@ -404,20 +404,46 @@ test("node resource denies hide attached recordings and block recording edits", 
       },
       method: "PATCH",
     });
-    const eventsResponse = await app.request(
-      [
-        "/api/v1/audit-events",
-        "?action=recordings.metadata.update",
-        "&outcome=denied",
-        "&permission=recording%3Aedit",
-        `&target=${recordingId}`,
-      ].join(""),
-      {
-        headers: { authorization: `Bearer ${token}` },
+    const stopResponse = await app.request(`/api/v1/recordings/${recordingId}/stop`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+    });
+    const uploadResponse = await app.request(`/api/v1/recordings/${recordingId}/upload-queue`, {
+      body: JSON.stringify({ reason: "manual_retry" }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
       },
+      method: "POST",
+    });
+    const deleteResponse = await app.request(`/api/v1/recordings/${recordingId}`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "DELETE",
+    });
+    const editEvent = await deniedAuditEvent(
+      token,
+      "recordings.metadata.update",
+      "recording:edit",
+      recordingId,
     );
-    const eventsBody = (await eventsResponse.json()) as { data: AuditEvent[] };
-    const [event] = eventsBody.data;
+    const stopEvent = await deniedAuditEvent(
+      token,
+      "recordings.stop",
+      "recording:control",
+      recordingId,
+    );
+    const uploadEvent = await deniedAuditEvent(
+      token,
+      "recordings.upload_queue.enqueue",
+      "recording:control",
+      recordingId,
+    );
+    const deleteEvent = await deniedAuditEvent(
+      token,
+      "recordings.delete",
+      "recording:delete",
+      recordingId,
+    );
 
     assert.equal(listResponse.status, 200);
     assert.equal(
@@ -425,9 +451,21 @@ test("node resource denies hide attached recordings and block recording edits", 
       false,
     );
     assert.equal(editResponse.status, 403);
-    assert.equal(event?.permission, "recording:edit");
-    assert.equal(event?.reason, "access_policy_denied");
-    assert.equal(event?.target.id, recordingId);
+    assert.equal(stopResponse.status, 403);
+    assert.equal(uploadResponse.status, 403);
+    assert.equal(deleteResponse.status, 403);
+    assert.equal(editEvent?.permission, "recording:edit");
+    assert.equal(stopEvent?.permission, "recording:control");
+    assert.equal(uploadEvent?.permission, "recording:control");
+    assert.equal(deleteEvent?.permission, "recording:delete");
+    assert.equal(editEvent?.reason, "access_policy_denied");
+    assert.equal(stopEvent?.reason, "access_policy_denied");
+    assert.equal(uploadEvent?.reason, "access_policy_denied");
+    assert.equal(deleteEvent?.reason, "access_policy_denied");
+    assert.equal(editEvent?.target.id, recordingId);
+    assert.equal(stopEvent?.target.id, recordingId);
+    assert.equal(uploadEvent?.target.id, recordingId);
+    assert.equal(deleteEvent?.target.id, recordingId);
   } finally {
     await updateAccessPolicies(token, []);
   }

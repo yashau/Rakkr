@@ -318,7 +318,7 @@ Current partial implementation:
 - Access policy denies have route coverage for recording stop controls.
 - Access policy denies have route coverage for recording playback, download, and upload queue actions, including bulk upload queueing and retry.
 - Access policy denies have route coverage for recording delete and bulk delete actions.
-- Recorder-level denies have route coverage for hiding attached recordings and blocking recording edits.
+- Recorder-level denies have route coverage for hiding attached recordings and blocking recording edit/control/delete actions.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Disabled/deleted/password-reset users lose active sessions.
@@ -562,6 +562,7 @@ Current partial implementation:
 66. ✅ Add RBAC-gated bulk upload queueing for selected cached recordings.
 67. ✅ Add access-policy deny coverage for upload queue retry.
 68. ✅ Add denied audit coverage for scoped-hidden upload queue retry attempts.
+69. ✅ Add recorder-level deny inheritance coverage for attached recording actions.
 
 ## Open Questions
 
