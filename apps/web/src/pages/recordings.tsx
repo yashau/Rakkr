@@ -97,7 +97,7 @@ export function RecordingsPage() {
   });
   const uploadQueueQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
-    queryFn: api.uploadQueue,
+    queryFn: () => api.uploadQueue(),
     queryKey: ["upload-queue"],
     refetchInterval: 5000,
   });

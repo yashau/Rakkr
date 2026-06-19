@@ -1,6 +1,11 @@
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import type { RecordingSummary, UploadQueueItem } from "@rakkr/shared";
+import {
+  uploadProviderSchema,
+  uploadQueueStatusSchema,
+  type RecordingSummary,
+  type UploadQueueItem,
+} from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import { recordingHasCachedFile } from "./recording-cache.js";
@@ -36,6 +41,20 @@ const uploadQueueRequestSchema = z
 const bulkUploadQueueRequestSchema = uploadQueueRequestSchema.extend({
   recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
 });
+const uploadQueueQuerySchema = z.object({
+  provider: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    uploadProviderSchema.optional(),
+  ),
+  recordingId: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().trim().min(1).max(160).optional(),
+  ),
+  status: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    uploadQueueStatusSchema.optional(),
+  ),
+});
 
 export function registerRecordingUploadQueueRoutes({
   app,
@@ -50,13 +69,22 @@ export function registerRecordingUploadQueueRoutes({
     "/api/v1/upload-queue",
     requirePermission("recording:read", "recordings.upload_queue.read"),
     async (c) => {
+      const query = uploadQueueQuerySchema.safeParse(c.req.query());
+
+      if (!query.success) {
+        return c.json({ error: "Invalid upload queue filters", issues: query.error.issues }, 400);
+      }
+
       const visibleRecordingIds = new Set(
         (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
       );
       const items = await listUploadQueueItems();
 
       return c.json({
-        data: items.filter((item) => visibleRecordingIds.has(item.recordingId)),
+        data: items.filter(
+          (item) =>
+            visibleRecordingIds.has(item.recordingId) && uploadQueueItemMatches(item, query.data),
+        ),
       });
     },
   );
@@ -460,4 +488,15 @@ function uploadQueueAuditDetails(item: UploadQueueItem) {
 
 async function uploadQueueItem(itemId: string) {
   return (await listUploadQueueItems()).find((item) => item.id === itemId);
+}
+
+function uploadQueueItemMatches(
+  item: UploadQueueItem,
+  filters: z.infer<typeof uploadQueueQuerySchema>,
+) {
+  return (
+    (!filters.provider || item.provider === filters.provider) &&
+    (!filters.recordingId || item.recordingId === filters.recordingId) &&
+    (!filters.status || item.status === filters.status)
+  );
 }

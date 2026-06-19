@@ -146,6 +146,12 @@ export interface UploadQueueInput {
   uploadPolicyId?: string;
 }
 
+export interface UploadQueueFilters {
+  provider?: UploadProvider;
+  recordingId?: string;
+  status?: UploadQueueItem["status"];
+}
+
 export interface RecordingFilters {
   cacheState?: RecordingCacheState;
   folder?: string;
@@ -589,7 +595,8 @@ export const api = {
       },
       method: "POST",
     }),
-  uploadQueue: () => fetchJson<{ data: UploadQueueItem[] }>("/api/v1/upload-queue"),
+  uploadQueue: (filters: UploadQueueFilters = {}) =>
+    fetchJson<{ data: UploadQueueItem[] }>(withQuery("/api/v1/upload-queue", filters)),
   uploadRunner: () => fetchJson<{ data: UploadRunnerStatus }>("/api/v1/upload-runner"),
   runUploadRunner: () =>
     fetchJson<{ data: UploadRunnerStatus; summary: UploadQueueRunSummary }>(

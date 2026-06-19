@@ -474,6 +474,7 @@ Current partial implementation:
 - Controller API and Settings UI mirror upload runner status/read and run-now to recording RBAC.
 - Upload provider and upload policy Settings UI reads/actions mirror `settings:read` and `settings:manage`.
 - Upload policies can delete controller cache after confirmed non-stub upload.
+- Upload queue reads can filter visible items by status, provider, and recording.
 
 ## Observability
 
@@ -665,6 +666,7 @@ Current partial implementation:
 122. ✅ Add selected-recording manifest CSV export.
 123. ✅ Add recording cache-state filter.
 124. ✅ Add visible upload queue status summary.
+125. ✅ Add upload queue read filters.
 
 ## Open Questions
 

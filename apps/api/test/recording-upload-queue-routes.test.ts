@@ -26,7 +26,7 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(routeRoot, "upload-queue.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
-const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
+const { enqueueRecordingUpload, retryUploadQueueItem } = await import("../src/upload-queue.js");
 const { registerRecordingUploadQueueRoutes } =
   await import("../src/recording-upload-queue-routes.js");
 
@@ -140,6 +140,56 @@ test("bulk upload queue rejects recordings outside scoped visibility", async () 
   assert.equal(event?.outcome, "denied");
   assert.equal(event?.reason, "recording_not_visible");
   assert.deepEqual(event?.details.hiddenIds, ["rec_bulk_upload_hidden"]);
+});
+
+test("upload queue list filters visible items by status provider and recording", async () => {
+  const auditStore = createAuditStore("");
+  const visibleS3 = recording({ id: "rec_queue_filter_s3" });
+  const visibleStub = recording({ id: "rec_queue_filter_stub" });
+  const hiddenS3 = recording({ id: "rec_queue_filter_hidden" });
+  const queuedS3 = await enqueueRecordingUpload(visibleS3, {
+    provider: "s3",
+    reason: "visible_s3_retrying",
+    target: "s3://rakkr-route-test/visible",
+  });
+  await enqueueRecordingUpload(visibleStub, {
+    provider: "stub",
+    reason: "visible_stub_queued",
+    target: "stub://queue-only",
+  });
+  const hiddenQueued = await enqueueRecordingUpload(hiddenS3, {
+    provider: "s3",
+    reason: "hidden_s3_retrying",
+    target: "s3://rakkr-route-test/hidden",
+  });
+
+  await retryUploadQueueItem(queuedS3.id);
+  await retryUploadQueueItem(hiddenQueued.id);
+
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore: memoryRecordingStore([visibleS3, visibleStub, hiddenS3]),
+    visibleRecordingIds: [visibleS3.id, visibleStub.id],
+  });
+  const params = new URLSearchParams({
+    provider: "s3",
+    recordingId: visibleS3.id,
+    status: "retrying",
+  });
+
+  const response = await app.request(`/api/v1/upload-queue?${params}`);
+  const body = (await response.json()) as { data: UploadQueueItem[] };
+  const invalidResponse = await app.request("/api/v1/upload-queue?status=stuck");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.data.map((item) => item.recordingId),
+    [visibleS3.id],
+  );
+  assert.equal(body.data[0]?.provider, "s3");
+  assert.equal(body.data[0]?.status, "retrying");
+  assert.equal(invalidResponse.status, 400);
 });
 
 test("upload queue retry audits items outside scoped visibility", async () => {
