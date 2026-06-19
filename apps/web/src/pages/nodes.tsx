@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type NodeEnrollmentInput, type NodeEnrollmentResult } from "@/lib/api";
 import { formatDateTime, localIsoDate, startOfLocalDay } from "@/lib/dates";
+import { nodePageActionPermissions, rotateNodeTokenTitle } from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 interface EnrollmentDraft {
@@ -82,6 +83,11 @@ export function NodesPage() {
     startedAt: string;
     url: string;
   }>();
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+    staleTime: 30_000,
+  });
   const nodesQuery = useQuery({
     queryFn: () =>
       api.nodes({
@@ -150,169 +156,176 @@ export function NodesPage() {
   );
 
   const nodes = nodesQuery.data?.data ?? [];
+  const actionPermissions = nodePageActionPermissions(
+    currentUserQuery.data?.data.permissions ?? [],
+  );
 
   return (
     <div className="grid gap-4">
-      <Card className="rounded-lg p-4 shadow-sm">
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            enrollMutation.mutate(enrollmentInput(draft));
-          }}
-        >
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Enroll Recorder Node</h2>
-              <p className="text-sm text-muted-foreground">Create a persisted node and token.</p>
+      {actionPermissions.canManage ? (
+        <Card className="rounded-lg p-4 shadow-sm">
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              enrollMutation.mutate(enrollmentInput(draft));
+            }}
+          >
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Enroll Recorder Node</h2>
+                <p className="text-sm text-muted-foreground">Create a persisted node and token.</p>
+              </div>
+              <Button disabled={enrollMutation.isPending} type="submit">
+                <PlusCircle className="size-4" />
+                Enroll
+              </Button>
             </div>
-            <Button disabled={enrollMutation.isPending} type="submit">
-              <PlusCircle className="size-4" />
-              Enroll
-            </Button>
-          </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <Field label="Alias">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "alias", event.target.value)}
-                required
-                value={draft.alias}
-              />
-            </Field>
-            <Field label="Hostname">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "hostname", event.target.value)}
-                required
-                value={draft.hostname}
-              />
-            </Field>
-            <Field label="Agent Version">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "agentVersion", event.target.value)}
-                required
-                value={draft.agentVersion}
-              />
-            </Field>
-            <Field label="Site">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "site", event.target.value)}
-                required
-                value={draft.site}
-              />
-            </Field>
-            <Field label="Building">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "building", event.target.value)}
-                value={draft.building}
-              />
-            </Field>
-            <Field label="Floor">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "floor", event.target.value)}
-                value={draft.floor}
-              />
-            </Field>
-            <Field label="Room">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "room", event.target.value)}
-                required
-                value={draft.room}
-              />
-            </Field>
-            <Field label="IP Addresses">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "ipAddresses", event.target.value)}
-                placeholder="10.0.0.25, 10.0.0.26"
-                value={draft.ipAddresses}
-              />
-            </Field>
-            <Field label="Interface">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "interfaceAlias", event.target.value)}
-                placeholder="USB Audio"
-                value={draft.interfaceAlias}
-              />
-            </Field>
-            <Field label="Backend">
-              <select
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                onChange={(event) =>
-                  setDraftValue(
-                    setDraft,
-                    "backend",
-                    event.target.value as EnrollmentDraft["backend"],
-                  )
-                }
-                value={draft.backend}
-              >
-                <option value="unknown">unknown</option>
-                <option value="alsa">alsa</option>
-                <option value="jack">jack</option>
-                <option value="pipewire">pipewire</option>
-              </select>
-            </Field>
-            <Field label="Channels">
-              <Input
-                min={0}
-                onChange={(event) => setDraftValue(setDraft, "channelCount", event.target.value)}
-                type="number"
-                value={draft.channelCount}
-              />
-            </Field>
-            <Field label="System Name">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "systemName", event.target.value)}
-                placeholder="Behringer X32 Rack USB"
-                value={draft.systemName}
-              />
-            </Field>
-            <Field label="Hardware Path">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "hardwarePath", event.target.value)}
-                placeholder="/proc/asound/card1/pcm0c"
-                value={draft.hardwarePath}
-              />
-            </Field>
-            <Field label="Serial Number">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "serialNumber", event.target.value)}
-                value={draft.serialNumber}
-              />
-            </Field>
-            <Field label="Sample Rates">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "sampleRates", event.target.value)}
-                placeholder="48000, 44100"
-                value={draft.sampleRates}
-              />
-            </Field>
-            <Field label="Tags">
-              <Input
-                onChange={(event) => setDraftValue(setDraft, "tags", event.target.value)}
-                placeholder="voice, room-a"
-                value={draft.tags}
-              />
-            </Field>
-          </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="Alias">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "alias", event.target.value)}
+                  required
+                  value={draft.alias}
+                />
+              </Field>
+              <Field label="Hostname">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "hostname", event.target.value)}
+                  required
+                  value={draft.hostname}
+                />
+              </Field>
+              <Field label="Agent Version">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "agentVersion", event.target.value)}
+                  required
+                  value={draft.agentVersion}
+                />
+              </Field>
+              <Field label="Site">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "site", event.target.value)}
+                  required
+                  value={draft.site}
+                />
+              </Field>
+              <Field label="Building">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "building", event.target.value)}
+                  value={draft.building}
+                />
+              </Field>
+              <Field label="Floor">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "floor", event.target.value)}
+                  value={draft.floor}
+                />
+              </Field>
+              <Field label="Room">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "room", event.target.value)}
+                  required
+                  value={draft.room}
+                />
+              </Field>
+              <Field label="IP Addresses">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "ipAddresses", event.target.value)}
+                  placeholder="10.0.0.25, 10.0.0.26"
+                  value={draft.ipAddresses}
+                />
+              </Field>
+              <Field label="Interface">
+                <Input
+                  onChange={(event) =>
+                    setDraftValue(setDraft, "interfaceAlias", event.target.value)
+                  }
+                  placeholder="USB Audio"
+                  value={draft.interfaceAlias}
+                />
+              </Field>
+              <Field label="Backend">
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  onChange={(event) =>
+                    setDraftValue(
+                      setDraft,
+                      "backend",
+                      event.target.value as EnrollmentDraft["backend"],
+                    )
+                  }
+                  value={draft.backend}
+                >
+                  <option value="unknown">unknown</option>
+                  <option value="alsa">alsa</option>
+                  <option value="jack">jack</option>
+                  <option value="pipewire">pipewire</option>
+                </select>
+              </Field>
+              <Field label="Channels">
+                <Input
+                  min={0}
+                  onChange={(event) => setDraftValue(setDraft, "channelCount", event.target.value)}
+                  type="number"
+                  value={draft.channelCount}
+                />
+              </Field>
+              <Field label="System Name">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "systemName", event.target.value)}
+                  placeholder="Behringer X32 Rack USB"
+                  value={draft.systemName}
+                />
+              </Field>
+              <Field label="Hardware Path">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "hardwarePath", event.target.value)}
+                  placeholder="/proc/asound/card1/pcm0c"
+                  value={draft.hardwarePath}
+                />
+              </Field>
+              <Field label="Serial Number">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "serialNumber", event.target.value)}
+                  value={draft.serialNumber}
+                />
+              </Field>
+              <Field label="Sample Rates">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "sampleRates", event.target.value)}
+                  placeholder="48000, 44100"
+                  value={draft.sampleRates}
+                />
+              </Field>
+              <Field label="Tags">
+                <Input
+                  onChange={(event) => setDraftValue(setDraft, "tags", event.target.value)}
+                  placeholder="voice, room-a"
+                  value={draft.tags}
+                />
+              </Field>
+            </div>
 
-          <Field label="Notes">
-            <Textarea
-              onChange={(event) => setDraftValue(setDraft, "notes", event.target.value)}
-              value={draft.notes}
-            />
-          </Field>
-
-          {credential ? (
-            <Field label="One-Time Node Token">
-              <Textarea readOnly value={credential.credential.token} />
+            <Field label="Notes">
+              <Textarea
+                onChange={(event) => setDraftValue(setDraft, "notes", event.target.value)}
+                value={draft.notes}
+              />
             </Field>
-          ) : null}
-          {enrollMutation.isError ? (
-            <p className="text-sm text-destructive">Node enrollment failed.</p>
-          ) : null}
-        </form>
-      </Card>
+
+            {credential ? (
+              <Field label="One-Time Node Token">
+                <Textarea readOnly value={credential.credential.token} />
+              </Field>
+            ) : null}
+            {enrollMutation.isError ? (
+              <p className="text-sm text-destructive">Node enrollment failed.</p>
+            ) : null}
+          </form>
+        </Card>
+      ) : null}
 
       {listenPreview ? (
         <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
@@ -434,31 +447,34 @@ export function NodesPage() {
               </div>
 
               <div className="grid gap-3 text-sm md:min-w-72">
-                <Button
-                  className="justify-self-start md:justify-self-end"
-                  disabled={listenMutation.isPending}
-                  onClick={() => listenMutation.mutate({ alias: node.alias, id: node.id })}
-                  variant="outline"
-                >
-                  <Headphones className="size-4" />
-                  Listen
-                </Button>
-                <Button
-                  className="justify-self-start md:justify-self-end"
-                  disabled={rotateMutation.isPending || !isUuid(node.id)}
-                  onClick={() => rotateMutation.mutate(node.id)}
-                  title={
-                    isUuid(node.id) ? "Rotate node token" : "Demo node tokens are not persisted"
-                  }
-                  variant="outline"
-                >
-                  <KeyRound className="size-4" />
-                  Rotate Token
-                </Button>
-                <NodeIdentityEditor node={node} />
+                {actionPermissions.canListen ? (
+                  <Button
+                    className="justify-self-start md:justify-self-end"
+                    disabled={listenMutation.isPending}
+                    onClick={() => listenMutation.mutate({ alias: node.alias, id: node.id })}
+                    variant="outline"
+                  >
+                    <Headphones className="size-4" />
+                    Listen
+                  </Button>
+                ) : null}
+                {actionPermissions.canManage ? (
+                  <Button
+                    className="justify-self-start md:justify-self-end"
+                    disabled={rotateMutation.isPending || !isUuid(node.id)}
+                    onClick={() => rotateMutation.mutate(node.id)}
+                    title={rotateNodeTokenTitle(actionPermissions.canManage, isUuid(node.id))}
+                    variant="outline"
+                  >
+                    <KeyRound className="size-4" />
+                    Rotate Token
+                  </Button>
+                ) : null}
+                <NodeIdentityEditor canManage={actionPermissions.canManage} node={node} />
                 {node.interfaces.map((audioInterface) => (
                   <NodeInterfaceEditor
                     audioInterface={audioInterface}
+                    canManage={actionPermissions.canManage}
                     key={audioInterface.id}
                     node={node}
                   />

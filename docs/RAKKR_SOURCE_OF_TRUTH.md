@@ -195,6 +195,7 @@ Current partial implementation:
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - RBAC-gated listen monitor start/stream returns a controller meter-preview WAV for browser playback.
 - Dashboard meter bank shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
+- Nodes UI mirrors RBAC for enrollment, token rotation, live listen, and inventory edits.
 
 ---
 
@@ -625,6 +626,7 @@ Current partial implementation:
 101. ✅ Add recording waveform metadata and scaling coverage.
 102. ✅ Add schedule-detail playback/download controls for cached recordings.
 103. ✅ Add dashboard meter bank dBFS and voice/noise display coverage.
+104. ✅ Mirror Nodes page privileged actions against RBAC permissions.
 
 ## Open Questions
 

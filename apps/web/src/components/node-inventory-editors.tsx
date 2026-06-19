@@ -35,7 +35,13 @@ interface NodeInterfaceDraft {
   systemRef: string;
 }
 
-export function NodeIdentityEditor({ node }: { node: RecorderNode }) {
+export function NodeIdentityEditor({
+  canManage,
+  node,
+}: {
+  canManage: boolean;
+  node: RecorderNode;
+}) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(nodeIdentityDraft(node));
   const mutation = useMutation({
@@ -52,10 +58,19 @@ export function NodeIdentityEditor({ node }: { node: RecorderNode }) {
   }, [node]);
 
   return (
-    <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3">
+    <fieldset
+      aria-disabled={!canManage}
+      className="grid gap-3 rounded-md border border-border bg-muted/20 p-3"
+      disabled={!canManage}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium">Node Details</div>
-        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()} size="sm">
+        <Button
+          disabled={mutation.isPending || !canManage}
+          onClick={() => mutation.mutate()}
+          size="sm"
+          title={canManage ? "Save node details" : "Requires node manage"}
+        >
           <Save className="size-4" />
           Save
         </Button>
@@ -117,15 +132,17 @@ export function NodeIdentityEditor({ node }: { node: RecorderNode }) {
         />
       </Field>
       {mutation.isError ? <p className="text-sm text-destructive">Node update failed.</p> : null}
-    </div>
+    </fieldset>
   );
 }
 
 export function NodeInterfaceEditor({
   audioInterface,
+  canManage,
   node,
 }: {
   audioInterface: AudioInterface;
+  canManage: boolean;
   node: RecorderNode;
 }) {
   const queryClient = useQueryClient();
@@ -149,13 +166,22 @@ export function NodeInterfaceEditor({
   }, [audioInterface]);
 
   return (
-    <div className="grid gap-3 rounded-md border border-border bg-background p-3">
+    <fieldset
+      aria-disabled={!canManage}
+      className="grid gap-3 rounded-md border border-border bg-background p-3"
+      disabled={!canManage}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium">
           <AudioLines className="size-4" />
           Interface Details
         </div>
-        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()} size="sm">
+        <Button
+          disabled={mutation.isPending || !canManage}
+          onClick={() => mutation.mutate()}
+          size="sm"
+          title={canManage ? "Save interface details" : "Requires node manage"}
+        >
           <Save className="size-4" />
           Save
         </Button>
@@ -234,7 +260,7 @@ export function NodeInterfaceEditor({
       {mutation.isError ? (
         <p className="text-sm text-destructive">Interface update failed.</p>
       ) : null}
-    </div>
+    </fieldset>
   );
 }
 
