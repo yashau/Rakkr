@@ -495,6 +495,7 @@ Important metric names:
 - `rakkr_input_clipping_ratio`
 - `rakkr_input_speech_score`
 - `rakkr_input_noise_score`
+- `rakkr_audit_events_total`
 - `rakkr_health_events_total`
 - `rakkr_recording_active`
 - `rakkr_recording_duration_seconds`
@@ -507,7 +508,7 @@ Important metric names:
 
 Current partial implementation:
 
-- Prometheus export covers controller, node, recording duration/cache bytes, meter, health totals/active counts, watchdog, upload queue depth/failures, and upload overdue age.
+- Prometheus export covers controller, node, recording duration/cache bytes, meter, audit totals, health totals/active counts, watchdog, upload queue depth/failures, and upload overdue age.
 - Recorder agent local JSONL health logs rotate by size and keep a configured number of retained files.
 - Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata and cache-upload failures.
 
@@ -676,6 +677,7 @@ Current partial implementation:
 128. ✅ Add watchdog and xrun total Prometheus counters.
 129. ✅ Add configurable local health-log retention.
 130. ✅ Add central health-event total Prometheus metric.
+131. ✅ Add audit-event total Prometheus metric.
 
 ## Open Questions
 

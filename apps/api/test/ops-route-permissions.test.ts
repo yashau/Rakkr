@@ -24,6 +24,7 @@ test("ops routes deny users without required permissions", async () => {
 
   registerMetricsRoutes({
     app,
+    auditStore,
     currentUser: () => deniedUser,
     hasResourceScope: async () => true,
     healthEventStore: createHealthEventStore("", []),

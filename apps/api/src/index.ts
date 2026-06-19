@@ -493,6 +493,7 @@ app.use(
 
 registerMetricsRoutes({
   app,
+  auditStore,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,

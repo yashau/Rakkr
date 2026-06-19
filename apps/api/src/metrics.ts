@@ -1,4 +1,5 @@
 import type {
+  AuditEvent,
   HealthEvent,
   MeterFrame,
   RecorderNode,
@@ -18,6 +19,7 @@ const uploadDepthStatuses = [
 ] as const satisfies UploadQueueItem["status"][];
 
 export interface PrometheusMetricsInput {
+  auditEvents: AuditEvent[];
   healthEvents: HealthEvent[];
   meterFrames: MeterFrame[];
   nodes: RecorderNode[];
@@ -136,6 +138,26 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
         pushMetric(lines, "rakkr_input_noise_score", labels, level.quality.noiseScore);
       }
     }
+  }
+
+  pushHelp(
+    lines,
+    "rakkr_audit_events_total",
+    "Audit events by action, outcome, permission, and actor type.",
+  );
+  pushType(lines, "rakkr_audit_events_total", "counter");
+  for (const count of auditEventTotalCounts(input.auditEvents)) {
+    pushMetric(
+      lines,
+      "rakkr_audit_events_total",
+      {
+        action: count.action,
+        actor_type: count.actorType,
+        outcome: count.outcome,
+        permission: count.permission,
+      },
+      count.total,
+    );
   }
 
   pushHelp(lines, "rakkr_health_events_active", "Unresolved health events by severity and status.");
@@ -311,6 +333,42 @@ function activeRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
 function cachedRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
   return input.recordings.filter((recording) => recording.nodeId === node.id && recording.cached)
     .length;
+}
+
+function auditEventTotalCounts(events: AuditEvent[]) {
+  const counts = new Map<
+    string,
+    {
+      action: string;
+      actorType: AuditEvent["actor"]["type"];
+      outcome: AuditEvent["outcome"];
+      permission: string;
+      total: number;
+    }
+  >();
+
+  for (const event of events) {
+    const permission = event.permission ?? "none";
+    const key = `${event.action}\u0000${event.actor.type}\u0000${event.outcome}\u0000${permission}`;
+    const current = counts.get(key) ?? {
+      action: event.action,
+      actorType: event.actor.type,
+      outcome: event.outcome,
+      permission,
+      total: 0,
+    };
+
+    current.total += 1;
+    counts.set(key, current);
+  }
+
+  return Array.from(counts.values()).sort(
+    (left, right) =>
+      left.action.localeCompare(right.action) ||
+      left.actorType.localeCompare(right.actorType) ||
+      left.outcome.localeCompare(right.outcome) ||
+      left.permission.localeCompare(right.permission),
+  );
 }
 
 function healthEventTotalCounts(events: HealthEvent[]) {

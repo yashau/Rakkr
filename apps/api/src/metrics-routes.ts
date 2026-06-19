@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import type {
+  AuditEvent,
   HealthEvent,
   MeterFrame,
   RecorderNode,
@@ -8,6 +9,7 @@ import type {
   UploadQueueItem,
 } from "@rakkr/shared";
 
+import type { AuditStore } from "./audit-store.js";
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
@@ -20,6 +22,7 @@ import type { RecordingStore } from "./recording-store.js";
 import { listUploadQueueItems } from "./upload-queue.js";
 
 interface MetricsScopeDependencies {
+  auditStore: AuditStore;
   hasResourceScope: (
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
@@ -67,17 +70,20 @@ async function controllerPrometheusMetrics(
   user: NonNullable<AuthResult["user"]>,
   dependencies: MetricsScopeDependencies,
 ) {
-  const [nodes, recordings, recordingJobs, healthEvents, uploadQueueItems] = await Promise.all([
-    scopedNodes(user, dependencies),
-    scopedRecordings(user, dependencies),
-    scopedRecordingJobs(user, dependencies),
-    scopedHealthEvents(user, dependencies),
-    scopedUploadQueueItems(user, dependencies),
-  ]);
+  const [nodes, recordings, recordingJobs, healthEvents, uploadQueueItems, auditEvents] =
+    await Promise.all([
+      scopedNodes(user, dependencies),
+      scopedRecordings(user, dependencies),
+      scopedRecordingJobs(user, dependencies),
+      scopedHealthEvents(user, dependencies),
+      scopedUploadQueueItems(user, dependencies),
+      scopedAuditEvents(user, dependencies),
+    ]);
   const meterFrames = await scopedMeterFrames(nodes, dependencies);
   const recordingCacheBytes = await recordingCacheByteMap(recordings);
 
   return renderPrometheusMetrics({
+    auditEvents,
     healthEvents,
     meterFrames,
     nodes,
@@ -161,6 +167,21 @@ async function scopedUploadQueueItems(
   return result;
 }
 
+async function scopedAuditEvents(
+  user: NonNullable<AuthResult["user"]>,
+  dependencies: Pick<MetricsScopeDependencies, "auditStore" | "hasResourceScope">,
+) {
+  const result: AuditEvent[] = [];
+
+  for (const event of await dependencies.auditStore.list({ limit: 500 })) {
+    if (await canReadAuditEvent(user, event, dependencies)) {
+      result.push(event);
+    }
+  }
+
+  return result;
+}
+
 async function scopedMeterFrames(nodes: RecorderNode[], dependencies: MetricsScopeDependencies) {
   const frames = await Promise.all(
     nodes.map((node) => dependencies.meterFrameStore.latest(node.id)),
@@ -197,6 +218,18 @@ async function canReadHealthEvent(
   return false;
 }
 
+async function canReadAuditEvent(
+  user: NonNullable<AuthResult["user"]>,
+  event: AuditEvent,
+  dependencies: Pick<MetricsScopeDependencies, "hasResourceScope">,
+) {
+  if (!isResourceScopedAuditTarget(event.target)) {
+    return true;
+  }
+
+  return dependencies.hasResourceScope(user, event.target);
+}
+
 function healthEventScopeTargets(event: HealthEvent) {
   const targets: AuditTarget[] = [];
 
@@ -213,4 +246,11 @@ function healthEventScopeTargets(event: HealthEvent) {
   }
 
   return targets;
+}
+
+function isResourceScopedAuditTarget(target: AuditTarget) {
+  return Boolean(
+    target.id &&
+    ["channel", "interface", "node", "recording", "room", "schedule"].includes(target.type),
+  );
 }

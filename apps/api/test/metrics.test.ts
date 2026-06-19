@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  AuditEvent,
   HealthEvent,
   MeterFrame,
   RecorderNode,
@@ -13,6 +14,11 @@ import { renderPrometheusMetrics } from "../src/metrics.js";
 
 test("renders store-backed Prometheus gauges", () => {
   const output = renderPrometheusMetrics({
+    auditEvents: [
+      auditEvent("recordings.download.succeeded", "succeeded", "recording:download"),
+      auditEvent("recordings.download.succeeded", "succeeded", "recording:download"),
+      auditEvent("recordings.stop.denied", "denied", "recording:control"),
+    ],
     healthEvents: [healthEvent(), nodeOfflineHealthEvent(), audioXrunHealthEvent()],
     meterFrames: [meterFrame()],
     nodes: [node()],
@@ -74,6 +80,14 @@ test("renders store-backed Prometheus gauges", () => {
     output,
     /rakkr_input_noise_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.12/,
   );
+  assert.match(
+    output,
+    /rakkr_audit_events_total\{action="recordings\.download\.succeeded",actor_type="user",outcome="succeeded",permission="recording:download"\} 2/,
+  );
+  assert.match(
+    output,
+    /rakkr_audit_events_total\{action="recordings\.stop\.denied",actor_type="user",outcome="denied",permission="recording:control"\} 1/,
+  );
   assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 2/);
   assert.match(
     output,
@@ -98,6 +112,33 @@ test("renders store-backed Prometheus gauges", () => {
   );
   assert.match(output, /rakkr_upload_failures_total\{provider="stub"\} 3/);
 });
+
+function auditEvent(
+  action: string,
+  outcome: AuditEvent["outcome"],
+  permission?: AuditEvent["permission"],
+): AuditEvent {
+  return {
+    action,
+    actor: {
+      id: "user_metrics",
+      name: "Metrics User",
+      roles: ["auditor"],
+      type: "user",
+    },
+    actorContext: {},
+    createdAt: "2026-06-18T12:00:00.000Z",
+    details: {},
+    id: `audit_${action}_${outcome}`,
+    outcome,
+    permission,
+    target: {
+      id: "rec_demo_001",
+      name: "Council Meeting",
+      type: "recording",
+    },
+  };
+}
 
 function node(): RecorderNode {
   return {
