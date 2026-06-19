@@ -102,7 +102,7 @@ export function SettingsPage() {
 
       <div className="grid gap-4">
         {(watchdogPoliciesQuery.data?.data ?? []).map((policy) => (
-          <WatchdogPolicyCard key={policy.id} policy={policy} />
+          <WatchdogPolicyCard canManage={canManageSettings} key={policy.id} policy={policy} />
         ))}
       </div>
 
@@ -264,7 +264,7 @@ function UploadProviderCard({
   );
 }
 
-function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
+function WatchdogPolicyCard({ canManage, policy }: { canManage: boolean; policy: WatchdogPolicy }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(policy);
   const mutation = useMutation({
@@ -295,7 +295,11 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
             {policy.metric} below {policy.thresholdDbfs} dBFS / {policy.windowSeconds}s
           </p>
         </div>
-        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+        <Button
+          disabled={mutation.isPending || !canManage}
+          onClick={() => mutation.mutate()}
+          title={canManage ? "Save watchdog policy" : "Requires settings manage"}
+        >
           <Save className="size-4" />
           Save
         </Button>
@@ -304,6 +308,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="Name">
           <Input
+            disabled={!canManage}
             onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
             value={draft.name}
           />
@@ -311,6 +316,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         <Field label="Active During">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -327,6 +333,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         <Field label="Metric">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -342,6 +349,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         </Field>
         <Field label="Threshold dBFS">
           <Input
+            disabled={!canManage}
             max={24}
             min={-160}
             onChange={(event) =>
@@ -353,6 +361,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         </Field>
         <Field label="Window Seconds">
           <Input
+            disabled={!canManage}
             min={1}
             onChange={(event) =>
               setDraft((current) => ({ ...current, windowSeconds: Number(event.target.value) }))
@@ -363,6 +372,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         </Field>
         <Field label="Grace Seconds">
           <Input
+            disabled={!canManage}
             min={0}
             onChange={(event) =>
               setDraft((current) => ({ ...current, graceSeconds: Number(event.target.value) }))
@@ -373,6 +383,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         </Field>
         <Field label="Repeat Seconds">
           <Input
+            disabled={!canManage}
             min={1}
             onChange={(event) =>
               setDraft((current) => ({
@@ -386,6 +397,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         </Field>
         <Field label="Min Above Seconds">
           <Input
+            disabled={!canManage}
             min={0}
             onChange={(event) =>
               setDraft((current) => ({
@@ -400,6 +412,7 @@ function WatchdogPolicyCard({ policy }: { policy: WatchdogPolicy }) {
         <Field label="Severity">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
