@@ -58,6 +58,15 @@ const optionalTextFilterSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() ? value : undefined),
   z.string().trim().max(240).optional(),
 );
+const optionalIsoFilterSchema = z
+  .preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().trim().optional(),
+  )
+  .refine(
+    (value) => value === undefined || !Number.isNaN(Date.parse(value)),
+    "Expected ISO date-time",
+  );
 
 const recordingsQuerySchema = z.object({
   folder: optionalTextFilterSchema,
@@ -66,6 +75,8 @@ const recordingsQuerySchema = z.object({
     z.enum(["healthy", "warning", "critical", "unknown"]).optional(),
   ),
   nodeId: optionalTextFilterSchema,
+  recordedFrom: optionalIsoFilterSchema,
+  recordedTo: optionalIsoFilterSchema,
   scheduleId: optionalTextFilterSchema,
   search: optionalTextFilterSchema,
   status: z.preprocess(
@@ -857,6 +868,17 @@ function filterRecordings(recordings: RecordingSummary[], filters: RecordingsQue
     }
 
     if (filters.nodeId && recording.nodeId !== filters.nodeId) {
+      return false;
+    }
+
+    if (
+      filters.recordedFrom &&
+      Date.parse(recording.recordedAt) < Date.parse(filters.recordedFrom)
+    ) {
+      return false;
+    }
+
+    if (filters.recordedTo && Date.parse(recording.recordedAt) > Date.parse(filters.recordedTo)) {
       return false;
     }
 

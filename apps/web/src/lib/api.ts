@@ -126,6 +126,8 @@ export interface RecordingFilters {
   folder?: string;
   healthStatus?: RecordingSummary["healthStatus"];
   nodeId?: string;
+  recordedFrom?: string;
+  recordedTo?: string;
   scheduleId?: string;
   search?: string;
   status?: RecordingSummary["status"];

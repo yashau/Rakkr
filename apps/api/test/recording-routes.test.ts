@@ -72,6 +72,36 @@ test("recording facets summarize visible folders and tags", async () => {
   ]);
 });
 
+test("recording list filters by recorded date range", async () => {
+  const auditStore = createAuditStore("");
+  const app = recordingApp({
+    auditStore,
+    nodes: [recorderNode()],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore([
+      recording({ id: "rec_old", recordedAt: "2026-06-17T23:59:59.000Z" }),
+      recording({ id: "rec_target", recordedAt: "2026-06-18T12:00:00.000Z" }),
+      recording({ id: "rec_new", recordedAt: "2026-06-19T00:00:01.000Z" }),
+    ]),
+  });
+  const params = new URLSearchParams({
+    recordedFrom: "2026-06-18T00:00:00.000Z",
+    recordedTo: "2026-06-19T00:00:00.000Z",
+  });
+
+  const response = await app.request(`/api/v1/recordings?${params}`);
+  const body = (await response.json()) as { data: RecordingSummary[] };
+  const invalidResponse = await app.request("/api/v1/recordings?recordedFrom=not-a-date");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.data.map((item) => item.id),
+    ["rec_target"],
+  );
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("ad hoc recording start uses requested node profile policy and metadata", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();

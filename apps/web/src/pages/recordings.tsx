@@ -15,6 +15,8 @@ interface RecordingFilterDraft {
   folder: string;
   healthStatus: "" | RecordingSummary["healthStatus"];
   nodeId: string;
+  recordedFromDate: string;
+  recordedToDate: string;
   scheduleId: string;
   search: string;
   status: "" | RecordingSummary["status"];
@@ -25,6 +27,8 @@ const emptyRecordingFilterDraft: RecordingFilterDraft = {
   folder: "",
   healthStatus: "",
   nodeId: "",
+  recordedFromDate: "",
+  recordedToDate: "",
   scheduleId: "",
   search: "",
   status: "",
@@ -359,6 +363,31 @@ export function RecordingsPage() {
             </select>
           </div>
           <div className="grid gap-1.5">
+            <Label htmlFor="recording-from-filter">From</Label>
+            <Input
+              id="recording-from-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  recordedFromDate: event.target.value,
+                }))
+              }
+              type="date"
+              value={filterDraft.recordedFromDate}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-to-filter">To</Label>
+            <Input
+              id="recording-to-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({ ...current, recordedToDate: event.target.value }))
+              }
+              type="date"
+              value={filterDraft.recordedToDate}
+            />
+          </div>
+          <div className="grid gap-1.5">
             <Label htmlFor="recording-health-filter">Health</Label>
             <select
               className={selectClassName}
@@ -497,6 +526,8 @@ function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
     folder: textOrUndefined(draft.folder),
     healthStatus: draft.healthStatus || undefined,
     nodeId: textOrUndefined(draft.nodeId),
+    recordedFrom: localDateBoundaryIso(draft.recordedFromDate, "start"),
+    recordedTo: localDateBoundaryIso(draft.recordedToDate, "end"),
     scheduleId: textOrUndefined(draft.scheduleId),
     search: textOrUndefined(draft.search),
     status: draft.status || undefined,
@@ -508,6 +539,25 @@ function textOrUndefined(value: string) {
   const trimmed = value.trim();
 
   return trimmed || undefined;
+}
+
+function localDateBoundaryIso(value: string, boundary: "end" | "start") {
+  if (!value) {
+    return undefined;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return undefined;
+  }
+
+  const date =
+    boundary === "start"
+      ? new Date(year, month - 1, day, 0, 0, 0, 0)
+      : new Date(year, month - 1, day, 23, 59, 59, 999);
+
+  return date.toISOString();
 }
 
 function groupHealthEventsByRecording(events: HealthEvent[]) {
