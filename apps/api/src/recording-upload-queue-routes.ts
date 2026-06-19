@@ -267,6 +267,16 @@ export function registerRecordingUploadQueueRoutes({
       );
 
       if (!visibleRecordingIds.has(item.recordingId)) {
+        await recordUploadQueueFailure(c, {
+          action: "recordings.upload_queue.retry.failed",
+          currentAuth,
+          itemId,
+          outcome: "denied",
+          reason: "upload_queue_item_not_visible",
+          recordAuditEvent,
+          recordingId: item.recordingId,
+        });
+
         return c.json({ error: "Upload queue item not found" }, 404);
       }
 
@@ -412,6 +422,7 @@ async function recordUploadQueueFailure(
   input: Pick<RecordingUploadQueueRouteDependencies, "currentAuth" | "recordAuditEvent"> & {
     action: string;
     itemId?: string;
+    outcome?: "denied" | "failed";
     reason: string;
     recordingId?: string;
     targetName?: string;
@@ -424,7 +435,7 @@ async function recordUploadQueueFailure(
       ...(input.itemId ? { uploadQueueItemId: input.itemId } : {}),
       ...(input.recordingId ? { recordingId: input.recordingId } : {}),
     },
-    outcome: "failed",
+    outcome: input.outcome ?? "failed",
     permission: "recording:control",
     reason: input.reason,
     target: {

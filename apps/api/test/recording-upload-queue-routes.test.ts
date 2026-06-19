@@ -26,6 +26,7 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(routeRoot, "upload-queue.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
+const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
 const { registerRecordingUploadQueueRoutes } =
   await import("../src/recording-upload-queue-routes.js");
 
@@ -139,6 +140,35 @@ test("bulk upload queue rejects recordings outside scoped visibility", async () 
   assert.equal(event?.outcome, "denied");
   assert.equal(event?.reason, "recording_not_visible");
   assert.deepEqual(event?.details.hiddenIds, ["rec_bulk_upload_hidden"]);
+});
+
+test("upload queue retry audits items outside scoped visibility", async () => {
+  const auditStore = createAuditStore("");
+  const hiddenRecording = recording({ id: "rec_retry_hidden" });
+  const queued = await enqueueRecordingUpload(hiddenRecording, {
+    provider: "s3",
+    reason: "manual_retry_hidden",
+    target: "s3://rakkr-route-test/hidden",
+  });
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore: memoryRecordingStore([hiddenRecording]),
+    visibleRecordingIds: [],
+  });
+
+  const response = await app.request(`/api/v1/upload-queue/${queued.id}/retry`, {
+    method: "POST",
+  });
+  const [event] = await auditStore.list({
+    action: "recordings.upload_queue.retry.failed",
+  });
+
+  assert.equal(response.status, 404);
+  assert.equal(event?.outcome, "denied");
+  assert.equal(event?.reason, "upload_queue_item_not_visible");
+  assert.equal(event?.target.id, "rec_retry_hidden");
+  assert.equal(event?.correlationIds?.uploadQueueItemId, queued.id);
 });
 
 interface PermissionCall {

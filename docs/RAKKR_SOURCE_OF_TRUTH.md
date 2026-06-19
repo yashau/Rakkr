@@ -327,6 +327,7 @@ Current partial implementation:
 - Audit UI exposes event reasons, correlation IDs, details, and before/after snapshots.
 - User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
 - Recording delete is RBAC-gated and audited, with active-recording protection.
+- Upload queue retry audits scoped-hidden retry attempts without exposing the queue item.
 
 ## Security And Transport
 
@@ -560,6 +561,7 @@ Current partial implementation:
 65. ✅ Add access-policy deny coverage for bulk recording organization.
 66. ✅ Add RBAC-gated bulk upload queueing for selected cached recordings.
 67. ✅ Add access-policy deny coverage for upload queue retry.
+68. ✅ Add denied audit coverage for scoped-hidden upload queue retry attempts.
 
 ## Open Questions
 
