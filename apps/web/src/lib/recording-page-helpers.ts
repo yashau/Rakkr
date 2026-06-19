@@ -52,6 +52,12 @@ export interface RecordingPlaybackPreview {
   startedAt: string;
 }
 
+export interface RecordingFileActionState {
+  canDownload: boolean;
+  canPlayback: boolean;
+  fileReady: boolean;
+}
+
 type RevokeObjectUrl = (url: string) => void;
 
 export const emptyRecordingFilterDraft: RecordingFilterDraft = {
@@ -196,6 +202,19 @@ export function clearPlaybackPreview(
   }
 
   return undefined;
+}
+
+export function recordingFileActionState(
+  recording: RecordingSummary,
+  permissions: { canDownload: boolean; canPlayback: boolean },
+): RecordingFileActionState {
+  const fileReady = isCachedRecording(recording);
+
+  return {
+    canDownload: permissions.canDownload && fileReady,
+    canPlayback: permissions.canPlayback && fileReady,
+    fileReady,
+  };
 }
 
 export function waveformBarHeightPercent(peak: number) {

@@ -7,6 +7,7 @@ import {
   isCachedRecording,
   isTerminalRecording,
   playbackPreviewFromSession,
+  recordingFileActionState,
   replacePlaybackPreview,
   type RecordingPlaybackPreview,
   waveformBarHeightPercent,
@@ -83,6 +84,42 @@ test("recording playback preview cleanup can clear the active object URL", () =>
     undefined,
   );
   assert.deepEqual(revoked, ["blob:preview-active"]);
+});
+
+test("recording file action state requires both permission and cached media", () => {
+  assert.deepEqual(
+    recordingFileActionState(recording({ cached: true, cachePath: "scheduled/track.mp3" }), {
+      canDownload: true,
+      canPlayback: true,
+    }),
+    {
+      canDownload: true,
+      canPlayback: true,
+      fileReady: true,
+    },
+  );
+  assert.deepEqual(
+    recordingFileActionState(recording({ cached: true, cachePath: "scheduled/track.mp3" }), {
+      canDownload: false,
+      canPlayback: true,
+    }),
+    {
+      canDownload: false,
+      canPlayback: true,
+      fileReady: true,
+    },
+  );
+  assert.deepEqual(
+    recordingFileActionState(recording({ cachePath: undefined, status: "completed" }), {
+      canDownload: true,
+      canPlayback: true,
+    }),
+    {
+      canDownload: false,
+      canPlayback: false,
+      fileReady: false,
+    },
+  );
 });
 
 test("recording waveform helper clamps peak heights for stable previews", () => {

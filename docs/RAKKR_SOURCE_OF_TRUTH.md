@@ -215,6 +215,7 @@ Current partial implementation:
 - Recurrence tests for buffers, pauses, monthly clamping, overnight duration, and skip-next.
 - Runner creates jobs under `system:scheduler` and audits outcomes.
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
+- Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
 
 ## Health Watchdog
 
@@ -621,6 +622,7 @@ Current partial implementation:
 99. ✅ Add recording playback panel session and cleanup coverage.
 100. ✅ Add ad-hoc start node context and metadata helper coverage.
 101. ✅ Add recording waveform metadata and scaling coverage.
+102. ✅ Add schedule-detail playback/download controls for cached recordings.
 
 ## Open Questions
 

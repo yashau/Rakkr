@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -7,11 +7,14 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardList,
+  Download,
   FileAudio,
   HeartPulse,
   History,
+  Play,
   RotateCcw,
   ShieldOff,
+  X,
 } from "lucide-react";
 import type { AuditEvent, HealthEvent, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
@@ -21,10 +24,21 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
+import {
+  clearPlaybackPreview,
+  downloadBlob,
+  playbackPreviewFromSession,
+  recordingFileActionState,
+  replacePlaybackPreview,
+  type RecordingPlaybackPreview,
+} from "@/lib/recording-page-helpers";
 import { occurrenceWindow, recurrenceSummary, timelineAction } from "@/lib/schedule-draft";
 
 export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   const queryClient = useQueryClient();
+  const audioPreviewRef = useRef<RecordingPlaybackPreview | undefined>(undefined);
+  const [audioPreview, setAudioPreview] = useState<RecordingPlaybackPreview>();
+  const [notice, setNotice] = useState<{ detail: string; title: string }>();
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -77,8 +91,74 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   const healthEvents = healthQuery.data?.data ?? [];
   const auditEvents = auditQuery.data?.data ?? [];
   const node = nodesQuery.data?.data.find((candidate) => candidate.id === schedule?.nodeId);
-  const canManageHealth =
-    currentUserQuery.data?.data.permissions.includes("health:acknowledge") ?? false;
+  const currentUserPermissions = currentUserQuery.data?.data.permissions ?? [];
+  const canDownloadRecordings = currentUserPermissions.includes("recording:download");
+  const canPlaybackRecordings = currentUserPermissions.includes("recording:playback");
+  const canManageHealth = currentUserPermissions.includes("health:acknowledge");
+  const closeAudioPreview = () => {
+    setAudioPreview((current) => {
+      const next = clearPlaybackPreview(current);
+
+      audioPreviewRef.current = next;
+
+      return next;
+    });
+  };
+  const playbackMutation = useMutation({
+    mutationFn: async (recordingId: string) => {
+      const playback = await api.startPlayback(recordingId);
+      const stream = await api.recordingStream(recordingId);
+
+      return {
+        playback: playback.data,
+        stream,
+      };
+    },
+    onError: () =>
+      setNotice({
+        detail: "The selected scheduled recording could not be opened for playback.",
+        title: "Playback unavailable",
+      }),
+    onSuccess: (response) => {
+      const url = URL.createObjectURL(response.stream.blob);
+      const preview = playbackPreviewFromSession(response.playback, response.stream, url);
+
+      setAudioPreview((current) => {
+        const next = replacePlaybackPreview(current, preview);
+
+        audioPreviewRef.current = next;
+
+        return next;
+      });
+      setNotice({
+        detail: `${response.playback.sessionId} started at ${formatDateTime(response.playback.startedAt)}`,
+        title: "Playback ready",
+      });
+    },
+  });
+  const downloadMutation = useMutation({
+    mutationFn: async (recordingId: string) => {
+      const ticket = await api.prepareRecordingDownload(recordingId);
+      const file = await api.recordingFile(recordingId);
+
+      return {
+        file,
+        ticket: ticket.data,
+      };
+    },
+    onError: () =>
+      setNotice({
+        detail: "The selected scheduled recording could not be prepared for download.",
+        title: "Download unavailable",
+      }),
+    onSuccess: (response) => {
+      downloadBlob(response.file);
+      setNotice({
+        detail: `${response.ticket.fileName} prepared until ${formatDateTime(response.ticket.expiresAt)}`,
+        title: "Download prepared",
+      });
+    },
+  });
   const healthLifecycleMutation = useMutation({
     mutationFn: ({
       action,
@@ -97,6 +177,16 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
+
+  useEffect(
+    () => () => {
+      if (audioPreviewRef.current) {
+        clearPlaybackPreview(audioPreviewRef.current);
+        audioPreviewRef.current = undefined;
+      }
+    },
+    [],
+  );
 
   if (schedulesQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading schedule.</p>;
@@ -176,6 +266,37 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
         />
       </section>
 
+      {notice ? (
+        <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="font-medium">{notice.title}</div>
+          <div className="text-emerald-700">{notice.detail}</div>
+        </section>
+      ) : null}
+
+      {audioPreview ? (
+        <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">{audioPreview.fileName}</div>
+              <div className="text-xs text-muted-foreground">
+                Session {audioPreview.sessionId} started {formatDateTime(audioPreview.startedAt)}
+              </div>
+            </div>
+            <Button
+              aria-label="Close playback"
+              onClick={closeAudioPreview}
+              size="icon"
+              variant="ghost"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+          <audio className="w-full" controls src={audioPreview.objectUrl}>
+            <track kind="captions" />
+          </audio>
+        </section>
+      ) : null}
+
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="rounded-lg p-4 shadow-sm">
           <SectionTitle icon={Activity} title="Upcoming Windows" />
@@ -197,9 +318,15 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
           <div className="mt-3 grid gap-3">
             {recordings.map((recording) => (
               <RecordingExecutionRow
+                canDownload={canDownloadRecordings}
+                canPlayback={canPlaybackRecordings}
+                downloadPending={downloadMutation.isPending}
                 events={healthEvents.filter((event) => event.recordingId === recording.id)}
                 jobs={jobs.filter((job) => job.recordingId === recording.id)}
                 key={recording.id}
+                onDownload={() => downloadMutation.mutate(recording.id)}
+                onPlayback={() => playbackMutation.mutate(recording.id)}
+                playbackPending={playbackMutation.isPending}
                 recording={recording}
               />
             ))}
@@ -292,27 +419,72 @@ function SectionTitle({ icon: Icon, title }: { icon: typeof Activity; title: str
 }
 
 function RecordingExecutionRow({
+  canDownload,
+  canPlayback,
+  downloadPending,
   events,
   jobs,
+  onDownload,
+  onPlayback,
+  playbackPending,
   recording,
 }: {
+  canDownload: boolean;
+  canPlayback: boolean;
+  downloadPending: boolean;
   events: HealthEvent[];
   jobs: RecordingJob[];
+  onDownload: () => void;
+  onPlayback: () => void;
+  playbackPending: boolean;
   recording: RecordingSummary;
 }) {
+  const actions = recordingFileActionState(recording, { canDownload, canPlayback });
+
   return (
     <div className="rounded-md border border-border bg-background p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{recording.name}</span>
-        <Badge className={healthStatusClass(recording.healthStatus)} variant="outline">
-          {recording.healthStatus}
-        </Badge>
-        <Badge variant="secondary">{recording.status}</Badge>
-      </div>
-      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        <span>{formatDateTime(recording.recordedAt)}</span>
-        <span>{formatDuration(recording.durationSeconds)}</span>
-        <span>{recording.folder}</span>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{recording.name}</span>
+            <Badge className={healthStatusClass(recording.healthStatus)} variant="outline">
+              {recording.healthStatus}
+            </Badge>
+            <Badge variant="secondary">{recording.status}</Badge>
+          </div>
+          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>{formatDateTime(recording.recordedAt)}</span>
+            <span>{formatDuration(recording.durationSeconds)}</span>
+            <span>{recording.folder}</span>
+            {recording.cachePath ? (
+              <span>{actions.fileReady ? "cached" : "cache pending"}</span>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+          {canPlayback ? (
+            <Button
+              disabled={!actions.canPlayback || playbackPending}
+              onClick={onPlayback}
+              size="sm"
+              variant="outline"
+            >
+              <Play className="size-4" />
+              Play
+            </Button>
+          ) : null}
+          {canDownload ? (
+            <Button
+              disabled={!actions.canDownload || downloadPending}
+              onClick={onDownload}
+              size="sm"
+              variant="outline"
+            >
+              <Download className="size-4" />
+              Download
+            </Button>
+          ) : null}
+        </div>
       </div>
       <div className="mt-3 grid gap-2">
         {jobs.map((job) => (
