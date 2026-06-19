@@ -64,7 +64,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller UI | 🟨 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, channel correlation, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory plus Linux loopback tasks; Linux/hardware validation remains |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, offline, local-log, metrics, and timeline baseline; real-room field calibration remains |
@@ -195,6 +195,7 @@ Current partial implementation:
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
+- `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
 - RBAC-gated listen monitor start/stream returns a controller meter-preview WAV for browser playback.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
@@ -716,6 +717,7 @@ Current partial implementation:
 147. ✅ Add first-pass channel correlation telemetry, health event, UI cue, and Prometheus metric.
 148. ✅ Add policy-tuned scheduled channel correlation watchdog alerts.
 149. ✅ Add synthetic PCM calibration fixtures for local quality scoring.
+150. ✅ Add checked generic-device partial baseline.
 
 ## Open Questions
 
