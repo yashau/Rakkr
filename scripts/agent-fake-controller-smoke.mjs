@@ -57,6 +57,8 @@ try {
     await runScenario({ address, captureCommand, renderCommand, scenario });
   }
 
+  await runConcurrentScenario({ address, captureCommand, renderCommand });
+
   console.log("Agent fake-controller smoke passed.");
 } finally {
   server.close();
@@ -69,7 +71,7 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   const job = createJob(scenario);
   const observed = createObserved();
 
-  activeScenario = { job, observed, scenario };
+  activeScenario = { job, jobs: [job], observed, scenario };
   const result = await run("cargo", [
     "run",
     "--quiet",
@@ -118,8 +120,8 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     (event) => event.type === "agent.recording_job.output_rendered",
   );
 
-  invariant(observed.nextReads === 1, "agent did not read the next queued job");
-  invariant(observed.claims === 1, "agent did not claim the queued job");
+  invariant(observed.claimNextReads === 1, "agent did not claim the next queued job");
+  invariant(observed.claims === 1, "agent did not claim exactly one queued job");
   invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
   invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
   invariant(observed.channelMapReads === 1, "agent did not fetch channel-map assignments");
@@ -139,9 +141,108 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   activeScenario = undefined;
 }
 
+async function runConcurrentScenario({ address, captureCommand, renderCommand }) {
+  const stateFile = path.join(smokeRoot, "concurrent-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "concurrent-health-events.jsonl");
+  const jobs = [
+    createJob({
+      expectSuccess: true,
+      jobId: "job_fake_controller_concurrent_a",
+      name: "concurrent-a",
+      outputFileName: "rec_fake_controller_concurrent_a.mp3",
+      recordingId: "rec_fake_controller_concurrent_a",
+    }),
+    createJob({
+      expectSuccess: true,
+      jobId: "job_fake_controller_concurrent_b",
+      name: "concurrent-b",
+      outputFileName: "rec_fake_controller_concurrent_b.mp3",
+      recordingId: "rec_fake_controller_concurrent_b",
+    }),
+  ];
+  const observed = createObserved();
+
+  activeScenario = {
+    jobs,
+    observed,
+    scenario: {
+      concurrent: true,
+      expectSuccess: true,
+      name: "concurrent",
+    },
+  };
+
+  const child = spawnAgent([
+    "--allow-insecure-controller",
+    "--agent-health-log-file",
+    healthLogFile,
+    "--agent-state-file",
+    stateFile,
+    "--capture-command",
+    captureCommand,
+    "--capture-growth-grace-seconds",
+    "0",
+    "--capture-min-output-bytes",
+    "44",
+    "--controller-token",
+    token,
+    "--controller-url",
+    `http://127.0.0.1:${address.port}`,
+    "--channel-render-command",
+    renderCommand,
+    "--heartbeat-seconds",
+    "1",
+    "--job-poll-seconds",
+    "1",
+    "--max-concurrent-recordings",
+    "2",
+    "--meter-backend",
+    "synthetic",
+    "--node-id",
+    nodeId,
+  ]);
+
+  try {
+    await waitFor(
+      () => jobs.every((job) => job.status === "completed") && observed.cacheUploads.length === 2,
+      20_000,
+      () =>
+        `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const renderedEvents = healthLogEvents.filter(
+    (event) => event.type === "agent.recording_job.output_rendered",
+  );
+
+  invariant(observed.claimNextReads >= 2, "concurrent agent did not claim queued jobs");
+  invariant(observed.claims === 2, "concurrent agent did not claim both queued jobs");
+  invariant(observed.maxRunningJobs >= 2, "concurrent jobs did not overlap as running");
+  invariant(
+    renderedEvents.length === 2,
+    "concurrent local health log did not include both renders",
+  );
+  invariant(
+    observed.cacheUploads.every((upload) => upload.contentType === "audio/mpeg"),
+    "concurrent cache uploads were not rendered MP3",
+  );
+
+  activeScenario = undefined;
+}
+
 function assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario }) {
-  invariant(observed.cacheUpload?.recordingId === scenario.recordingId, "agent did not upload cache file");
-  invariant(observed.cacheUpload?.jobId === scenario.jobId, "cache upload did not include the job id");
+  invariant(
+    observed.cacheUpload?.recordingId === scenario.recordingId,
+    "agent did not upload cache file",
+  );
+  invariant(
+    observed.cacheUpload?.jobId === scenario.jobId,
+    "cache upload did not include the job id",
+  );
   invariant(observed.cacheUpload?.durationSeconds === "1", "cache upload did not include duration");
   invariant(
     observed.cacheUpload?.fileName === scenario.outputFileName,
@@ -154,21 +255,36 @@ function assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario }
     "agent did not report rendered output",
   );
   invariant(renderedLocalEvent, "agent local health log did not include rendered output");
-  invariant(renderedLocalEvent.severity === "info", "rendered local health event did not record info severity");
+  invariant(
+    renderedLocalEvent.severity === "info",
+    "rendered local health event did not record info severity",
+  );
   invariant(
     renderedLocalEvent.recordingId === scenario.recordingId,
     "rendered local health event recorded the wrong recording",
   );
-  invariant(renderedLocalEvent.details?.jobId === scenario.jobId, "rendered local health event recorded the wrong job");
-  invariant(renderedLocalEvent.details?.outputCodec === "mp3", "rendered local health event did not record MP3 output");
-  invariant(renderedLocalEvent.details?.outputVbr === true, "rendered local health event did not record VBR output");
+  invariant(
+    renderedLocalEvent.details?.jobId === scenario.jobId,
+    "rendered local health event recorded the wrong job",
+  );
+  invariant(
+    renderedLocalEvent.details?.outputCodec === "mp3",
+    "rendered local health event did not record MP3 output",
+  );
+  invariant(
+    renderedLocalEvent.details?.outputVbr === true,
+    "rendered local health event did not record VBR output",
+  );
 }
 
 function assertCompletedScenario({ job, scenario, state }) {
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
   invariant(state.jobId === scenario.jobId, "agent state file recorded the wrong job id");
-  invariant(state.outputPath?.endsWith(scenario.outputFileName), "agent state did not end on rendered MP3");
+  invariant(
+    state.outputPath?.endsWith(scenario.outputFileName),
+    "agent state did not end on rendered MP3",
+  );
 }
 
 function assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state }) {
@@ -179,9 +295,15 @@ function assertControllerStopScenario({ healthLogEvents, job, observed, scenario
     "agent cancellation reason did not preserve controller stop request",
   );
   invariant(!observed.cacheUpload, "agent uploaded cache after controller stop request");
-  invariant(state.status === "cancelled", "agent state file did not end cancelled after controller stop request");
+  invariant(
+    state.status === "cancelled",
+    "agent state file did not end cancelled after controller stop request",
+  );
   invariant(state.jobId === scenario.jobId, "cancelled agent state file recorded the wrong job id");
-  invariant(state.reason === "controller_stop_requested", "cancelled state did not retain stop request reason");
+  invariant(
+    state.reason === "controller_stop_requested",
+    "cancelled state did not retain stop request reason",
+  );
   invariant(
     !healthLogEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
     "agent rendered output after controller stop request",
@@ -189,7 +311,9 @@ function assertControllerStopScenario({ healthLogEvents, job, observed, scenario
 }
 
 function assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state }) {
-  const failedLocalEvent = healthLogEvents.find((event) => event.type === "agent.recording_job.cache_upload_failed");
+  const failedLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.cache_upload_failed",
+  );
 
   invariant(job.status === "failed", "fake controller did not mark failed cache upload job failed");
   invariant(observed.failures === 1, "agent did not mark cache upload failure job failed");
@@ -197,9 +321,15 @@ function assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scen
     String(observed.failureReason).includes("controller rejected cache file with 503"),
     "agent failed-job reason did not include rejected cache upload",
   );
-  invariant(state.status === "failed", "agent state file did not end failed after cache upload failure");
+  invariant(
+    state.status === "failed",
+    "agent state file did not end failed after cache upload failure",
+  );
   invariant(state.jobId === scenario.jobId, "failed agent state file recorded the wrong job id");
-  invariant(state.outputPath?.endsWith(scenario.outputFileName), "failed state did not retain rendered output path");
+  invariant(
+    state.outputPath?.endsWith(scenario.outputFileName),
+    "failed state did not retain rendered output path",
+  );
   invariant(
     String(state.reason).includes("controller rejected cache file with 503"),
     "failed state did not retain cache upload rejection reason",
@@ -209,12 +339,18 @@ function assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scen
     "agent did not report cache upload failure",
   );
   invariant(failedLocalEvent, "agent local health log did not include cache upload failure");
-  invariant(failedLocalEvent.severity === "warning", "cache upload local health event did not record warning severity");
+  invariant(
+    failedLocalEvent.severity === "warning",
+    "cache upload local health event did not record warning severity",
+  );
   invariant(
     failedLocalEvent.recordingId === scenario.recordingId,
     "cache upload local health event recorded the wrong recording",
   );
-  invariant(failedLocalEvent.details?.jobId === scenario.jobId, "cache upload local health event recorded the wrong job");
+  invariant(
+    failedLocalEvent.details?.jobId === scenario.jobId,
+    "cache upload local health event recorded the wrong job",
+  );
 }
 
 function createJob(scenario) {
@@ -244,14 +380,19 @@ function createObserved() {
     cancelReason: undefined,
     cancellations: 0,
     cacheUpload: undefined,
+    cacheUploads: [],
     channelMapReads: 0,
+    claimNextReads: 0,
     claims: 0,
     failureReason: undefined,
     failures: 0,
     heartbeats: 0,
     healthEvents: [],
     jobStatusReads: 0,
+    maxRunningJobs: 0,
+    meterFrames: 0,
     nextReads: 0,
+    nodeHeartbeats: 0,
   };
 }
 
@@ -283,30 +424,92 @@ async function handleControllerRequest(request, response) {
     return json(response, 503, { error: "no active smoke scenario" });
   }
 
-  const { job, observed, scenario } = context;
+  const { observed, scenario } = context;
+  const jobs = context.jobs ?? [context.job];
 
   if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/next`) {
     observed.nextReads += 1;
+    const job = nextQueuedJob(jobs);
+
+    return job ? json(response, 200, { data: job }) : empty(response);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/claim-next`
+  ) {
+    observed.claimNextReads += 1;
+    const job = nextQueuedJob(jobs);
+
+    if (!job) {
+      return empty(response);
+    }
+
+    observed.claims += 1;
+    job.status = "running";
+    rememberRunningJobs(observed, jobs);
     return json(response, 200, { data: job });
   }
 
-  if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/channel-map-assignments`) {
+  if (
+    request.method === "GET" &&
+    url.pathname === `/api/v1/nodes/${nodeId}/channel-map-assignments`
+  ) {
     observed.channelMapReads += 1;
     return json(response, 200, { data: [] });
   }
 
-  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/claim`) {
+  if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/heartbeat`) {
+    await readBody(request);
+    observed.nodeHeartbeats += 1;
+    return json(response, 202, { data: { ok: true } });
+  }
+
+  if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/meter-frame`) {
+    await readBody(request);
+    observed.meterFrames += 1;
+    return json(response, 202, { data: { ok: true } });
+  }
+
+  const claimMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/claim$/);
+
+  if (request.method === "POST" && claimMatch) {
+    const job = jobById(jobs, claimMatch[1]);
+
+    if (!job) {
+      await readBody(request);
+      return json(response, 404, { error: "job not found" });
+    }
+
     observed.claims += 1;
     job.status = "running";
+    rememberRunningJobs(observed, jobs);
     return json(response, 200, { data: job });
   }
 
-  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/heartbeat`) {
+  const heartbeatMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/heartbeat$/);
+
+  if (request.method === "POST" && heartbeatMatch) {
+    const job = jobById(jobs, heartbeatMatch[1]);
+
+    if (!job) {
+      await readBody(request);
+      return json(response, 404, { error: "job not found" });
+    }
+
     observed.heartbeats += 1;
     return json(response, 200, { data: job });
   }
 
-  if (request.method === "GET" && url.pathname === `/api/v1/recording-jobs/${job.id}`) {
+  const readMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)$/);
+
+  if (request.method === "GET" && readMatch) {
+    const job = jobById(jobs, readMatch[1]);
+
+    if (!job) {
+      return json(response, 404, { error: "job not found" });
+    }
+
     observed.jobStatusReads += 1;
     if (scenario.controllerStopRequested) {
       job.status = "stop_requested";
@@ -315,7 +518,16 @@ async function handleControllerRequest(request, response) {
     return json(response, 200, { data: job });
   }
 
-  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/cancelled`) {
+  const cancelledMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/cancelled$/);
+
+  if (request.method === "POST" && cancelledMatch) {
+    const job = jobById(jobs, cancelledMatch[1]);
+
+    if (!job) {
+      await readBody(request);
+      return json(response, 404, { error: "job not found" });
+    }
+
     observed.cancellations += 1;
     observed.cancelReason = request.headers["x-rakkr-reason"];
     job.failureReason = observed.cancelReason;
@@ -323,7 +535,16 @@ async function handleControllerRequest(request, response) {
     return json(response, 200, { data: job });
   }
 
-  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/failed`) {
+  const failedMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/failed$/);
+
+  if (request.method === "POST" && failedMatch) {
+    const job = jobById(jobs, failedMatch[1]);
+
+    if (!job) {
+      await readBody(request);
+      return json(response, 404, { error: "job not found" });
+    }
+
     observed.failures += 1;
     observed.failureReason = request.headers["x-rakkr-reason"];
     job.failureReason = observed.failureReason;
@@ -337,10 +558,19 @@ async function handleControllerRequest(request, response) {
     return json(response, 201, { data: { id: `health_${observed.healthEvents.length}` } });
   }
 
-  if (request.method === "PUT" && url.pathname === `/api/v1/recordings/${job.recordingId}/cache-file`) {
+  const cacheMatch = url.pathname.match(/^\/api\/v1\/recordings\/([^/]+)\/cache-file$/);
+
+  if (request.method === "PUT" && cacheMatch) {
+    const job = jobByRecordingId(jobs, cacheMatch[1]);
+
+    if (!job) {
+      await readBody(request);
+      return json(response, 404, { error: "recording job not found" });
+    }
+
     const body = await readBody(request);
 
-    observed.cacheUpload = {
+    const upload = {
       contentType: request.headers["content-type"],
       durationSeconds: request.headers["x-rakkr-duration-seconds"],
       fileName: request.headers["x-rakkr-file-name"],
@@ -348,6 +578,8 @@ async function handleControllerRequest(request, response) {
       recordingId: job.recordingId,
       size: body.byteLength,
     };
+    observed.cacheUpload = upload;
+    observed.cacheUploads.push(upload);
 
     if (scenario.cacheUploadFails) {
       return json(response, 503, { error: "simulated cache upload failure" });
@@ -360,6 +592,25 @@ async function handleControllerRequest(request, response) {
 
   await readBody(request);
   return json(response, 404, { error: `unexpected route ${request.method} ${url.pathname}` });
+}
+
+function nextQueuedJob(jobs) {
+  return jobs.find((job) => job.status === "queued");
+}
+
+function jobById(jobs, jobId) {
+  return jobs.find((job) => job.id === jobId);
+}
+
+function jobByRecordingId(jobs, recordingId) {
+  return jobs.find((job) => job.recordingId === recordingId);
+}
+
+function rememberRunningJobs(observed, jobs) {
+  observed.maxRunningJobs = Math.max(
+    observed.maxRunningJobs,
+    jobs.filter((job) => job.status === "running").length,
+  );
 }
 
 function listen(server) {
@@ -469,6 +720,45 @@ writeFileSync(outputPath, payload);
   return renderScript;
 }
 
+function spawnAgent(agentArgs) {
+  const child = spawn(
+    "cargo",
+    [
+      "run",
+      "--quiet",
+      "--manifest-path",
+      path.join(repoRoot, "Cargo.toml"),
+      "-p",
+      "rakkr-recorder-agent",
+      "--",
+      ...agentArgs,
+    ],
+    {
+      cwd: smokeRoot,
+      env: { ...process.env, CARGO_TERM_COLOR: "never" },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+  let stderr = "";
+  let stdout = "";
+  const closed = new Promise((resolve, reject) => {
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code: code ?? -1, stderr, stdout }));
+  });
+
+  return {
+    closed,
+    kill: () => child.kill(),
+  };
+}
+
 function run(command, args) {
   const timeoutMs = Number(process.env.RAKKR_AGENT_FAKE_CONTROLLER_TIMEOUT_MS ?? 120000);
 
@@ -508,6 +798,20 @@ function run(command, args) {
   });
 }
 
+async function waitFor(predicate, timeoutMs, describe) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`Timed out waiting for condition: ${describe()}`);
+}
+
 async function readBody(request) {
   const chunks = [];
 
@@ -521,6 +825,11 @@ async function readBody(request) {
 function json(response, status, payload) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(payload));
+}
+
+function empty(response) {
+  response.writeHead(204);
+  response.end();
 }
 
 function invariant(condition, message) {

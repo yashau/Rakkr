@@ -784,6 +784,7 @@ mod tests {
             meter_clip_dbfs: -1.0,
             meter_flatline_dbfs: -120.0,
             meter_sample_seconds: 1,
+            max_concurrent_recordings: 1,
             node_id: "node_1".to_string(),
             print_channel_map_assignments: false,
             print_inventory: false,

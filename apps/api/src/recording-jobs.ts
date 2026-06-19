@@ -114,6 +114,27 @@ export async function claimRecordingJob(jobId: string, claimedBy?: string) {
   return job;
 }
 
+export async function claimNextRecordingJob(nodeId: string, claimedBy?: string) {
+  const jobs = await expireRecordingJobLeases();
+  const queuedJobs = jobs
+    .filter((job) => job.nodeId === nodeId && job.status === "queued")
+    .sort((left, right) => {
+      const createdOrder = left.createdAt.localeCompare(right.createdAt);
+
+      return createdOrder || trackOrder(left.command, right.command);
+    });
+
+  for (const job of queuedJobs) {
+    const claimed = await claimRecordingJob(job.id, claimedBy);
+
+    if (claimed) {
+      return claimed;
+    }
+  }
+
+  return undefined;
+}
+
 export async function stopRecordingJob(recordingId: string) {
   const jobs = await expireRecordingJobLeases();
   const job = jobs.find(

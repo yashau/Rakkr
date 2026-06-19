@@ -20,6 +20,7 @@ import type { MeterFrameStore } from "./meter-store.js";
 import { NodeStoreError, type NodeCredentialAuth, type NodeStore } from "./node-store.js";
 import {
   cancelRecordingJob,
+  claimNextRecordingJob,
   claimRecordingJob,
   completeRecordingJob,
   failRecordingJob,
@@ -380,6 +381,48 @@ export function registerAgentRoutes({
     const job = await nextRecordingJob(nodeId);
 
     return job ? c.json({ data: job }) : c.body(null, 204);
+  });
+
+  app.post("/api/v1/nodes/:nodeId/recording-jobs/claim-next", async (c) => {
+    const nodeId = c.req.param("nodeId");
+    const auth = await authenticateNode(c, "recording_jobs.claim_next", {
+      id: nodeId,
+      type: "node",
+    });
+
+    if (auth.response) {
+      return auth.response;
+    }
+
+    if (auth.credential.nodeId !== nodeId) {
+      await recordNodeCredentialFailure(
+        c,
+        "recording_jobs.claim_next.failed",
+        "node_scope_denied",
+        {
+          actor: auth.credential,
+          target: { id: nodeId, type: "node" },
+        },
+      );
+      return c.json({ error: "Node credential cannot access this node" }, 403);
+    }
+
+    const job = await claimNextRecordingJob(nodeId, auth.credential.nodeId);
+
+    if (!job) {
+      return c.body(null, 204);
+    }
+
+    const recording = await recordingStore.find(job.recordingId);
+
+    if (recording) {
+      recording.status = "recording";
+      await recordingStore.save(recording);
+    }
+
+    await recordJobSuccess(c, "recording_jobs.claim_next.succeeded", auth.credential, job);
+
+    return c.json({ data: job });
   });
 
   app.post("/api/v1/recording-jobs/:jobId/claim", async (c) => {

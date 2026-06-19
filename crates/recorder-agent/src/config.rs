@@ -133,6 +133,9 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_RUN_NEXT_JOB", default_value_t = false)]
     pub run_next_job: bool,
 
+    #[arg(long, env = "RAKKR_MAX_CONCURRENT_RECORDINGS", default_value_t = 1)]
+    pub max_concurrent_recordings: usize,
+
     #[arg(
         long,
         env = "RAKKR_AGENT_STATE_FILE",

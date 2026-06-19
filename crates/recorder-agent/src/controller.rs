@@ -187,11 +187,10 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         .controller_token
         .as_deref()
         .context("missing --controller-token or RAKKR_CONTROLLER_TOKEN")?;
-    let Some(job) = fetch_next_recording_job(config, token).await? else {
+    let Some(job) = claim_next_recording_job(config, token).await? else {
         info!(node_id = %config.node_id, "no queued recording job for node");
         return Ok(());
     };
-    let job = claim_recording_job(config, token, &job.id).await?;
     write_job_state(config, &job, "running", None, None)?;
     info!(
         job_id = %job.id,
@@ -720,21 +719,22 @@ async fn append_job_health_event(
     Ok(())
 }
 
-async fn fetch_next_recording_job(
+async fn claim_next_recording_job(
     config: &AgentConfig,
     token: &str,
 ) -> anyhow::Result<Option<ControllerRecordingJob>> {
     let url = format!(
-        "{}/api/v1/nodes/{}/recording-jobs/next",
+        "{}/api/v1/nodes/{}/recording-jobs/claim-next",
         config.controller_url.trim_end_matches('/'),
         config.node_id
     );
     let response = reqwest::Client::new()
-        .get(&url)
+        .post(&url)
         .bearer_auth(token)
+        .header(AGENT_ID_HEADER, config.node_id.as_str())
         .send()
         .await
-        .context("fetch next recording job")?;
+        .context("claim next recording job")?;
     let status = response.status();
 
     if status.as_u16() == 204 {
@@ -744,48 +744,15 @@ async fn fetch_next_recording_job(
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
 
-        anyhow::bail!("controller rejected next job request with {status}: {body}");
+        anyhow::bail!("controller rejected next job claim with {status}: {body}");
     }
 
     let envelope = response
         .json::<DataEnvelope<ControllerRecordingJob>>()
         .await
-        .context("decode next recording job")?;
+        .context("decode claimed next recording job")?;
 
     Ok(Some(envelope.data))
-}
-
-async fn claim_recording_job(
-    config: &AgentConfig,
-    token: &str,
-    job_id: &str,
-) -> anyhow::Result<ControllerRecordingJob> {
-    let url = format!(
-        "{}/api/v1/recording-jobs/{}/claim",
-        config.controller_url.trim_end_matches('/'),
-        job_id
-    );
-    let response = reqwest::Client::new()
-        .post(&url)
-        .bearer_auth(token)
-        .header(AGENT_ID_HEADER, config.node_id.as_str())
-        .send()
-        .await
-        .context("claim recording job")?;
-    let status = response.status();
-
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-
-        anyhow::bail!("controller rejected job claim with {status}: {body}");
-    }
-
-    let envelope = response
-        .json::<DataEnvelope<ControllerRecordingJob>>()
-        .await
-        .context("decode claimed recording job")?;
-
-    Ok(envelope.data)
 }
 
 async fn heartbeat_recording_job(

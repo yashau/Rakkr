@@ -15,6 +15,7 @@ use clap::Parser;
 use config::{AgentConfig, MeterBackend};
 use serde_json::{Value, json};
 use telemetry::{MeterCaptureConfig, MeterFrame, alsa_meter_frame, synthetic_meter_frame};
+use tokio::task::JoinSet;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -113,6 +114,7 @@ async fn main() -> anyhow::Result<()> {
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
     let mut meter_sync_failed = false;
+    let mut recording_jobs = JoinSet::new();
     let mut system_health_state = system_health::SystemHealthState::default();
     let token = config.controller_token.as_deref();
     let meter_context = MeterLoopContext {
@@ -226,11 +228,56 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+
+                reap_recording_job_workers(&mut recording_jobs);
+                spawn_recording_job_workers(&config, &mut recording_jobs);
             }
         }
     }
 
+    if !recording_jobs.is_empty() {
+        warn!(
+            active_recording_jobs = recording_jobs.len(),
+            "waiting for active recording jobs before shutdown"
+        );
+        drain_recording_job_workers(&mut recording_jobs).await;
+    }
+
     Ok(())
+}
+
+fn reap_recording_job_workers(jobs: &mut JoinSet<anyhow::Result<()>>) {
+    while let Some(result) = jobs.try_join_next() {
+        log_recording_job_result(result);
+    }
+}
+
+fn spawn_recording_job_workers(config: &AgentConfig, jobs: &mut JoinSet<anyhow::Result<()>>) {
+    if config.controller_token.is_none() {
+        return;
+    }
+
+    let limit = config.max_concurrent_recordings.max(1);
+
+    while jobs.len() < limit {
+        let worker_config = config.clone();
+
+        jobs.spawn(async move { controller::run_next_recording_job(&worker_config).await });
+    }
+}
+
+async fn drain_recording_job_workers(jobs: &mut JoinSet<anyhow::Result<()>>) {
+    while let Some(result) = jobs.join_next().await {
+        log_recording_job_result(result);
+    }
+}
+
+fn log_recording_job_result(result: Result<anyhow::Result<()>, tokio::task::JoinError>) {
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => warn!(error = %error, "recording job worker failed"),
+        Err(error) => warn!(error = %error, "recording job worker task failed"),
+    }
 }
 
 fn meter_target(config: &AgentConfig, inventory: &inventory::NodeInventory) -> (String, u16) {

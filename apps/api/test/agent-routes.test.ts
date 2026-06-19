@@ -423,6 +423,109 @@ test("ad hoc recording completes through agent cache attach and exposes cached m
   assert.equal(autoQueueAudit?.details.uploadPolicyId, policy.id);
 });
 
+test("claim-next lets one node claim multiple queued recordings independently", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const lifecycleNode = {
+    ...node(),
+    alias: "Concurrent Lifecycle Recorder",
+    id: `node_concurrent_lifecycle_${randomUUID()}`,
+  };
+  const nodeStore = memoryNodeStore([lifecycleNode]);
+  const recordingStore = memoryRecordingStore();
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => auth(),
+    currentUser: () => user(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission(),
+    scopedRecordings: () => recordingStore.list(),
+    settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
+  });
+  registerAgentRoutes({
+    app,
+    healthEventStore,
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
+  });
+
+  const firstStarted = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      name: "Concurrent Recording A",
+      nodeId: lifecycleNode.id,
+      tags: ["voice", "concurrent"],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const secondStarted = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      name: "Concurrent Recording B",
+      nodeId: lifecycleNode.id,
+      tags: ["voice", "concurrent"],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const firstStartedBody = (await firstStarted.json()) as {
+    data: RecordingSummary;
+    job: RecordingJob;
+  };
+  const secondStartedBody = (await secondStarted.json()) as {
+    data: RecordingSummary;
+    job: RecordingJob;
+  };
+  const firstClaim = await app.request(
+    `/api/v1/nodes/${lifecycleNode.id}/recording-jobs/claim-next`,
+    {
+      headers: { authorization: "Bearer node-token" },
+      method: "POST",
+    },
+  );
+  const secondClaim = await app.request(
+    `/api/v1/nodes/${lifecycleNode.id}/recording-jobs/claim-next`,
+    {
+      headers: { authorization: "Bearer node-token" },
+      method: "POST",
+    },
+  );
+  const emptyClaim = await app.request(
+    `/api/v1/nodes/${lifecycleNode.id}/recording-jobs/claim-next`,
+    {
+      headers: { authorization: "Bearer node-token" },
+      method: "POST",
+    },
+  );
+  const firstClaimBody = (await firstClaim.json()) as { data: RecordingJob };
+  const secondClaimBody = (await secondClaim.json()) as { data: RecordingJob };
+  const claimedJobIds = new Set([firstClaimBody.data.id, secondClaimBody.data.id]);
+  const expectedJobIds = new Set([firstStartedBody.job.id, secondStartedBody.job.id]);
+  const firstRecording = await recordingStore.find(firstStartedBody.data.id);
+  const secondRecording = await recordingStore.find(secondStartedBody.data.id);
+  const claimAudits = await auditStore.list({
+    action: "recording_jobs.claim_next.succeeded",
+  });
+
+  assert.equal(firstStarted.status, 202);
+  assert.equal(secondStarted.status, 202);
+  assert.equal(firstClaim.status, 200);
+  assert.equal(secondClaim.status, 200);
+  assert.equal(emptyClaim.status, 204);
+  assert.deepEqual(claimedJobIds, expectedJobIds);
+  assert.equal(firstClaimBody.data.status, "running");
+  assert.equal(secondClaimBody.data.status, "running");
+  assert.equal(firstRecording?.status, "recording");
+  assert.equal(secondRecording?.status, "recording");
+  assert.equal(claimAudits.length, 2);
+});
+
 test("controller stop request survives agent cancellation as completed recording", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");

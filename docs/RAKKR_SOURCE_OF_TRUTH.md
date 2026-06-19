@@ -62,7 +62,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | 🟨 | Auth, RBAC, audit, nodes, recordings, jobs, lifecycle coverage, schedules, settings, metrics |
 | Controller UI | 🟨 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
-| Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, channel correlation, health log |
+| Recorder agent | 🟨 | Inventory, meters, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory plus Linux loopback tasks; Linux/hardware validation remains |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
@@ -457,8 +457,8 @@ Current implementation baseline:
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
 - Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
-- `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, local health log output, rendered MP3/VBR, cache-upload failure handling, and controller stop requests without audio hardware.
-- Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
+- `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, bounded concurrent jobs, local health log output, rendered MP3/VBR, cache-upload failure handling, and controller stop requests without audio hardware.
+- Agent job claim-next, bounded concurrency, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
 
@@ -718,6 +718,7 @@ Current partial implementation:
 148. ✅ Add policy-tuned scheduled channel correlation watchdog alerts.
 149. ✅ Add synthetic PCM calibration fixtures for local quality scoring.
 150. ✅ Add checked generic-device partial baseline.
+151. ✅ Add bounded simultaneous recording jobs in the recorder agent.
 
 ## Open Questions
 
