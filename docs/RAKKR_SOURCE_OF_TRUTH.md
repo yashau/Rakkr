@@ -422,7 +422,7 @@ Current partial implementation:
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
 - Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
-- `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling and rendered MP3/VBR `--run-next-job` without audio hardware.
+- `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, local health log output, and rendered MP3/VBR `--run-next-job` without audio hardware.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
@@ -477,6 +477,10 @@ Important metric names:
 - `rakkr_upload_queue_depth`
 - `rakkr_upload_failures_total`
 - `rakkr_device_xruns_total`
+
+Current partial implementation:
+
+- Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata.
 
 ## Date And Time Rules
 
@@ -608,6 +612,7 @@ Current partial implementation:
 93. ✅ Add upload runner read route missing-permission coverage.
 94. ✅ Add agent service-route missing credential audit coverage.
 95. ✅ Add fake-controller job heartbeat/status smoke coverage.
+96. ✅ Add fake-controller local health-log smoke coverage.
 
 ## Open Questions
 

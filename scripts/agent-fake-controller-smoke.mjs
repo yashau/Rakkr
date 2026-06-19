@@ -96,6 +96,11 @@ try {
   }
 
   const state = JSON.parse(await readFile(stateFile, "utf8"));
+  const healthLogEvents = (await readFile(healthLogFile, "utf8"))
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const renderedLocalEvent = healthLogEvents.find((event) => event.type === "agent.recording_job.output_rendered");
 
   invariant(observed.nextReads === 1, "agent did not read the next queued job");
   invariant(observed.claims === 1, "agent did not claim the queued job");
@@ -115,6 +120,12 @@ try {
     observed.healthEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
     "agent did not report rendered output",
   );
+  invariant(renderedLocalEvent, "agent local health log did not include rendered output");
+  invariant(renderedLocalEvent.severity === "info", "rendered local health event did not record info severity");
+  invariant(renderedLocalEvent.recordingId === recordingId, "rendered local health event recorded the wrong recording");
+  invariant(renderedLocalEvent.details?.jobId === jobId, "rendered local health event recorded the wrong job");
+  invariant(renderedLocalEvent.details?.outputCodec === "mp3", "rendered local health event did not record MP3 output");
+  invariant(renderedLocalEvent.details?.outputVbr === true, "rendered local health event did not record VBR output");
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
   invariant(state.jobId === jobId, "agent state file recorded the wrong job id");
