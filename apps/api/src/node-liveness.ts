@@ -11,19 +11,7 @@ export function deriveNodeStatus(
   now = new Date(),
   offlineAfterSeconds = nodeOfflineAfterSeconds(),
 ): NodeStatus {
-  if (offlineAfterSeconds <= 0) {
-    return node.status;
-  }
-
-  const lastSeenMs = Date.parse(node.lastSeenAt);
-
-  if (!Number.isFinite(lastSeenMs)) {
-    return node.status;
-  }
-
-  const staleMs = offlineAfterSeconds * 1_000;
-
-  return now.getTime() - lastSeenMs > staleMs ? "offline" : node.status;
+  return nodeHeartbeatStale(node, now, offlineAfterSeconds) ? "offline" : node.status;
 }
 
 export function nodeWithDerivedLiveness(
@@ -48,4 +36,24 @@ function nonnegativeInteger(value: string | undefined, fallback: number) {
   }
 
   return Math.floor(parsed);
+}
+
+export function nodeHeartbeatAgeSeconds(node: RecorderNode, now = new Date()) {
+  const lastSeenMs = Date.parse(node.lastSeenAt);
+
+  if (!Number.isFinite(lastSeenMs)) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.floor((now.getTime() - lastSeenMs) / 1_000));
+}
+
+export function nodeHeartbeatStale(
+  node: RecorderNode,
+  now = new Date(),
+  offlineAfterSeconds = nodeOfflineAfterSeconds(),
+) {
+  const ageSeconds = nodeHeartbeatAgeSeconds(node, now);
+
+  return ageSeconds !== undefined && offlineAfterSeconds > 0 && ageSeconds > offlineAfterSeconds;
 }

@@ -49,6 +49,7 @@ export function createApiRunners({
       auditStore,
       healthEventStore,
       meterFrameProvider: (nodeId) => watchdogMeterFrame(meterFrameStore, nodeId),
+      nodeStore,
       recordingStore,
     }),
   };

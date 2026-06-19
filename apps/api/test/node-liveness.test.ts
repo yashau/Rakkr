@@ -4,6 +4,8 @@ import type { RecorderNode } from "@rakkr/shared";
 
 import {
   deriveNodeStatus,
+  nodeHeartbeatAgeSeconds,
+  nodeHeartbeatStale,
   nodeOfflineAfterSeconds,
   nodeWithDerivedLiveness,
 } from "../src/node-liveness.js";
@@ -46,6 +48,14 @@ test("derived liveness returns a copied node when status changes", () => {
 test("offline threshold comes from environment with safe fallback", () => {
   assert.equal(nodeOfflineAfterSeconds({ RAKKR_NODE_OFFLINE_AFTER_SECONDS: "45" }), 45);
   assert.equal(nodeOfflineAfterSeconds({ RAKKR_NODE_OFFLINE_AFTER_SECONDS: "-1" }), 120);
+});
+
+test("heartbeat age and stale checks use the same threshold semantics", () => {
+  const stale = node({ status: "online" });
+
+  assert.equal(nodeHeartbeatAgeSeconds(stale, new Date("2026-06-18T12:02:01.000Z")), 121);
+  assert.equal(nodeHeartbeatStale(stale, new Date("2026-06-18T12:02:01.000Z"), 120), true);
+  assert.equal(nodeHeartbeatStale(stale, new Date("2026-06-18T12:02:00.000Z"), 120), false);
 });
 
 function node(input: Pick<RecorderNode, "status">): RecorderNode {

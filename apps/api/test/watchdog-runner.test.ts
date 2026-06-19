@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { MeterFrame, RecordingSummary, WatchdogPolicy } from "@rakkr/shared";
+import type { MeterFrame, RecorderNode, RecordingSummary, WatchdogPolicy } from "@rakkr/shared";
 
 import { createAuditStore } from "../src/audit-store.js";
 import { createHealthEventStore } from "../src/health-store.js";
+import type { NodeStore } from "../src/node-store.js";
 import type { RecordingStore } from "../src/recording-store.js";
-import { createWatchdogRunner } from "../src/watchdog-runner.js";
+import { createWatchdogRunner, nodeOfflineEventType } from "../src/watchdog-runner.js";
 
 test("keeps signal-only watchdog policies compatible with loud non-speech audio", async () => {
   const runner = runnerFor({
@@ -37,6 +38,39 @@ test("alerts when scheduled audio is loud but not speech-like", async () => {
   assert.equal(event?.details.speechBelowThreshold, true);
   assert.equal(event?.details.maxSpeechScore, 0.2);
   assert.equal(event?.details.maxNoiseScore, 0.91);
+});
+
+test("creates and resolves stale node heartbeat health events", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const nodes = [node({ lastSeenAt: "2026-06-18T12:00:00.000Z", status: "online" })];
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    nodeStore: memoryNodeStore(nodes),
+    recordingStore: memoryRecordingStore([]),
+  });
+
+  const [created] = await runner.runOnce(new Date("2026-06-18T12:03:00.000Z"));
+  const [openEvent] = await healthEventStore.list({ nodeId: "node_quality" });
+
+  assert.equal(created?.outcome, "alert_created");
+  assert.equal(openEvent?.type, nodeOfflineEventType);
+  assert.equal(openEvent?.details.offlineForSeconds, 180);
+
+  nodes[0] = node({ lastSeenAt: "2026-06-18T12:03:10.000Z", status: "online" });
+
+  const [resolved] = await runner.runOnce(new Date("2026-06-18T12:03:11.000Z"));
+  const [resolvedEvent] = await healthEventStore.list({ nodeId: "node_quality" });
+  const createdAudits = await auditStore.list({ action: "health.watchdog.node_offline.created" });
+  const resolvedAudits = await auditStore.list({
+    action: "health.watchdog.node_offline.resolved",
+  });
+
+  assert.equal(resolved?.outcome, "alert_resolved");
+  assert.equal(resolvedEvent?.status, "resolved");
+  assert.equal(createdAudits.length, 1);
+  assert.equal(resolvedAudits.length, 1);
 });
 
 function runnerFor({
@@ -112,6 +146,32 @@ function recording(): RecordingSummary {
     status: "recording",
     tags: ["quality"],
     watchdogPolicyId: "speech-required-watchdog",
+  };
+}
+
+function node(input: Pick<RecorderNode, "lastSeenAt" | "status">): RecorderNode {
+  return {
+    agentVersion: "0.1.0",
+    alias: "Council Chamber",
+    hostname: "rakkr-node",
+    id: "node_quality",
+    interfaces: [],
+    ipAddresses: ["172.22.145.152"],
+    lastSeenAt: input.lastSeenAt,
+    location: {
+      room: "Council Chamber",
+      site: "Main Office",
+    },
+    status: input.status,
+    tags: ["voice"],
+  };
+}
+
+function memoryNodeStore(nodes: RecorderNode[]): Pick<NodeStore, "list"> {
+  return {
+    async list() {
+      return nodes;
+    },
   };
 }
 

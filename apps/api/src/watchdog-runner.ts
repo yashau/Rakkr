@@ -4,6 +4,7 @@ import {
   type AuditEvent,
   type HealthEvent,
   type MeterFrame,
+  type RecorderNode,
   type RecordingSummary,
   type WatchdogPolicy,
 } from "@rakkr/shared";
@@ -11,10 +12,17 @@ import {
 import type { AuditStore } from "./audit-store.js";
 import { buildMeterFrame } from "./demo-data.js";
 import type { HealthEventStore } from "./health-store.js";
+import {
+  nodeHeartbeatAgeSeconds,
+  nodeHeartbeatStale,
+  nodeOfflineAfterSeconds,
+} from "./node-liveness.js";
+import type { NodeStore } from "./node-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { RecordingStore } from "./recording-store.js";
 
 export const scheduledLowSignalEventType = "watchdog.scheduled_low_signal";
+export const nodeOfflineEventType = "watchdog.node_offline";
 
 export type MeterFrameProvider = (
   nodeId: string,
@@ -25,6 +33,7 @@ export interface WatchdogRunnerDependencies {
   auditStore: AuditStore;
   healthEventStore: HealthEventStore;
   meterFrameProvider?: MeterFrameProvider;
+  nodeStore?: Pick<NodeStore, "list">;
   policies?: WatchdogPolicy[];
   recordingStore: RecordingStore;
 }
@@ -32,6 +41,7 @@ export interface WatchdogRunnerDependencies {
 export interface WatchdogRunResult {
   eventId?: string;
   maxMetricDbfs?: number;
+  nodeId?: string;
   outcome:
     | "alert_created"
     | "alert_repeated"
@@ -41,7 +51,7 @@ export interface WatchdogRunResult {
     | "pending"
     | "skipped";
   reason?: string;
-  recordingId: string;
+  recordingId?: string;
   scheduleId?: string;
 }
 
@@ -130,6 +140,7 @@ async function runWatchdogPass(
     auditStore,
     healthEventStore,
     meterFrameProvider = defaultMeterFrameProvider,
+    nodeStore,
     policies = [defaultScheduledVoiceWatchdogPolicy],
     recordingStore,
   }: WatchdogRunnerDependencies,
@@ -206,7 +217,168 @@ async function runWatchdogPass(
 
   pruneInactiveHistories(histories, activeRecordingIds);
 
+  if (nodeStore) {
+    results.push(
+      ...(await reconcileNodeLivenessEvents({
+        auditStore,
+        healthEventStore,
+        nodes: await nodeStore.list(),
+        now,
+      })),
+    );
+  }
+
   return results;
+}
+
+async function reconcileNodeLivenessEvents({
+  auditStore,
+  healthEventStore,
+  nodes,
+  now,
+}: {
+  auditStore: AuditStore;
+  healthEventStore: HealthEventStore;
+  nodes: RecorderNode[];
+  now: Date;
+}): Promise<WatchdogRunResult[]> {
+  const results: WatchdogRunResult[] = [];
+
+  for (const node of nodes) {
+    const existing = await activeNodeOfflineEvent(healthEventStore, node.id);
+
+    if (nodeHeartbeatStale(node, now)) {
+      results.push(
+        await writeNodeOfflineEvent({
+          auditStore,
+          existing,
+          healthEventStore,
+          node,
+          now,
+        }),
+      );
+      continue;
+    }
+
+    if (existing) {
+      results.push(
+        await resolveNodeOfflineEvent({
+          auditStore,
+          existing,
+          healthEventStore,
+          node,
+          now,
+        }),
+      );
+    }
+  }
+
+  return results;
+}
+
+async function writeNodeOfflineEvent({
+  auditStore,
+  existing,
+  healthEventStore,
+  node,
+  now,
+}: {
+  auditStore: AuditStore;
+  existing?: HealthEvent;
+  healthEventStore: HealthEventStore;
+  node: RecorderNode;
+  now: Date;
+}): Promise<WatchdogRunResult> {
+  const details = nodeOfflineDetails(node, now, existing);
+
+  if (!existing) {
+    const event = await healthEventStore.create({
+      details,
+      nodeId: node.id,
+      severity: "critical",
+      type: nodeOfflineEventType,
+    });
+
+    await appendNodeWatchdogAudit(auditStore, {
+      action: "health.watchdog.node_offline.created",
+      after: healthEventSnapshot(event),
+      event,
+      node,
+      now,
+      outcome: "succeeded",
+    });
+
+    return {
+      eventId: event.id,
+      nodeId: node.id,
+      outcome: "alert_created",
+      reason: "node_heartbeat_stale",
+    };
+  }
+
+  const event = await healthEventStore.update(existing.id, {
+    details,
+    severity: "critical",
+    status: existing.status,
+  });
+
+  return {
+    eventId: event?.id ?? existing.id,
+    nodeId: node.id,
+    outcome: event ? "alert_updated" : "skipped",
+    reason: event ? "node_heartbeat_stale" : "health_event_missing_during_update",
+  };
+}
+
+async function resolveNodeOfflineEvent({
+  auditStore,
+  existing,
+  healthEventStore,
+  node,
+  now,
+}: {
+  auditStore: AuditStore;
+  existing: HealthEvent;
+  healthEventStore: HealthEventStore;
+  node: RecorderNode;
+  now: Date;
+}): Promise<WatchdogRunResult> {
+  const resolved = await healthEventStore.updateLifecycle(existing.id, {
+    details: {
+      ...existing.details,
+      autoResolvedAt: now.toISOString(),
+      autoResolvedReason: "node_heartbeat_recovered",
+      lastSeenAt: node.lastSeenAt,
+    },
+    resolvedAt: now,
+    resolvedBy: "system:watchdog",
+    status: "resolved",
+  });
+
+  if (!resolved) {
+    return {
+      nodeId: node.id,
+      outcome: "skipped",
+      reason: "health_event_missing_during_resolve",
+    };
+  }
+
+  await appendNodeWatchdogAudit(auditStore, {
+    action: "health.watchdog.node_offline.resolved",
+    after: healthEventSnapshot(resolved),
+    before: healthEventSnapshot(existing),
+    event: resolved,
+    node,
+    now,
+    outcome: "succeeded",
+  });
+
+  return {
+    eventId: resolved.id,
+    nodeId: node.id,
+    outcome: "alert_resolved",
+    reason: "node_heartbeat_recovered",
+  };
 }
 
 async function writeLowSignalEvent({
@@ -374,6 +546,33 @@ async function activeLowSignalEvent(healthEventStore: HealthEventStore, recordin
   return events.find(
     (event) => event.type === scheduledLowSignalEventType && event.status !== "resolved",
   );
+}
+
+async function activeNodeOfflineEvent(healthEventStore: HealthEventStore, nodeId: string) {
+  const events = await healthEventStore.list({ limit: 500, nodeId });
+
+  return events.find((event) => event.type === nodeOfflineEventType && event.status !== "resolved");
+}
+
+function nodeOfflineDetails(node: RecorderNode, now: Date, existing?: HealthEvent) {
+  const existingDetails = record(existing?.details) ?? {};
+  const firstObservedAt =
+    stringDetail(existingDetails.firstObservedAt) ?? existing?.openedAt ?? now.toISOString();
+
+  return {
+    ...existingDetails,
+    alias: node.alias,
+    firstObservedAt,
+    hostname: node.hostname,
+    ipAddresses: node.ipAddresses,
+    lastObservedAt: now.toISOString(),
+    lastSeenAt: node.lastSeenAt,
+    location: node.location,
+    offlineAfterSeconds: nodeOfflineAfterSeconds(),
+    offlineForSeconds: nodeHeartbeatAgeSeconds(node, now),
+    reportedStatus: node.status,
+    tags: node.tags,
+  };
 }
 
 function lowSignalDetails(
@@ -649,6 +848,49 @@ async function appendWatchdogAudit(
       nodeId: input.recording.nodeId,
       recordingId: input.recording.id,
       scheduleId: input.recording.scheduleId,
+    },
+    id: `audit_${randomUUID()}`,
+    outcome: input.outcome,
+    permission: "health:acknowledge",
+    target: {
+      id: input.event.id,
+      name: input.event.type,
+      type: "health_event",
+    },
+  });
+}
+
+async function appendNodeWatchdogAudit(
+  auditStore: AuditStore,
+  input: {
+    action: string;
+    after?: Record<string, unknown>;
+    before?: Record<string, unknown>;
+    event: HealthEvent;
+    node: RecorderNode;
+    now: Date;
+    outcome: AuditEvent["outcome"];
+  },
+) {
+  await auditStore.append({
+    action: input.action,
+    actor: {
+      id: "system:watchdog",
+      name: "Rakkr Watchdog",
+      roles: [],
+      type: "system",
+    },
+    actorContext: {},
+    after: input.after,
+    before: input.before,
+    correlationIds: {
+      healthEventId: input.event.id,
+      nodeId: input.node.id,
+    },
+    createdAt: input.now.toISOString(),
+    details: {
+      lastSeenAt: input.node.lastSeenAt,
+      nodeId: input.node.id,
     },
     id: `audit_${randomUUID()}`,
     outcome: input.outcome,
