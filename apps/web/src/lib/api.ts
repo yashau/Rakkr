@@ -549,6 +549,10 @@ export const api = {
   recordings: (filters: RecordingFilters = {}) =>
     fetchJson<RecordingListResponse>(withQuery("/api/v1/recordings", filters)),
   recordingFacets: () => fetchJson<{ data: RecordingFacets }>("/api/v1/recordings/facets"),
+  deleteRecording: (recordingId: string) =>
+    fetchJson<void>(`/api/v1/recordings/${recordingId}`, {
+      method: "DELETE",
+    }),
   uploadQueue: () => fetchJson<{ data: UploadQueueItem[] }>("/api/v1/upload-queue"),
   uploadRunner: () => fetchJson<{ data: UploadRunnerStatus }>("/api/v1/upload-runner"),
   runUploadRunner: () =>

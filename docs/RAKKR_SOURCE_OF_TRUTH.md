@@ -392,6 +392,7 @@ Current partial implementation:
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
 - Recording library API deletes terminal recordings and cached files with audit snapshots.
+- Recording library UI exposes RBAC-mirrored delete controls for terminal recordings.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
@@ -547,6 +548,7 @@ Current partial implementation:
 57. ✅ Add RBAC-gated bulk recording folder/tag organization API.
 58. ✅ Add bulk recording organization UI for visible library results.
 59. ✅ Add RBAC-gated recording delete API with cache cleanup and active-recording guard.
+60. ✅ Add recording delete UI controls for permitted terminal recordings.
 
 ## Open Questions
 

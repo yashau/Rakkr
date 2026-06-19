@@ -287,6 +287,28 @@ export function RecordingsPage() {
       });
     },
   });
+  const deleteRecordingMutation = useMutation({
+    mutationFn: api.deleteRecording,
+    onError: () =>
+      setNotice({
+        detail: "The selected recording could not be deleted.",
+        title: "Delete failed",
+      }),
+    onSuccess: (_response, recordingId) => {
+      queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-facets"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      setSelectedRecordingIds((current) =>
+        current.filter((candidate) => candidate !== recordingId),
+      );
+      setNotice({
+        detail: "The recording metadata and cached file were removed.",
+        title: "Recording deleted",
+      });
+    },
+  });
   const enqueueUploadMutation = useMutation({
     mutationFn: (input: { recordingId: string; uploadPolicyId?: string }) =>
       api.enqueueRecordingUpload(input.recordingId, { uploadPolicyId: input.uploadPolicyId }),
@@ -322,6 +344,7 @@ export function RecordingsPage() {
   const currentUserPermissions = currentUserQuery.data?.data.permissions ?? [];
   const canControlRecordings = currentUserPermissions.includes("recording:control");
   const canCreateRecordings = currentUserPermissions.includes("recording:create");
+  const canDeleteRecordings = currentUserPermissions.includes("recording:delete");
   const canDownloadRecordings = currentUserPermissions.includes("recording:download");
   const canEditRecordings = currentUserPermissions.includes("recording:edit");
   const canPlaybackRecordings = currentUserPermissions.includes("recording:playback");
@@ -801,7 +824,9 @@ export function RecordingsPage() {
         return (
           <RecordingCard
             canControl={canControlRecordings}
+            canDelete={canDeleteRecordings}
             canDownload={canDownloadRecordings}
+            deletePending={deleteRecordingMutation.isPending}
             downloadPending={downloadMutation.isPending}
             events={healthEventsByRecording.get(recording.id) ?? []}
             canEdit={canEditRecordings}
@@ -809,6 +834,11 @@ export function RecordingsPage() {
             editPending={updateMetadataMutation.isPending}
             jobs={jobs}
             key={recording.id}
+            onDelete={() => {
+              if (window.confirm(`Delete recording "${recording.name}"?`)) {
+                deleteRecordingMutation.mutate(recording.id);
+              }
+            }}
             onDownload={() => downloadMutation.mutate(recording.id)}
             onPlayback={() => playbackMutation.mutate(recording.id)}
             onQueueUpload={(uploadPolicyId) =>

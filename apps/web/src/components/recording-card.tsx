@@ -6,6 +6,7 @@ import {
   Play,
   RefreshCw,
   Square,
+  Trash2,
   UploadCloud,
   Waves,
   X,
@@ -36,13 +37,16 @@ interface RecordingMetadataDraft {
 
 export function RecordingCard({
   canControl,
+  canDelete,
   canDownload,
   canEdit,
   canPlayback,
+  deletePending,
   downloadPending,
   editPending,
   events,
   jobs,
+  onDelete,
   onDownload,
   onPlayback,
   onQueueUpload,
@@ -60,13 +64,16 @@ export function RecordingCard({
   uploadPending,
 }: {
   canControl: boolean;
+  canDelete: boolean;
   canDownload: boolean;
   canEdit: boolean;
   canPlayback: boolean;
+  deletePending: boolean;
   downloadPending: boolean;
   editPending: boolean;
   events: HealthEvent[];
   jobs: RecordingJob[];
+  onDelete: () => void;
   onDownload: () => void;
   onPlayback: () => void;
   onQueueUpload: (uploadPolicyId?: string) => void;
@@ -86,6 +93,8 @@ export function RecordingCard({
   const [isEditing, setIsEditing] = useState(false);
   const fileReady =
     recording.cached || recording.status === "cached" || recording.status === "uploaded";
+  const deleteDisabled =
+    deletePending || recording.status === "queued" || recording.status === "recording";
   const [draft, setDraft] = useState<RecordingMetadataDraft>(() => draftFromRecording(recording));
   const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(
     recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "",
@@ -342,6 +351,12 @@ export function RecordingCard({
             <Button disabled={!fileReady || downloadPending} onClick={onDownload} variant="outline">
               <Download className="size-4" />
               Download
+            </Button>
+          ) : null}
+          {canDelete ? (
+            <Button disabled={deleteDisabled} onClick={onDelete} variant="destructive">
+              <Trash2 className="size-4" />
+              Delete
             </Button>
           ) : null}
           {canControl ? (
