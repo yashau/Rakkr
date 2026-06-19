@@ -58,7 +58,13 @@ export function SettingsPage() {
     queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
+  const currentUserQuery = useQuery({
+    queryFn: api.currentUser,
+    queryKey: ["auth", "me"],
+  });
   const queryClient = useQueryClient();
+  const canManageSettings =
+    currentUserQuery.data?.data.permissions.includes("settings:manage") ?? false;
   const createChannelMapMutation = useMutation({
     mutationFn: () => api.createChannelMapTemplate(defaultChannelMapTemplate()),
     onSuccess: () => {
@@ -115,11 +121,15 @@ export function SettingsPage() {
 
       <div className="grid gap-4">
         {(uploadProvidersQuery.data?.data ?? []).map((provider) => (
-          <UploadProviderCard key={provider.provider} provider={provider} />
+          <UploadProviderCard
+            canManage={canManageSettings}
+            key={provider.provider}
+            provider={provider}
+          />
         ))}
       </div>
 
-      <UploadPolicyPanel />
+      <UploadPolicyPanel canManage={canManageSettings} />
 
       <UploadRunnerPanel />
 
@@ -157,7 +167,13 @@ export function SettingsPage() {
   );
 }
 
-function UploadProviderCard({ provider }: { provider: UploadProviderRuntimeStatus }) {
+function UploadProviderCard({
+  canManage,
+  provider,
+}: {
+  canManage: boolean;
+  provider: UploadProviderRuntimeStatus;
+}) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(provider);
   const mutation = useMutation({
@@ -187,7 +203,11 @@ function UploadProviderCard({ provider }: { provider: UploadProviderRuntimeStatu
             {provider.provider} / {provider.implemented ? "driver scaffolded" : "driver pending"}
           </p>
         </div>
-        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+        <Button
+          disabled={mutation.isPending || !canManage}
+          onClick={() => mutation.mutate()}
+          title={canManage ? "Save upload provider" : "Requires settings manage"}
+        >
           <Save className="size-4" />
           Save
         </Button>
@@ -196,6 +216,7 @@ function UploadProviderCard({ provider }: { provider: UploadProviderRuntimeStatu
       <div className="grid gap-3 md:grid-cols-4">
         <Field label="Name">
           <Input
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({ ...current, displayName: event.target.value }))
             }
@@ -204,6 +225,7 @@ function UploadProviderCard({ provider }: { provider: UploadProviderRuntimeStatu
         </Field>
         <Field label="Target">
           <Input
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({ ...current, target: event.target.value }))
             }
@@ -212,6 +234,7 @@ function UploadProviderCard({ provider }: { provider: UploadProviderRuntimeStatu
         </Field>
         <Field label="Credential Ref">
           <Input
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({ ...current, credentialRef: event.target.value }))
             }
@@ -220,6 +243,7 @@ function UploadProviderCard({ provider }: { provider: UploadProviderRuntimeStatu
         </Field>
         <Toggle
           checked={draft.enabled}
+          disabled={!canManage}
           label="Enabled"
           onChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
         />
@@ -708,10 +732,12 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 
 function Toggle({
   checked,
+  disabled = false,
   label,
   onChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   label: string;
   onChange: (checked: boolean) => void;
 }) {
@@ -720,6 +746,7 @@ function Toggle({
       <input
         checked={checked}
         className="size-4"
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         type="checkbox"
       />

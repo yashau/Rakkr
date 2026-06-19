@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 
-export function UploadPolicyPanel() {
+export function UploadPolicyPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const policiesQuery = useQuery({
     queryFn: api.uploadPolicies,
@@ -38,8 +38,9 @@ export function UploadPolicyPanel() {
             {policies.length} policies
           </Badge>
           <Button
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || !canManage}
             onClick={() => createMutation.mutate()}
+            title={canManage ? "Create upload policy" : "Requires settings manage"}
             variant="outline"
           >
             <PlusCircle className="size-4" />
@@ -50,14 +51,14 @@ export function UploadPolicyPanel() {
 
       <div className="grid gap-4">
         {policies.map((policy) => (
-          <UploadPolicyCard key={policy.id} policy={policy} />
+          <UploadPolicyCard canManage={canManage} key={policy.id} policy={policy} />
         ))}
       </div>
     </>
   );
 }
 
-function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
+function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: UploadPolicy }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(policy);
   const mutation = useMutation({
@@ -94,7 +95,11 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
             {policy.provider} / {policy.trigger} / {policy.maxAttempts} attempts
           </p>
         </div>
-        <Button disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+        <Button
+          disabled={mutation.isPending || !canManage}
+          onClick={() => mutation.mutate()}
+          title={canManage ? "Save upload policy" : "Requires settings manage"}
+        >
           <Save className="size-4" />
           Save
         </Button>
@@ -103,6 +108,7 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
       <div className="grid gap-3 md:grid-cols-5">
         <Field label="Name">
           <Input
+            disabled={!canManage}
             onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
             value={draft.name}
           />
@@ -110,6 +116,7 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
         <Field label="Provider">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -126,6 +133,7 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
         <Field label="Trigger">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -140,6 +148,7 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
         </Field>
         <Field label="Target">
           <Input
+            disabled={!canManage}
             onChange={(event) =>
               setDraft((current) => ({ ...current, target: event.target.value }))
             }
@@ -148,6 +157,7 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
         </Field>
         <Field label="Attempts">
           <Input
+            disabled={!canManage}
             min={1}
             onChange={(event) =>
               setDraft((current) => ({ ...current, maxAttempts: Number(event.target.value) }))
@@ -162,6 +172,7 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
         <input
           checked={draft.enabled}
           className="size-4"
+          disabled={!canManage}
           onChange={(event) =>
             setDraft((current) => ({ ...current, enabled: event.target.checked }))
           }
@@ -174,6 +185,7 @@ function UploadPolicyCard({ policy }: { policy: UploadPolicy }) {
         <input
           checked={draft.deleteCacheAfterUpload}
           className="size-4"
+          disabled={!canManage}
           onChange={(event) =>
             setDraft((current) => ({
               ...current,
