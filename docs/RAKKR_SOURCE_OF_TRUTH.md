@@ -575,6 +575,7 @@ Current partial implementation:
 75. ✅ Add Settings write route missing-permission coverage.
 76. ✅ Correct Settings channel-map assignment deny coverage to the PUT route.
 77. ✅ Complete Settings write route deny coverage for update endpoints.
+78. ✅ Add Settings read route missing-permission coverage.
 
 ## Open Questions
 

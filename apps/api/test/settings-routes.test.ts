@@ -114,6 +114,45 @@ test("settings write routes deny users without settings manage", async () => {
   assert.ok(deniedEvents.every((event) => event.target.type === "settings"));
 });
 
+test("settings read routes deny users without settings read", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: viewer() }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyMissingPermission(auditStore),
+    settingsStore: createSettingsStore(),
+    uploadProviderStore: createUploadProviderStore(),
+  });
+
+  const responses = await Promise.all([
+    app.request("/api/v1/settings/recording-profiles"),
+    app.request("/api/v1/settings/watchdog-policies"),
+    app.request("/api/v1/settings/channel-map-templates"),
+    app.request("/api/v1/settings/channel-map-assignments"),
+    app.request("/api/v1/settings/upload-providers"),
+    app.request("/api/v1/settings/upload-policies"),
+  ]);
+  const deniedEvents = await auditStore.list({ outcome: "denied", permission: "settings:read" });
+
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [403, 403, 403, 403, 403, 403],
+  );
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignments.read",
+    "settings.channel_map_templates.read",
+    "settings.recording_profiles.read",
+    "settings.upload_policies.read",
+    "settings.upload_providers.read",
+    "settings.watchdog_policies.read",
+  ]);
+  assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
+  assert.ok(deniedEvents.every((event) => event.target.type === "settings"));
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   path: string,
