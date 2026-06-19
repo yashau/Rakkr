@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { RecordingMetadataUpdate } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
+import { isCachedRecording, isTerminalRecording } from "@/lib/recording-page-helpers";
 
 interface RecordingMetadataDraft {
   folder: string;
@@ -91,10 +92,8 @@ export function RecordingCard({
   uploadPending: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const fileReady =
-    recording.cached || recording.status === "cached" || recording.status === "uploaded";
-  const deleteDisabled =
-    deletePending || recording.status === "queued" || recording.status === "recording";
+  const fileReady = isCachedRecording(recording);
+  const deleteDisabled = deletePending || !isTerminalRecording(recording);
   const [draft, setDraft] = useState<RecordingMetadataDraft>(() => draftFromRecording(recording));
   const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(
     recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "",

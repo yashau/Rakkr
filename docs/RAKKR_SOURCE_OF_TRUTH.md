@@ -403,6 +403,7 @@ Current partial implementation:
 - Recording library supports explicit server-side sorting with UI controls.
 - Recording library supports paginated result sets with page-size and previous/next controls.
 - Recording library action controls mirror RBAC for edit, stop, playback, download, and upload queue actions.
+- Recording card action readiness uses tested cached/terminal recording predicates.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
 - Recording library API deletes terminal recordings and cached files with audit snapshots.
@@ -594,6 +595,7 @@ Current partial implementation:
 85. ✅ Add schedule route missing-permission coverage.
 86. ✅ Add audit route missing-permission coverage.
 87. ✅ Add rendered MP3/VBR fake-controller agent smoke coverage.
+88. ✅ Add recording UI action-readiness helper coverage.
 
 ## Open Questions
 
