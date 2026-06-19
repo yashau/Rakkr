@@ -13,7 +13,7 @@ import { renderPrometheusMetrics } from "../src/metrics.js";
 
 test("renders store-backed Prometheus gauges", () => {
   const output = renderPrometheusMetrics({
-    healthEvents: [healthEvent(), nodeOfflineHealthEvent()],
+    healthEvents: [healthEvent(), nodeOfflineHealthEvent(), audioXrunHealthEvent()],
     meterFrames: [meterFrame()],
     nodes: [node()],
     observedAt: new Date("2026-06-18T12:16:00.000Z"),
@@ -76,10 +76,12 @@ test("renders store-backed Prometheus gauges", () => {
   );
   assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 2/);
   assert.match(output, /rakkr_recording_watchdog_alerts_active\{severity="critical"\} 1/);
+  assert.match(output, /rakkr_recording_watchdog_alerts_total\{severity="critical"\} 1/);
   assert.match(
     output,
     /rakkr_node_offline_alerts_active\{node_id="node_x32_test",severity="critical",status="open"\} 1/,
   );
+  assert.match(output, /rakkr_device_xruns_total\{severity="warning"\} 1/);
   assert.match(output, /rakkr_upload_queue_depth\{provider="stub",status="failed"\} 1/);
   assert.match(output, /rakkr_upload_queue_oldest_due_seconds\{provider="s3",status="queued"\} 90/);
   assert.match(
@@ -196,6 +198,22 @@ function nodeOfflineHealthEvent(): HealthEvent {
     suppressedAt: null,
     suppressedUntil: null,
     type: "watchdog.node_offline",
+  };
+}
+
+function audioXrunHealthEvent(): HealthEvent {
+  return {
+    acknowledgedAt: null,
+    details: {},
+    id: "health_audio_xrun",
+    nodeId: "node_x32_test",
+    openedAt: "2026-06-18T12:10:00.000Z",
+    resolvedAt: "2026-06-18T12:11:00.000Z",
+    severity: "warning",
+    status: "resolved",
+    suppressedAt: null,
+    suppressedUntil: null,
+    type: "audio.alsa_xrun",
   };
 }
 

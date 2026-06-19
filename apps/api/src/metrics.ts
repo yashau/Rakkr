@@ -168,6 +168,19 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
     );
   }
 
+  pushHelp(lines, "rakkr_recording_watchdog_alerts_total", "Watchdog health events.");
+  pushType(lines, "rakkr_recording_watchdog_alerts_total", "counter");
+  for (const severity of ["warning", "critical"]) {
+    pushMetric(
+      lines,
+      "rakkr_recording_watchdog_alerts_total",
+      { severity },
+      input.healthEvents.filter(
+        (event) => event.type === scheduledLowSignalEventType && event.severity === severity,
+      ).length,
+    );
+  }
+
   pushHelp(lines, "rakkr_node_offline_alerts_active", "Unresolved node-offline health events.");
   pushType(lines, "rakkr_node_offline_alerts_active", "gauge");
   for (const node of input.nodes) {
@@ -198,6 +211,19 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
     input.healthEvents.filter((event) => event.type.includes("xrun") && event.status !== "resolved")
       .length,
   );
+
+  pushHelp(lines, "rakkr_device_xruns_total", "Audio xrun health events.");
+  pushType(lines, "rakkr_device_xruns_total", "counter");
+  for (const severity of ["info", "warning", "critical"]) {
+    pushMetric(
+      lines,
+      "rakkr_device_xruns_total",
+      { severity },
+      input.healthEvents.filter(
+        (event) => event.type.includes("xrun") && event.severity === severity,
+      ).length,
+    );
+  }
 
   pushHelp(lines, "rakkr_upload_queue_depth", "Upload queue items by provider and status.");
   pushType(lines, "rakkr_upload_queue_depth", "gauge");

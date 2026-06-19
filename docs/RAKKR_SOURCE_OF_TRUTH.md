@@ -671,6 +671,7 @@ Current partial implementation:
 125. ✅ Add upload queue read filters.
 126. ✅ Add upload queue overdue Prometheus metric.
 127. ✅ Add recording duration and cache-byte Prometheus metrics.
+128. ✅ Add watchdog and xrun total Prometheus counters.
 
 ## Open Questions
 
