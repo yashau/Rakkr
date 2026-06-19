@@ -70,7 +70,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Storage upload | 🟨 | Stub/SMB/S3 providers, policies, auto-queue, audited runner, API/UI control, metrics |
 | OIDC | 🟨 | Azure AD login/callback with persistent PKCE state, logout cleanup, setup notes |
 | Transport security | 🟨 | Optional controller HTTPS; agent blocks non-loopback plaintext unless explicitly allowed |
-| Observability | 🟨 | Local node logs, central events, `/metrics`; OTel/Mimir later |
+| Observability | ✅ | Local logs, central events, metrics, alerts, Mimir config, Grafana baseline |
 
 ---
 
@@ -487,7 +487,8 @@ Telemetry surfaces:
 - checked Prometheus alert rules;
 - checked Prometheus scrape and Mimir remote-write example;
 - checked Grafana operations dashboard example;
-- future OpenTelemetry/Mimir guidance.
+- concise checked runbook;
+- future OpenTelemetry collector integration.
 
 Important metric names:
 
@@ -509,12 +510,13 @@ Important metric names:
 - `rakkr_upload_failures_total`
 - `rakkr_device_xruns_total`
 
-Current partial implementation:
+Current implementation:
 
 - Prometheus export covers controller, node, recording duration/cache bytes, meter, audit totals, health totals/active counts, watchdog, upload queue depth/failures, and upload overdue age.
 - `docs/observability/rakkr-alerts.yml` defines checked Prometheus alerts for offline nodes, watchdog criticals, upload stalls/failures, XRUNs, and denied-action spikes.
 - `docs/observability/prometheus-mimir.example.yml` defines a checked HTTPS controller scrape and Mimir `remote_write` path using a secret file.
 - `docs/observability/grafana-dashboard.example.json` defines a checked operations dashboard for node status, audio levels, recordings, uploads, XRUNs, and denied actions.
+- `docs/observability/README.md` documents the operator path and checked observability artifacts.
 - Recorder agent local JSONL health logs rotate by size and keep a configured number of retained files.
 - Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata and cache-upload failures.
 
@@ -687,6 +689,7 @@ Current partial implementation:
 132. ✅ Add checked Prometheus alert rules.
 133. ✅ Add checked Prometheus scrape and Mimir remote-write example.
 134. ✅ Add checked Grafana operations dashboard example.
+135. ✅ Promote Observability MVP with checked runbook.
 
 ## Open Questions
 

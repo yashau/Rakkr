@@ -37,6 +37,7 @@ depends = [
   "db:verify",
   "ops:check-alerts",
   "ops:check-grafana",
+  "ops:check-observability-docs",
   "ops:check-prometheus",
   "node:check",
   "node:test",
@@ -65,6 +66,10 @@ run = "node scripts/verify-prometheus-alerts.mjs"
 [tasks."ops:check-grafana"]
 description = "Validate Grafana dashboard examples"
 run = "node scripts/verify-grafana-dashboard.mjs"
+
+[tasks."ops:check-observability-docs"]
+description = "Validate observability runbook links"
+run = "node scripts/verify-observability-docs.mjs"
 
 [tasks."ops:check-prometheus"]
 description = "Validate Prometheus scrape and Mimir remote write config"
