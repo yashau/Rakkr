@@ -11,7 +11,7 @@ import {
   type ScheduleSummary,
 } from "@rakkr/shared";
 
-import { formatDateTime } from "./dates";
+import { formatDateTime, isoFromLocalDateTime, localDateTimeInput } from "./dates";
 
 export interface ScheduleDraft {
   dayOfMonth: number;
@@ -401,21 +401,6 @@ function applyRecurrenceToDraft(draft: ScheduleDraft, recurrence: ScheduleRecurr
   }
 
   return nextDraft;
-}
-
-function isoFromLocalDateTime(value: string) {
-  return value ? new Date(value).toISOString() : undefined;
-}
-
-function localDateTimeInput(value: string | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-
-  return local.toISOString().slice(0, 16);
 }
 
 function uniqueTags(value: string) {

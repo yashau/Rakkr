@@ -459,6 +459,10 @@ Examples:
 - Date/time: `2026-06-18 14:45`
 - Exact timestamp: `2026-06-18T10:45:03.123Z`
 
+Current partial implementation:
+
+- Web date helpers centralize browser-timezone, year-first display and local date-to-UTC conversion with regression coverage.
+
 ---
 
 ## Milestones
@@ -524,7 +528,8 @@ Examples:
 47. ✅ Add schedule run-now deny audit route coverage.
 48. ✅ Add alert acknowledgement deny audit route coverage.
 49. ✅ Add playback, download, and upload queue deny audit route coverage.
-50. ⏸️ Return to X32 hardware validation after device is confirmed.
+50. ✅ Add browser-timezone year-first date helper coverage.
+51. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

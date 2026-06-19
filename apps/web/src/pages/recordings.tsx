@@ -17,7 +17,7 @@ import {
   type RecordingSortBy,
   type RecordingSortOrder,
 } from "@/lib/api";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 
 interface RecordingFilterDraft {
   folder: string;
@@ -846,25 +846,6 @@ function textOrUndefined(value: string) {
   const trimmed = value.trim();
 
   return trimmed || undefined;
-}
-
-function localDateBoundaryIso(value: string, boundary: "end" | "start") {
-  if (!value) {
-    return undefined;
-  }
-
-  const [year, month, day] = value.split("-").map(Number);
-
-  if (!year || !month || !day) {
-    return undefined;
-  }
-
-  const date =
-    boundary === "start"
-      ? new Date(year, month - 1, day, 0, 0, 0, 0)
-      : new Date(year, month - 1, day, 23, 59, 59, 999);
-
-  return date.toISOString();
 }
 
 function groupHealthEventsByRecording(events: HealthEvent[]) {

@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type NodeEnrollmentInput, type NodeEnrollmentResult } from "@/lib/api";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, localIsoDate, startOfLocalDay } from "@/lib/dates";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 interface EnrollmentDraft {
@@ -754,18 +754,6 @@ function healthTrendBuckets(events: HealthEvent[]) {
   }
 
   return buckets;
-}
-
-function startOfLocalDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-}
-
-function localIsoDate(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
 }
 
 function latestHealthEvent(events: HealthEvent[], types: string[]) {

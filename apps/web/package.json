@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json && vite build",
     "check": "tsc -p tsconfig.json --noEmit",
     "dev": "vite --host 0.0.0.0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.10",
@@ -30,6 +31,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "tailwindcss": "^4.3.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.4"
   }
