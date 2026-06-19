@@ -2,38 +2,56 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, CurrentUser, Permission, ScheduleSummary } from "@rakkr/shared";
-import type { AuthResult } from "../src/auth-service.js";
+import type {
+  AuditEvent,
+  CurrentUser,
+  Permission,
+  RecorderNode,
+  RecordingSummary,
+  ScheduleSummary,
+} from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
-import type { NodeStore } from "../src/node-store.js";
-import type { RecordingStore } from "../src/recording-store.js";
+import { registerScheduleRoutes } from "../src/schedule-routes.js";
 import type { ScheduleStore } from "../src/schedule-store.js";
-import type { SettingsStore } from "../src/settings-store.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
-const { registerScheduleRoutes } = await import("../src/schedule-routes.js");
+const { createNodeStore } = await import("../src/node-store.js");
+const { createSettingsStore } = await import("../src/settings-store.js");
 
 test("schedule routes deny users without required permissions", async () => {
   const auditStore = createAuditStore("");
   const deniedUser = user([]);
-  const app = scheduleApp(auditStore, deniedUser);
+  const app = new Hono<AppBindings>();
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: deniedUser }),
+    currentUser: () => deniedUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: recordingStore(),
+    requirePermission: denyMissingPermission(auditStore, deniedUser),
+    scheduleStore: scheduleStore([schedule()]),
+    scopedSchedules: async () => [],
+    settingsStore: createSettingsStore(),
+  });
 
   const responses = await Promise.all([
     app.request("/api/v1/schedules"),
-    app.request("/api/v1/schedules/sched_blocked/occurrences"),
-    app.request("/api/v1/schedules", {
-      body: "{}",
-      headers: { "content-type": "application/json" },
-      method: "POST",
+    app.request(`/api/v1/schedules/${schedule().id}/occurrences`),
+    requestJson(app, "/api/v1/schedules", "POST", {
+      enabled: true,
+      name: "Blocked Schedule",
+      nodeId: node().id,
+      room: "Council Room",
+      timezone: "UTC",
     }),
-    app.request("/api/v1/schedules/sched_blocked", {
-      body: "{}",
-      headers: { "content-type": "application/json" },
-      method: "PATCH",
+    requestJson(app, `/api/v1/schedules/${schedule().id}`, "PATCH", {
+      name: "Blocked Rename",
     }),
-    app.request("/api/v1/schedules/sched_blocked/run-now", { method: "POST" }),
-    app.request("/api/v1/schedules/sched_blocked/skip-next", { method: "POST" }),
-    app.request("/api/v1/schedules/sched_blocked", { method: "DELETE" }),
+    app.request(`/api/v1/schedules/${schedule().id}/run-now`, { method: "POST" }),
+    app.request(`/api/v1/schedules/${schedule().id}/skip-next`, { method: "POST" }),
+    app.request(`/api/v1/schedules/${schedule().id}`, { method: "DELETE" }),
   ]);
   const deniedEvents = await auditStore.list({ outcome: "denied" });
 
@@ -54,23 +72,17 @@ test("schedule routes deny users without required permissions", async () => {
   assert.ok(deniedEvents.every((event) => event.actor.id === deniedUser.id));
 });
 
-function scheduleApp(auditStore: ReturnType<typeof createAuditStore>, currentUser: CurrentUser) {
-  const app = new Hono<AppBindings>();
-
-  registerScheduleRoutes({
-    app,
-    currentAuth: () => auth(currentUser),
-    currentUser: () => currentUser,
-    nodeStore: emptyNodeStore(),
-    recordAuditEvent: recordAuditEvent(auditStore),
-    recordingStore: emptyRecordingStore(),
-    requirePermission: denyMissingPermission(auditStore, currentUser),
-    scheduleStore: emptyScheduleStore(),
-    scopedSchedules: async () => [],
-    settingsStore: emptySettingsStore(),
+function requestJson(
+  app: Hono<AppBindings>,
+  path: string,
+  method: "PATCH" | "POST",
+  body: Record<string, unknown>,
+) {
+  return app.request(path, {
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json" },
+    method,
   });
-
-  return app;
 }
 
 function denyMissingPermission(
@@ -128,128 +140,111 @@ function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): Reco
   };
 }
 
-function emptyNodeStore(): NodeStore {
+function scheduleStore(schedules: ScheduleSummary[]): ScheduleStore {
   return {
-    async authenticateCredential() {
-      return undefined;
-    },
-    async enroll() {
-      throw new Error("not implemented");
-    },
-    async find() {
-      return undefined;
-    },
-    async heartbeat() {
-      return undefined;
-    },
-    async list() {
-      return [];
-    },
-    async rotateCredential() {
-      return undefined;
-    },
-    async update() {
-      return undefined;
-    },
-    async updateInterface() {
-      return undefined;
-    },
-  };
-}
+    async create(schedule) {
+      schedules.unshift(schedule);
 
-function emptyRecordingStore(): RecordingStore {
-  return {
-    async create() {},
-    async delete() {
-      return undefined;
-    },
-    async find() {
-      return undefined;
-    },
-    async list() {
-      return [];
-    },
-    async save() {},
-  };
-}
-
-function emptyScheduleStore(): ScheduleStore {
-  return {
-    async create(schedule: ScheduleSummary) {
       return schedule;
     },
-    async delete() {
-      return undefined;
+    async delete(scheduleId) {
+      const index = schedules.findIndex((candidate) => candidate.id === scheduleId);
+      const [deleted] = index >= 0 ? schedules.splice(index, 1) : [];
+
+      return deleted;
     },
-    async find() {
-      return undefined;
+    async find(scheduleId) {
+      return schedules.find((candidate) => candidate.id === scheduleId);
     },
     async list() {
-      return [];
+      return schedules;
     },
-    async update() {
-      return undefined;
+    async update(scheduleId, update) {
+      const index = schedules.findIndex((candidate) => candidate.id === scheduleId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      schedules[index] = { ...schedules[index], ...update };
+
+      return schedules[index];
     },
   };
 }
 
-function emptySettingsStore(): SettingsStore {
+function recordingStore() {
+  const recordings: RecordingSummary[] = [];
+
   return {
-    async assignChannelMapTemplate() {
-      throw new Error("not implemented");
+    async create(recording: RecordingSummary) {
+      recordings.unshift(recording);
     },
-    async createChannelMapTemplate() {
-      throw new Error("not implemented");
+    async delete(recordingId: string) {
+      const index = recordings.findIndex((candidate) => candidate.id === recordingId);
+      const [deleted] = index >= 0 ? recordings.splice(index, 1) : [];
+
+      return deleted;
     },
-    async findChannelMapTemplate() {
-      return undefined;
+    async find(recordingId: string) {
+      return recordings.find((candidate) => candidate.id === recordingId);
     },
-    async findRecordingProfile() {
-      return undefined;
+    async list() {
+      return recordings;
     },
-    async findWatchdogPolicy() {
-      return undefined;
-    },
-    async listChannelMapAssignments() {
-      return [];
-    },
-    async listChannelMapTemplates() {
-      return [];
-    },
-    async listRecordingProfiles() {
-      return [];
-    },
-    async listWatchdogPolicies() {
-      return [];
-    },
-    async rollbackChannelMapAssignment() {
-      return undefined;
-    },
-    async updateChannelMapTemplate() {
-      return undefined;
-    },
-    async updateRecordingProfile() {
-      return undefined;
-    },
-    async updateWatchdogPolicy() {
-      return undefined;
+    async save(recording: RecordingSummary) {
+      recordings.unshift(recording);
     },
   };
 }
 
-function auth(currentUser: CurrentUser): AuthResult {
-  return { user: currentUser };
-}
-
-function user(permissions: Permission[]): CurrentUser {
+function user(permissions: Permission[] = ["schedule:read"]): CurrentUser {
   return {
-    email: "schedule-route@example.com",
+    email: "schedule-viewer@example.com",
     groups: [],
-    id: "user_schedule_route",
-    name: "Schedule Route User",
+    id: "user_schedule_viewer_test",
+    name: "Schedule Viewer Test",
     permissions,
     provider: "local",
     resourceGrants: [],
-    roles: ["operator"],
+    roles: ["viewer"],
+  };
+}
+
+function node(): RecorderNode {
+  return {
+    agentVersion: "0.1.0",
+    alias: "Schedule Node",
+    hostname: "schedule-node",
+    id: "node_schedule_test",
+    interfaces: [],
+    ipAddresses: ["10.0.0.60"],
+    lastSeenAt: "2026-06-18T12:00:00.000Z",
+    location: {
+      room: "Council Room",
+      site: "Main Site",
+    },
+    status: "online",
+    tags: ["voice"],
+  };
+}
+
+function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
+  return {
+    enabled: true,
+    folderTemplate: "meetings/{{date}}",
+    id: "sched_route_test",
+    name: "Council Meeting",
+    nextRunAt: "2026-06-18T09:00:00.000Z",
+    nodeId: node().id,
+    recurrence: { mode: "manual" },
+    recordingProfileId: "voice-mp3-vbr",
+    room: "Council Room",
+    tags: ["council"],
+    timezone: "UTC",
+    titleTemplate: "{{date}} Council Meeting",
+    uploadPolicyId: "upload-policy-stub",
+    watchdogPolicyId: "scheduled-voice-watchdog",
+    ...input,
   };
 }
