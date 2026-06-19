@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { HealthEvent, RecordingSummary, UploadPolicy, UploadQueueItem } from "@rakkr/shared";
+import type { RecordingSummary, UploadPolicy } from "@rakkr/shared";
 
 import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
 import { RecordingCard } from "@/components/recording-card";
@@ -20,6 +20,12 @@ import {
   type RecordingSortOrder,
 } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
+import {
+  downloadBlob,
+  groupHealthEventsByRecording,
+  groupUploadItemsByRecording,
+  isTerminalRecording,
+} from "@/lib/recording-page-helpers";
 
 interface RecordingFilterDraft {
   folder: string;
@@ -309,6 +315,34 @@ export function RecordingsPage() {
       });
     },
   });
+  const bulkDeleteRecordingMutation = useMutation({
+    mutationFn: async (recordingIds: string[]) => {
+      for (const recordingId of recordingIds) {
+        await api.deleteRecording(recordingId);
+      }
+
+      return recordingIds;
+    },
+    onError: () =>
+      setNotice({
+        detail: "The selected terminal recordings could not all be deleted.",
+        title: "Bulk delete failed",
+      }),
+    onSuccess: (recordingIds) => {
+      queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-facets"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      setSelectedRecordingIds((current) =>
+        current.filter((candidate) => !recordingIds.includes(candidate)),
+      );
+      setNotice({
+        detail: `${recordingIds.length} recordings were removed.`,
+        title: "Recordings deleted",
+      });
+    },
+  });
   const enqueueUploadMutation = useMutation({
     mutationFn: (input: { recordingId: string; uploadPolicyId?: string }) =>
       api.enqueueRecordingUpload(input.recordingId, { uploadPolicyId: input.uploadPolicyId }),
@@ -363,6 +397,12 @@ export function RecordingsPage() {
   const activeFilterChips = recordingFilterChips(recordingFilters);
   const activeFilterCount = activeFilterChips.length;
   const selectedRecordingIdSet = new Set(selectedRecordingIds);
+  const selectedRecordings = recordings.filter((recording) =>
+    selectedRecordingIdSet.has(recording.id),
+  );
+  const selectedTerminalRecordingIds = selectedRecordings
+    .filter((recording) => isTerminalRecording(recording))
+    .map((recording) => recording.id);
   const visibleRecordingIds = recordings.map((recording) => recording.id);
   const allVisibleSelected =
     visibleRecordingIds.length > 0 &&
@@ -456,6 +496,13 @@ export function RecordingsPage() {
         ? [...new Set([...current, recordingId])]
         : current.filter((candidate) => candidate !== recordingId),
     );
+  };
+  const deleteSelectedRecordings = () => {
+    if (
+      window.confirm(`Delete ${selectedTerminalRecordingIds.length} selected terminal recordings?`)
+    ) {
+      bulkDeleteRecordingMutation.mutate(selectedTerminalRecordingIds);
+    }
   };
 
   return (
@@ -799,12 +846,17 @@ export function RecordingsPage() {
         />
       </form>
 
-      {canEditRecordings && recordings.length > 0 ? (
+      {(canEditRecordings || canDeleteRecordings) && recordings.length > 0 ? (
         <RecordingBulkOrganizer
           allVisibleSelected={allVisibleSelected}
-          disabled={bulkMetadataMutation.isPending}
+          canDelete={canDeleteRecordings}
+          canEdit={canEditRecordings}
+          deleteDisabled={bulkDeleteRecordingMutation.isPending}
+          deleteEligibleCount={selectedTerminalRecordingIds.length}
+          disabled={bulkMetadataMutation.isPending || bulkDeleteRecordingMutation.isPending}
           onApply={(input) => bulkMetadataMutation.mutate(input)}
           onClear={() => setSelectedRecordingIds([])}
+          onDeleteSelected={deleteSelectedRecordings}
           onSelectVisible={selectVisibleRecordings}
           selectedCount={selectedRecordingIds.length}
           visibleCount={recordings.length}
@@ -846,7 +898,7 @@ export function RecordingsPage() {
             }
             onRetryUpload={(itemId) => retryUploadMutation.mutate(itemId)}
             onSelectedChange={
-              canEditRecordings
+              canEditRecordings || canDeleteRecordings
                 ? (selected) => setRecordingSelected(recording.id, selected)
                 : undefined
             }
@@ -870,16 +922,6 @@ export function RecordingsPage() {
       })}
     </div>
   );
-}
-
-function downloadBlob(file: Awaited<ReturnType<typeof api.recordingFile>>) {
-  const url = URL.createObjectURL(file.blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = file.fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
@@ -946,28 +988,4 @@ function textOrUndefined(value: string) {
   const trimmed = value.trim();
 
   return trimmed || undefined;
-}
-
-function groupHealthEventsByRecording(events: HealthEvent[]) {
-  const grouped = new Map<string, HealthEvent[]>();
-
-  for (const event of events) {
-    if (!event.recordingId) {
-      continue;
-    }
-
-    grouped.set(event.recordingId, [...(grouped.get(event.recordingId) ?? []), event]);
-  }
-
-  return grouped;
-}
-
-function groupUploadItemsByRecording(items: UploadQueueItem[]) {
-  const grouped = new Map<string, UploadQueueItem[]>();
-
-  for (const item of items) {
-    grouped.set(item.recordingId, [...(grouped.get(item.recordingId) ?? []), item]);
-  }
-
-  return grouped;
 }

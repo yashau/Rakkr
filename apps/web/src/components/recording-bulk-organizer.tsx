@@ -1,4 +1,4 @@
-import { CheckSquare, RotateCcw, X } from "lucide-react";
+import { CheckSquare, RotateCcw, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,17 +23,27 @@ const emptyBulkDraft: BulkDraft = {
 
 export function RecordingBulkOrganizer({
   allVisibleSelected,
+  canDelete,
+  canEdit,
+  deleteDisabled,
+  deleteEligibleCount,
   disabled,
   onApply,
   onClear,
+  onDeleteSelected,
   onSelectVisible,
   selectedCount,
   visibleCount,
 }: {
   allVisibleSelected: boolean;
+  canDelete: boolean;
+  canEdit: boolean;
+  deleteDisabled: boolean;
+  deleteEligibleCount: number;
   disabled: boolean;
   onApply: (input: Omit<RecordingBulkMetadataUpdate, "recordingIds">) => void;
   onClear: () => void;
+  onDeleteSelected: () => void;
   onSelectVisible: () => void;
   selectedCount: number;
   visibleCount: number;
@@ -41,6 +51,7 @@ export function RecordingBulkOrganizer({
   const [draft, setDraft] = useState(emptyBulkDraft);
   const input = bulkInputFromDraft(draft);
   const applyDisabled = disabled || selectedCount === 0 || Object.keys(input).length === 0;
+  const bulkDeleteDisabled = deleteDisabled || selectedCount === 0 || deleteEligibleCount === 0;
 
   return (
     <section className="grid gap-3 rounded-lg border border-border bg-panel p-4 shadow-sm">
@@ -65,64 +76,80 @@ export function RecordingBulkOrganizer({
           </Button>
         </div>
       </div>
-      <form
-        className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onApply(input);
-        }}
-      >
-        <div className="grid gap-1.5">
-          <Label htmlFor="recording-bulk-folder">Folder</Label>
-          <Input
-            id="recording-bulk-folder"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, folder: event.target.value }))
-            }
-            value={draft.folder}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="recording-bulk-add-tags">Add Tags</Label>
-          <Input
-            id="recording-bulk-add-tags"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, addTags: event.target.value }))
-            }
-            value={draft.addTags}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="recording-bulk-remove-tags">Remove Tags</Label>
-          <Input
-            id="recording-bulk-remove-tags"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, removeTags: event.target.value }))
-            }
-            value={draft.removeTags}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="recording-bulk-replace-tags">Replace Tags</Label>
-          <Input
-            id="recording-bulk-replace-tags"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, replaceTags: event.target.value }))
-            }
-            value={draft.replaceTags}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2 md:col-span-2 xl:col-span-4">
-          <Button disabled={applyDisabled} type="submit">
-            <CheckSquare className="size-4" />
-            Apply
+      {canEdit ? (
+        <form
+          className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onApply(input);
+          }}
+        >
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-bulk-folder">Folder</Label>
+            <Input
+              id="recording-bulk-folder"
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, folder: event.target.value }))
+              }
+              value={draft.folder}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-bulk-add-tags">Add Tags</Label>
+            <Input
+              id="recording-bulk-add-tags"
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, addTags: event.target.value }))
+              }
+              value={draft.addTags}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-bulk-remove-tags">Remove Tags</Label>
+            <Input
+              id="recording-bulk-remove-tags"
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, removeTags: event.target.value }))
+              }
+              value={draft.removeTags}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-bulk-replace-tags">Replace Tags</Label>
+            <Input
+              id="recording-bulk-replace-tags"
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, replaceTags: event.target.value }))
+              }
+              value={draft.replaceTags}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 md:col-span-2 xl:col-span-4">
+            <Button disabled={applyDisabled} type="submit">
+              <CheckSquare className="size-4" />
+              Apply
+            </Button>
+            <Button onClick={() => setDraft(emptyBulkDraft)} type="button" variant="outline">
+              <RotateCcw className="size-4" />
+              Reset
+            </Button>
+          </div>
+        </form>
+      ) : null}
+      {canDelete ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{deleteEligibleCount} deletable</Badge>
+          <Button
+            disabled={bulkDeleteDisabled}
+            onClick={onDeleteSelected}
+            type="button"
+            variant="destructive"
+          >
+            <Trash2 className="size-4" />
+            Delete selected
           </Button>
-          <Button onClick={() => setDraft(emptyBulkDraft)} type="button" variant="outline">
-            <RotateCcw className="size-4" />
-            Reset
-          </Button>
         </div>
-      </form>
+      ) : null}
     </section>
   );
 }
