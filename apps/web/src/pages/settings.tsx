@@ -154,7 +154,7 @@ export function SettingsPage() {
         ))}
       </div>
 
-      <UploadPolicyPanel canManage={canManageSettings} />
+      <UploadPolicyPanel canManage={canManageSettings} canRead={canReadSettings} />
 
       <UploadRunnerPanel />
 

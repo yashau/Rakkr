@@ -10,9 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 
-export function UploadPolicyPanel({ canManage }: { canManage: boolean }) {
+export function UploadPolicyPanel({
+  canManage,
+  canRead,
+}: {
+  canManage: boolean;
+  canRead: boolean;
+}) {
   const queryClient = useQueryClient();
   const policiesQuery = useQuery({
+    enabled: canRead,
     queryFn: api.uploadPolicies,
     queryKey: ["upload-policies"],
   });

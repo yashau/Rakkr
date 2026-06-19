@@ -462,7 +462,7 @@ Current partial implementation:
 - SMB verifies copied bytes with SHA-256; S3 uploads send `ChecksumSHA256`.
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
 - Controller API and Settings UI mirror upload runner status/read and run-now to recording RBAC.
-- Upload provider and upload policy Settings UI controls mirror `settings:manage`.
+- Upload provider and upload policy Settings UI reads/actions mirror `settings:read` and `settings:manage`.
 - Upload policies can delete controller cache after confirmed non-stub upload.
 
 ## Observability
@@ -644,6 +644,7 @@ Current partial implementation:
 111. ✅ Mirror Schedule detail reads against granular RBAC permissions.
 112. ✅ Mirror Recordings page reads against granular RBAC permissions.
 113. ✅ Mirror Upload runner panel status and run-now against RBAC permissions.
+114. ✅ Mirror Upload policy panel reads against Settings RBAC permissions.
 
 ## Open Questions
 
