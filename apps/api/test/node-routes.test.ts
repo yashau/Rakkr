@@ -236,6 +236,7 @@ test("node update changes identity fields and audits before and after", async ()
         site: "Main Site",
       },
       notes: "Rack shelf A",
+      recordingCapacity: { maxConcurrentRecordings: 6 },
       tags: ["voice", "council"],
     }),
     headers: { "content-type": "application/json" },
@@ -252,6 +253,7 @@ test("node update changes identity fields and audits before and after", async ()
   assert.deepEqual(body.data.ipAddresses, ["10.0.0.51"]);
   assert.deepEqual(body.data.tags, ["voice", "council"]);
   assert.equal(body.data.notes, "Rack shelf A");
+  assert.equal(body.data.recordingCapacity?.maxConcurrentRecordings, 6);
   assert.deepEqual(permissionCalls.at(-1), {
     action: "nodes.update",
     permission: "node:manage",
@@ -259,6 +261,7 @@ test("node update changes identity fields and audits before and after", async ()
   });
   assert.equal(event?.before?.alias, "Monitor Room");
   assert.equal(event?.after?.alias, "Council Chamber Recorder");
+  assert.equal(event?.after?.recordingCapacity.maxConcurrentRecordings, 6);
   assert.equal(event?.permission, "node:manage");
 });
 
@@ -517,6 +520,7 @@ function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
           ...input.location,
         },
         notes: input.notes === undefined ? nodes[index].notes : (input.notes ?? undefined),
+        recordingCapacity: input.recordingCapacity ?? nodes[index].recordingCapacity,
         tags: input.tags ?? nodes[index].tags,
       };
 

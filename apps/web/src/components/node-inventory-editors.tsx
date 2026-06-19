@@ -1,6 +1,10 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { AudioInterface, RecorderNode } from "@rakkr/shared";
+import {
+  defaultNodeRecordingCapacity,
+  type AudioInterface,
+  type RecorderNode,
+} from "@rakkr/shared";
 import { AudioLines, Save } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +20,7 @@ interface NodeIdentityDraft {
   floor: string;
   hostname: string;
   ipAddresses: string;
+  maxConcurrentRecordings: string;
   notes: string;
   room: string;
   site: string;
@@ -111,6 +116,17 @@ export function NodeIdentityEditor({
         <Input
           onChange={(event) => setDraftValue(setDraft, "hostname", event.target.value)}
           value={draft.hostname}
+        />
+      </Field>
+      <Field label="Max Concurrent Recordings">
+        <Input
+          max={128}
+          min={1}
+          onChange={(event) =>
+            setDraftValue(setDraft, "maxConcurrentRecordings", event.target.value)
+          }
+          type="number"
+          value={draft.maxConcurrentRecordings}
         />
       </Field>
       <Field label="IP Addresses">
@@ -280,6 +296,10 @@ function nodeIdentityDraft(node: RecorderNode): NodeIdentityDraft {
     floor: node.location.floor ?? "",
     hostname: node.hostname,
     ipAddresses: node.ipAddresses.join(", "),
+    maxConcurrentRecordings: String(
+      node.recordingCapacity?.maxConcurrentRecordings ??
+        defaultNodeRecordingCapacity.maxConcurrentRecordings,
+    ),
     notes: node.notes ?? "",
     room: node.location.room,
     site: node.location.site,
@@ -299,8 +319,20 @@ function nodeUpdateInput(draft: NodeIdentityDraft) {
       site: draft.site.trim(),
     },
     notes: draft.notes.trim() || null,
+    recordingCapacity: {
+      maxConcurrentRecordings: positiveInteger(
+        draft.maxConcurrentRecordings,
+        defaultNodeRecordingCapacity.maxConcurrentRecordings,
+      ),
+    },
     tags: parseList(draft.tags),
   };
+}
+
+function positiveInteger(value: string, fallback: number) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function optionalText(value: string) {

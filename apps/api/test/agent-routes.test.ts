@@ -178,6 +178,40 @@ test("agent heartbeat updates node runtime details and audits inventory changes"
   assert.equal(event?.after?.hostname, "agent-route-node-live");
 });
 
+test("agent config read returns node recording capacity", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const nodeStore = memoryNodeStore([
+    {
+      ...node(),
+      recordingCapacity: { maxConcurrentRecordings: 8 },
+    },
+  ]);
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node().id}/config`, {
+    headers: { authorization: "Bearer node-token" },
+  });
+  const body = (await response.json()) as {
+    data: { recordingCapacity: { maxConcurrentRecordings: number } };
+  };
+  const [event] = await auditStore.list({ action: "nodes.config.read.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.recordingCapacity.maxConcurrentRecordings, 8);
+  assert.equal(event?.permission, "node:control");
+  assert.equal(event?.details.recordingCapacity.maxConcurrentRecordings, 8);
+});
+
 test("agent service routes audit missing node credentials with route permissions", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
@@ -193,6 +227,11 @@ test("agent service routes audit missing node credentials with route permissions
   });
 
   const requests = [
+    {
+      action: "nodes.config.read.failed",
+      path: "/api/v1/nodes/node_agent_test/config",
+      permission: "node:control",
+    },
     {
       action: "nodes.channel_map_assignments.read.failed",
       path: "/api/v1/nodes/node_agent_test/channel-map-assignments",

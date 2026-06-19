@@ -1,12 +1,15 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anyhow::Context;
 use serde::Serialize;
 
 use crate::config::AgentConfig;
 use crate::telemetry::now_rfc3339;
+
+static HEALTH_LOG_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +55,10 @@ pub fn append_health_event_with_targets(
         severity: severity.to_string(),
         r#type: event_type.to_string(),
     };
+
+    let _guard = HEALTH_LOG_LOCK
+        .lock()
+        .map_err(|error| anyhow::anyhow!("health log lock poisoned: {error}"))?;
 
     rotate_if_needed(
         &config.agent_health_log_file,
@@ -144,6 +151,7 @@ fn rotated_log_path(path: &Path, index: u16) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -196,6 +204,48 @@ mod tests {
         rotate_if_needed(&path, 1, 0).expect("rotate log");
 
         assert!(!path.exists());
+
+        cleanup(&path);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn concurrent_appends_keep_json_lines_intact() {
+        let path = temp_health_log_path("concurrent");
+        let path_arg = path.to_string_lossy().into_owned();
+        let config = AgentConfig::parse_from([
+            "test",
+            "--agent-health-log-file",
+            path_arg.as_str(),
+            "--agent-health-log-max-bytes",
+            "0",
+        ]);
+        let handles = (0..16).map(|index| {
+            let config = config.clone();
+
+            std::thread::spawn(move || {
+                append_health_event(
+                    &config,
+                    "agent.concurrent_append",
+                    "info",
+                    serde_json::json!({ "index": index }),
+                )
+                .expect("append health event");
+            })
+        });
+
+        for handle in handles {
+            handle.join().expect("join append thread");
+        }
+
+        let contents = fs::read_to_string(&path).expect("read health log");
+        let lines = contents.lines().collect::<Vec<_>>();
+
+        assert_eq!(lines.len(), 16);
+
+        for line in lines {
+            serde_json::from_str::<serde_json::Value>(line).expect("parse health event line");
+        }
 
         cleanup(&path);
     }

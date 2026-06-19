@@ -278,6 +278,9 @@ export interface NodeEnrollmentInput {
     site: string;
   };
   notes?: string;
+  recordingCapacity?: {
+    maxConcurrentRecordings: number;
+  };
   runtime?: NodeRuntime;
   tags: string[];
 }
@@ -304,6 +307,9 @@ export interface NodeMetadataUpdate {
     site?: string;
   };
   notes?: string | null;
+  recordingCapacity?: {
+    maxConcurrentRecordings: number;
+  };
   tags?: string[];
 }
 

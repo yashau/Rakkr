@@ -195,7 +195,7 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     "--job-poll-seconds",
     "1",
     "--max-concurrent-recordings",
-    "2",
+    "1",
     "--meter-backend",
     "synthetic",
     "--node-id",
@@ -219,6 +219,7 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     (event) => event.type === "agent.recording_job.output_rendered",
   );
 
+  invariant(observed.configReads >= 1, "concurrent agent did not read controller node config");
   invariant(observed.claimNextReads >= 2, "concurrent agent did not claim queued jobs");
   invariant(observed.claims === 2, "concurrent agent did not claim both queued jobs");
   invariant(observed.maxRunningJobs >= 2, "concurrent jobs did not overlap as running");
@@ -384,6 +385,7 @@ function createObserved() {
     channelMapReads: 0,
     claimNextReads: 0,
     claims: 0,
+    configReads: 0,
     failureReason: undefined,
     failures: 0,
     heartbeats: 0,
@@ -426,6 +428,17 @@ async function handleControllerRequest(request, response) {
 
   const { observed, scenario } = context;
   const jobs = context.jobs ?? [context.job];
+
+  if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/config`) {
+    observed.configReads += 1;
+    return json(response, 200, {
+      data: {
+        recordingCapacity: {
+          maxConcurrentRecordings: scenario.concurrent ? 2 : 1,
+        },
+      },
+    });
+  }
 
   if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/next`) {
     observed.nextReads += 1;

@@ -9,7 +9,13 @@ import {
   nodeCredentials,
   nodes as nodeRows,
 } from "@rakkr/db";
-import type { AudioInterface, NodeRuntime, NodeStatus, RecorderNode } from "@rakkr/shared";
+import type {
+  AudioInterface,
+  NodeRecordingCapacity,
+  NodeRuntime,
+  NodeStatus,
+  RecorderNode,
+} from "@rakkr/shared";
 
 import { hashToken, isUuid } from "./auth-utils.js";
 import { nodeWithDerivedLiveness } from "./node-liveness.js";
@@ -31,6 +37,7 @@ export interface NodeEnrollmentInput {
     site: string;
   };
   notes?: string;
+  recordingCapacity?: NodeRecordingCapacity;
   runtime?: NodeRuntime;
   tags: string[];
 }
@@ -54,6 +61,7 @@ export interface NodeUpdateInput {
     site?: string;
   };
   notes?: string | null;
+  recordingCapacity?: NodeRecordingCapacity;
   tags?: string[];
 }
 
@@ -434,6 +442,7 @@ class PostgresNodeStore implements NodeStore {
         alias: next.alias,
         hostname: next.hostname,
         location: next.location,
+        metadata: nodeMetadata(row.metadata, next.runtime, next.recordingCapacity),
         network: { ipAddresses: next.ipAddresses },
         notes: next.notes ?? null,
         tags: next.tags,
@@ -514,7 +523,11 @@ function nodeInputToRow(input: NodeEnrollmentInput): typeof nodeRows.$inferInser
     hostname: input.hostname,
     id: `node_${randomUUID()}`,
     location: input.location,
-    metadata: nodeMetadata({ enrolledAt: new Date().toISOString() }, input.runtime),
+    metadata: nodeMetadata(
+      { enrolledAt: new Date().toISOString() },
+      input.runtime,
+      input.recordingCapacity,
+    ),
     network: {
       ipAddresses: input.ipAddresses,
     },
@@ -556,6 +569,7 @@ function nodeFromRows(
     lastSeenAt: (node.lastSeenAt ?? node.createdAt).toISOString(),
     location: locationFromValue(node.location),
     notes: node.notes ?? undefined,
+    recordingCapacity: nodeRecordingCapacityFromMetadata(node.metadata),
     runtime: nodeRuntimeFromMetadata(node.metadata),
     status: node.status,
     tags: stringArray(node.tags),
@@ -585,6 +599,7 @@ function updatedNode(node: RecorderNode, input: NodeUpdateInput): RecorderNode {
       ...definedLocation(input.location),
     },
     notes: input.notes === undefined ? node.notes : (input.notes ?? undefined),
+    recordingCapacity: input.recordingCapacity ?? node.recordingCapacity,
     tags: input.tags ?? node.tags,
   };
 }
@@ -701,9 +716,14 @@ function locationFromValue(value: unknown): RecorderNode["location"] {
   };
 }
 
-function nodeMetadata(existingMetadata: unknown, runtime: NodeRuntime | undefined) {
+function nodeMetadata(
+  existingMetadata: unknown,
+  runtime: NodeRuntime | undefined,
+  recordingCapacity = nodeRecordingCapacityFromMetadata(existingMetadata),
+) {
   return {
     ...record(existingMetadata),
+    ...(recordingCapacity ? { recordingCapacity } : {}),
     ...(runtime ? { runtime } : {}),
   };
 }
@@ -727,6 +747,17 @@ function nodeRuntimeFromMetadata(metadata: unknown): NodeRuntime | undefined {
     osName: stringOrUndefined(parsed.osName),
     uptimeSeconds: nonNegativeIntegerOrUndefined(parsed.uptimeSeconds),
   };
+}
+
+function nodeRecordingCapacityFromMetadata(metadata: unknown): NodeRecordingCapacity | undefined {
+  const recordingCapacity = record(record(metadata)?.recordingCapacity);
+  const maxConcurrentRecordings = nonNegativeIntegerOrUndefined(
+    recordingCapacity?.maxConcurrentRecordings,
+  );
+
+  return maxConcurrentRecordings && maxConcurrentRecordings > 0
+    ? { maxConcurrentRecordings }
+    : undefined;
 }
 
 function backend(value: string): AudioInterface["backend"] {

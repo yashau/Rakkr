@@ -114,7 +114,9 @@ async fn main() -> anyhow::Result<()> {
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
     let mut meter_sync_failed = false;
+    let mut node_config_sync_failed = false;
     let mut recording_jobs = JoinSet::new();
+    let mut recording_job_limit = config.max_concurrent_recordings.max(1);
     let mut system_health_state = system_health::SystemHealthState::default();
     let token = config.controller_token.as_deref();
     let meter_context = MeterLoopContext {
@@ -227,10 +229,35 @@ async fn main() -> anyhow::Result<()> {
                             warn!(error = %error, "failed to post meter frame");
                         }
                     }
+
+                    match controller::fetch_node_config(&config, token).await {
+                        Ok(node_config) => {
+                            if let Some(next_limit) = node_config.max_concurrent_recordings() {
+                                if next_limit != recording_job_limit {
+                                    info!(
+                                        max_concurrent_recordings = next_limit,
+                                        "updated recording job concurrency from controller config"
+                                    );
+                                }
+
+                                recording_job_limit = next_limit;
+                            }
+
+                            if node_config_sync_failed {
+                                node_config_sync_failed = false;
+                                info!("controller node config sync recovered");
+                            }
+                        }
+                        Err(error) if !node_config_sync_failed => {
+                            node_config_sync_failed = true;
+                            warn!(error = %error, "failed to fetch controller node config");
+                        }
+                        Err(_) => {}
+                    }
                 }
 
                 reap_recording_job_workers(&mut recording_jobs);
-                spawn_recording_job_workers(&config, &mut recording_jobs);
+                spawn_recording_job_workers(&config, &mut recording_jobs, recording_job_limit);
             }
         }
     }
@@ -252,12 +279,16 @@ fn reap_recording_job_workers(jobs: &mut JoinSet<anyhow::Result<()>>) {
     }
 }
 
-fn spawn_recording_job_workers(config: &AgentConfig, jobs: &mut JoinSet<anyhow::Result<()>>) {
+fn spawn_recording_job_workers(
+    config: &AgentConfig,
+    jobs: &mut JoinSet<anyhow::Result<()>>,
+    limit: usize,
+) {
     if config.controller_token.is_none() {
         return;
     }
 
-    let limit = config.max_concurrent_recordings.max(1);
+    let limit = limit.max(1);
 
     while jobs.len() < limit {
         let worker_config = config.clone();

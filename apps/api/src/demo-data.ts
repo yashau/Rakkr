@@ -38,6 +38,9 @@ export const nodes: RecorderNode[] = [
       site: "Main Office",
     },
     notes: "Initial Debian test rig with X32 Rack over USB.",
+    recordingCapacity: {
+      maxConcurrentRecordings: 8,
+    },
     runtime: {
       architecture: "x86_64",
       audioBackends: ["alsa"],

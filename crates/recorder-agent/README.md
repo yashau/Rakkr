@@ -8,7 +8,7 @@ Current capabilities:
 - reports stable node identity fields;
 - emits JSON inventory;
 - samples ALSA S16_LE PCM through `arecord` for live RMS/peak meter frames, with synthetic fallback for development hosts;
-- claims and runs bounded simultaneous recording jobs with `--max-concurrent-recordings`;
+- polls controller node capacity and runs bounded simultaneous recording jobs with `--max-concurrent-recordings` as the local fallback;
 - detects meter capture failure/recovery, device-unavailable/xrun failures, clipping, flatline, and suspicious same/inverted channel correlation transitions;
 - samples disk pressure, Linux load average, and audio-backend availability transitions;
 - writes a lifecycle-managed local JSONL health log with size-based retention and syncs node health events to the controller when a node token is configured;

@@ -13,6 +13,7 @@ import {
   recordingFileSnapshot,
 } from "./agent-route-helpers.js";
 import { bearerToken } from "./auth-utils.js";
+import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
 import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
@@ -58,6 +59,12 @@ export function registerAgentRoutes({
   recordingStore,
   settingsStore,
 }: AgentRouteDependencies) {
+  registerAgentNodeConfigRoute({
+    app,
+    nodeStore,
+    recordAuditEvent,
+  });
+
   app.get("/api/v1/nodes/:nodeId/channel-map-assignments", async (c) => {
     const nodeId = c.req.param("nodeId");
     const auth = await authenticateNode(
@@ -114,10 +121,7 @@ export function registerAgentRoutes({
       },
       outcome: "succeeded",
       permission: "node:control",
-      target: {
-        id: nodeId,
-        type: "node",
-      },
+      target: { id: nodeId, type: "node" },
     });
 
     return c.json({ data: assignments });
@@ -197,11 +201,7 @@ export function registerAgentRoutes({
         },
         outcome: "succeeded",
         permission: "node:control",
-        target: {
-          id: updated.id,
-          name: updated.alias,
-          type: "node",
-        },
+        target: { id: updated.id, name: updated.alias, type: "node" },
       });
     }
 
@@ -352,11 +352,7 @@ export function registerAgentRoutes({
       },
       outcome: "succeeded",
       permission: "health:acknowledge",
-      target: {
-        id: event.id,
-        name: event.type,
-        type: "health_event",
-      },
+      target: { id: event.id, name: event.type, type: "health_event" },
     });
 
     return c.json({ data: event }, 201);

@@ -3,6 +3,8 @@ import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import {
+  defaultNodeRecordingCapacity,
+  nodeRecordingCapacitySchema,
   nodeRuntimeSchema,
   nodeStatusSchema,
   type MeterFrame,
@@ -68,6 +70,7 @@ const nodeEnrollmentSchema = z
       site: z.string().trim().min(1).max(160),
     }),
     notes: z.string().trim().max(2000).optional(),
+    recordingCapacity: nodeRecordingCapacitySchema.optional(),
     runtime: nodeRuntimeSchema.optional(),
     tags: z.array(z.string().trim().min(1).max(48)).max(32).default([]),
   })
@@ -87,6 +90,7 @@ const nodeUpdateSchema = z
       .strict()
       .optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
+    recordingCapacity: nodeRecordingCapacitySchema.optional(),
     tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
   })
   .strict()
@@ -717,6 +721,7 @@ function nodeSnapshot(node: RecorderNode | undefined) {
         ipAddresses: node.ipAddresses,
         location: node.location,
         notes: node.notes,
+        recordingCapacity: node.recordingCapacity ?? defaultNodeRecordingCapacity,
         runtime: node.runtime,
         status: node.status,
         tags: node.tags,
