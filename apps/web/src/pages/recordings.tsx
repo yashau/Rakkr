@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Folder, RotateCcw, Search, Tag } from "lucide-react";
+import { Folder, RotateCcw, Search, Tag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { HealthEvent, RecordingSummary, UploadPolicy, UploadQueueItem } from "@rakkr/shared";
 
 import { RecordingCard } from "@/components/recording-card";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,14 @@ interface RecordingFilterDraft {
   search: string;
   status: "" | RecordingSummary["status"];
   tag: string;
+}
+
+type RecordingFilterKey = keyof RecordingFilters;
+
+interface ActiveRecordingFilterChip {
+  key: RecordingFilterKey;
+  label: string;
+  value: string;
 }
 
 const emptyRecordingFilterDraft: RecordingFilterDraft = {
@@ -54,6 +63,42 @@ const emptyUploadPolicies: UploadPolicy[] = [];
 
 const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilterDraft> = {
+  folder: "folder",
+  healthStatus: "healthStatus",
+  nodeId: "nodeId",
+  recordedFrom: "recordedFromDate",
+  recordedTo: "recordedToDate",
+  scheduleId: "scheduleId",
+  search: "search",
+  status: "status",
+  tag: "tag",
+};
+
+const recordingFilterLabels: Record<RecordingFilterKey, string> = {
+  folder: "folder",
+  healthStatus: "health",
+  nodeId: "node",
+  recordedFrom: "from",
+  recordedTo: "to",
+  scheduleId: "schedule",
+  search: "search",
+  status: "status",
+  tag: "tag",
+};
+
+const recordingFilterOrder: RecordingFilterKey[] = [
+  "search",
+  "folder",
+  "tag",
+  "nodeId",
+  "scheduleId",
+  "status",
+  "healthStatus",
+  "recordedFrom",
+  "recordedTo",
+];
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
@@ -214,7 +259,8 @@ export function RecordingsPage() {
   const healthEventsByRecording = groupHealthEventsByRecording(healthEventsQuery.data?.data ?? []);
   const uploadItemsByRecording = groupUploadItemsByRecording(uploadQueueQuery.data?.data ?? []);
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
-  const activeFilterCount = Object.values(recordingFilters).filter(Boolean).length;
+  const activeFilterChips = recordingFilterChips(recordingFilters);
+  const activeFilterCount = activeFilterChips.length;
 
   useEffect(
     () => () => {
@@ -230,6 +276,17 @@ export function RecordingsPage() {
 
     setFilterDraft(nextDraft);
     setRecordingFilters(filtersFromDraft(nextDraft));
+  };
+
+  const clearActiveFilter = (key: RecordingFilterKey) => {
+    const nextFilters = { ...recordingFilters };
+
+    delete nextFilters[key];
+    setRecordingFilters(nextFilters);
+    setFilterDraft((current) => ({
+      ...current,
+      [recordingFilterDraftKeys[key]]: "",
+    }));
   };
 
   return (
@@ -409,6 +466,28 @@ export function RecordingsPage() {
             </select>
           </div>
         </div>
+        {activeFilterChips.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {activeFilterChips.map((filter) => (
+              <Badge
+                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
+                key={filter.key}
+                variant="outline"
+              >
+                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
+                <span className="truncate font-mono">{filter.value}</span>
+                <button
+                  aria-label={`Clear ${filter.label} filter`}
+                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => clearActiveFilter(filter.key)}
+                  type="button"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        ) : null}
         {topFolders.length > 0 || topTags.length > 0 ? (
           <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3 md:grid-cols-2">
             {topFolders.length > 0 ? (
@@ -533,6 +612,32 @@ function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
     status: draft.status || undefined,
     tag: textOrUndefined(draft.tag),
   };
+}
+
+function recordingFilterChips(filters: RecordingFilters): ActiveRecordingFilterChip[] {
+  return recordingFilterOrder.flatMap((key) => {
+    const value = filters[key];
+
+    if (!value) {
+      return [];
+    }
+
+    return [
+      {
+        key,
+        label: recordingFilterLabels[key],
+        value: recordingFilterValue(key, value),
+      },
+    ];
+  });
+}
+
+function recordingFilterValue(key: RecordingFilterKey, value: string) {
+  if (key === "recordedFrom" || key === "recordedTo") {
+    return formatDateTime(value);
+  }
+
+  return value;
 }
 
 function textOrUndefined(value: string) {
