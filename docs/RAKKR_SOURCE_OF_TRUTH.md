@@ -191,7 +191,7 @@ Current partial implementation:
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
-- ALSA loopback tasks can fake capture/meter/render before X32 validation resumes.
+- ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - RBAC-gated listen monitor start/stream returns a controller meter-preview WAV for browser playback.
 
 ---
@@ -391,6 +391,7 @@ Current partial implementation:
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
+- `mise run check` includes fake-controller agent smoke coverage for `--run-next-job` without audio hardware.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
@@ -532,7 +533,8 @@ Current partial implementation:
 50. ✅ Add browser-timezone year-first date helper coverage.
 51. ⏸️ Return to X32 hardware validation after device is confirmed.
 52. ✅ Add controller-side ad-hoc recording lifecycle regression coverage.
-53. ⏳ Add fake-device agent CLI lifecycle smoke test.
+53. ✅ Add fake-device agent CLI lifecycle smoke test.
+54. ⏳ Add scheduled recording lifecycle coverage through agent cache attach.
 
 ## Open Questions
 

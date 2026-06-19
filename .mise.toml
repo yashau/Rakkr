@@ -39,6 +39,7 @@ depends = [
   "node:test",
   "node:lint",
   "node:format-check",
+  "agent:fake-controller-smoke",
   "rust:check",
   "rust:fmt-check",
   "rust:clippy",
@@ -107,6 +108,11 @@ run = "bash scripts/agent-loopback-meter-smoke.sh"
 [tasks."agent:loopback-render-smoke"]
 description = "Capture and render mapped audio from a Linux ALSA snd-aloop fake device"
 run = "bash scripts/alsa-loopback-render-smoke.sh"
+
+[tasks."agent:fake-controller-smoke"]
+depends = ["rust:check"]
+description = "Run the recorder agent against a local fake controller and fake capture command"
+run = "node scripts/agent-fake-controller-smoke.mjs"
 
 [tasks."rust:build"]
 description = "Build Rust crates"
