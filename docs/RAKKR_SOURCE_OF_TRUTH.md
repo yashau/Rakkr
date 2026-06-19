@@ -364,6 +364,7 @@ Current partial implementation:
 
 - Recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
 - Scoped filters, metadata editing, playback, download, cache attach, and audit events.
+- Recording library exposes scoped folder/tag facets with clickable UI filters.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
 - Agent job claim, capture, heartbeat, stop handling, cache upload, and leasing.
@@ -476,7 +477,8 @@ Examples:
 23. ✅ Add status-aware node badges across dashboard and inventory.
 24. ✅ Add node inventory status filtering.
 25. ✅ Add node inventory identity search.
-26. ⏸️ Return to X32 hardware validation after device is confirmed.
+26. ✅ Add recording library folder/tag facets.
+27. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

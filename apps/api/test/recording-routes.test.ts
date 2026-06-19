@@ -38,6 +38,40 @@ test.after(async () => {
   await rm(routeRoot, { force: true, recursive: true });
 });
 
+test("recording facets summarize visible folders and tags", async () => {
+  const auditStore = createAuditStore("");
+  const app = recordingApp({
+    auditStore,
+    nodes: [recorderNode()],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore([
+      recording({ folder: "Meetings/Council", id: "rec_1", tags: ["voice", "council"] }),
+      recording({ folder: "Meetings/Council", id: "rec_2", tags: ["voice"] }),
+      recording({ folder: "Meetings/Planning", id: "rec_3", tags: ["planning"] }),
+    ]),
+  });
+
+  const response = await app.request("/api/v1/recordings/facets");
+  const body = (await response.json()) as {
+    data: {
+      folders: Array<{ count: number; value: string }>;
+      tags: Array<{ count: number; value: string }>;
+    };
+  };
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data.folders, [
+    { count: 2, value: "Meetings/Council" },
+    { count: 1, value: "Meetings/Planning" },
+  ]);
+  assert.deepEqual(body.data.tags, [
+    { count: 2, value: "voice" },
+    { count: 1, value: "council" },
+    { count: 1, value: "planning" },
+  ]);
+});
+
 test("ad hoc recording start uses requested node profile policy and metadata", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();
@@ -354,6 +388,22 @@ function recorderNode(): RecorderNode {
     },
     status: "online",
     tags: ["voice"],
+  };
+}
+
+function recording(input: Partial<RecordingSummary>): RecordingSummary {
+  return {
+    cached: false,
+    durationSeconds: 120,
+    folder: "Meetings",
+    healthStatus: "healthy",
+    id: `rec_${randomUUID()}`,
+    name: "Recording",
+    recordedAt: "2026-06-18T12:00:00.000Z",
+    source: "ad_hoc",
+    status: "completed",
+    tags: ["voice"],
+    ...input,
   };
 }
 

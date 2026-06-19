@@ -59,6 +59,7 @@ export function RecordingStartPanel({ onNotice }: RecordingStartPanelProps) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-facets"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
       onNotice({

@@ -132,6 +132,16 @@ export interface RecordingFilters {
   tag?: string;
 }
 
+export interface RecordingFacet {
+  count: number;
+  value: string;
+}
+
+export interface RecordingFacets {
+  folders: RecordingFacet[];
+  tags: RecordingFacet[];
+}
+
 export interface HealthEventFilters {
   limit?: number;
   nodeId?: string;
@@ -490,6 +500,7 @@ export const api = {
     }),
   recordings: (filters: RecordingFilters = {}) =>
     fetchJson<{ data: RecordingSummary[] }>(withQuery("/api/v1/recordings", filters)),
+  recordingFacets: () => fetchJson<{ data: RecordingFacets }>("/api/v1/recordings/facets"),
   uploadQueue: () => fetchJson<{ data: UploadQueueItem[] }>("/api/v1/upload-queue"),
   uploadRunner: () => fetchJson<{ data: UploadRunnerStatus }>("/api/v1/upload-runner"),
   runUploadRunner: () =>

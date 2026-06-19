@@ -213,6 +213,12 @@ export function registerRecordingRoutes({
   );
 
   app.get(
+    "/api/v1/recordings/facets",
+    requirePermission("recording:read", "recordings.facets.read"),
+    async (c) => c.json({ data: recordingFacets(await scopedRecordings(currentUser(c))) }),
+  );
+
+  app.get(
     "/api/v1/recording-jobs",
     requirePermission("recording:read", "recording_jobs.read"),
     async (c) => {
@@ -886,6 +892,30 @@ function recordingMatchesSearch(recording: RecordingSummary, search: string) {
   ];
 
   return searchableValues.some((value) => value && includesText(value, search));
+}
+
+function recordingFacets(recordings: RecordingSummary[]) {
+  const folders = new Map<string, number>();
+  const tags = new Map<string, number>();
+
+  for (const recording of recordings) {
+    folders.set(recording.folder, (folders.get(recording.folder) ?? 0) + 1);
+
+    for (const tag of recording.tags) {
+      tags.set(tag, (tags.get(tag) ?? 0) + 1);
+    }
+  }
+
+  return {
+    folders: sortedFacets(folders),
+    tags: sortedFacets(tags),
+  };
+}
+
+function sortedFacets(values: Map<string, number>) {
+  return [...values.entries()]
+    .map(([value, count]) => ({ count, value }))
+    .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
 }
 
 function includesText(value: string, search: string) {
