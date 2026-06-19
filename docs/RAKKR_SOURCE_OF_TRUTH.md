@@ -325,6 +325,7 @@ Current partial implementation:
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
 - Settings UI read queries and page access mirror `settings:read`.
 - Settings shell navigation mirrors `settings:read`.
+- Settings channel-map assignment target lookup mirrors `node:read`.
 - Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
@@ -581,6 +582,7 @@ Current partial implementation:
 78. ✅ Add Settings read route missing-permission coverage.
 79. ✅ Mirror Settings page reads against RBAC permissions.
 80. ✅ Mirror Settings shell navigation against RBAC permissions.
+81. ✅ Mirror Settings channel-map target lookup against node read permission.
 
 ## Open Questions
 

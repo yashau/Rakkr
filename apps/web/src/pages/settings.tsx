@@ -39,6 +39,7 @@ export function SettingsPage() {
     queryKey: ["auth", "me"],
   });
   const currentUserPermissions = currentUserQuery.data?.data.permissions ?? [];
+  const canReadNodes = currentUserPermissions.includes("node:read");
   const canReadSettings = currentUserPermissions.includes("settings:read");
   const canManageSettings = currentUserPermissions.includes("settings:manage");
   const profilesQuery = useQuery({
@@ -67,7 +68,7 @@ export function SettingsPage() {
     queryKey: ["channel-map-assignments"],
   });
   const nodesQuery = useQuery({
-    enabled: canReadSettings,
+    enabled: canReadSettings && canReadNodes,
     queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
@@ -183,6 +184,7 @@ export function SettingsPage() {
           <ChannelMapTemplateCard
             assignments={assignmentsQuery.data?.data ?? []}
             canManage={canManageSettings}
+            canReadNodes={canReadNodes}
             key={template.id}
             nodes={nodesQuery.data?.data ?? []}
             template={template}
@@ -478,11 +480,13 @@ function WatchdogPolicyCard({ canManage, policy }: { canManage: boolean; policy:
 function ChannelMapTemplateCard({
   assignments,
   canManage,
+  canReadNodes,
   nodes,
   template,
 }: {
   assignments: ChannelMapTemplateAssignment[];
   canManage: boolean;
+  canReadNodes: boolean;
   nodes: RecorderNode[];
   template: ChannelMapTemplate;
 }) {
@@ -719,7 +723,7 @@ function ChannelMapTemplateCard({
         <Field label="Assign Target">
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            disabled={!canManage}
+            disabled={!canManage || !canReadNodes}
             onChange={(event) => setSelectedTarget(event.target.value)}
             value={selectedTarget}
           >
@@ -731,9 +735,9 @@ function ChannelMapTemplateCard({
           </select>
         </Field>
         <Button
-          disabled={!selectedTarget || assignMutation.isPending || !canManage}
+          disabled={!selectedTarget || assignMutation.isPending || !canManage || !canReadNodes}
           onClick={() => assignMutation.mutate()}
-          title={canManage ? "Assign channel map" : "Requires settings manage"}
+          title={assignTargetTitle(canManage, canReadNodes)}
           variant="outline"
         >
           <Cable className="size-4" />
@@ -792,6 +796,14 @@ function ChannelMapTemplateCard({
       ) : null}
     </Card>
   );
+}
+
+function assignTargetTitle(canManage: boolean, canReadNodes: boolean) {
+  if (!canManage) {
+    return "Requires settings manage";
+  }
+
+  return canReadNodes ? "Assign channel map" : "Requires node read";
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {
