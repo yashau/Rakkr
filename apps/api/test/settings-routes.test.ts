@@ -77,7 +77,7 @@ test("settings write routes deny users without settings manage", async () => {
       name: "Blocked Channel Map",
       tags: ["blocked"],
     }),
-    requestJson(app, "/api/v1/settings/channel-map-assignments", "POST", {
+    requestJson(app, "/api/v1/settings/channel-map-assignments", "PUT", {
       targetId: "node_blocked",
       targetType: "node",
       templateId: "template_blocked",
@@ -93,18 +93,15 @@ test("settings write routes deny users without settings manage", async () => {
     responses.map((response) => response.status),
     [403, 403, 403, 403, 403, 403, 403],
   );
-  assert.deepEqual(
-    deniedEvents.map((event) => event.action).sort(),
-    [
-      "settings.channel_map_assignments.rollback",
-      "settings.channel_map_assignments.update",
-      "settings.channel_map_templates.create",
-      "settings.recording_profiles.update",
-      "settings.upload_policies.create",
-      "settings.upload_providers.update",
-      "settings.watchdog_policies.update",
-    ],
-  );
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignments.rollback",
+    "settings.channel_map_assignments.update",
+    "settings.channel_map_templates.create",
+    "settings.recording_profiles.update",
+    "settings.upload_policies.create",
+    "settings.upload_providers.update",
+    "settings.watchdog_policies.update",
+  ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
   assert.ok(deniedEvents.every((event) => event.target.type === "settings"));
 });
@@ -112,7 +109,7 @@ test("settings write routes deny users without settings manage", async () => {
 function requestJson(
   app: Hono<AppBindings>,
   path: string,
-  method: "PATCH" | "POST",
+  method: "PATCH" | "POST" | "PUT",
   body: Record<string, unknown>,
 ) {
   return app.request(path, {
