@@ -34,43 +34,63 @@ import { uploadProviderUpdate, watchdogPolicyUpdate } from "@/lib/settings-updat
 import { uploadProviderStatusClass } from "@/lib/upload-status";
 
 export function SettingsPage() {
-  const profilesQuery = useQuery({
-    queryFn: api.recordingProfiles,
-    queryKey: ["recording-profiles"],
-  });
-  const watchdogPoliciesQuery = useQuery({
-    queryFn: api.watchdogPolicies,
-    queryKey: ["watchdog-policies"],
-  });
-  const channelMapsQuery = useQuery({
-    queryFn: api.channelMapTemplates,
-    queryKey: ["channel-map-templates"],
-  });
-  const uploadProvidersQuery = useQuery({
-    queryFn: api.uploadProviders,
-    queryKey: ["upload-providers"],
-  });
-  const assignmentsQuery = useQuery({
-    queryFn: api.channelMapAssignments,
-    queryKey: ["channel-map-assignments"],
-  });
-  const nodesQuery = useQuery({
-    queryFn: () => api.nodes(),
-    queryKey: ["nodes"],
-  });
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
   });
+  const currentUserPermissions = currentUserQuery.data?.data.permissions ?? [];
+  const canReadSettings = currentUserPermissions.includes("settings:read");
+  const canManageSettings = currentUserPermissions.includes("settings:manage");
+  const profilesQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: api.recordingProfiles,
+    queryKey: ["recording-profiles"],
+  });
+  const watchdogPoliciesQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: api.watchdogPolicies,
+    queryKey: ["watchdog-policies"],
+  });
+  const channelMapsQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: api.channelMapTemplates,
+    queryKey: ["channel-map-templates"],
+  });
+  const uploadProvidersQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: api.uploadProviders,
+    queryKey: ["upload-providers"],
+  });
+  const assignmentsQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: api.channelMapAssignments,
+    queryKey: ["channel-map-assignments"],
+  });
+  const nodesQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: () => api.nodes(),
+    queryKey: ["nodes"],
+  });
   const queryClient = useQueryClient();
-  const canManageSettings =
-    currentUserQuery.data?.data.permissions.includes("settings:manage") ?? false;
   const createChannelMapMutation = useMutation({
     mutationFn: () => api.createChannelMapTemplate(defaultChannelMapTemplate()),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["channel-map-templates"] });
     },
   });
+
+  if (currentUserQuery.isPending) {
+    return <SettingsAccessState description="Checking current permissions." title="Loading" />;
+  }
+
+  if (!canReadSettings) {
+    return (
+      <SettingsAccessState
+        description="Your account does not have settings read permission."
+        title="Settings Access Denied"
+      />
+    );
+  }
 
   return (
     <div className="grid gap-6">
@@ -170,6 +190,22 @@ export function SettingsPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+function SettingsAccessState({ description, title }: { description: string; title: string }) {
+  return (
+    <Card className="rounded-lg p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+          <ShieldAlert className="size-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+    </Card>
   );
 }
 
