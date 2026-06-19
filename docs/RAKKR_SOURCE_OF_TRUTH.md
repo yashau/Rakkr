@@ -335,6 +335,7 @@ Current partial implementation:
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by actor, action, target, outcome, and time; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
+- Audit read/export routes have missing-permission deny coverage.
 - Audit UI exposes event reasons, correlation IDs, details, and before/after snapshots.
 - User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
 - Recording delete is RBAC-gated and audited, with active-recording protection.
@@ -591,6 +592,7 @@ Current partial implementation:
 83. ✅ Mirror header recording shortcut against RBAC permissions.
 84. ✅ Add node route missing-permission coverage.
 85. ✅ Add schedule route missing-permission coverage.
+86. ✅ Add audit route missing-permission coverage.
 
 ## Open Questions
 

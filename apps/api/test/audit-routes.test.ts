@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, Permission } from "@rakkr/shared";
+import type { AuditEvent, CurrentUser, Permission } from "@rakkr/shared";
 import type { AppBindings, RequirePermission } from "../src/http-types.js";
 
 const { registerAuditRoutes } = await import("../src/audit-routes.js");
@@ -73,6 +74,36 @@ test("audit routes export filtered events as csv", async () => {
   assert.match(body, /"{""count"":2,""level"":""critical""}"/);
 });
 
+test("audit routes deny users without audit read", async () => {
+  const auditStore = createAuditStore("");
+  const currentUser = user([]);
+  const app = new Hono<AppBindings>();
+
+  registerAuditRoutes({
+    app,
+    auditStore,
+    requirePermission: denyMissingPermission(auditStore, currentUser),
+  });
+
+  const responses = await Promise.all([
+    app.request("/api/v1/audit-events"),
+    app.request("/api/v1/audit-events/export"),
+  ]);
+  const deniedEvents = await auditStore.list({ outcome: "denied", permission: "audit:read" });
+
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [403, 403],
+  );
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "audit.events.export",
+    "audit.events.read",
+  ]);
+  assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
+  assert.ok(deniedEvents.every((event) => event.actor.id === currentUser.id));
+  assert.ok(deniedEvents.every((event) => event.target.type === "controller"));
+});
+
 function auditApp(auditStore: ReturnType<typeof createAuditStore>, calls: string[]) {
   const app = new Hono<AppBindings>();
 
@@ -91,6 +122,52 @@ function requirePermission(calls: string[]): RequirePermission {
       calls.push(`${permission}:${action}`);
       await next();
     };
+  };
+}
+
+function denyMissingPermission(
+  auditStore: ReturnType<typeof createAuditStore>,
+  currentUser: CurrentUser,
+): RequirePermission {
+  return (permission, action, target) => async (c) => {
+    const auditTarget = target ? await target(c) : { type: "controller" as const };
+
+    await auditStore.append({
+      action,
+      actor: {
+        id: currentUser.id,
+        name: currentUser.name,
+        roles: currentUser.roles,
+        type: "user",
+      },
+      actorContext: {},
+      createdAt: new Date().toISOString(),
+      details: {
+        requiredPermission: permission,
+        resourceScope: auditTarget,
+        roles: currentUser.roles,
+      },
+      id: `audit_${randomUUID()}`,
+      outcome: "denied",
+      permission,
+      reason: "missing_permission",
+      target: auditTarget,
+    });
+
+    return c.json({ error: "Forbidden", permission }, 403);
+  };
+}
+
+function user(permissions: Permission[]): CurrentUser {
+  return {
+    email: "audit-denied@example.com",
+    groups: [],
+    id: "user_audit_denied",
+    name: "Audit Denied",
+    permissions,
+    provider: "local",
+    resourceGrants: [],
+    roles: ["viewer"],
   };
 }
 
