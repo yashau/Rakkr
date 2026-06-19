@@ -52,6 +52,7 @@ const healthEventsQuerySchema = z.object({
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     healthEventStatusSchema.optional(),
   ),
+  type: optionalTextFilterSchema,
 });
 const optionalIsoDateSchema = optionalTextFilterSchema.refine(
   (value) => !value || !Number.isNaN(Date.parse(value)),
@@ -304,6 +305,7 @@ function healthFilters(input: z.infer<typeof healthEventsQuerySchema>): HealthEv
     scheduleId: input.scheduleId,
     severity: input.severity,
     status: input.status,
+    type: input.type,
   };
 }
 

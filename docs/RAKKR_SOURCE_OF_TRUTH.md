@@ -238,6 +238,7 @@ Current partial implementation:
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
 - Local meter frames include speech/noise scores; speech-required policies can alert on loud non-speech audio.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
+- Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 
@@ -463,7 +464,8 @@ Examples:
 16. ✅ Add stale heartbeat offline status derivation.
 17. ✅ Add stale node heartbeat health-event lifecycle.
 18. ✅ Add node-offline Prometheus alert metric.
-19. ⏸️ Return to X32 hardware validation after device is confirmed.
+19. ✅ Add event-type health filtering.
+20. ⏸️ Return to X32 hardware validation after device is confirmed.
 
 ## Open Questions
 

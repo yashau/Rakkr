@@ -28,6 +28,7 @@ export interface HealthEventFilters {
   scheduleId?: string;
   severity?: HealthSeverity;
   status?: HealthEventStatus;
+  type?: string;
 }
 
 export interface HealthEventLifecycleUpdate {
@@ -287,6 +288,10 @@ function healthConditions(filters: HealthEventFilters): SQL[] {
     conditions.push(eq(healthEventsTable.status, filters.status));
   }
 
+  if (filters.type) {
+    conditions.push(eq(healthEventsTable.type, filters.type));
+  }
+
   return conditions;
 }
 
@@ -296,7 +301,8 @@ function matchesHealthFilters(event: HealthEvent, filters: HealthEventFilters) {
     (!filters.recordingId || event.recordingId === filters.recordingId) &&
     (!filters.scheduleId || event.scheduleId === filters.scheduleId) &&
     (!filters.severity || event.severity === filters.severity) &&
-    (!filters.status || event.status === filters.status)
+    (!filters.status || event.status === filters.status) &&
+    (!filters.type || event.type === filters.type)
   );
 }
 

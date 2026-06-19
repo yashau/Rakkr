@@ -133,6 +133,7 @@ export interface HealthEventFilters {
   scheduleId?: string;
   severity?: HealthEvent["severity"];
   status?: HealthEvent["status"];
+  type?: string;
 }
 
 export interface HealthEventCreateInput {
