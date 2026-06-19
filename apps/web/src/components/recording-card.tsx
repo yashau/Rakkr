@@ -32,6 +32,8 @@ import { formatDateTime, formatDuration } from "@/lib/dates";
 import {
   isCachedRecording,
   isTerminalRecording,
+  recordingRelationshipBadges,
+  type RecordingRelationshipReferences,
   waveformBarHeightPercent,
   waveformPreviewSummary,
 } from "@/lib/recording-page-helpers";
@@ -65,6 +67,7 @@ export function RecordingCard({
   onUpdate,
   playbackPending,
   recording,
+  relationshipReferences,
   retryUploadPending,
   selected = false,
   stopPending,
@@ -93,6 +96,7 @@ export function RecordingCard({
   onUpdate: (input: RecordingMetadataUpdate) => Promise<unknown>;
   playbackPending: boolean;
   recording: RecordingSummary;
+  relationshipReferences?: RecordingRelationshipReferences;
   retryUploadPending: boolean;
   selected?: boolean;
   stopPending: boolean;
@@ -107,7 +111,7 @@ export function RecordingCard({
   const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(
     recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "",
   );
-  const relationships = recordingRelationships(recording);
+  const relationships = recordingRelationshipBadges(recording, relationshipReferences);
 
   useEffect(() => {
     if (!isEditing) {
@@ -483,36 +487,6 @@ function uploadStatusClass(status: UploadQueueItem["status"]) {
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function recordingRelationships(recording: RecordingSummary) {
-  const items: Array<{ label: string; value: string }> = [];
-
-  if (recording.nodeId) {
-    items.push({ label: "node", value: recording.nodeId });
-  }
-
-  if (recording.scheduleId) {
-    items.push({ label: "schedule", value: recording.scheduleId });
-  }
-
-  if (recording.recordingProfileId) {
-    items.push({ label: "profile", value: recording.recordingProfileId });
-  }
-
-  if (recording.uploadPolicyId) {
-    items.push({ label: "upload", value: recording.uploadPolicyId });
-  }
-
-  if (recording.trackIndex && recording.trackTotal) {
-    items.push({ label: "track", value: `${recording.trackIndex}/${recording.trackTotal}` });
-  }
-
-  if (recording.trackGroupId) {
-    items.push({ label: "group", value: recording.trackGroupId });
-  }
-
-  return items;
 }
 
 function recordingJobCaptureDetails(job: RecordingJob) {

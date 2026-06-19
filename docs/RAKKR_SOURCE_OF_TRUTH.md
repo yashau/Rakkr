@@ -416,6 +416,7 @@ Current partial implementation:
 - Recording library supports browser-local date-range filters backed by UTC ISO query bounds.
 - Recording library shows removable active filter chips for applied organization/search filters.
 - Recording cards display node, schedule, profile, upload policy, and track relationship badges.
+- Recording cards resolve relationship badges to friendly names when RBAC allows reference lookups.
 - Recording library can filter/search by recording profile and upload policy relationships.
 - Recording job rows display capture interface, channel-map template, mode, and source channels.
 - Recording library can display, search, and filter scheduled split recordings by track group.
@@ -657,6 +658,7 @@ Current partial implementation:
 118. ✅ Add UI RBAC helper boundary coverage.
 119. ✅ Add RBAC/audited recording manifest CSV export.
 120. ✅ Add searchable operator notes to recording metadata.
+121. ✅ Add RBAC-aware friendly relationship labels to recording cards.
 
 ## Open Questions
 

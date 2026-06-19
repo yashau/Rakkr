@@ -98,6 +98,21 @@ export function RecordingsPage() {
     queryKey: ["upload-queue"],
     refetchInterval: 5000,
   });
+  const nodesQuery = useQuery({
+    enabled: pagePermissions.canReadNodes,
+    queryFn: () => api.nodes(),
+    queryKey: ["nodes"],
+  });
+  const recordingProfilesQuery = useQuery({
+    enabled: pagePermissions.canReadSettings,
+    queryFn: api.recordingProfiles,
+    queryKey: ["recording-profiles"],
+  });
+  const schedulesQuery = useQuery({
+    enabled: pagePermissions.canReadSchedules,
+    queryFn: api.schedules,
+    queryKey: ["schedules"],
+  });
   const uploadPoliciesQuery = useQuery({
     enabled: pagePermissions.canReadSettings,
     queryFn: api.uploadPolicies,
@@ -332,6 +347,9 @@ export function RecordingsPage() {
   const topUploadPolicies = facets?.uploadPolicies.slice(0, 8) ?? [];
   const healthEventsByRecording = groupHealthEventsByRecording(healthEventsQuery.data?.data ?? []);
   const uploadItemsByRecording = groupUploadItemsByRecording(uploadQueueQuery.data?.data ?? []);
+  const nodes = nodesQuery.data?.data ?? [];
+  const recordingProfiles = recordingProfilesQuery.data?.data ?? [];
+  const schedules = schedulesQuery.data?.data ?? [];
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];
   const activeFilterChips = recordingFilterChips(recordingFilters);
   const activeFilterCount = activeFilterChips.length;
@@ -925,6 +943,12 @@ export function RecordingsPage() {
                 }
                 playbackPending={playbackMutation.isPending}
                 recording={recording}
+                relationshipReferences={{
+                  nodes,
+                  recordingProfiles,
+                  schedules,
+                  uploadPolicies,
+                }}
                 retryUploadPending={retryUploadMutation.isPending}
                 selected={selectedRecordingIdSet.has(recording.id)}
                 stopPending={stopMutation.isPending}

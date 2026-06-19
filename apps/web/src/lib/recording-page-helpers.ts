@@ -1,8 +1,12 @@
 import type {
   CurrentUser,
   HealthEvent,
+  RecorderNode,
+  RecordingProfile,
   RecordingSummary,
   RecordingWaveformPreview,
+  ScheduleSummary,
+  UploadPolicy,
   UploadQueueItem,
 } from "@rakkr/shared";
 
@@ -69,7 +73,15 @@ export interface RecordingPagePermissions {
   canReadHealth: boolean;
   canReadNodes: boolean;
   canReadRecordings: boolean;
+  canReadSchedules: boolean;
   canReadSettings: boolean;
+}
+
+export interface RecordingRelationshipReferences {
+  nodes?: RecorderNode[];
+  recordingProfiles?: RecordingProfile[];
+  schedules?: ScheduleSummary[];
+  uploadPolicies?: UploadPolicy[];
 }
 
 type RevokeObjectUrl = (url: string) => void;
@@ -244,8 +256,54 @@ export function recordingPagePermissions(user: CurrentUser | undefined): Recordi
     canReadHealth: permissions.includes("health:read"),
     canReadNodes: permissions.includes("node:read"),
     canReadRecordings: permissions.includes("recording:read"),
+    canReadSchedules: permissions.includes("schedule:read"),
     canReadSettings: permissions.includes("settings:read"),
   };
+}
+
+export function recordingRelationshipBadges(
+  recording: RecordingSummary,
+  references: RecordingRelationshipReferences = {},
+) {
+  const items: Array<{ label: string; value: string }> = [];
+
+  if (recording.nodeId) {
+    items.push({ label: "node", value: nodeRelationshipLabel(recording.nodeId, references.nodes) });
+  }
+
+  if (recording.scheduleId) {
+    const schedule = references.schedules?.find(
+      (candidate) => candidate.id === recording.scheduleId,
+    );
+
+    items.push({ label: "schedule", value: schedule?.name ?? recording.scheduleId });
+  }
+
+  if (recording.recordingProfileId) {
+    const profile = references.recordingProfiles?.find(
+      (candidate) => candidate.id === recording.recordingProfileId,
+    );
+
+    items.push({ label: "profile", value: profile?.name ?? recording.recordingProfileId });
+  }
+
+  if (recording.uploadPolicyId) {
+    const policy = references.uploadPolicies?.find(
+      (candidate) => candidate.id === recording.uploadPolicyId,
+    );
+
+    items.push({ label: "upload", value: policy?.name ?? recording.uploadPolicyId });
+  }
+
+  if (recording.trackIndex && recording.trackTotal) {
+    items.push({ label: "track", value: `${recording.trackIndex}/${recording.trackTotal}` });
+  }
+
+  if (recording.trackGroupId) {
+    items.push({ label: "group", value: recording.trackGroupId });
+  }
+
+  return items;
 }
 
 export function waveformBarHeightPercent(peak: number) {
@@ -345,6 +403,18 @@ function recordingFilterValue(key: RecordingFilterKey, value: string) {
   }
 
   return value;
+}
+
+function nodeRelationshipLabel(nodeId: string, nodes: RecorderNode[] | undefined) {
+  const node = nodes?.find((candidate) => candidate.id === nodeId);
+
+  if (!node) {
+    return nodeId;
+  }
+
+  const details = [node.location.room, node.ipAddresses[0]].filter(Boolean).join(" / ");
+
+  return details ? `${node.alias} (${details})` : node.alias;
 }
 
 function sortFilterLabel(value: string, fallback: string) {

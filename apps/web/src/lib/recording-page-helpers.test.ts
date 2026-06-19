@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CurrentUser, Permission, RecordingSummary } from "@rakkr/shared";
+import type {
+  CurrentUser,
+  Permission,
+  RecorderNode,
+  RecordingProfile,
+  RecordingSummary,
+  ScheduleSummary,
+  UploadPolicy,
+} from "@rakkr/shared";
 
 import {
   clearPlaybackPreview,
@@ -9,6 +17,7 @@ import {
   playbackPreviewFromSession,
   recordingFileActionState,
   recordingPagePermissions,
+  recordingRelationshipBadges,
   replacePlaybackPreview,
   type RecordingPlaybackPreview,
   waveformBarHeightPercent,
@@ -134,6 +143,7 @@ test("recording page permissions are closed by default", () => {
     canReadHealth: false,
     canReadNodes: false,
     canReadRecordings: false,
+    canReadSchedules: false,
     canReadSettings: false,
   });
 });
@@ -149,6 +159,7 @@ test("recording read permission does not imply related health or settings reads"
     canReadHealth: false,
     canReadNodes: false,
     canReadRecordings: true,
+    canReadSchedules: false,
     canReadSettings: false,
   });
 });
@@ -166,6 +177,7 @@ test("recording page permissions mirror granular read and action grants", () => 
         "recording:edit",
         "recording:playback",
         "recording:read",
+        "schedule:read",
         "settings:read",
       ]),
     ),
@@ -179,8 +191,58 @@ test("recording page permissions mirror granular read and action grants", () => 
       canReadHealth: true,
       canReadNodes: true,
       canReadRecordings: true,
+      canReadSchedules: true,
       canReadSettings: true,
     },
+  );
+});
+
+test("recording relationship badges prefer permitted friendly reference names", () => {
+  assert.deepEqual(
+    recordingRelationshipBadges(
+      recording({
+        nodeId: "node_web_action_test",
+        recordingProfileId: "profile_voice",
+        scheduleId: "sched_council",
+        trackGroupId: "track_group_1",
+        trackIndex: 2,
+        trackTotal: 4,
+        uploadPolicyId: "upload_stub",
+      }),
+      {
+        nodes: [recorderNode()],
+        recordingProfiles: [recordingProfile()],
+        schedules: [schedule()],
+        uploadPolicies: [uploadPolicy()],
+      },
+    ),
+    [
+      { label: "node", value: "Council Rack (Council Chamber / 10.0.0.10)" },
+      { label: "schedule", value: "Weekly Council" },
+      { label: "profile", value: "Voice MP3" },
+      { label: "upload", value: "Stub Upload" },
+      { label: "track", value: "2/4" },
+      { label: "group", value: "track_group_1" },
+    ],
+  );
+});
+
+test("recording relationship badges fall back to ids without reference access", () => {
+  assert.deepEqual(
+    recordingRelationshipBadges(
+      recording({
+        nodeId: "node_web_action_test",
+        recordingProfileId: "profile_voice",
+        scheduleId: "sched_council",
+        uploadPolicyId: "upload_stub",
+      }),
+    ),
+    [
+      { label: "node", value: "node_web_action_test" },
+      { label: "schedule", value: "sched_council" },
+      { label: "profile", value: "profile_voice" },
+      { label: "upload", value: "upload_stub" },
+    ],
   );
 });
 
@@ -222,6 +284,24 @@ function recording(input: Partial<RecordingSummary> = {}): RecordingSummary {
   };
 }
 
+function recorderNode(): RecorderNode {
+  return {
+    agentVersion: "0.1.0",
+    alias: "Council Rack",
+    hostname: "council-rack",
+    id: "node_web_action_test",
+    interfaces: [],
+    ipAddresses: ["10.0.0.10"],
+    lastSeenAt: "2026-06-18T12:00:00.000Z",
+    location: {
+      room: "Council Chamber",
+      site: "City Hall",
+    },
+    status: "online",
+    tags: ["voice"],
+  };
+}
+
 function playbackPreview(objectUrl: string): RecordingPlaybackPreview {
   return {
     fileName: "council-voice.mp3",
@@ -229,6 +309,50 @@ function playbackPreview(objectUrl: string): RecordingPlaybackPreview {
     recordingId: "rec_web_action_test",
     sessionId: "playback_test",
     startedAt: "2026-06-18T12:00:00.000Z",
+  };
+}
+
+function recordingProfile(): RecordingProfile {
+  return {
+    bitrateKbps: 128,
+    channelMode: "mono_to_stereo_mix",
+    codec: "mp3",
+    id: "profile_voice",
+    name: "Voice MP3",
+    silenceDetectionEnabled: false,
+    silenceSkipEnabled: false,
+    vbr: true,
+  };
+}
+
+function schedule(): ScheduleSummary {
+  return {
+    enabled: true,
+    folderTemplate: "Meetings/{{date}}",
+    id: "sched_council",
+    name: "Weekly Council",
+    nodeId: "node_web_action_test",
+    recurrence: { mode: "manual" },
+    recordingProfileId: "profile_voice",
+    room: "Council Chamber",
+    tags: ["voice"],
+    timezone: "Indian/Maldives",
+    titleTemplate: "Council {{date}}",
+    uploadPolicyId: "upload_stub",
+    watchdogPolicyId: "watchdog_voice",
+  };
+}
+
+function uploadPolicy(): UploadPolicy {
+  return {
+    deleteCacheAfterUpload: false,
+    enabled: true,
+    id: "upload_stub",
+    maxAttempts: 5,
+    name: "Stub Upload",
+    provider: "stub",
+    trigger: "manual",
+    updatedAt: "2026-06-18T12:00:00.000Z",
   };
 }
 
