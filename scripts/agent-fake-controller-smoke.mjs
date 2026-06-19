@@ -19,7 +19,7 @@ const observed = {
   cacheUpload: undefined,
   channelMapReads: 0,
   claims: 0,
-  healthEvents: 0,
+  healthEvents: [],
   nextReads: 0,
 };
 const job = {
@@ -29,9 +29,10 @@ const job = {
     captureFormat: "S16_LE",
     captureSampleRate: 48000,
     durationSeconds: 1,
-    outputCodec: "wav",
-    outputFileName: "rec_fake_controller_smoke.wav",
-    outputVbr: false,
+    outputBitrateKbps: 128,
+    outputCodec: "mp3",
+    outputFileName: "rec_fake_controller_smoke.mp3",
+    outputVbr: true,
     type: "alsa_capture",
   },
   failureReason: undefined,
@@ -53,6 +54,7 @@ const server = createServer(async (request, response) => {
 try {
   const address = await listen(server);
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
+  const renderCommand = await writeFakeRenderCommand(smokeRoot);
   const result = await run("cargo", [
     "run",
     "--quiet",
@@ -76,6 +78,8 @@ try {
     token,
     "--controller-url",
     `http://127.0.0.1:${address.port}`,
+    "--channel-render-command",
+    renderCommand,
     "--job-poll-seconds",
     "1",
     "--node-id",
@@ -97,11 +101,20 @@ try {
   invariant(observed.cacheUpload?.recordingId === recordingId, "agent did not upload cache file");
   invariant(observed.cacheUpload?.jobId === jobId, "cache upload did not include the job id");
   invariant(observed.cacheUpload?.durationSeconds === "1", "cache upload did not include duration");
-  invariant(observed.cacheUpload?.contentType === "audio/wav", "cache upload was not WAV");
+  invariant(
+    observed.cacheUpload?.fileName === "rec_fake_controller_smoke.mp3",
+    "cache upload did not include rendered file name",
+  );
+  invariant(observed.cacheUpload?.contentType === "audio/mpeg", "cache upload was not MP3");
   invariant(observed.cacheUpload?.size > 44, "cache upload body was too small");
+  invariant(
+    observed.healthEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
+    "agent did not report rendered output",
+  );
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
   invariant(state.jobId === jobId, "agent state file recorded the wrong job id");
+  invariant(state.outputPath?.endsWith("rec_fake_controller_smoke.mp3"), "agent state did not end on rendered MP3");
 
   console.log("Agent fake-controller smoke passed.");
 } finally {
@@ -141,9 +154,9 @@ async function handleControllerRequest(request, response) {
   }
 
   if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/health-events`) {
-    observed.healthEvents += 1;
-    await readBody(request);
-    return json(response, 201, { data: { id: `health_${observed.healthEvents}` } });
+    const event = JSON.parse((await readBody(request)).toString("utf8"));
+    observed.healthEvents.push(event);
+    return json(response, 201, { data: { id: `health_${observed.healthEvents.length}` } });
   }
 
   if (request.method === "PUT" && url.pathname === `/api/v1/recordings/${recordingId}/cache-file`) {
@@ -234,6 +247,42 @@ function wavFile(samples) {
   await chmod(captureScript, 0o755);
 
   return captureScript;
+}
+
+async function writeFakeRenderCommand(directory) {
+  const renderScript = path.join(directory, "fake-render.mjs");
+  await writeFile(
+    renderScript,
+    `#!/usr/bin/env node
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const inputIndex = process.argv.indexOf("-i");
+const inputPath = inputIndex >= 0 ? process.argv[inputIndex + 1] : undefined;
+const outputPath = process.argv.at(-1);
+
+if (!inputPath || !outputPath || outputPath.startsWith("-")) {
+  console.error("missing input or output path");
+  process.exit(2);
+}
+
+mkdirSync(path.dirname(outputPath), { recursive: true });
+const source = readFileSync(inputPath);
+const payload = Buffer.concat([Buffer.from("FAKE_MP3_VBR_128\\n"), source]);
+writeFileSync(outputPath, payload);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-render.cmd");
+    await writeFile(commandPath, `@echo off\r\n"${process.execPath}" "${renderScript}" %*\r\n`);
+
+    return commandPath;
+  }
+
+  await chmod(renderScript, 0o755);
+
+  return renderScript;
 }
 
 function run(command, args) {
