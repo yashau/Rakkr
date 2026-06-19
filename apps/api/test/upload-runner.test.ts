@@ -149,7 +149,7 @@ test("upload runner routes expose status and run-now control", async () => {
   assert.equal(events[0]?.actor.id, "user_upload_runner_test");
 });
 
-test("upload runner run-now route denies users without recording control", async () => {
+test("upload runner routes deny users without required permissions", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
   const providerStore = createUploadProviderStore();
@@ -167,17 +167,22 @@ test("upload runner run-now route denies users without recording control", async
     target: "stub://queue-only",
   });
 
-  const response = await app.request("/api/v1/upload-runner/run", { method: "POST" });
+  const readResponse = await app.request("/api/v1/upload-runner");
+  const runResponse = await app.request("/api/v1/upload-runner/run", { method: "POST" });
   const status = runner.status();
-  const events = await auditStore.list({ action: "recordings.upload_runner.run" });
+  const events = await auditStore.list({ outcome: "denied" });
 
-  assert.equal(response.status, 403);
+  assert.deepEqual([readResponse.status, runResponse.status], [403, 403]);
   assert.equal(status.lastSummary, undefined);
-  assert.equal(events.length, 1);
-  assert.equal(events[0]?.outcome, "denied");
-  assert.equal(events[0]?.permission, "recording:control");
-  assert.equal(events[0]?.reason, "missing_permission");
-  assert.equal(events[0]?.target.type, "upload_runner");
+  assert.deepEqual(
+    Object.fromEntries(events.map((event) => [event.action, event.permission]).sort()),
+    {
+      "recordings.upload_runner.read": "recording:read",
+      "recordings.upload_runner.run": "recording:control",
+    },
+  );
+  assert.ok(events.every((event) => event.reason === "missing_permission"));
+  assert.ok(events.every((event) => event.target.type === "upload_runner"));
 });
 
 const allow: RequirePermission = () => async (_c, next) => {
@@ -255,7 +260,7 @@ function viewer(): CurrentUser {
     groups: [],
     id: "user_upload_runner_viewer_test",
     name: "Upload Runner Viewer Test",
-    permissions: ["recording:read"],
+    permissions: [],
     provider: "local",
     resourceGrants: [],
     roles: ["viewer"],

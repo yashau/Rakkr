@@ -327,7 +327,7 @@ Current partial implementation:
 - Health read and lifecycle routes have missing-permission deny coverage.
 - Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
 - Status, Prometheus metrics, and OIDC discovery routes have missing-permission deny coverage.
-- Upload runner run-now control has route coverage for missing-permission denial.
+- Upload runner read and run-now controls have route coverage for missing-permission denial.
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
 - Settings UI read queries and page access mirror `settings:read`.
 - Settings shell navigation mirrors `settings:read`.
@@ -604,6 +604,7 @@ Current partial implementation:
 90. ✅ Add recording route missing-permission coverage.
 91. ✅ Add ops route missing-permission coverage.
 92. ✅ Add auth management route missing-permission coverage.
+93. ✅ Add upload runner read route missing-permission coverage.
 
 ## Open Questions
 
