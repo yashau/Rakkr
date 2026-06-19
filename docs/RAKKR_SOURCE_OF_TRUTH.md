@@ -318,6 +318,7 @@ Current partial implementation:
 - Access policy denies have route coverage for recording stop controls.
 - Access policy denies have route coverage for recording playback, download, and upload queue actions, including bulk upload queueing and retry.
 - Access policy denies have route coverage for recording delete and bulk delete actions.
+- Recording read, playback, download, edit, delete, start, stop, and upload-queue routes have missing-permission deny coverage.
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edit/control/delete actions.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Schedule read/manage routes have missing-permission deny coverage.
@@ -598,6 +599,7 @@ Current partial implementation:
 87. ✅ Add rendered MP3/VBR fake-controller agent smoke coverage.
 88. ✅ Add recording UI action-readiness helper coverage.
 89. ✅ Add health route missing-permission coverage.
+90. ✅ Add recording route missing-permission coverage.
 
 ## Open Questions
 
