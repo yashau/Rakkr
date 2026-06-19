@@ -507,6 +507,7 @@ Important metric names:
 Current partial implementation:
 
 - Prometheus export covers controller, node, recording duration/cache bytes, meter, health, watchdog, upload queue depth/failures, and upload overdue age.
+- Recorder agent local JSONL health logs rotate by size and keep a configured number of retained files.
 - Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata and cache-upload failures.
 
 ## Date And Time Rules
@@ -672,6 +673,7 @@ Current partial implementation:
 126. ✅ Add upload queue overdue Prometheus metric.
 127. ✅ Add recording duration and cache-byte Prometheus metrics.
 128. ✅ Add watchdog and xrun total Prometheus counters.
+129. ✅ Add configurable local health-log retention.
 
 ## Open Questions
 

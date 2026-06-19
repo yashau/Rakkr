@@ -157,6 +157,13 @@ pub struct AgentConfig {
     )]
     pub agent_health_log_max_bytes: u64,
 
+    #[arg(
+        long,
+        env = "RAKKR_AGENT_HEALTH_LOG_RETAINED_FILES",
+        default_value_t = 3
+    )]
+    pub agent_health_log_retained_files: u16,
+
     #[arg(long, env = "RAKKR_SYSTEM_HEALTH_ENABLED", default_value_t = true)]
     pub system_health_enabled: bool,
 
