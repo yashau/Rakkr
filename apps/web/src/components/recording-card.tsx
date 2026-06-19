@@ -228,26 +228,40 @@ export function RecordingCard({
           )}
           {jobs.length > 0 ? (
             <div className="mt-3 grid gap-2">
-              {jobs.map((job) => (
-                <div
-                  className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-2 text-xs"
-                  key={job.id}
-                >
-                  <Badge className={jobStatusClass(job.status)} variant="outline">
-                    {job.status}
-                  </Badge>
-                  <span className="font-mono break-all text-muted-foreground">{job.id}</span>
-                  <span className="text-muted-foreground">{job.claimedBy ?? job.nodeId}</span>
-                  {job.leaseExpiresAt ? (
-                    <span className="text-muted-foreground">
-                      Lease {formatDateTime(job.leaseExpiresAt)}
-                    </span>
-                  ) : null}
-                  {job.failureReason ? (
-                    <span className="text-destructive">{job.failureReason}</span>
-                  ) : null}
-                </div>
-              ))}
+              {jobs.map((job) => {
+                const captureDetails = recordingJobCaptureDetails(job);
+
+                return (
+                  <div
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-2 text-xs"
+                    key={job.id}
+                  >
+                    <Badge className={jobStatusClass(job.status)} variant="outline">
+                      {job.status}
+                    </Badge>
+                    <span className="font-mono break-all text-muted-foreground">{job.id}</span>
+                    <span className="text-muted-foreground">{job.claimedBy ?? job.nodeId}</span>
+                    {captureDetails.map((item) => (
+                      <Badge
+                        className="max-w-full gap-1 overflow-hidden bg-background"
+                        key={`${job.id}-${item.label}`}
+                        variant="outline"
+                      >
+                        <span className="text-muted-foreground">{item.label}</span>
+                        <span className="truncate font-mono">{item.value}</span>
+                      </Badge>
+                    ))}
+                    {job.leaseExpiresAt ? (
+                      <span className="text-muted-foreground">
+                        Lease {formatDateTime(job.leaseExpiresAt)}
+                      </span>
+                    ) : null}
+                    {job.failureReason ? (
+                      <span className="text-destructive">{job.failureReason}</span>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           ) : null}
           {uploadItems.length > 0 ? (
@@ -422,6 +436,30 @@ function recordingRelationships(recording: RecordingSummary) {
 
   if (recording.trackIndex && recording.trackTotal) {
     items.push({ label: "track", value: `${recording.trackIndex}/${recording.trackTotal}` });
+  }
+
+  return items;
+}
+
+function recordingJobCaptureDetails(job: RecordingJob) {
+  const items: Array<{ label: string; value: string }> = [];
+
+  if (job.command.captureInterfaceId) {
+    items.push({ label: "interface", value: job.command.captureInterfaceId });
+  }
+
+  if (job.command.channelMap) {
+    const channels = job.command.channelMap.entries
+      .filter((entry) => entry.included)
+      .map((entry) => entry.sourceChannelIndex)
+      .sort((left, right) => left - right);
+
+    items.push({ label: "map", value: job.command.channelMap.templateName });
+    items.push({ label: "mode", value: job.command.channelMap.channelMode });
+    items.push({
+      label: "channels",
+      value: channels.length > 0 ? channels.join(",") : `${job.command.channelMap.sourceChannels}`,
+    });
   }
 
   return items;
