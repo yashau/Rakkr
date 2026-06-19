@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AccessPolicy, AccessPolicyInput, AuditEvent, RecordingSummary } from "@rakkr/shared";
+import type {
+  AccessPolicy,
+  AccessPolicyInput,
+  AuditEvent,
+  RecordingSummary,
+  ScheduleSummary,
+} from "@rakkr/shared";
 
 process.env.DATABASE_URL = "";
 process.env.RAKKR_API_NO_LISTEN = "1";
@@ -238,6 +244,58 @@ test("node resource denies hide attached recordings and block recording edits", 
     assert.equal(event?.permission, "recording:edit");
     assert.equal(event?.reason, "access_policy_denied");
     assert.equal(event?.target.id, recordingId);
+  } finally {
+    await updateAccessPolicies(token, []);
+  }
+});
+
+test("schedule resource denies hide schedules and block run-now control", async () => {
+  const token = await loginToken();
+  const scheduleId = "sched_council_weekly";
+
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "schedule_restricted",
+      resourceId: scheduleId,
+      resourceType: "schedule",
+      subjectType: "everyone",
+    },
+  ]);
+
+  try {
+    const listResponse = await app.request("/api/v1/schedules", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const listBody = (await listResponse.json()) as { data: ScheduleSummary[] };
+    const runResponse = await app.request(`/api/v1/schedules/${scheduleId}/run-now`, {
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+    });
+    const eventsResponse = await app.request(
+      [
+        "/api/v1/audit-events",
+        "?action=schedules.run_now",
+        "&outcome=denied",
+        "&permission=schedule%3Amanage",
+        `&target=${scheduleId}`,
+      ].join(""),
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    const eventsBody = (await eventsResponse.json()) as { data: AuditEvent[] };
+    const [event] = eventsBody.data;
+
+    assert.equal(listResponse.status, 200);
+    assert.equal(
+      listBody.data.some((schedule) => schedule.id === scheduleId),
+      false,
+    );
+    assert.equal(runResponse.status, 403);
+    assert.equal(event?.permission, "schedule:manage");
+    assert.equal(event?.reason, "access_policy_denied");
+    assert.equal(event?.target.id, scheduleId);
   } finally {
     await updateAccessPolicies(token, []);
   }
