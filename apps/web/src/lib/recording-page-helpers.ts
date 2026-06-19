@@ -1,6 +1,12 @@
 import type { HealthEvent, RecordingSummary, UploadQueueItem } from "@rakkr/shared";
 
-import type { RecordingFilters, RecordingSortBy, RecordingSortOrder } from "@/lib/api";
+import type {
+  RecordingFileBlob,
+  RecordingFilters,
+  RecordingPlaybackSession,
+  RecordingSortBy,
+  RecordingSortOrder,
+} from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 
 export interface DownloadableRecordingFile {
@@ -32,6 +38,16 @@ export interface ActiveRecordingFilterChip {
   label: string;
   value: string;
 }
+
+export interface RecordingPlaybackPreview {
+  fileName: string;
+  objectUrl: string;
+  recordingId: string;
+  sessionId: string;
+  startedAt: string;
+}
+
+type RevokeObjectUrl = (url: string) => void;
 
 export const emptyRecordingFilterDraft: RecordingFilterDraft = {
   folder: "",
@@ -138,6 +154,43 @@ export function downloadBlob(file: DownloadableRecordingFile) {
   link.download = file.fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export function playbackPreviewFromSession(
+  session: RecordingPlaybackSession,
+  file: RecordingFileBlob,
+  objectUrl: string,
+): RecordingPlaybackPreview {
+  return {
+    fileName: file.fileName,
+    objectUrl,
+    recordingId: session.recordingId,
+    sessionId: session.sessionId,
+    startedAt: session.startedAt,
+  };
+}
+
+export function replacePlaybackPreview(
+  current: RecordingPlaybackPreview | undefined,
+  next: RecordingPlaybackPreview,
+  revokeObjectUrl: RevokeObjectUrl = URL.revokeObjectURL,
+) {
+  if (current && current.objectUrl !== next.objectUrl) {
+    revokeObjectUrl(current.objectUrl);
+  }
+
+  return next;
+}
+
+export function clearPlaybackPreview(
+  current: RecordingPlaybackPreview | undefined,
+  revokeObjectUrl: RevokeObjectUrl = URL.revokeObjectURL,
+) {
+  if (current) {
+    revokeObjectUrl(current.objectUrl);
+  }
+
+  return undefined;
 }
 
 export function groupHealthEventsByRecording(events: HealthEvent[]) {

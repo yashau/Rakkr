@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, RotateCcw, Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
 import { RecordingCard } from "@/components/recording-card";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import {
+  clearPlaybackPreview,
   defaultRecordingPageSize,
   downloadBlob,
   emptyRecordingFilterDraft,
@@ -28,10 +29,13 @@ import {
   isCachedRecording,
   healthStatuses,
   isTerminalRecording,
+  playbackPreviewFromSession,
   recordingFilterChips,
   recordingFilterDraftKeys,
+  replacePlaybackPreview,
   type RecordingFilterDraft,
   type RecordingFilterKey,
+  type RecordingPlaybackPreview,
   recordingPageSizes,
   recordingSortOptions,
   recordingSortOrders,
@@ -41,7 +45,8 @@ import {
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
-  const [audioPreview, setAudioPreview] = useState<{ name: string; url: string }>();
+  const audioPreviewRef = useRef<RecordingPlaybackPreview | undefined>(undefined);
+  const [audioPreview, setAudioPreview] = useState<RecordingPlaybackPreview>();
   const [filterDraft, setFilterDraft] = useState<RecordingFilterDraft>(emptyRecordingFilterDraft);
   const [pageSize, setPageSize] = useState(defaultRecordingPageSize);
   const [recordingFilters, setRecordingFilters] = useState<RecordingFilters>({
@@ -107,10 +112,14 @@ export function RecordingsPage() {
       }),
     onSuccess: (response) => {
       const url = URL.createObjectURL(response.stream.blob);
+      const preview = playbackPreviewFromSession(response.playback, response.stream, url);
 
-      setAudioPreview({
-        name: response.stream.fileName,
-        url,
+      setAudioPreview((current) => {
+        const next = replacePlaybackPreview(current, preview);
+
+        audioPreviewRef.current = next;
+
+        return next;
       });
       setNotice({
         detail: `${response.playback.sessionId} started at ${formatDateTime(response.playback.startedAt)}`,
@@ -318,14 +327,11 @@ export function RecordingsPage() {
     Math.ceil((recordingMeta?.total ?? recordings.length) / paginationLimit),
   );
 
-  useEffect(
-    () => () => {
-      if (audioPreview?.url) {
-        URL.revokeObjectURL(audioPreview.url);
-      }
-    },
-    [audioPreview?.url],
-  );
+  useEffect(() => {
+    audioPreviewRef.current = audioPreview;
+  }, [audioPreview]);
+
+  useEffect(() => () => clearPlaybackPreview(audioPreviewRef.current), []);
 
   useEffect(() => {
     const visibleIds = new Set(visibleRecordingIds);
@@ -413,6 +419,15 @@ export function RecordingsPage() {
       uploadPolicyId,
     });
   };
+  const closeAudioPreview = () => {
+    setAudioPreview((current) => {
+      const next = clearPlaybackPreview(current);
+
+      audioPreviewRef.current = next;
+
+      return next;
+    });
+  };
 
   return (
     <div className="grid gap-4">
@@ -431,8 +446,23 @@ export function RecordingsPage() {
 
       {audioPreview ? (
         <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
-          <div className="mb-2 text-sm font-medium">{audioPreview.name}</div>
-          <audio className="w-full" controls src={audioPreview.url}>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">{audioPreview.fileName}</div>
+              <div className="text-xs text-muted-foreground">
+                Session {audioPreview.sessionId} started {formatDateTime(audioPreview.startedAt)}
+              </div>
+            </div>
+            <Button
+              aria-label="Close playback"
+              onClick={closeAudioPreview}
+              size="icon"
+              variant="ghost"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+          <audio className="w-full" controls src={audioPreview.objectUrl}>
             <track kind="captions" />
           </audio>
         </section>
