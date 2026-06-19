@@ -73,6 +73,7 @@ const selectClassName =
 export function NodesPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(emptyDraft);
+  const [nodeSearch, setNodeSearch] = useState("");
   const [nodeStatusFilter, setNodeStatusFilter] = useState<"" | NodeStatus>("");
   const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
   const [listenPreview, setListenPreview] = useState<{
@@ -82,8 +83,12 @@ export function NodesPage() {
     url: string;
   }>();
   const nodesQuery = useQuery({
-    queryFn: () => api.nodes({ status: nodeStatusFilter || undefined }),
-    queryKey: ["nodes", nodeStatusFilter],
+    queryFn: () =>
+      api.nodes({
+        q: nodeSearch.trim() || undefined,
+        status: nodeStatusFilter || undefined,
+      }),
+    queryKey: ["nodes", nodeStatusFilter, nodeSearch],
     refetchInterval: 5000,
   });
   const healthEventsQuery = useQuery({
@@ -327,7 +332,14 @@ export function NodesPage() {
             <h2 className="text-sm font-semibold">Recorder Nodes</h2>
             <p className="text-xs text-muted-foreground">{nodes.length} shown</p>
           </div>
-          <div className="w-full md:max-w-56">
+          <div className="grid w-full gap-3 md:max-w-xl md:grid-cols-[minmax(0,1fr)_14rem]">
+            <Field label="Search">
+              <Input
+                onChange={(event) => setNodeSearch(event.target.value)}
+                placeholder="alias, room, IP, tag, serial"
+                value={nodeSearch}
+              />
+            </Field>
             <Field label="Status">
               <select
                 className={selectClassName}
@@ -348,7 +360,7 @@ export function NodesPage() {
 
       {nodesQuery.isSuccess && nodes.length === 0 ? (
         <Card className="rounded-lg p-4 text-sm text-muted-foreground shadow-sm">
-          No nodes match the current status filter.
+          No nodes match the current filters.
         </Card>
       ) : null}
 

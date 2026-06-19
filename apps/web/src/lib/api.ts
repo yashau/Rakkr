@@ -65,6 +65,7 @@ export interface AuditEventFilters {
 }
 
 export interface NodeFilters {
+  q?: string;
   status?: NodeStatus;
 }
 

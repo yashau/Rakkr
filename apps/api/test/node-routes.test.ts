@@ -40,6 +40,43 @@ test("node list filters by status", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("node list searches inventory identity fields", async () => {
+  const auditStore = createAuditStore("");
+  const chamberNode = nodeWithInterface({
+    alias: "Council Chamber",
+    id: "node_chamber",
+    location: {
+      building: "City Hall",
+      room: "Council Room",
+      site: "Main Site",
+    },
+    status: "recording",
+    tags: ["voice", "public-meeting"],
+  });
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes: [node({ id: "node_monitor" }), chamberNode],
+    permissionCalls: [],
+  });
+
+  const searchResponse = await app.request("/api/v1/nodes?q=MONITOR-USB-1");
+  const searchBody = (await searchResponse.json()) as { data: RecorderNode[] };
+  const combinedResponse = await app.request("/api/v1/nodes?status=recording&q=city");
+  const combinedBody = (await combinedResponse.json()) as { data: RecorderNode[] };
+
+  assert.equal(searchResponse.status, 200);
+  assert.deepEqual(
+    searchBody.data.map((item) => item.id),
+    ["node_chamber"],
+  );
+  assert.equal(combinedResponse.status, 200);
+  assert.deepEqual(
+    combinedBody.data.map((item) => item.id),
+    ["node_chamber"],
+  );
+});
+
 test("listen start returns a monitor stream URL and audits access", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
@@ -432,7 +469,7 @@ function node(input: Partial<RecorderNode> = {}): RecorderNode {
   };
 }
 
-function nodeWithInterface(): RecorderNode {
+function nodeWithInterface(input: Partial<RecorderNode> = {}): RecorderNode {
   return {
     ...node(),
     interfaces: [
@@ -452,6 +489,7 @@ function nodeWithInterface(): RecorderNode {
         systemRef: "usb-1-1",
       },
     ],
+    ...input,
   };
 }
 

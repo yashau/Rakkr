@@ -111,8 +111,13 @@ const nodeInterfaceUpdateSchema = z
   })
   .strict()
   .refine(hasNodeUpdate, "At least one interface field is required");
+const nodeSearchSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).max(200).optional(),
+);
 const nodeListFilterSchema = z
   .object({
+    q: nodeSearchSchema,
     status: nodeStatusSchema.optional(),
   })
   .strict();
@@ -138,9 +143,12 @@ export function registerNodeRoutes({
     }
 
     const nodes = await scopedNodes(currentUser(c));
-    const filteredNodes = filters.data.status
-      ? nodes.filter((node) => node.status === filters.data.status)
-      : nodes;
+    const query = normalizeSearchTerm(filters.data.q);
+    const filteredNodes = nodes.filter(
+      (node) =>
+        (!filters.data.status || node.status === filters.data.status) &&
+        (!query || nodeSearchText(node).includes(query)),
+    );
 
     return c.json({ data: filteredNodes });
   });
@@ -617,6 +625,49 @@ function hasNodeUpdate(value: Record<string, unknown>) {
 
     return entry !== undefined;
   });
+}
+
+function normalizeSearchTerm(value: string | undefined) {
+  return value?.trim().toLowerCase();
+}
+
+function nodeSearchText(node: RecorderNode) {
+  return [
+    node.id,
+    node.alias,
+    node.hostname,
+    node.agentVersion,
+    node.status,
+    node.notes,
+    node.ipAddresses,
+    node.tags,
+    Object.values(node.location),
+    node.runtime
+      ? [
+          node.runtime.architecture,
+          node.runtime.audioBackends,
+          node.runtime.kernelRelease,
+          node.runtime.osName,
+          node.runtime.uptimeSeconds === undefined ? undefined : String(node.runtime.uptimeSeconds),
+        ]
+      : undefined,
+    node.interfaces.map((audioInterface) => [
+      audioInterface.alias,
+      audioInterface.backend,
+      String(audioInterface.channelCount),
+      audioInterface.hardwarePath,
+      audioInterface.id,
+      audioInterface.sampleRates.map(String),
+      audioInterface.serialNumber,
+      audioInterface.systemName,
+      audioInterface.systemRef,
+      audioInterface.channels.map((channel) => [channel.alias, String(channel.index)]),
+    ]),
+  ]
+    .flat(4)
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
 }
 
 function monitorWavChunk(frame: MeterFrame) {
