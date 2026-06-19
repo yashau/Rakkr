@@ -438,6 +438,10 @@ function recordingRelationships(recording: RecordingSummary) {
     items.push({ label: "track", value: `${recording.trackIndex}/${recording.trackTotal}` });
   }
 
+  if (recording.trackGroupId) {
+    items.push({ label: "group", value: recording.trackGroupId });
+  }
+
   return items;
 }
 

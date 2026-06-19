@@ -23,6 +23,7 @@ interface RecordingFilterDraft {
   search: string;
   status: "" | RecordingSummary["status"];
   tag: string;
+  trackGroupId: string;
   uploadPolicyId: string;
 }
 
@@ -45,6 +46,7 @@ const emptyRecordingFilterDraft: RecordingFilterDraft = {
   search: "",
   status: "",
   tag: "",
+  trackGroupId: "",
   uploadPolicyId: "",
 };
 
@@ -79,6 +81,7 @@ const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilter
   search: "search",
   status: "status",
   tag: "tag",
+  trackGroupId: "trackGroupId",
   uploadPolicyId: "uploadPolicyId",
 };
 
@@ -93,6 +96,7 @@ const recordingFilterLabels: Record<RecordingFilterKey, string> = {
   search: "search",
   status: "status",
   tag: "tag",
+  trackGroupId: "track group",
   uploadPolicyId: "upload",
 };
 
@@ -102,6 +106,7 @@ const recordingFilterOrder: RecordingFilterKey[] = [
   "tag",
   "nodeId",
   "scheduleId",
+  "trackGroupId",
   "recordingProfileId",
   "uploadPolicyId",
   "status",
@@ -364,7 +369,7 @@ export function RecordingsPage() {
               onChange={(event) =>
                 setFilterDraft((current) => ({ ...current, search: event.target.value }))
               }
-              placeholder="Name, folder, tag, ID, node, schedule, profile, upload policy"
+              placeholder="Name, folder, tag, ID, node, schedule, profile, upload policy, track group"
               value={filterDraft.search}
             />
           </div>
@@ -406,6 +411,19 @@ export function RecordingsPage() {
                 setFilterDraft((current) => ({ ...current, scheduleId: event.target.value }))
               }
               value={filterDraft.scheduleId}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="recording-track-group-filter">Track Group</Label>
+            <Input
+              id="recording-track-group-filter"
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  trackGroupId: event.target.value,
+                }))
+              }
+              value={filterDraft.trackGroupId}
             />
           </div>
           <div className="grid gap-1.5">
@@ -648,6 +666,7 @@ function filtersFromDraft(draft: RecordingFilterDraft): RecordingFilters {
     search: textOrUndefined(draft.search),
     status: draft.status || undefined,
     tag: textOrUndefined(draft.tag),
+    trackGroupId: textOrUndefined(draft.trackGroupId),
     uploadPolicyId: textOrUndefined(draft.uploadPolicyId),
   };
 }

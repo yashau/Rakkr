@@ -102,7 +102,7 @@ test("recording list filters by recorded date range", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
-test("recording list filters by profile and upload policy", async () => {
+test("recording list filters by profile upload policy and track group", async () => {
   const auditStore = createAuditStore("");
   const app = recordingApp({
     auditStore,
@@ -118,20 +118,23 @@ test("recording list filters by profile and upload policy", async () => {
       recording({
         id: "rec_archive",
         recordingProfileId: "profile_archive",
+        trackGroupId: "track_group_archive",
         uploadPolicyId: "upload-policy-archive",
       }),
       recording({
         id: "rec_manual",
         recordingProfileId: "profile_archive",
+        trackGroupId: "track_group_manual",
         uploadPolicyId: "upload-policy-manual",
       }),
     ]),
   });
   const filteredParams = new URLSearchParams({
     recordingProfileId: "profile_archive",
+    trackGroupId: "track_group_archive",
     uploadPolicyId: "upload-policy-archive",
   });
-  const searchParams = new URLSearchParams({ search: "upload-policy-manual" });
+  const searchParams = new URLSearchParams({ search: "track_group_manual" });
 
   const filteredResponse = await app.request(`/api/v1/recordings?${filteredParams}`);
   const filteredBody = (await filteredResponse.json()) as { data: RecordingSummary[] };

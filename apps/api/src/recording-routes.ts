@@ -7,7 +7,6 @@ import {
   type RecorderNode,
   type RecordingSummary,
   type UploadQueueItem,
-  recordingStatusSchema,
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
@@ -15,6 +14,7 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-ty
 import type { NodeStore } from "./node-store.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
+import { filterRecordings, recordingFacets, recordingsQuerySchema } from "./recording-listing.js";
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -53,42 +53,6 @@ const recordingMetadataUpdateSchema = z
     (value) => value.folder !== undefined || value.name !== undefined || value.tags !== undefined,
     "Expected at least one metadata field",
   );
-
-const optionalTextFilterSchema = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() ? value : undefined),
-  z.string().trim().max(240).optional(),
-);
-const optionalIsoFilterSchema = z
-  .preprocess(
-    (value) => (typeof value === "string" && value.trim() ? value : undefined),
-    z.string().trim().optional(),
-  )
-  .refine(
-    (value) => value === undefined || !Number.isNaN(Date.parse(value)),
-    "Expected ISO date-time",
-  );
-
-const recordingsQuerySchema = z.object({
-  folder: optionalTextFilterSchema,
-  healthStatus: z.preprocess(
-    (value) => (typeof value === "string" && value.trim() ? value : undefined),
-    z.enum(["healthy", "warning", "critical", "unknown"]).optional(),
-  ),
-  nodeId: optionalTextFilterSchema,
-  recordedFrom: optionalIsoFilterSchema,
-  recordedTo: optionalIsoFilterSchema,
-  recordingProfileId: optionalTextFilterSchema,
-  scheduleId: optionalTextFilterSchema,
-  search: optionalTextFilterSchema,
-  status: z.preprocess(
-    (value) => (typeof value === "string" && value.trim() ? value : undefined),
-    recordingStatusSchema.optional(),
-  ),
-  tag: optionalTextFilterSchema,
-  uploadPolicyId: optionalTextFilterSchema,
-});
-
-type RecordingsQuery = z.infer<typeof recordingsQuerySchema>;
 
 const uploadQueueRequestSchema = z
   .object({
@@ -857,103 +821,6 @@ function recordingMetadataSnapshot(recording: RecordingSummary) {
     name: recording.name,
     tags: recording.tags,
   };
-}
-
-function filterRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
-  return recordings.filter((recording) => {
-    if (filters.folder && !includesText(recording.folder, filters.folder)) {
-      return false;
-    }
-
-    if (filters.healthStatus && recording.healthStatus !== filters.healthStatus) {
-      return false;
-    }
-
-    if (filters.nodeId && recording.nodeId !== filters.nodeId) {
-      return false;
-    }
-
-    if (
-      filters.recordedFrom &&
-      Date.parse(recording.recordedAt) < Date.parse(filters.recordedFrom)
-    ) {
-      return false;
-    }
-
-    if (filters.recordedTo && Date.parse(recording.recordedAt) > Date.parse(filters.recordedTo)) {
-      return false;
-    }
-
-    if (filters.recordingProfileId && recording.recordingProfileId !== filters.recordingProfileId) {
-      return false;
-    }
-
-    if (filters.scheduleId && recording.scheduleId !== filters.scheduleId) {
-      return false;
-    }
-
-    if (filters.search && !recordingMatchesSearch(recording, filters.search)) {
-      return false;
-    }
-
-    if (filters.status && recording.status !== filters.status) {
-      return false;
-    }
-
-    if (filters.uploadPolicyId && recording.uploadPolicyId !== filters.uploadPolicyId) {
-      return false;
-    }
-
-    return (
-      !filters.tag ||
-      recording.tags.some((tag) => tag.toLocaleLowerCase() === filters.tag?.toLocaleLowerCase())
-    );
-  });
-}
-
-function recordingMatchesSearch(recording: RecordingSummary, search: string) {
-  const searchableValues = [
-    recording.folder,
-    recording.id,
-    recording.name,
-    recording.nodeId,
-    recording.recordingProfileId,
-    recording.scheduleId,
-    recording.source,
-    recording.status,
-    recording.uploadPolicyId,
-    ...recording.tags,
-  ];
-
-  return searchableValues.some((value) => value && includesText(value, search));
-}
-
-function recordingFacets(recordings: RecordingSummary[]) {
-  const folders = new Map<string, number>();
-  const tags = new Map<string, number>();
-
-  for (const recording of recordings) {
-    folders.set(recording.folder, (folders.get(recording.folder) ?? 0) + 1);
-
-    for (const tag of recording.tags) {
-      tags.set(tag, (tags.get(tag) ?? 0) + 1);
-    }
-  }
-
-  return {
-    folders: sortedFacets(folders),
-    tags: sortedFacets(tags),
-  };
-}
-
-function sortedFacets(values: Map<string, number>) {
-  return [...values.entries()]
-    .map(([value, count]) => ({ count, value }))
-    .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
-}
-
-function includesText(value: string, search: string) {
-  return value.toLocaleLowerCase().includes(search.toLocaleLowerCase());
 }
 
 function uniqueTags(tags: string[]) {

@@ -133,6 +133,7 @@ export interface RecordingFilters {
   search?: string;
   status?: RecordingSummary["status"];
   tag?: string;
+  trackGroupId?: string;
   uploadPolicyId?: string;
 }
 
