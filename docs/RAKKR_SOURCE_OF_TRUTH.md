@@ -59,6 +59,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | ---------- | ------ | ------------- |
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
+| RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | 🟨 | Auth, RBAC, audit, nodes, recordings, jobs, lifecycle coverage, schedules, settings, metrics |
 | Controller UI | 🟨 | Dashboard, access, nodes, recordings, schedules, settings, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, jobs, capture growth guards, profile rendering, health log |
@@ -313,11 +314,12 @@ Required permission families:
 
 Audit events must capture actor, permission, target, outcome, reason, timestamp, correlation IDs, and before/after values where relevant.
 
-Current partial implementation:
+Current implementation baseline:
 
 - Local users, groups, roles, scopes, access policies, passwords, status.
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
 - Access UI manages users, groups, policies, and scopes.
+- `docs/security/RBAC_AUDIT_BASELINE.md` defines a checked permission matrix for the MVP RBAC/audit baseline.
 - Access page management is hidden unless the user has `auth:manage`.
 - Access UI includes a structured allow/deny policy composer for user, group, and everyone subjects.
 - Access UI includes a structured resource-scope composer for local user grants.
@@ -690,6 +692,7 @@ Current partial implementation:
 133. ✅ Add checked Prometheus scrape and Mimir remote-write example.
 134. ✅ Add checked Grafana operations dashboard example.
 135. ✅ Promote Observability MVP with checked runbook.
+136. ✅ Add checked RBAC/audit MVP baseline matrix.
 
 ## Open Questions
 

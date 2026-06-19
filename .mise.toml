@@ -39,6 +39,7 @@ depends = [
   "ops:check-grafana",
   "ops:check-observability-docs",
   "ops:check-prometheus",
+  "security:check-rbac",
   "node:check",
   "node:test",
   "node:lint",
@@ -74,6 +75,10 @@ run = "node scripts/verify-observability-docs.mjs"
 [tasks."ops:check-prometheus"]
 description = "Validate Prometheus scrape and Mimir remote write config"
 run = "node scripts/verify-prometheus-config.mjs"
+
+[tasks."security:check-rbac"]
+description = "Validate RBAC and audit baseline documentation"
+run = "node scripts/verify-rbac-audit-baseline.mjs"
 
 [tasks."node:build-libs"]
 description = "Build shared Node workspace libraries"
