@@ -64,6 +64,9 @@ test("settings write routes deny users without settings manage", async () => {
       target: "stub://blocked",
       trigger: "manual",
     }),
+    requestJson(app, "/api/v1/settings/upload-policies/upload-policy-stub", "PATCH", {
+      name: "Blocked Upload Policy Update",
+    }),
     requestJson(app, "/api/v1/settings/channel-map-templates", "POST", {
       channelMode: "mono_to_stereo_mix",
       entries: [
@@ -76,6 +79,9 @@ test("settings write routes deny users without settings manage", async () => {
       ],
       name: "Blocked Channel Map",
       tags: ["blocked"],
+    }),
+    requestJson(app, "/api/v1/settings/channel-map-templates/template_blocked", "PATCH", {
+      name: "Blocked Channel Map Update",
     }),
     requestJson(app, "/api/v1/settings/channel-map-assignments", "PUT", {
       targetId: "node_blocked",
@@ -91,14 +97,16 @@ test("settings write routes deny users without settings manage", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
     "settings.channel_map_assignments.rollback",
     "settings.channel_map_assignments.update",
     "settings.channel_map_templates.create",
+    "settings.channel_map_templates.update",
     "settings.recording_profiles.update",
     "settings.upload_policies.create",
+    "settings.upload_policies.update",
     "settings.upload_providers.update",
     "settings.watchdog_policies.update",
   ]);
