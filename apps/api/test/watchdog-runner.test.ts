@@ -40,6 +40,73 @@ test("alerts when scheduled audio is loud but not speech-like", async () => {
   assert.equal(event?.details.maxNoiseScore, 0.91);
 });
 
+test("repeats unresolved scheduled low-signal alerts after policy interval", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const firstRunAt = new Date();
+  const policy: WatchdogPolicy = {
+    ...watchdogPolicy(),
+    qualityMode: "signal_only",
+    repeatEverySeconds: 1,
+  };
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    meterFrameProvider: () => silentFrame(),
+    policies: [policy],
+    recordingStore: memoryRecordingStore([
+      recording({
+        recordedAt: new Date(firstRunAt.getTime() - 120_000).toISOString(),
+        watchdogPolicyId: policy.id,
+      }),
+    ]),
+  });
+
+  const [created] = await runner.runOnce(firstRunAt);
+  const [repeated] = await runner.runOnce(new Date(firstRunAt.getTime() + 2_000));
+  const [event] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+  const repeatedAudits = await auditStore.list({
+    action: "health.watchdog.low_signal.repeated",
+  });
+
+  assert.equal(created?.outcome, "alert_created");
+  assert.equal(repeated?.outcome, "alert_repeated");
+  assert.equal(event?.details.repeatCount, 1);
+  assert.equal(repeatedAudits.length, 1);
+});
+
+test("resolves scheduled low-signal alerts when signal recovers", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  let frame = silentFrame();
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    meterFrameProvider: () => frame,
+    policies: [
+      {
+        ...watchdogPolicy(),
+        qualityMode: "signal_only",
+      },
+    ],
+    recordingStore: memoryRecordingStore([recording()]),
+  });
+
+  const [created] = await runner.runOnce(new Date("2026-06-18T12:01:00.000Z"));
+  frame = speechFrame();
+  const [resolved] = await runner.runOnce(new Date("2026-06-18T12:02:00.000Z"));
+  const [event] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+  const resolvedAudits = await auditStore.list({
+    action: "health.watchdog.low_signal.resolved",
+  });
+
+  assert.equal(created?.outcome, "alert_created");
+  assert.equal(resolved?.outcome, "alert_resolved");
+  assert.equal(event?.status, "resolved");
+  assert.equal(event?.details.autoResolvedReason, "signal_above_threshold");
+  assert.equal(resolvedAudits.length, 1);
+});
+
 test("creates and resolves stale node heartbeat health events", async () => {
   const auditStore = createAuditStore("");
   const healthEventStore = createHealthEventStore("", []);
@@ -131,7 +198,55 @@ function loudNoiseFrame(): MeterFrame {
   };
 }
 
-function recording(): RecordingSummary {
+function silentFrame(): MeterFrame {
+  return {
+    capturedAt: "2026-06-18T12:01:00.000Z",
+    interfaceId: "iface_noise",
+    levels: [
+      {
+        channelIndex: 1,
+        clipping: false,
+        label: "Input 1",
+        peakDbfs: -88,
+        quality: {
+          crestFactorDb: 0,
+          noiseScore: 0,
+          speechLike: false,
+          speechScore: 0,
+          zeroCrossingRate: 0,
+        },
+        rmsDbfs: -92,
+      },
+    ],
+    nodeId: "node_quality",
+  };
+}
+
+function speechFrame(): MeterFrame {
+  return {
+    capturedAt: "2026-06-18T12:02:00.000Z",
+    interfaceId: "iface_noise",
+    levels: [
+      {
+        channelIndex: 1,
+        clipping: false,
+        label: "Input 1",
+        peakDbfs: -8,
+        quality: {
+          crestFactorDb: 14,
+          noiseScore: 0.18,
+          speechLike: true,
+          speechScore: 0.84,
+          zeroCrossingRate: 0.11,
+        },
+        rmsDbfs: -21,
+      },
+    ],
+    nodeId: "node_quality",
+  };
+}
+
+function recording(input: Partial<RecordingSummary> = {}): RecordingSummary {
   return {
     cached: false,
     durationSeconds: 0,
@@ -146,6 +261,7 @@ function recording(): RecordingSummary {
     status: "recording",
     tags: ["quality"],
     watchdogPolicyId: "speech-required-watchdog",
+    ...input,
   };
 }
 

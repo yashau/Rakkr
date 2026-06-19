@@ -67,7 +67,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Generic devices | 🟨 | ALSA loopback path validates fake capture/rendering |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Meter ingest, low-signal lifecycle alerts, speech/noise scores, timelines |
+| Health watchdog | 🟨 | Checked low-signal, speech/noise, offline, local-log, metrics, and timeline baseline; hum/static and correlation gaps remain |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
@@ -257,6 +257,7 @@ Current partial implementation:
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
+- `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
 
 ## Future Voice Quality AI
 
@@ -704,6 +705,7 @@ Current partial implementation:
 139. ✅ Promote Scheduler MVP with checked human-friendly baseline.
 140. ✅ Promote Recording Library MVP with checked organization/playback baseline.
 141. ✅ Promote Storage Upload MVP with checked provider/queue/runner baseline.
+142. ✅ Add checked Health Watchdog partial baseline with explicit signal-quality gaps.
 
 ## Open Questions
 

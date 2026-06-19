@@ -1,0 +1,157 @@
+import { access, readFile } from "node:fs/promises";
+
+const baselineFile = "docs/health/HEALTH_WATCHDOG_BASELINE.md";
+const sourceFiles = [
+  "packages/shared/src/index.ts",
+  "apps/api/src/watchdog-runner.ts",
+  "apps/api/src/health-store.ts",
+  "apps/api/src/health-routes.ts",
+  "apps/api/src/health-sync.ts",
+  "apps/api/src/metrics.ts",
+  "apps/web/src/components/meter-bank.tsx",
+  "apps/web/src/components/quality-timeline.tsx",
+  "apps/web/src/lib/meter-helpers.ts",
+  "crates/recorder-agent/src/main.rs",
+  "crates/recorder-agent/src/system_health.rs",
+  "crates/recorder-agent/src/health_log.rs",
+  "crates/recorder-agent/src/telemetry.rs",
+  "crates/recorder-agent/src/capture.rs",
+  "crates/recorder-agent/src/controller.rs",
+  "scripts/agent-fake-controller-smoke.mjs",
+  "apps/api/test/watchdog-runner.test.ts",
+  "apps/api/test/health-routes.test.ts",
+  "apps/api/test/health-store.test.ts",
+  "apps/api/test/metrics.test.ts",
+  "apps/web/src/lib/meter-helpers.test.ts",
+];
+const baselinePhrases = [
+  "Partial baseline checked",
+  "configurable grace, window, metric, dBFS threshold",
+  "open, repeat, and auto-resolve",
+  "Speech-required policies",
+  "Node liveness",
+  "local JSONL health logs",
+  "meter capture failure/recovery",
+  "device unavailable/xrun",
+  "clipping",
+  "flatline",
+  "capture growth failure",
+  "cache upload failure",
+  "RBAC-gated",
+  "resource-scoped",
+  "quality timelines",
+  "Prometheus export",
+  "hum/static likelihood",
+  "channel mapping/correlation detection",
+  "mise run health:check-watchdog",
+];
+const sourceSnippets = [
+  "scheduledLowSignalEventType",
+  "nodeOfflineEventType",
+  "createWatchdogRunner",
+  "health.watchdog.low_signal.created",
+  "health.watchdog.low_signal.repeated",
+  "health.watchdog.low_signal.resolved",
+  "health.watchdog.node_offline.created",
+  "health.watchdog.node_offline.resolved",
+  "signalBelowThreshold",
+  "speechBelowThreshold",
+  "maxNoiseScore",
+  "minCumulativeSpeechSeconds",
+  "syncRecordingHealth",
+  "visibleHealthEvent",
+  "updateHealthLifecycle",
+  "rakkr_recording_watchdog_alerts_active",
+  "rakkr_node_offline_alerts_active",
+  "rakkr_device_xruns_total",
+  "rakkr_input_clipping_ratio",
+  "rakkr_input_speech_score",
+  "rakkr_input_noise_score",
+  "MeterBank",
+  "QualityTimeline",
+  "speechLabel",
+  "agent.meter.clipping",
+  "agent.meter.flatline",
+  "agent.meter.xrun",
+  "agent.system.disk_pressure",
+  "agent.audio_backend.unavailable",
+  "append_health_event_with_targets",
+  "rotate_if_needed",
+  "capture output stalled",
+  "agent.recording_job.capture_output_stalled",
+  "cache upload local health event",
+  "speech_score",
+  "noise_score",
+];
+const testSnippets = [
+  "alerts when scheduled audio is loud but not speech-like",
+  "repeats unresolved scheduled low-signal alerts after policy interval",
+  "resolves scheduled low-signal alerts when signal recovers",
+  "creates and resolves stale node heartbeat health events",
+  "health routes deny users without required permissions",
+  "health event store filters by event type",
+  "rakkr_recording_watchdog_alerts_active",
+  "rakkr_node_offline_alerts_active",
+  "rakkr_device_xruns_total",
+  "meter channel view exposes level voice and clipping state",
+];
+const errors = [];
+
+const baseline = await readFile(baselineFile, "utf8");
+const sourceEntries = await Promise.all(
+  sourceFiles.map(async (sourceFile) => ({
+    content: await readFile(sourceFile, "utf8"),
+    path: sourceFile,
+  })),
+);
+const allSource = sourceEntries.map((entry) => entry.content).join("\n");
+const allTests = sourceEntries
+  .filter((entry) => entry.path.includes("/test/") || entry.path.endsWith(".test.ts"))
+  .map((entry) => entry.content)
+  .join("\n");
+
+for (const sourceFile of sourceFiles) {
+  try {
+    await access(sourceFile);
+  } catch {
+    errors.push(`missing health watchdog evidence file ${sourceFile}`);
+  }
+
+  if (sourceFile.includes(".test.") && !baseline.includes(sourceFile)) {
+    errors.push(`${baselineFile} should reference ${sourceFile}`);
+  }
+}
+
+for (const phrase of baselinePhrases) {
+  if (!baseline.toLowerCase().includes(phrase.toLowerCase())) {
+    errors.push(`${baselineFile} must mention "${phrase}"`);
+  }
+}
+
+for (const snippet of sourceSnippets) {
+  if (!allSource.includes(snippet)) {
+    errors.push(`health watchdog source must include "${snippet}"`);
+  }
+}
+
+for (const snippet of testSnippets) {
+  if (!allTests.includes(snippet)) {
+    errors.push(`health watchdog tests must include "${snippet}"`);
+  }
+}
+
+if (/Status:\s*MVP baseline checked/iu.test(baseline)) {
+  errors.push(`${baselineFile} must remain partial until hum/static and correlation gaps close`);
+}
+
+if (errors.length > 0) {
+  console.error(`Invalid health watchdog baseline in ${baselineFile}:`);
+
+  for (const error of errors) {
+    console.error(`- ${error}`);
+  }
+
+  process.exit(1);
+}
+
+console.log(`Verified health watchdog partial baseline in ${baselineFile}.`);
