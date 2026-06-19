@@ -28,6 +28,14 @@ const scenarios = [
     outputFileName: "rec_fake_controller_cache_upload_failure.mp3",
     recordingId: "rec_fake_controller_cache_upload_failure",
   },
+  {
+    controllerStopRequested: true,
+    expectSuccess: true,
+    jobId: "job_fake_controller_stop_requested",
+    name: "controller-stop-requested",
+    outputFileName: "rec_fake_controller_stop_requested.mp3",
+    recordingId: "rec_fake_controller_stop_requested",
+  },
 ];
 let activeScenario;
 
@@ -115,6 +123,23 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
   invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
   invariant(observed.channelMapReads === 1, "agent did not fetch channel-map assignments");
+
+  if (scenario.controllerStopRequested) {
+    assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state });
+  } else {
+    assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario });
+  }
+
+  if (scenario.expectSuccess && !scenario.controllerStopRequested) {
+    assertCompletedScenario({ job, scenario, state });
+  } else if (!scenario.expectSuccess) {
+    assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  }
+
+  activeScenario = undefined;
+}
+
+function assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario }) {
   invariant(observed.cacheUpload?.recordingId === scenario.recordingId, "agent did not upload cache file");
   invariant(observed.cacheUpload?.jobId === scenario.jobId, "cache upload did not include the job id");
   invariant(observed.cacheUpload?.durationSeconds === "1", "cache upload did not include duration");
@@ -137,14 +162,6 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   invariant(renderedLocalEvent.details?.jobId === scenario.jobId, "rendered local health event recorded the wrong job");
   invariant(renderedLocalEvent.details?.outputCodec === "mp3", "rendered local health event did not record MP3 output");
   invariant(renderedLocalEvent.details?.outputVbr === true, "rendered local health event did not record VBR output");
-
-  if (scenario.expectSuccess) {
-    assertCompletedScenario({ job, scenario, state });
-  } else {
-    assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
-  }
-
-  activeScenario = undefined;
 }
 
 function assertCompletedScenario({ job, scenario, state }) {
@@ -152,6 +169,23 @@ function assertCompletedScenario({ job, scenario, state }) {
   invariant(state.status === "completed", "agent state file did not end completed");
   invariant(state.jobId === scenario.jobId, "agent state file recorded the wrong job id");
   invariant(state.outputPath?.endsWith(scenario.outputFileName), "agent state did not end on rendered MP3");
+}
+
+function assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state }) {
+  invariant(job.status === "cancelled", "fake controller did not mark stopped job cancelled");
+  invariant(observed.cancellations === 1, "agent did not mark stop-requested job cancelled");
+  invariant(
+    observed.cancelReason === "controller_stop_requested",
+    "agent cancellation reason did not preserve controller stop request",
+  );
+  invariant(!observed.cacheUpload, "agent uploaded cache after controller stop request");
+  invariant(state.status === "cancelled", "agent state file did not end cancelled after controller stop request");
+  invariant(state.jobId === scenario.jobId, "cancelled agent state file recorded the wrong job id");
+  invariant(state.reason === "controller_stop_requested", "cancelled state did not retain stop request reason");
+  invariant(
+    !healthLogEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
+    "agent rendered output after controller stop request",
+  );
 }
 
 function assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state }) {
@@ -207,6 +241,8 @@ function createJob(scenario) {
 
 function createObserved() {
   return {
+    cancelReason: undefined,
+    cancellations: 0,
     cacheUpload: undefined,
     channelMapReads: 0,
     claims: 0,
@@ -220,10 +256,18 @@ function createObserved() {
 }
 
 async function readJsonLines(filePath) {
-  return (await readFile(filePath, "utf8"))
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  try {
+    return (await readFile(filePath, "utf8"))
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+
+    throw error;
+  }
 }
 
 async function handleControllerRequest(request, response) {
@@ -264,6 +308,18 @@ async function handleControllerRequest(request, response) {
 
   if (request.method === "GET" && url.pathname === `/api/v1/recording-jobs/${job.id}`) {
     observed.jobStatusReads += 1;
+    if (scenario.controllerStopRequested) {
+      job.status = "stop_requested";
+    }
+
+    return json(response, 200, { data: job });
+  }
+
+  if (request.method === "POST" && url.pathname === `/api/v1/recording-jobs/${job.id}/cancelled`) {
+    observed.cancellations += 1;
+    observed.cancelReason = request.headers["x-rakkr-reason"];
+    job.failureReason = observed.cancelReason;
+    job.status = "cancelled";
     return json(response, 200, { data: job });
   }
 
