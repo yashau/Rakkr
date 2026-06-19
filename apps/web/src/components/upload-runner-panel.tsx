@@ -1,23 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RefreshCw, UploadCloud } from "lucide-react";
-import type { CurrentUser } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { uploadRunnerPanelPermissions } from "@/lib/upload-runner-panel-helpers";
 
 export function UploadRunnerPanel() {
   const queryClient = useQueryClient();
-  const statusQuery = useQuery({
-    queryFn: api.uploadRunner,
-    queryKey: ["upload-runner"],
-    refetchInterval: 5_000,
-  });
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
+  });
+  const permissions = uploadRunnerPanelPermissions(currentUserQuery.data?.data);
+  const statusQuery = useQuery({
+    enabled: permissions.canRead,
+    queryFn: api.uploadRunner,
+    queryKey: ["upload-runner"],
+    refetchInterval: 5_000,
   });
   const runMutation = useMutation({
     mutationFn: api.runUploadRunner,
@@ -28,7 +30,13 @@ export function UploadRunnerPanel() {
   });
   const status = statusQuery.data?.data;
   const summary = status?.lastSummary;
-  const canRunUploadRunner = canControlUploadRunner(currentUserQuery.data?.data);
+  const statusLabel = !permissions.canRead
+    ? "unavailable"
+    : status?.running
+      ? "running"
+      : status?.started
+        ? "started"
+        : "stopped";
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
@@ -38,19 +46,21 @@ export function UploadRunnerPanel() {
             <UploadCloud className="size-4" />
             <h3 className="text-base font-semibold">Upload Runner</h3>
             <Badge
-              className={runnerStatusClass(status?.started, status?.running)}
+              className={runnerStatusClass(status?.started, status?.running, permissions.canRead)}
               variant="outline"
             >
-              {status?.running ? "running" : status?.started ? "started" : "stopped"}
+              {statusLabel}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Batch {status?.batchSize ?? "-"} / every {status?.intervalSeconds ?? "-"}s
+            {permissions.canRead
+              ? `Batch ${status?.batchSize ?? "-"} / every ${status?.intervalSeconds ?? "-"}s`
+              : "Runner status unavailable."}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
-            disabled={statusQuery.isFetching}
+            disabled={!permissions.canRead || statusQuery.isFetching}
             onClick={() => void statusQuery.refetch()}
             variant="outline"
           >
@@ -58,9 +68,9 @@ export function UploadRunnerPanel() {
             Refresh
           </Button>
           <Button
-            disabled={runMutation.isPending || !canRunUploadRunner}
+            disabled={runMutation.isPending || !permissions.canRun}
             onClick={() => runMutation.mutate()}
-            title={canRunUploadRunner ? "Run upload queue now" : "Requires recording control"}
+            title={permissions.canRun ? "Run upload queue now" : "Requires recording control"}
           >
             <Play className="size-4" />
             Run now
@@ -82,12 +92,11 @@ export function UploadRunnerPanel() {
       {runMutation.isError ? (
         <p className="mt-3 text-sm text-destructive">Runner request failed.</p>
       ) : null}
+      {currentUserQuery.isPending ? (
+        <p className="mt-3 text-sm text-muted-foreground">Checking runner permissions.</p>
+      ) : null}
     </Card>
   );
-}
-
-function canControlUploadRunner(user: CurrentUser | undefined) {
-  return user?.permissions.includes("recording:control") ?? false;
 }
 
 function Metric({ label, value }: { label: string; value: number | string }) {
@@ -99,7 +108,15 @@ function Metric({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function runnerStatusClass(started: boolean | undefined, running: boolean | undefined) {
+function runnerStatusClass(
+  started: boolean | undefined,
+  running: boolean | undefined,
+  canRead: boolean,
+) {
+  if (!canRead) {
+    return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+
   if (running) {
     return "border-sky-200 bg-sky-50 text-sky-700";
   }
