@@ -36,6 +36,7 @@ import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
+import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -523,6 +524,13 @@ registerSettingsRoutes({
   requirePermission,
   settingsStore,
   uploadProviderStore,
+});
+
+registerRetentionPolicyRoutes({
+  app,
+  currentAuth,
+  recordAuditEvent,
+  requirePermission,
 });
 
 registerAuthOidcRoutes({

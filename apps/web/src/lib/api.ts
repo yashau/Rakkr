@@ -25,6 +25,9 @@ import type {
   RecordingProfileUpdate,
   RecordingJob,
   RecordingSummary,
+  RetentionPolicy,
+  RetentionPolicyInput,
+  RetentionPolicyUpdate,
   ResourceGrant,
   Role,
   ScheduleInput,
@@ -489,6 +492,8 @@ export const api = {
   uploadProviders: () =>
     fetchJson<{ data: UploadProviderRuntimeStatus[] }>("/api/v1/settings/upload-providers"),
   uploadPolicies: () => fetchJson<{ data: UploadPolicy[] }>("/api/v1/settings/upload-policies"),
+  retentionPolicies: () =>
+    fetchJson<{ data: RetentionPolicy[] }>("/api/v1/settings/retention-policies"),
   watchdogPolicies: () =>
     fetchJson<{ data: WatchdogPolicy[] }>("/api/v1/settings/watchdog-policies"),
   channelMapTemplates: () =>
@@ -594,6 +599,22 @@ export const api = {
     }),
   updateUploadPolicy: (policyId: string, input: UploadPolicyUpdate) =>
     fetchJson<{ data: UploadPolicy }>(`/api/v1/settings/upload-policies/${policyId}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
+  createRetentionPolicy: (input: RetentionPolicyInput) =>
+    fetchJson<{ data: RetentionPolicy }>("/api/v1/settings/retention-policies", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  updateRetentionPolicy: (policyId: string, input: RetentionPolicyUpdate) =>
+    fetchJson<{ data: RetentionPolicy }>(`/api/v1/settings/retention-policies/${policyId}`, {
       body: JSON.stringify(input),
       headers: {
         "Content-Type": "application/json",

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { RecordingProfileSettingsCard } from "@/components/recording-profile-settings-card";
+import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -162,6 +163,8 @@ export function SettingsPage() {
       </div>
 
       <UploadPolicyPanel canManage={canManageSettings} canRead={canReadSettings} />
+
+      <RetentionPolicyPanel canManage={canManageSettings} canRead={canReadSettings} />
 
       <UploadRunnerPanel />
 

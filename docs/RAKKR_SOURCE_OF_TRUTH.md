@@ -65,7 +65,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory plus Linux loopback tasks; Linux/hardware validation remains |
-| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, upload retention, bulk assignment, staged apply; future settings families remain |
+| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, upload retention, retention templates, bulk assignment, staged apply; execution hooks remain |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, offline, local-log, metrics, and timeline baseline; real-room field calibration remains |
@@ -163,6 +163,7 @@ Current checked partial baseline:
 - Channel map templates can be bulk-assigned to many node/interface targets in one audited operation.
 - Channel map staged rollout plans require an explicit apply step before assignments change.
 - Upload policies cover provider selection, retry budget, trigger, and confirmed-upload cache retention.
+- Retention policy templates cover controller and recorder cache cleanup intent; cleanup-worker execution remains pending.
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
@@ -737,6 +738,7 @@ Current implementation baseline:
 159. ✅ Add audited bulk channel-map template assignment.
 160. ✅ Add staged channel-map rollout plans with explicit apply.
 161. ✅ Tie settings/templates baseline to upload-policy cache retention.
+162. ✅ Add audited retention policy templates to settings.
 
 ## Open Questions
 
