@@ -15,6 +15,7 @@ process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(runnerRoot, "queue.json");
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(runnerRoot, "cache");
 
 const { createAuditStore } = await import("../src/audit-store.js");
+const { createHealthEventStore } = await import("../src/health-store.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
 const { createUploadProviderStore } = await import("../src/upload-providers.js");
 const { registerUploadRunnerRoutes } = await import("../src/upload-runner-routes.js");
@@ -116,6 +117,51 @@ test("upload runner deletes local cache after confirmed upload when policy reque
     observed: sha256Prefixed(contents),
     status: "matched",
   });
+});
+
+test("upload runner records health events for terminal upload failures", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("");
+  const providerStore = createUploadProviderStore();
+  const failedRecording = recording("rec_upload_runner_terminal_failure");
+  const recordingStore = memoryRecordingStore([failedRecording]);
+  const runner = createUploadRunner({
+    auditStore,
+    healthEventStore,
+    limit: 5,
+    providerStore,
+    recordingStore,
+  });
+
+  await providerStore.update("smb", {
+    displayName: "Failure Share",
+    enabled: true,
+    target: path.join(runnerRoot, "failure-share"),
+  });
+  await enqueueRecordingUpload(failedRecording, {
+    maxAttempts: 1,
+    provider: "smb",
+    target: path.join(runnerRoot, "failure-share"),
+  });
+
+  const summary = await runner.runOnce();
+  const events = await healthEventStore.list({
+    recordingId: failedRecording.id,
+    type: "controller.recording.upload_queue_failed",
+  });
+  const itemEvents = await auditStore.list({
+    action: "recordings.upload_queue.runner_item.failed",
+  });
+  const updated = await recordingStore.find(failedRecording.id);
+
+  assert.equal(summary.failed, 1);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.severity, "warning");
+  assert.equal(events[0]?.details.source, "upload_runner");
+  assert.equal(events[0]?.details.provider, "smb");
+  assert.equal(events[0]?.details.uploadQueueItemId, summary.items[0]?.itemId);
+  assert.equal(updated?.healthStatus, "warning");
+  assert.equal(itemEvents[0]?.details.healthEventId, events[0]?.id);
 });
 
 test("upload runner routes expose status and run-now control", async () => {

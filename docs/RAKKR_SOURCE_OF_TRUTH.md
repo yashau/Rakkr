@@ -258,7 +258,7 @@ Required signals:
 - encoder/file writer failure;
 - recording file not growing;
 - channel mapping/correlation issues;
-- future upload failures.
+- controller upload failures.
 
 Default scheduled voice rule:
 
@@ -275,6 +275,7 @@ Current partial implementation:
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high channel correlation.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained clipping.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
+- Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, and clipping evidence.
@@ -786,6 +787,7 @@ Current implementation baseline:
 188. ✅ Add fake-controller smoke coverage for meter xrun health sync.
 189. ✅ Add fake-controller smoke coverage for meter device-unavailable health sync.
 190. ✅ Add fake-controller smoke coverage for meter recovery health sync.
+191. ✅ Add upload runner terminal-failure health event coverage.
 
 ## Open Questions
 

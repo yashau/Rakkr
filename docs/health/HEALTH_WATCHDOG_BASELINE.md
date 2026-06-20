@@ -12,6 +12,7 @@ Status: Partial baseline checked.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
+- Upload runner terminal queue failures create controller health events and sync recording health.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
@@ -30,6 +31,7 @@ Status: Partial baseline checked.
 | Scheduled low-signal, repeat, auto-resolve, speech-required, channel-correlation, clipping, node offline | `apps/api/test/watchdog-runner.test.ts` |
 | Health route RBAC and lifecycle denials | `apps/api/test/health-routes.test.ts` |
 | Health event type filtering | `apps/api/test/health-store.test.ts` |
+| Upload runner terminal-failure health event sync | `apps/api/test/upload-runner.test.ts` |
 | Health/watchdog/xrun Prometheus metrics | `apps/api/test/metrics.test.ts` |
 | Watchdog field calibration route | `apps/api/test/watchdog-calibration-routes.test.ts` |
 | Watchdog calibration UI gating | `apps/web/src/lib/settings-page-helpers.test.ts` |

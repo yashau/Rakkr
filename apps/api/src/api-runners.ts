@@ -47,6 +47,7 @@ export function createApiRunners({
     }),
     uploadRunner: createUploadRunner({
       auditStore,
+      healthEventStore,
       providerStore: uploadProviderStore,
       recordingStore,
     }),

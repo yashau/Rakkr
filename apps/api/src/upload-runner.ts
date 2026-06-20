@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type { AuditEvent, UploadQueueRunItem, UploadQueueRunSummary } from "@rakkr/shared";
+import type {
+  AuditEvent,
+  HealthEvent,
+  UploadQueueRunItem,
+  UploadQueueRunSummary,
+} from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
+import type { HealthEventStore } from "./health-store.js";
+import { syncRecordingHealth } from "./health-sync.js";
 import { deleteRecordingCacheFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { UploadProviderStore } from "./upload-providers.js";
@@ -11,6 +18,7 @@ import { listUploadQueueItems } from "./upload-queue.js";
 
 interface UploadRunnerDependencies {
   auditStore: AuditStore;
+  healthEventStore?: HealthEventStore;
   limit?: number;
   providerStore: UploadProviderStore;
   recordingStore?: RecordingStore;
@@ -89,6 +97,7 @@ export type UploadRunner = ReturnType<typeof createUploadRunner>;
 export async function runUploadQueuePass(
   {
     auditStore,
+    healthEventStore,
     limit = uploadRunnerBatchSize(),
     providerStore,
     recordingStore,
@@ -105,8 +114,13 @@ export async function runUploadQueuePass(
 
   for (const item of summary.items) {
     const retention = await applyUploadRetention(item, recordingStore);
+    const healthEvent = await appendUploadFailureHealthEvent(
+      healthEventStore,
+      recordingStore,
+      item,
+    );
 
-    await appendUploadItemAudit(auditStore, item, retention);
+    await appendUploadItemAudit(auditStore, item, retention, healthEvent?.id);
   }
 
   return summary;
@@ -143,6 +157,7 @@ async function appendUploadItemAudit(
   auditStore: AuditStore,
   item: UploadQueueRunItem,
   retention?: UploadRetentionResult,
+  healthEventId?: string,
 ) {
   const outcome = uploadItemOutcome(item);
 
@@ -157,6 +172,7 @@ async function appendUploadItemAudit(
     createdAt: new Date().toISOString(),
     details: {
       ...(item.checksumVerification ? { checksumVerification: item.checksumVerification } : {}),
+      ...(healthEventId ? { healthEventId } : {}),
       provider: item.provider,
       ...(retention ? { retention } : {}),
       status: item.status,
@@ -170,6 +186,34 @@ async function appendUploadItemAudit(
       type: "recording",
     },
   });
+}
+
+async function appendUploadFailureHealthEvent(
+  healthEventStore: HealthEventStore | undefined,
+  recordingStore: RecordingStore | undefined,
+  item: UploadQueueRunItem,
+): Promise<HealthEvent | undefined> {
+  if (!healthEventStore || item.status !== "failed") {
+    return undefined;
+  }
+
+  const event = await healthEventStore.create({
+    details: {
+      provider: item.provider,
+      reason: item.reason ?? "upload_failed",
+      source: "upload_runner",
+      uploadQueueItemId: item.itemId,
+    },
+    recordingId: item.recordingId,
+    severity: "warning",
+    type: "controller.recording.upload_queue_failed",
+  });
+
+  if (recordingStore) {
+    await syncRecordingHealth(healthEventStore, recordingStore, item.recordingId);
+  }
+
+  return event;
 }
 
 async function applyUploadRetention(
