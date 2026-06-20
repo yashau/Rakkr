@@ -16,7 +16,11 @@ import {
   WifiOff,
 } from "lucide-react";
 
-import { NodeIdentityEditor, NodeInterfaceEditor } from "@/components/node-inventory-editors";
+import {
+  NodeAudioDefaultsEditor,
+  NodeIdentityEditor,
+  NodeInterfaceEditor,
+} from "@/components/node-inventory-editors";
 import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -454,6 +458,7 @@ export function NodesPage() {
                   </Button>
                 ) : null}
                 <NodeIdentityEditor canManage={actionPermissions.canManage} node={node} />
+                <NodeAudioDefaultsEditor canManage={actionPermissions.canManage} node={node} />
                 {node.interfaces.map((audioInterface) => (
                   <NodeInterfaceEditor
                     audioInterface={audioInterface}

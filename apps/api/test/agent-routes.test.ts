@@ -197,6 +197,15 @@ test("agent config read returns node recording capacity and recorder-cache polic
   const nodeStore = memoryNodeStore([
     {
       ...node(),
+      audioDefaults: {
+        captureArgsTemplate: "--capture {device} --rate {sample_rate} --output {output}",
+        captureChannels: 4,
+        captureCommand: "custom-capture",
+        captureDevice: "hw:Loopback,1,0",
+        captureFormat: "S24_LE",
+        captureSampleRate: 96_000,
+        meterArgsTemplate: "--meter {device} --stdout",
+      },
       recordingCapacity: { maxConcurrentRecordings: 8 },
     },
   ]);
@@ -222,12 +231,20 @@ test("agent config read returns node recording capacity and recorder-cache polic
         maxBytes: number | null;
         policyId: string;
       }>;
+      audioDefaults: {
+        captureCommand?: string;
+        captureDevice?: string;
+        captureSampleRate?: number;
+      };
       recordingCapacity: { maxConcurrentRecordings: number };
     };
   };
   const [event] = await auditStore.list({ action: "nodes.config.read.succeeded" });
 
   assert.equal(response.status, 200);
+  assert.equal(body.data.audioDefaults.captureCommand, "custom-capture");
+  assert.equal(body.data.audioDefaults.captureDevice, "hw:Loopback,1,0");
+  assert.equal(body.data.audioDefaults.captureSampleRate, 96_000);
   assert.equal(body.data.recordingCapacity.maxConcurrentRecordings, 8);
   assert.deepEqual(
     body.data.recorderCachePolicies.find((item) => item.policyId === policy.id),
@@ -240,6 +257,7 @@ test("agent config read returns node recording capacity and recorder-cache polic
     },
   );
   assert.equal(event?.permission, "node:control");
+  assert.equal(event?.details.audioDefaultsConfigured, true);
   assert.equal(event?.details.recordingCapacity.maxConcurrentRecordings, 8);
   assert.ok(Number(event?.details.recorderCachePolicyCount) >= 1);
 });

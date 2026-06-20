@@ -10,6 +10,7 @@ Status: Partial baseline checked.
 - Agent capture and meter paths use `arecord` with configurable devices such as `default`, `hw:2,0`, `plughw:2,0`, `hw:CARD=Loopback,DEV=1`, or loopback devices.
 - Capture and meter argument templates can target non-`arecord` tools with placeholders for device, format, sample rate, channels, duration, and output target while the default path keeps `arecord` arguments.
 - Capture and meter template CLI flags accept hyphen-leading template values.
+- Controller-managed node audio defaults can set capture command, capture device, format, sample rate, channel count, and capture/meter argument templates; ad-hoc and scheduled jobs inherit the node defaults.
 - Fake-controller smoke coverage exercises template-driven capture arguments through agent job claim, capture, render, cache attach, and cleanup.
 - Fake-controller smoke coverage exercises template-driven meter arguments through daemon meter frames and monitor chunks.
 - Inventory discovers ALSA capture devices from `arecord -l` and `/proc/asound/pcm`, then adds channel count, sample rates, sysfs hardware paths, and serials when available.
@@ -25,6 +26,7 @@ Status: Partial baseline checked.
 | Check | Evidence |
 | ----- | -------- |
 | Configurable capture and meter command/argument template/device/format/rate/channels | `crates/recorder-agent/src/config.rs`, `crates/recorder-agent/src/capture.rs`, `crates/recorder-agent/src/meter_command.rs`, `crates/recorder-agent/src/command_template.rs` |
+| Controller-managed node audio defaults | `packages/shared/src/index.ts`, `apps/api/src/node-store.ts`, `apps/api/src/node-routes.ts`, `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/api/test/node-routes.test.ts`, `apps/api/test/agent-routes.test.ts`, `apps/web/src/components/node-inventory-editors.tsx`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/main.rs` |
 | Generic capture and meter command arguments | `crates/recorder-agent/src/capture.rs`, `crates/recorder-agent/src/meter_command.rs`, `crates/recorder-agent/src/command_template.rs` |
 | ALSA inventory parsing, `/proc/asound/pcm`, stream/hw-params metadata, sysfs serials | `crates/recorder-agent/src/inventory.rs` |
 | Numeric and named ALSA capture-device inventory matching | `crates/recorder-agent/src/alsa_device.rs` |

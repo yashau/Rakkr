@@ -18,6 +18,7 @@ import type {
   MeterFrame,
   NodeStatus,
   NodeRuntime,
+  NodeAudioCommandDefaults,
   RecorderNode,
   OidcPublicConfig,
   Permission,
@@ -344,6 +345,7 @@ export interface NodeMetadataUpdate {
     site?: string;
   };
   notes?: string | null;
+  audioDefaults?: NodeAudioCommandDefaults;
   recordingCapacity?: {
     maxConcurrentRecordings: number;
   };

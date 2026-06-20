@@ -4,6 +4,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import {
   defaultNodeRecordingCapacity,
+  nodeAudioCommandDefaultsSchema,
   nodeRecordingCapacitySchema,
   nodeRuntimeSchema,
   nodeStatusSchema,
@@ -74,6 +75,7 @@ const nodeEnrollmentSchema = z
       site: z.string().trim().min(1).max(160),
     }),
     notes: z.string().trim().max(2000).optional(),
+    audioDefaults: nodeAudioCommandDefaultsSchema.optional(),
     recordingCapacity: nodeRecordingCapacitySchema.optional(),
     runtime: nodeRuntimeSchema.optional(),
     tags: z.array(z.string().trim().min(1).max(48)).max(32).default([]),
@@ -94,6 +96,7 @@ const nodeUpdateSchema = z
       .strict()
       .optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
+    audioDefaults: nodeAudioCommandDefaultsSchema.optional(),
     recordingCapacity: nodeRecordingCapacitySchema.optional(),
     tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
   })
@@ -754,6 +757,16 @@ function nodeSearchText(node: RecorderNode) {
     node.alias,
     node.hostname,
     node.agentVersion,
+    node.audioDefaults
+      ? [
+          node.audioDefaults.captureCommand,
+          node.audioDefaults.captureDevice,
+          node.audioDefaults.captureFormat,
+          node.audioDefaults.captureSampleRate === undefined
+            ? undefined
+            : String(node.audioDefaults.captureSampleRate),
+        ]
+      : undefined,
     node.status,
     node.notes,
     node.ipAddresses,
@@ -829,6 +842,7 @@ function nodeSnapshot(node: RecorderNode | undefined) {
     ? {
         agentVersion: node.agentVersion,
         alias: node.alias,
+        audioDefaults: node.audioDefaults,
         hostname: node.hostname,
         interfaces: node.interfaces.length,
         ipAddresses: node.ipAddresses,

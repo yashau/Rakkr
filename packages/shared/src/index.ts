@@ -233,6 +233,15 @@ export const defaultNodeRecordingCapacity = {
 export const nodeRecordingCapacitySchema = z.object({
   maxConcurrentRecordings: z.number().int().positive().max(128),
 });
+export const nodeAudioCommandDefaultsSchema = z.object({
+  captureArgsTemplate: z.string().trim().min(1).max(1000).optional(),
+  captureChannels: z.number().int().positive().max(256).optional(),
+  captureCommand: z.string().trim().min(1).max(255).optional(),
+  captureDevice: z.string().trim().min(1).max(255).optional(),
+  captureFormat: z.string().trim().min(1).max(80).optional(),
+  captureSampleRate: z.number().int().positive().max(384_000).optional(),
+  meterArgsTemplate: z.string().trim().min(1).max(1000).optional(),
+});
 
 export const audioQualitySchema = z.object({
   channelCorrelation: z
@@ -265,6 +274,7 @@ export const recorderNodeSchema = z.object({
     site: z.string().min(1),
   }),
   notes: z.string().optional(),
+  audioDefaults: nodeAudioCommandDefaultsSchema.optional(),
   recordingCapacity: nodeRecordingCapacitySchema.optional(),
   runtime: nodeRuntimeSchema.optional(),
   status: nodeStatusSchema,
@@ -908,6 +918,7 @@ export type HealthEventStatus = z.infer<typeof healthEventStatusSchema>;
 export type HealthSeverity = z.infer<typeof healthSeveritySchema>;
 export type MeterFrame = z.infer<typeof meterFrameSchema>;
 export type NodeStatus = z.infer<typeof nodeStatusSchema>;
+export type NodeAudioCommandDefaults = z.infer<typeof nodeAudioCommandDefaultsSchema>;
 export type NodeRecordingCapacity = z.infer<typeof nodeRecordingCapacitySchema>;
 export type NodeRuntime = z.infer<typeof nodeRuntimeSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;

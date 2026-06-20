@@ -37,7 +37,11 @@ export async function recordingJobTargetOptions({
     : undefined;
 
   return {
+    captureChannels: node?.audioDefaults?.captureChannels,
+    captureDevice: node?.audioDefaults?.captureDevice,
+    captureFormat: node?.audioDefaults?.captureFormat,
     captureInterfaceId,
+    captureSampleRate: node?.audioDefaults?.captureSampleRate,
     channelMap,
     durationSeconds,
     profile,

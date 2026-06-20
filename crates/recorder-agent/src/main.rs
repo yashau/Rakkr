@@ -116,8 +116,7 @@ async fn main() -> anyhow::Result<()> {
         "starting recorder agent scaffold"
     );
 
-    let (meter_interface_id, meter_channel_count) = meter_target(&config, &inventory);
-    let meter_capture = meter_capture_config(&config, meter_channel_count);
+    let mut active_config = config.clone();
     let mut ticker = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
     let mut tick = 0_u64;
     let mut meter_capture_failure = None;
@@ -131,13 +130,6 @@ async fn main() -> anyhow::Result<()> {
     let mut recording_job_limit = config.max_concurrent_recordings.max(1);
     let mut system_health_state = system_health::SystemHealthState::default();
     let token = config.controller_token.as_deref();
-    let meter_context = MeterLoopContext {
-        capture: &meter_capture,
-        channel_count: meter_channel_count,
-        interface_id: &meter_interface_id,
-        node_id: &inventory.id,
-        token,
-    };
 
     append_and_sync_health_event(
         &config,
@@ -162,8 +154,18 @@ async fn main() -> anyhow::Result<()> {
             }
             _ = ticker.tick() => {
                 tick += 1;
+                let (meter_interface_id, meter_channel_count) =
+                    meter_target(&active_config, &inventory);
+                let meter_capture = meter_capture_config(&active_config, meter_channel_count);
+                let meter_context = MeterLoopContext {
+                    capture: &meter_capture,
+                    channel_count: meter_channel_count,
+                    interface_id: &meter_interface_id,
+                    node_id: &inventory.id,
+                    token,
+                };
                 let sample = next_meter_sample(
-                    &config,
+                    &active_config,
                     &meter_context,
                     tick,
                     &mut meter_capture_failure,
@@ -177,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
                 );
 
                 update_meter_health(
-                    &config,
+                    &active_config,
                     token,
                     frame,
                     &mut meter_channel_correlation_active,
@@ -186,7 +188,7 @@ async fn main() -> anyhow::Result<()> {
                 ).await?;
 
                 update_system_health(
-                    &config,
+                    &active_config,
                     token,
                     &inventory,
                     &mut system_health_state,
@@ -198,18 +200,18 @@ async fn main() -> anyhow::Result<()> {
                     let heartbeat = inventory::heartbeat_snapshot(&inventory);
 
                     if let Err(error) = controller::post_node_heartbeat(
-                        &config,
+                        &active_config,
                         token,
                         &heartbeat,
                     ).await {
                         warn!(error = %error, "failed to post node heartbeat");
                     }
 
-                    match controller::post_meter_frame(&config, token, frame).await {
+                    match controller::post_meter_frame(&active_config, token, frame).await {
                         Ok(()) if meter_sync_failed => {
                             meter_sync_failed = false;
                             append_and_sync_health_event(
-                                &config,
+                                &active_config,
                                 Some(token),
                                 "agent.meter_frame.sync_recovered",
                                 "info",
@@ -225,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
                         Err(error) if !meter_sync_failed => {
                             meter_sync_failed = true;
                             append_and_sync_health_event(
-                                &config,
+                                &active_config,
                                 Some(token),
                                 "agent.meter_frame.sync_failed",
                                 "warning",
@@ -246,14 +248,26 @@ async fn main() -> anyhow::Result<()> {
                     }
 
                     sync_monitor_chunk(
-                        &config,
+                        &active_config,
                         token,
                         &sample,
                         &mut monitor_sync_failed,
                     ).await?;
 
-                    match node_config::fetch_node_config(&config, token).await {
+                    match node_config::fetch_node_config(&active_config, token).await {
                         Ok(node_config) => {
+                            let mut next_config = config.clone();
+                            node_config.apply_audio_defaults(&mut next_config);
+
+                            if audio_runtime_defaults_changed(&active_config, &next_config) {
+                                active_config = next_config;
+                                info!(
+                                    capture_command = %active_config.capture_command,
+                                    capture_device = %active_config.capture_device,
+                                    "updated audio command defaults from controller config"
+                                );
+                            }
+
                             if let Some(next_limit) = node_config.max_concurrent_recordings() {
                                 if next_limit != recording_job_limit {
                                     info!(
@@ -271,7 +285,7 @@ async fn main() -> anyhow::Result<()> {
                             }
 
                             if recording_jobs.is_empty() {
-                                run_idle_recorder_cache_sweep(&config, Some(token), &node_config)
+                                run_idle_recorder_cache_sweep(&active_config, Some(token), &node_config)
                                     .await?;
                             }
                         }
@@ -284,7 +298,7 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 reap_recording_job_workers(&mut recording_jobs);
-                spawn_recording_job_workers(&config, &mut recording_jobs, recording_job_limit);
+                spawn_recording_job_workers(&active_config, &mut recording_jobs, recording_job_limit);
             }
         }
     }
@@ -473,6 +487,16 @@ fn meter_capture_config<'a>(config: &'a AgentConfig, channel_count: u16) -> Mete
         sample_rate: config.capture_sample_rate,
         sample_seconds: config.meter_sample_seconds,
     }
+}
+
+fn audio_runtime_defaults_changed(left: &AgentConfig, right: &AgentConfig) -> bool {
+    left.capture_args_template != right.capture_args_template
+        || left.capture_channels != right.capture_channels
+        || left.capture_command != right.capture_command
+        || left.capture_device != right.capture_device
+        || left.capture_format != right.capture_format
+        || left.capture_sample_rate != right.capture_sample_rate
+        || left.meter_args_template != right.meter_args_template
 }
 
 fn strict_meter_frame(

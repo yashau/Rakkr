@@ -17,7 +17,10 @@ type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
 type RecordingJobRow = typeof recordingJobsTable.$inferSelect;
 interface RecordingJobOptions {
   captureDevice?: string;
+  captureChannels?: number;
+  captureFormat?: string;
   captureInterfaceId?: string;
+  captureSampleRate?: number;
   channelMap?: RecordingJobCommand["channelMap"];
   durationSeconds?: number;
   profile?: RecordingProfile;
@@ -56,11 +59,14 @@ export async function createRecordingJob(
     command: {
       captureChannels:
         options.channelMap?.sourceChannels ??
+        options.captureChannels ??
         positiveInteger(process.env.RAKKR_AGENT_CAPTURE_CHANNELS, 2),
       captureDevice: options.captureDevice ?? process.env.RAKKR_AGENT_CAPTURE_DEVICE ?? "default",
-      captureFormat: process.env.RAKKR_AGENT_CAPTURE_FORMAT ?? "S16_LE",
+      captureFormat: options.captureFormat ?? process.env.RAKKR_AGENT_CAPTURE_FORMAT ?? "S16_LE",
       captureInterfaceId: options.captureInterfaceId,
-      captureSampleRate: positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SAMPLE_RATE, 48_000),
+      captureSampleRate:
+        options.captureSampleRate ??
+        positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SAMPLE_RATE, 48_000),
       channelMap: options.channelMap,
       durationSeconds:
         options.durationSeconds ?? positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SECONDS, 3_600),

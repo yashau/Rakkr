@@ -3,9 +3,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   defaultNodeRecordingCapacity,
   type AudioInterface,
+  type NodeAudioCommandDefaults,
   type RecorderNode,
 } from "@rakkr/shared";
-import { AudioLines, Save } from "lucide-react";
+import { AudioLines, Save, SlidersHorizontal } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,16 @@ interface NodeInterfaceDraft {
   serialNumber: string;
   systemName: string;
   systemRef: string;
+}
+
+interface NodeAudioDefaultsDraft {
+  captureArgsTemplate: string;
+  captureChannels: string;
+  captureCommand: string;
+  captureDevice: string;
+  captureFormat: string;
+  captureSampleRate: string;
+  meterArgsTemplate: string;
 }
 
 export function NodeIdentityEditor({
@@ -148,6 +159,110 @@ export function NodeIdentityEditor({
         />
       </Field>
       {mutation.isError ? <p className="text-sm text-destructive">Node update failed.</p> : null}
+    </fieldset>
+  );
+}
+
+export function NodeAudioDefaultsEditor({
+  canManage,
+  node,
+}: {
+  canManage: boolean;
+  node: RecorderNode;
+}) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState(nodeAudioDefaultsDraft(node.audioDefaults));
+  const mutation = useMutation({
+    mutationFn: () => api.updateNode(node.id, { audioDefaults: nodeAudioDefaultsInput(draft) }),
+    onSuccess: ({ data }) => {
+      setDraft(nodeAudioDefaultsDraft(data.audioDefaults));
+      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+    },
+  });
+
+  useEffect(() => {
+    setDraft(nodeAudioDefaultsDraft(node.audioDefaults));
+  }, [node]);
+
+  return (
+    <fieldset
+      aria-disabled={!canManage}
+      className="grid gap-3 rounded-md border border-border bg-background p-3"
+      disabled={!canManage}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <SlidersHorizontal className="size-4" />
+          Audio Defaults
+        </div>
+        <Button
+          disabled={mutation.isPending || !canManage}
+          onClick={() => mutation.mutate()}
+          size="sm"
+          title={canManage ? "Save audio defaults" : "Requires node manage"}
+        >
+          <Save className="size-4" />
+          Save
+        </Button>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <Field label="Capture Command">
+          <Input
+            onChange={(event) => setDraftValue(setDraft, "captureCommand", event.target.value)}
+            placeholder="arecord"
+            value={draft.captureCommand}
+          />
+        </Field>
+        <Field label="Capture Device">
+          <Input
+            onChange={(event) => setDraftValue(setDraft, "captureDevice", event.target.value)}
+            placeholder="default / hw:1,0"
+            value={draft.captureDevice}
+          />
+        </Field>
+        <Field label="Format">
+          <Input
+            onChange={(event) => setDraftValue(setDraft, "captureFormat", event.target.value)}
+            placeholder="S16_LE"
+            value={draft.captureFormat}
+          />
+        </Field>
+        <Field label="Sample Rate">
+          <Input
+            min={1}
+            onChange={(event) => setDraftValue(setDraft, "captureSampleRate", event.target.value)}
+            placeholder="48000"
+            type="number"
+            value={draft.captureSampleRate}
+          />
+        </Field>
+        <Field label="Channels">
+          <Input
+            min={1}
+            onChange={(event) => setDraftValue(setDraft, "captureChannels", event.target.value)}
+            placeholder="2"
+            type="number"
+            value={draft.captureChannels}
+          />
+        </Field>
+      </div>
+      <Field label="Capture Args Template">
+        <Textarea
+          onChange={(event) => setDraftValue(setDraft, "captureArgsTemplate", event.target.value)}
+          placeholder="-D {device} -f {format} -r {sample_rate} -c {channels} -d {seconds} {output}"
+          value={draft.captureArgsTemplate}
+        />
+      </Field>
+      <Field label="Meter Args Template">
+        <Textarea
+          onChange={(event) => setDraftValue(setDraft, "meterArgsTemplate", event.target.value)}
+          placeholder="-D {device} -f {format} -r {sample_rate} -c {channels} -d {seconds} -t raw -"
+          value={draft.meterArgsTemplate}
+        />
+      </Field>
+      {mutation.isError ? (
+        <p className="text-sm text-destructive">Audio defaults update failed.</p>
+      ) : null}
     </fieldset>
   );
 }
@@ -329,6 +444,34 @@ function nodeUpdateInput(draft: NodeIdentityDraft) {
   };
 }
 
+function nodeAudioDefaultsDraft(
+  defaults: NodeAudioCommandDefaults | undefined,
+): NodeAudioDefaultsDraft {
+  return {
+    captureArgsTemplate: defaults?.captureArgsTemplate ?? "",
+    captureChannels:
+      defaults?.captureChannels === undefined ? "" : String(defaults.captureChannels),
+    captureCommand: defaults?.captureCommand ?? "",
+    captureDevice: defaults?.captureDevice ?? "",
+    captureFormat: defaults?.captureFormat ?? "",
+    captureSampleRate:
+      defaults?.captureSampleRate === undefined ? "" : String(defaults.captureSampleRate),
+    meterArgsTemplate: defaults?.meterArgsTemplate ?? "",
+  };
+}
+
+function nodeAudioDefaultsInput(draft: NodeAudioDefaultsDraft): NodeAudioCommandDefaults {
+  return {
+    captureArgsTemplate: optionalTextValue(draft.captureArgsTemplate),
+    captureChannels: optionalPositiveInteger(draft.captureChannels),
+    captureCommand: optionalTextValue(draft.captureCommand),
+    captureDevice: optionalTextValue(draft.captureDevice),
+    captureFormat: optionalTextValue(draft.captureFormat),
+    captureSampleRate: optionalPositiveInteger(draft.captureSampleRate),
+    meterArgsTemplate: optionalTextValue(draft.meterArgsTemplate),
+  };
+}
+
 function positiveInteger(value: string, fallback: number) {
   const parsed = Number(value);
 
@@ -337,6 +480,16 @@ function positiveInteger(value: string, fallback: number) {
 
 function optionalText(value: string) {
   return value.trim() || null;
+}
+
+function optionalTextValue(value: string) {
+  return value.trim() || undefined;
+}
+
+function optionalPositiveInteger(value: string) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function nodeInterfaceDraft(audioInterface: AudioInterface): NodeInterfaceDraft {

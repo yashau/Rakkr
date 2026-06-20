@@ -11,6 +11,7 @@ import {
 } from "@rakkr/db";
 import type {
   AudioInterface,
+  NodeAudioCommandDefaults,
   NodeRecordingCapacity,
   NodeRuntime,
   NodeStatus,
@@ -37,6 +38,7 @@ export interface NodeEnrollmentInput {
     site: string;
   };
   notes?: string;
+  audioDefaults?: NodeAudioCommandDefaults;
   recordingCapacity?: NodeRecordingCapacity;
   runtime?: NodeRuntime;
   tags: string[];
@@ -61,6 +63,7 @@ export interface NodeUpdateInput {
     site?: string;
   };
   notes?: string | null;
+  audioDefaults?: NodeAudioCommandDefaults;
   recordingCapacity?: NodeRecordingCapacity;
   tags?: string[];
 }
@@ -442,7 +445,12 @@ class PostgresNodeStore implements NodeStore {
         alias: next.alias,
         hostname: next.hostname,
         location: next.location,
-        metadata: nodeMetadata(row.metadata, next.runtime, next.recordingCapacity),
+        metadata: nodeMetadata(
+          row.metadata,
+          next.runtime,
+          next.recordingCapacity,
+          next.audioDefaults,
+        ),
         network: { ipAddresses: next.ipAddresses },
         notes: next.notes ?? null,
         tags: next.tags,
@@ -527,6 +535,7 @@ function nodeInputToRow(input: NodeEnrollmentInput): typeof nodeRows.$inferInser
       { enrolledAt: new Date().toISOString() },
       input.runtime,
       input.recordingCapacity,
+      input.audioDefaults,
     ),
     network: {
       ipAddresses: input.ipAddresses,
@@ -569,6 +578,7 @@ function nodeFromRows(
     lastSeenAt: (node.lastSeenAt ?? node.createdAt).toISOString(),
     location: locationFromValue(node.location),
     notes: node.notes ?? undefined,
+    audioDefaults: nodeAudioDefaultsFromMetadata(node.metadata),
     recordingCapacity: nodeRecordingCapacityFromMetadata(node.metadata),
     runtime: nodeRuntimeFromMetadata(node.metadata),
     status: node.status,
@@ -599,6 +609,10 @@ function updatedNode(node: RecorderNode, input: NodeUpdateInput): RecorderNode {
       ...definedLocation(input.location),
     },
     notes: input.notes === undefined ? node.notes : (input.notes ?? undefined),
+    audioDefaults:
+      input.audioDefaults === undefined
+        ? node.audioDefaults
+        : nonEmptyAudioDefaults(input.audioDefaults),
     recordingCapacity: input.recordingCapacity ?? node.recordingCapacity,
     tags: input.tags ?? node.tags,
   };
@@ -720,9 +734,17 @@ function nodeMetadata(
   existingMetadata: unknown,
   runtime: NodeRuntime | undefined,
   recordingCapacity = nodeRecordingCapacityFromMetadata(existingMetadata),
+  audioDefaults = nodeAudioDefaultsFromMetadata(existingMetadata),
 ) {
+  const metadata = { ...record(existingMetadata) };
+
+  delete metadata.audioDefaults;
+  delete metadata.recordingCapacity;
+  delete metadata.runtime;
+
   return {
-    ...record(existingMetadata),
+    ...metadata,
+    ...(audioDefaults ? { audioDefaults } : {}),
     ...(recordingCapacity ? { recordingCapacity } : {}),
     ...(runtime ? { runtime } : {}),
   };
@@ -760,6 +782,32 @@ function nodeRecordingCapacityFromMetadata(metadata: unknown): NodeRecordingCapa
     : undefined;
 }
 
+function nodeAudioDefaultsFromMetadata(metadata: unknown): NodeAudioCommandDefaults | undefined {
+  const parsed = record(record(metadata)?.audioDefaults);
+
+  if (!parsed) {
+    return undefined;
+  }
+
+  return nonEmptyAudioDefaults({
+    captureArgsTemplate: stringOrUndefined(parsed.captureArgsTemplate),
+    captureChannels: positiveIntegerOrUndefined(parsed.captureChannels),
+    captureCommand: stringOrUndefined(parsed.captureCommand),
+    captureDevice: stringOrUndefined(parsed.captureDevice),
+    captureFormat: stringOrUndefined(parsed.captureFormat),
+    captureSampleRate: positiveIntegerOrUndefined(parsed.captureSampleRate),
+    meterArgsTemplate: stringOrUndefined(parsed.meterArgsTemplate),
+  });
+}
+
+function nonEmptyAudioDefaults(
+  defaults: NodeAudioCommandDefaults,
+): NodeAudioCommandDefaults | undefined {
+  const entries = Object.entries(defaults).filter(([, value]) => value !== undefined);
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function backend(value: string): AudioInterface["backend"] {
   return value === "alsa" || value === "jack" || value === "pipewire" ? value : "unknown";
 }
@@ -781,6 +829,10 @@ function numberArray(value: unknown) {
 
 function nonNegativeIntegerOrUndefined(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+function positiveIntegerOrUndefined(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function stringArray(value: unknown) {

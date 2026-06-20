@@ -52,7 +52,11 @@ export function registerAgentNodeConfigRoute({
     await recordAuditEvent(c, {
       action: "nodes.config.read.succeeded",
       actor: nodeActor(auth.credential),
-      details: { recorderCachePolicyCount: recorderCachePolicies.length, recordingCapacity },
+      details: {
+        audioDefaultsConfigured: Boolean(node.audioDefaults),
+        recorderCachePolicyCount: recorderCachePolicies.length,
+        recordingCapacity,
+      },
       outcome: "succeeded",
       permission: "node:control",
       target: {
@@ -61,7 +65,13 @@ export function registerAgentNodeConfigRoute({
       },
     });
 
-    return c.json({ data: { recorderCachePolicies, recordingCapacity } });
+    return c.json({
+      data: {
+        audioDefaults: node.audioDefaults,
+        recorderCachePolicies,
+        recordingCapacity,
+      },
+    });
   });
 }
 
