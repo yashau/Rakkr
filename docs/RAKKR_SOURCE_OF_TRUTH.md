@@ -527,6 +527,8 @@ Important metric names:
 - `rakkr_input_clipping_ratio`
 - `rakkr_input_speech_score`
 - `rakkr_input_noise_score`
+- `rakkr_listen_monitor_chunk_age_seconds`
+- `rakkr_listen_monitor_chunk_duration_seconds`
 - `rakkr_audit_events_total`
 - `rakkr_health_events_total`
 - `rakkr_recording_active`
@@ -540,7 +542,7 @@ Important metric names:
 
 Current implementation:
 
-- Prometheus export covers controller, node, recording duration/cache bytes, meter, audit totals, health totals/active counts, watchdog, upload queue depth/failures, and upload overdue age.
+- Prometheus export covers controller, node, recording duration/cache bytes, meter, listen-monitor freshness, audit totals, health totals/active counts, watchdog, upload queue depth/failures, and upload overdue age.
 - `docs/observability/rakkr-alerts.yml` defines checked Prometheus alerts for offline nodes, watchdog criticals, upload stalls/failures, XRUNs, and denied-action spikes.
 - `docs/observability/prometheus-mimir.example.yml` defines a checked HTTPS controller scrape and Mimir `remote_write` path using a secret file.
 - `docs/observability/grafana-dashboard.example.json` defines a checked operations dashboard for node status, audio levels, recordings, uploads, XRUNs, and denied actions.
@@ -754,6 +756,7 @@ Current implementation baseline:
 168. ✅ Add agent-provided live monitor audio chunk ingest and streaming.
 169. ✅ Add refreshing browser listen-monitor sessions.
 170. ✅ Add stale monitor-chunk fallback to meter preview.
+171. ✅ Add scoped monitor-chunk freshness Prometheus metrics.
 
 ## Open Questions
 

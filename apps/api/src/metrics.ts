@@ -9,6 +9,7 @@ import type {
 } from "@rakkr/shared";
 
 import { nodeOfflineEventType, scheduledLowSignalEventType } from "./watchdog-runner.js";
+import type { StoredListenMonitorChunk } from "./listen-monitor-store.js";
 
 const uploadProviders = ["stub", "smb", "s3"] as const satisfies UploadQueueItem["provider"][];
 const uploadDueStatuses = ["queued", "retrying"] as const satisfies UploadQueueItem["status"][];
@@ -21,6 +22,7 @@ const uploadDepthStatuses = [
 export interface PrometheusMetricsInput {
   auditEvents: AuditEvent[];
   healthEvents: HealthEvent[];
+  listenMonitorChunks: StoredListenMonitorChunk[];
   meterFrames: MeterFrame[];
   nodes: RecorderNode[];
   observedAt: Date;
@@ -163,6 +165,35 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
         }
       }
     }
+  }
+
+  pushHelp(
+    lines,
+    "rakkr_listen_monitor_chunk_age_seconds",
+    "Latest listen-monitor audio chunk age by node.",
+  );
+  pushType(lines, "rakkr_listen_monitor_chunk_age_seconds", "gauge");
+  pushHelp(
+    lines,
+    "rakkr_listen_monitor_chunk_duration_seconds",
+    "Latest listen-monitor audio chunk duration by node.",
+  );
+  pushType(lines, "rakkr_listen_monitor_chunk_duration_seconds", "gauge");
+  for (const chunk of input.listenMonitorChunks) {
+    const labels = { node_id: chunk.nodeId, source: chunk.source };
+
+    pushMetric(
+      lines,
+      "rakkr_listen_monitor_chunk_age_seconds",
+      labels,
+      chunkAgeSeconds(chunk, input.observedAt),
+    );
+    pushMetric(
+      lines,
+      "rakkr_listen_monitor_chunk_duration_seconds",
+      labels,
+      chunk.durationMs / 1000,
+    );
   }
 
   pushHelp(
@@ -358,6 +389,16 @@ function activeRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
 function cachedRecordings(node: RecorderNode, input: PrometheusMetricsInput) {
   return input.recordings.filter((recording) => recording.nodeId === node.id && recording.cached)
     .length;
+}
+
+function chunkAgeSeconds(chunk: StoredListenMonitorChunk, observedAt: Date) {
+  const capturedAt = Date.parse(chunk.capturedAt);
+
+  if (!Number.isFinite(capturedAt)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((observedAt.getTime() - capturedAt) / 1000));
 }
 
 function auditEventTotalCounts(events: AuditEvent[]) {

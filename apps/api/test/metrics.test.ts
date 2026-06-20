@@ -20,6 +20,17 @@ test("renders store-backed Prometheus gauges", () => {
       auditEvent("recordings.stop.denied", "denied", "recording:control"),
     ],
     healthEvents: [healthEvent(), nodeOfflineHealthEvent(), audioXrunHealthEvent()],
+    listenMonitorChunks: [
+      {
+        audio: new Uint8Array([82, 73, 70, 70]),
+        capturedAt: "2026-06-18T12:15:57.000Z",
+        contentType: "audio/wav",
+        durationMs: 1500,
+        nodeId: "node_x32_test",
+        receivedAt: "2026-06-18T12:15:58.000Z",
+        source: "agent_audio_chunk",
+      },
+    ],
     meterFrames: [meterFrame()],
     nodes: [node()],
     observedAt: new Date("2026-06-18T12:16:00.000Z"),
@@ -91,6 +102,14 @@ test("renders store-backed Prometheus gauges", () => {
   assert.match(
     output,
     /rakkr_input_channel_correlation_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test",peer_channel="2",phase="same"\} 0.99/,
+  );
+  assert.match(
+    output,
+    /rakkr_listen_monitor_chunk_age_seconds\{node_id="node_x32_test",source="agent_audio_chunk"\} 3/,
+  );
+  assert.match(
+    output,
+    /rakkr_listen_monitor_chunk_duration_seconds\{node_id="node_x32_test",source="agent_audio_chunk"\} 1.5/,
   );
   assert.match(
     output,

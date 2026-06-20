@@ -501,6 +501,7 @@ registerMetricsRoutes({
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,
+  listenMonitorStore,
   meterFrameStore,
   nodeStore,
   recordingStore,

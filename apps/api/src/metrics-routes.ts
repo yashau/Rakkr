@@ -13,6 +13,7 @@ import type { AuditStore } from "./audit-store.js";
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
+import type { ListenMonitorStore } from "./listen-monitor-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { renderPrometheusMetrics } from "./metrics.js";
 import type { NodeStore } from "./node-store.js";
@@ -28,6 +29,7 @@ interface MetricsScopeDependencies {
     target: AuditTarget,
   ) => Promise<boolean>;
   healthEventStore: HealthEventStore;
+  listenMonitorStore: ListenMonitorStore;
   meterFrameStore: MeterFrameStore;
   nodeStore: NodeStore;
   recordingStore: RecordingStore;
@@ -79,12 +81,16 @@ async function controllerPrometheusMetrics(
       scopedUploadQueueItems(user, dependencies),
       scopedAuditEvents(user, dependencies),
     ]);
-  const meterFrames = await scopedMeterFrames(nodes, dependencies);
+  const [listenMonitorChunks, meterFrames] = await Promise.all([
+    scopedListenMonitorChunks(nodes, dependencies),
+    scopedMeterFrames(nodes, dependencies),
+  ]);
   const recordingCacheBytes = await recordingCacheByteMap(recordings);
 
   return renderPrometheusMetrics({
     auditEvents,
     healthEvents,
+    listenMonitorChunks,
     meterFrames,
     nodes,
     observedAt: new Date(),
@@ -94,6 +100,17 @@ async function controllerPrometheusMetrics(
     startedAt: dependencies.startedAt,
     uploadQueueItems,
   });
+}
+
+async function scopedListenMonitorChunks(
+  nodes: RecorderNode[],
+  dependencies: Pick<MetricsScopeDependencies, "listenMonitorStore">,
+) {
+  const chunks = await Promise.all(
+    nodes.map((node) => dependencies.listenMonitorStore.latest(node.id)),
+  );
+
+  return chunks.filter((chunk) => chunk !== undefined);
 }
 
 async function scopedNodes(

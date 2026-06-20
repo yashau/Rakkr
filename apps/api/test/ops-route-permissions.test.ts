@@ -9,6 +9,7 @@ const { createAuditStore } = await import("../src/audit-store.js");
 const { LocalAuthService } = await import("../src/auth-service.js");
 const { registerAuthOidcRoutes } = await import("../src/auth-oidc-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
+const { createListenMonitorStore } = await import("../src/listen-monitor-store.js");
 const { createMeterFrameStore } = await import("../src/meter-store.js");
 const { registerMetricsRoutes } = await import("../src/metrics-routes.js");
 const { createNodeStore } = await import("../src/node-store.js");
@@ -28,6 +29,7 @@ test("ops routes deny users without required permissions", async () => {
     currentUser: () => deniedUser,
     hasResourceScope: async () => true,
     healthEventStore: createHealthEventStore("", []),
+    listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([]),
     recordingStore: createRecordingStore([]),

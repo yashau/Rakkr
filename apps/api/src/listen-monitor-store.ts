@@ -12,6 +12,7 @@ export interface StoredListenMonitorChunk extends ListenMonitorChunkInput {
 }
 
 export interface ListenMonitorStore {
+  all(): Promise<StoredListenMonitorChunk[]>;
   latest(nodeId: string): Promise<StoredListenMonitorChunk | undefined>;
   save(input: ListenMonitorChunkInput): Promise<StoredListenMonitorChunk>;
 }
@@ -22,6 +23,10 @@ export function createListenMonitorStore(): ListenMonitorStore {
 
 class MemoryListenMonitorStore implements ListenMonitorStore {
   private readonly chunks = new Map<string, StoredListenMonitorChunk>();
+
+  async all() {
+    return Array.from(this.chunks.values());
+  }
 
   async latest(nodeId: string) {
     return this.chunks.get(nodeId);
