@@ -32,6 +32,9 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_ALLOW_INSECURE_CONTROLLER", default_value_t = false)]
     pub allow_insecure_controller: bool,
 
+    #[arg(long, env = "RAKKR_CONTROLLER_CA_CERT_PATH")]
+    pub controller_ca_cert_path: Option<PathBuf>,
+
     #[arg(long, env = "RAKKR_NODE_ID", default_value = "node_local_dev")]
     pub node_id: String,
 
@@ -279,6 +282,21 @@ mod tests {
     #[test]
     fn can_explicitly_allow_insecure_controller_transport() {
         validate_controller_transport("http://172.22.145.10:8787", true).unwrap();
+    }
+
+    #[test]
+    fn accepts_controller_ca_cert_path() {
+        let config = AgentConfig::try_parse_from([
+            "rakkr-recorder-agent",
+            "--controller-ca-cert-path",
+            "/etc/rakkr/controller-ca.pem",
+        ])
+        .expect("controller CA cert path should parse");
+
+        assert_eq!(
+            config.controller_ca_cert_path.as_deref(),
+            Some(std::path::Path::new("/etc/rakkr/controller-ca.pem"))
+        );
     }
 
     #[test]

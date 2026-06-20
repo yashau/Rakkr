@@ -3,6 +3,7 @@ use reqwest::header::{CONTENT_TYPE, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
+use std::path::Path;
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -10,6 +11,7 @@ use crate::cache_content_type::content_type_for_codec;
 use crate::capture::spawn_capture_plan;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
 use crate::config::AgentConfig;
+use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
 use crate::recorder_cache_retention::{
@@ -26,6 +28,7 @@ const JOB_ID_HEADER: &str = "x-rakkr-recording-job-id";
 pub struct CacheFileUpload<'a> {
     pub allow_insecure_controller: bool,
     pub content_type: &'a str,
+    pub controller_ca_cert_path: Option<&'a Path>,
     pub controller_url: &'a str,
     pub duration_seconds: Option<u64>,
     pub file_name: Option<String>,
@@ -130,7 +133,7 @@ pub async fn fetch_channel_map_assignments(
         &config.node_id,
         "channel-map-assignments",
     );
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .get(&url)
         .bearer_auth(token)
         .send()
@@ -175,6 +178,7 @@ pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {
     upload_cache_file(CacheFileUpload {
         allow_insecure_controller: config.allow_insecure_controller,
         content_type: &config.attach_cache_content_type,
+        controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
         controller_url: &config.controller_url,
         duration_seconds: config.attach_cache_duration_seconds,
         file_name,
@@ -500,6 +504,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     let upload_result = upload_cache_file(CacheFileUpload {
         allow_insecure_controller: config.allow_insecure_controller,
         content_type: content_type_for_codec(job.command.output_codec.as_deref(), &output_path),
+        controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
         controller_url: &config.controller_url,
         duration_seconds: Some(job.command.duration_seconds),
         file_name: Some(job.command.output_file_name.clone()),
@@ -653,7 +658,7 @@ pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()>
     }
 
     let url = recording_cache_url(input.controller_url, input.recording_id);
-    let mut request = reqwest::Client::new()
+    let mut request = controller_http_client_with_ca(input.controller_ca_cert_path)?
         .put(&url)
         .bearer_auth(input.token)
         .header(CONTENT_TYPE, input.content_type)
@@ -708,7 +713,7 @@ pub async fn post_meter_frame(
 ) -> anyhow::Result<()> {
     config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "meter-frame");
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
         .json(frame)
@@ -733,7 +738,7 @@ pub async fn post_node_heartbeat(
 ) -> anyhow::Result<()> {
     config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "heartbeat");
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
         .json(inventory)
@@ -758,7 +763,7 @@ pub async fn sync_health_event(
 ) -> anyhow::Result<()> {
     config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "health-events");
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
         .json(event)
@@ -809,7 +814,7 @@ async fn claim_next_recording_job(
         config.controller_url.trim_end_matches('/'),
         config.node_id
     );
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
         .header(AGENT_ID_HEADER, config.node_id.as_str())
@@ -846,7 +851,7 @@ async fn heartbeat_recording_job(
         config.controller_url.trim_end_matches('/'),
         job_id
     );
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
         .header(AGENT_ID_HEADER, config.node_id.as_str())
@@ -879,7 +884,7 @@ async fn fetch_recording_job(
         config.controller_url.trim_end_matches('/'),
         job_id
     );
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .get(&url)
         .bearer_auth(token)
         .send()
@@ -932,7 +937,7 @@ async fn mark_recording_job_terminal(
         job_id,
         terminal_state
     );
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
         .header("x-rakkr-reason", reason)

@@ -780,6 +780,7 @@ mod tests {
             capture_seconds: 60,
             capture_stalled_seconds: 30,
             channel_render_command: "ffmpeg".to_string(),
+            controller_ca_cert_path: None,
             controller_token: None,
             controller_url: "http://localhost:8787".to_string(),
             heartbeat_seconds: 5,

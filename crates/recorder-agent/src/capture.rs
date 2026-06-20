@@ -412,6 +412,7 @@ mod tests {
             capture_sample_rate: 48_000,
             capture_seconds: 15,
             capture_stalled_seconds: 30,
+            controller_ca_cert_path: None,
             controller_token: Some("token".to_string()),
             controller_url: "http://localhost:8787".to_string(),
             heartbeat_seconds: 5,

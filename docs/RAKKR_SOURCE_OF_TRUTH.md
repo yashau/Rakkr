@@ -71,7 +71,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
-| Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
+| Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, checked baseline |
 | Observability | ✅ | Local logs, central events, metrics, alerts, Mimir config, Grafana baseline |
 
 ---
@@ -420,6 +420,7 @@ Current implementation baseline:
 
 - Controller can start HTTPS when TLS cert/key paths are configured.
 - Agent rejects non-loopback `http://` controller URLs unless explicitly allowed for development.
+- Agent can trust an internal controller CA bundle for all controller requests.
 - Localhost HTTP remains available for local development.
 - `docs/security/TRANSPORT_SECURITY_BASELINE.md` defines the checked MVP transport baseline.
 
@@ -814,6 +815,7 @@ Current implementation baseline:
 207. ✅ Add first-pass intelligibility score telemetry, UI display, and Prometheus metric.
 208. ✅ Add first-pass broadband-noise telemetry, UI display, and Prometheus metric.
 209. ✅ Add searchable transcript snippet recording metadata.
+210. ✅ Add agent controller CA bundle trust for HTTPS.
 
 ## Open Questions
 

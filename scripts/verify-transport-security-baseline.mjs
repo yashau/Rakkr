@@ -5,6 +5,7 @@ const sourceFiles = [
   "apps/api/src/transport-security.ts",
   "apps/api/test/transport-security.test.ts",
   "crates/recorder-agent/src/config.rs",
+  "crates/recorder-agent/src/controller_http.rs",
   "docs/observability/prometheus-mimir.example.yml",
 ];
 const requiredEnvVars = [
@@ -12,6 +13,7 @@ const requiredEnvVars = [
   "RAKKR_API_TLS_KEY_PATH",
   "RAKKR_API_TLS_CA_PATH",
   "RAKKR_CONTROLLER_URL",
+  "RAKKR_CONTROLLER_CA_CERT_PATH",
   "RAKKR_ALLOW_INSECURE_CONTROLLER",
 ];
 const requiredBaselinePhrases = [
@@ -19,6 +21,7 @@ const requiredBaselinePhrases = [
   "HTTPS",
   "non-loopback",
   "Localhost HTTP",
+  "internal controller CA",
   "explicit development exception",
   "certificate rotation",
   "mutual TLS",
@@ -30,7 +33,11 @@ const requiredSourceSnippets = [
   "readFileSync(certPath)",
   "RAKKR_API_TLS_CERT_PATH and RAKKR_API_TLS_KEY_PATH must be set together",
   "validate_controller_transport",
+  "controller_http_client",
+  "add_root_certificate",
   "accepts_https_controller_urls",
+  "accepts_controller_ca_cert_path",
+  "reports_invalid_controller_ca_cert_path",
   "rejects_non_loopback_http_by_default",
   "can_explicitly_allow_insecure_controller_transport",
   "must use HTTPS for non-loopback hosts",

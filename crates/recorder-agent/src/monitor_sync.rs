@@ -3,6 +3,7 @@ use reqwest::header::{CONTENT_TYPE, HeaderName};
 
 use crate::config::AgentConfig;
 use crate::controller::node_url;
+use crate::controller_http::controller_http_client;
 use crate::telemetry::MeterSample;
 
 const CAPTURED_AT_HEADER: &str = "x-rakkr-captured-at";
@@ -15,7 +16,7 @@ pub async fn post_monitor_chunk(
 ) -> anyhow::Result<()> {
     config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "listen/chunk");
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
         .header(CONTENT_TYPE, "audio/wav")

@@ -2,6 +2,7 @@ use anyhow::Context;
 use serde::Deserialize;
 
 use crate::config::AgentConfig;
+use crate::controller_http::controller_http_client;
 use crate::recorder_cache_retention::ControllerRecorderCacheRetention;
 
 #[derive(Debug, Deserialize)]
@@ -81,7 +82,7 @@ pub async fn fetch_node_config(
 ) -> anyhow::Result<ControllerNodeConfig> {
     config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "config");
-    let response = reqwest::Client::new()
+    let response = controller_http_client(config)?
         .get(&url)
         .bearer_auth(token)
         .send()

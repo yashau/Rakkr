@@ -5,6 +5,7 @@ mod channel_map;
 mod command_template;
 mod config;
 mod controller;
+mod controller_http;
 mod health_log;
 mod inventory;
 mod meter_command;
@@ -91,6 +92,7 @@ async fn main() -> anyhow::Result<()> {
         controller::upload_cache_file(controller::CacheFileUpload {
             allow_insecure_controller: config.allow_insecure_controller,
             content_type: "audio/wav",
+            controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
             controller_url: &config.controller_url,
             duration_seconds: Some(config.capture_seconds),
             file_name: output_path
