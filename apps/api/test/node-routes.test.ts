@@ -42,6 +42,62 @@ test("node list filters by status", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("node list filters by audio backend", async () => {
+  const auditStore = createAuditStore("");
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes: [
+      nodeWithInterface({
+        id: "node_alsa",
+        interfaces: [
+          {
+            ...nodeWithInterface().interfaces[0]!,
+            backend: "alsa",
+          },
+        ],
+        runtime: { audioBackends: ["alsa"] },
+      }),
+      nodeWithInterface({
+        id: "node_jack_recording",
+        interfaces: [
+          {
+            ...nodeWithInterface().interfaces[0]!,
+            backend: "jack",
+            id: "iface_jack",
+          },
+        ],
+        runtime: { audioBackends: ["jack", "pipewire"] },
+        status: "recording",
+      }),
+      node({
+        id: "node_pipewire_available",
+        runtime: { audioBackends: ["pipewire"] },
+        status: "offline",
+      }),
+    ],
+    permissionCalls: [],
+  });
+
+  const jackResponse = await app.request("/api/v1/nodes?backend=jack");
+  const jackBody = (await jackResponse.json()) as { data: RecorderNode[] };
+  const combinedResponse = await app.request("/api/v1/nodes?backend=pipewire&status=recording");
+  const combinedBody = (await combinedResponse.json()) as { data: RecorderNode[] };
+  const invalidResponse = await app.request("/api/v1/nodes?backend=oss");
+
+  assert.equal(jackResponse.status, 200);
+  assert.deepEqual(
+    jackBody.data.map((item) => item.id),
+    ["node_jack_recording"],
+  );
+  assert.equal(combinedResponse.status, 200);
+  assert.deepEqual(
+    combinedBody.data.map((item) => item.id),
+    ["node_jack_recording"],
+  );
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("node list searches inventory identity fields", async () => {
   const auditStore = createAuditStore("");
   const chamberNode = nodeWithInterface({

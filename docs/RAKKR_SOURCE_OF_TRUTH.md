@@ -60,11 +60,11 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes with backend filters, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes with backend filters, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -201,6 +201,7 @@ Current partial implementation:
 - Node UI summarizes connectivity/offline health alongside disk, CPU, and audio.
 - Node and dashboard UI color-code online/offline/recording/degraded/alerting status.
 - Node API and inventory UI can filter visible nodes by status.
+- Node API and inventory UI can filter visible nodes by audio backend.
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
 - Nodes page direct access mirrors `node:read`; node health panels mirror `health:read` and expose lifecycle actions only with `health:acknowledge`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
@@ -828,6 +829,7 @@ Current implementation baseline:
 218. ✅ Add ad-hoc capture backend/interface selection.
 219. ✅ Add server-backed recording-job interface filters.
 220. ✅ Add policy-tuned broadband-noise quality anomaly alerts.
+221. ✅ Add server-backed node inventory backend filters.
 
 ## Open Questions
 

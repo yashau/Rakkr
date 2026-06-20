@@ -126,8 +126,10 @@ const nodeSearchSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
   z.string().trim().min(1).max(200).optional(),
 );
+const nodeBackendFilterSchema = z.enum(["alsa", "jack", "pipewire", "unknown"]);
 const nodeListFilterSchema = z
   .object({
+    backend: nodeBackendFilterSchema.optional(),
     q: nodeSearchSchema,
     status: nodeStatusSchema.optional(),
   })
@@ -161,6 +163,7 @@ export function registerNodeRoutes({
     const filteredNodes = nodes.filter(
       (node) =>
         (!filters.data.status || node.status === filters.data.status) &&
+        (!filters.data.backend || nodeMatchesBackend(node, filters.data.backend)) &&
         (!query || nodeSearchText(node).includes(query)),
     );
 
@@ -799,6 +802,14 @@ function nodeSearchText(node: RecorderNode) {
     .filter((value): value is string => typeof value === "string" && value.length > 0)
     .join(" ")
     .toLowerCase();
+}
+
+function nodeMatchesBackend(node: RecorderNode, backend: z.infer<typeof nodeBackendFilterSchema>) {
+  if (node.runtime?.audioBackends.includes(backend)) {
+    return true;
+  }
+
+  return node.interfaces.some((audioInterface) => audioInterface.backend === backend);
 }
 
 function monitorWavChunk(frame: MeterFrame) {

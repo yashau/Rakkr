@@ -75,6 +75,7 @@ export interface AuditEventFilters {
 }
 
 export interface NodeFilters {
+  backend?: "alsa" | "jack" | "pipewire" | "unknown";
   q?: string;
   status?: NodeStatus;
 }
