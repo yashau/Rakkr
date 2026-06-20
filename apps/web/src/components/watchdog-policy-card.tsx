@@ -166,6 +166,22 @@ export function WatchdogPolicyCard({
             <option value="alert_on_clipping">Alert On Clipping</option>
           </select>
         </Field>
+        <Field label="Flatline Mode">
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                flatlineMode: event.target.value as WatchdogPolicy["flatlineMode"],
+              }))
+            }
+            value={draft.flatlineMode ?? "off"}
+          >
+            <option value="off">Off</option>
+            <option value="alert_on_flatline">Alert On Flatline</option>
+          </select>
+        </Field>
         <NumberField
           disabled={!canManage}
           label="Threshold dBFS"
@@ -236,6 +252,25 @@ export function WatchdogPolicyCard({
             setDraft((current) => ({ ...current, minCumulativeClippingSeconds }))
           }
           value={draft.minCumulativeClippingSeconds ?? 1}
+        />
+        <NumberField
+          disabled={!canManage}
+          label="Flatline dBFS"
+          max={24}
+          min={-160}
+          onChange={(flatlineThresholdDbfs) =>
+            setDraft((current) => ({ ...current, flatlineThresholdDbfs }))
+          }
+          value={draft.flatlineThresholdDbfs ?? -100}
+        />
+        <NumberField
+          disabled={!canManage}
+          label="Min Flatline Seconds"
+          min={0}
+          onChange={(minCumulativeFlatlineSeconds) =>
+            setDraft((current) => ({ ...current, minCumulativeFlatlineSeconds }))
+          }
+          value={draft.minCumulativeFlatlineSeconds ?? 10}
         />
         <Field label="Severity">
           <select

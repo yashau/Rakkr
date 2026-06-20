@@ -18,6 +18,7 @@ interface SignalSample {
   channelIndex?: number;
   clippingChannelIndexes: number[];
   durationSeconds: number;
+  flatline: boolean;
   interfaceId?: string;
   maxChannelCorrelationScore: number;
   maxNoiseScore: number;
@@ -32,11 +33,13 @@ export interface SignalEvaluation {
   coverageSeconds: number;
   cumulativeCorrelatedSeconds: number;
   cumulativeClippingSeconds: number;
+  cumulativeFlatlineSeconds: number;
   cumulativeSecondsAboveThreshold: number;
   cumulativeSpeechLikeSeconds: number;
   latestChannelCorrelationPairs: ChannelCorrelationPair[];
   latestChannelIndex?: number;
   latestClippingChannelIndexes: number[];
+  latestFlatline: boolean;
   latestInterfaceId?: string;
   latestMetricDbfs: number;
   latestNoiseScore: number;
@@ -99,6 +102,7 @@ export function signalSample(
       channelCorrelationPairs: [],
       clippingChannelIndexes: [],
       durationSeconds,
+      flatline: true,
       maxChannelCorrelationScore: 0,
       maxNoiseScore: 0,
       maxPeakDbfs: -160,
@@ -136,6 +140,7 @@ export function signalSample(
     channelIndex: metricLevel.channelIndex,
     clippingChannelIndexes,
     durationSeconds,
+    flatline: maxRms <= flatlineThresholdDbfs(policy),
     interfaceId: frame.interfaceId,
     maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
     maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
@@ -171,6 +176,9 @@ export function signalEvaluation(
   const cumulativeClippingSeconds = samples
     .filter((sample) => sample.clippingChannelIndexes.length > 0)
     .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeFlatlineSeconds = samples
+    .filter((sample) => sample.flatline)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
   const maxChannelCorrelationScore = samples.length
     ? Math.max(...samples.map((sample) => sample.maxChannelCorrelationScore))
     : 0;
@@ -188,11 +196,13 @@ export function signalEvaluation(
     coverageSeconds,
     cumulativeCorrelatedSeconds,
     cumulativeClippingSeconds,
+    cumulativeFlatlineSeconds,
     cumulativeSecondsAboveThreshold,
     cumulativeSpeechLikeSeconds,
     latestChannelCorrelationPairs: latest?.channelCorrelationPairs ?? [],
     latestChannelIndex: latest?.channelIndex,
     latestClippingChannelIndexes: latest?.clippingChannelIndexes ?? [],
+    latestFlatline: latest?.flatline ?? false,
     latestInterfaceId: latest?.interfaceId,
     latestMetricDbfs: latest?.metricDbfs ?? -160,
     latestNoiseScore: latest?.maxNoiseScore ?? 0,
@@ -274,8 +284,30 @@ export function clippingIsAbovePolicy(evaluation: SignalEvaluation, policy: Watc
   return evaluation.cumulativeClippingSeconds >= requiredSeconds;
 }
 
+export function flatlineIsAbovePolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  if (policy.flatlineMode !== "alert_on_flatline") {
+    return false;
+  }
+
+  const requiredSeconds = minCumulativeFlatlineSeconds(policy);
+
+  if (requiredSeconds <= 0) {
+    return evaluation.cumulativeFlatlineSeconds > 0;
+  }
+
+  if (evaluation.coverageSeconds < requiredSeconds) {
+    return false;
+  }
+
+  return evaluation.cumulativeFlatlineSeconds >= requiredSeconds;
+}
+
 export function channelCorrelationThreshold(policy: WatchdogPolicy) {
   return policy.channelCorrelationThreshold ?? 0.98;
+}
+
+export function flatlineThresholdDbfs(policy: WatchdogPolicy) {
+  return policy.flatlineThresholdDbfs ?? -100;
 }
 
 export function minCumulativeChannelCorrelationSeconds(policy: WatchdogPolicy) {
@@ -284,6 +316,10 @@ export function minCumulativeChannelCorrelationSeconds(policy: WatchdogPolicy) {
 
 export function minCumulativeClippingSeconds(policy: WatchdogPolicy) {
   return policy.minCumulativeClippingSeconds ?? 1;
+}
+
+export function minCumulativeFlatlineSeconds(policy: WatchdogPolicy) {
+  return policy.minCumulativeFlatlineSeconds ?? policy.minCumulativeSecondsAboveThreshold;
 }
 
 export function minCumulativeSpeechSeconds(policy: WatchdogPolicy) {

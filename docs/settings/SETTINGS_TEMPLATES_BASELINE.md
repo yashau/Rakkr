@@ -5,7 +5,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 ## Baseline Checked
 
 - Recording profiles can be read and updated through RBAC-gated settings routes.
-- Watchdog policies can be read and updated through RBAC-gated settings routes.
+- Watchdog policies can be read and updated through RBAC-gated settings routes, including quality, channel-correlation, clipping, and flatline controls.
 - Channel-map templates can be created, updated, versioned, assigned to targets, and rolled back.
 - Channel-map templates can be bulk-assigned to many node/interface targets in one audited operation.
 - Bulk deployment is available for channel-map assignments.
@@ -39,7 +39,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 | Retention templates | `apps/api/src/retention-policies.ts`, `apps/api/src/retention-policy-routes.ts`, `apps/api/test/retention-policy-routes.test.ts`, `apps/web/src/components/retention-policy-panel.tsx` |
 | Retention execution | `apps/api/src/retention-runner.ts`, `apps/api/src/api-runners.ts`, `apps/api/test/retention-runner.test.ts` |
 | Retention assignment | `apps/api/src/schedule-engine.ts`, `apps/api/src/schedule-store.ts`, `apps/api/test/schedule-routes.test.ts`, `apps/api/test/schedule-runner.test.ts`, `apps/web/src/lib/schedule-draft.ts` |
-| UI workflow | `apps/web/src/pages/settings.tsx`, `apps/web/src/components/recording-profile-settings-card.tsx`, `apps/web/src/components/watchdog-policy-card.tsx` |
+| UI workflow | `apps/web/src/pages/settings.tsx`, `apps/web/src/components/recording-profile-settings-card.tsx`, `apps/web/src/components/watchdog-policy-card.tsx`, `apps/web/src/lib/settings-updates.ts`, `apps/web/src/lib/settings-updates.test.ts` |
 | Agent pinning | `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/src/agent-routes.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/channel_map.rs` |
 | Recorder-cache execution | `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/controller.rs`, `crates/recorder-agent/src/main.rs`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs`, `crates/recorder-agent/src/system_health.rs`, `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-support.mjs` |
 

@@ -10,6 +10,7 @@ import {
   channelCorrelationEventType,
   clippingEventType,
   createWatchdogRunner,
+  flatlineEventType,
   nodeOfflineEventType,
 } from "../src/watchdog-runner.js";
 
@@ -216,6 +217,55 @@ test("creates and resolves scheduled clipping alerts from policy", async () => {
   );
   assert.equal(resolvedEvent?.status, "resolved");
   assert.equal(resolvedEvent?.details.autoResolvedReason, "clipping_recovered");
+  assert.equal(createdAudit.length, 1);
+  assert.equal(resolvedAudit.length, 1);
+});
+
+test("creates and resolves scheduled flatline alerts from policy", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  let frame = silentFrame();
+  const policy: WatchdogPolicy = {
+    ...watchdogPolicy(),
+    flatlineMode: "alert_on_flatline",
+    flatlineThresholdDbfs: -80,
+    minCumulativeFlatlineSeconds: 30,
+    qualityMode: "signal_only",
+    thresholdDbfs: -120,
+  };
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    meterFrameProvider: () => frame,
+    policies: [policy],
+    recordingStore: memoryRecordingStore([recording()]),
+  });
+
+  await runner.runOnce(new Date("2026-06-18T12:00:30.000Z"));
+  const createdResults = await runner.runOnce(new Date("2026-06-18T12:01:00.000Z"));
+  const [openEvent] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+
+  frame = speechFrame();
+
+  const resolvedResults = await runner.runOnce(new Date("2026-06-18T12:02:01.000Z"));
+  const [resolvedEvent] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+  const createdAudit = await auditStore.list({ action: "health.watchdog.flatline.created" });
+  const resolvedAudit = await auditStore.list({ action: "health.watchdog.flatline.resolved" });
+
+  assert.equal(
+    createdResults.find((result) => result.reason === "flatline_detected")?.outcome,
+    "alert_created",
+  );
+  assert.equal(openEvent?.type, flatlineEventType);
+  assert.equal(openEvent?.details.flatlineAboveThreshold, true);
+  assert.equal(openEvent?.details.cumulativeFlatlineSeconds, 30);
+  assert.equal(openEvent?.details.flatlineThresholdDbfs, -80);
+  assert.equal(
+    resolvedResults.find((result) => result.reason === "flatline_recovered")?.outcome,
+    "alert_resolved",
+  );
+  assert.equal(resolvedEvent?.status, "resolved");
+  assert.equal(resolvedEvent?.details.autoResolvedReason, "flatline_recovered");
   assert.equal(createdAudit.length, 1);
   assert.equal(resolvedAudit.length, 1);
 });

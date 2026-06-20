@@ -9,6 +9,7 @@ Status: Partial baseline checked.
 - Speech-required policies can alert when audio is loud but not speech-like.
 - Channel-correlation policies can alert when scheduled audio channels remain suspiciously same-phase or inverted for enough cumulative time.
 - Clipping policies can alert when scheduled audio clips for enough cumulative time and auto-resolve after recovery.
+- Flatline policies can alert when scheduled audio remains digitally flatlined below a configurable dBFS threshold for enough cumulative time and auto-resolve after recovery.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
@@ -31,7 +32,7 @@ Status: Partial baseline checked.
 
 | Check | Evidence |
 | ----- | -------- |
-| Scheduled low-signal, repeat, auto-resolve, speech-required, channel-correlation, clipping, node offline | `apps/api/test/watchdog-runner.test.ts` |
+| Scheduled low-signal, repeat, auto-resolve, speech-required, channel-correlation, clipping, flatline, node offline | `apps/api/test/watchdog-runner.test.ts` |
 | Health route RBAC, scoped CSV export, and lifecycle denials | `apps/api/test/health-routes.test.ts` |
 | Health event type filtering | `apps/api/test/health-store.test.ts` |
 | Upload runner terminal-failure health event sync | `apps/api/test/upload-runner.test.ts` |
@@ -41,7 +42,7 @@ Status: Partial baseline checked.
 | Central health workbench and bulk lifecycle controls | `apps/api/test/health-routes.test.ts`, `apps/web/src/pages/health.tsx`, `apps/web/src/lib/health-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |
 | Node health lifecycle controls | `apps/web/src/components/node-health-events.tsx`, `apps/web/src/lib/node-page-helpers.test.ts` |
 | Meter speech/noise/hum/static/clipping UI helpers | `apps/web/src/lib/meter-helpers.test.ts` |
-| Recording and schedule quality timelines | `apps/web/src/components/quality-timeline.tsx`, `apps/web/src/lib/quality-timeline-helpers.test.ts` |
+| Recording and schedule quality timelines with clipping, flatline, and upload-failure evidence | `apps/web/src/components/quality-timeline.tsx`, `apps/web/src/lib/quality-timeline-helpers.test.ts` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |
 | Agent clipping, flatline, channel correlation, xrun, system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |

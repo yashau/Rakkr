@@ -9,6 +9,10 @@ export function qualityEventEvidenceText(event: HealthEvent) {
     return clippingEvidenceText(event.details);
   }
 
+  if (event.type === "watchdog.flatline") {
+    return flatlineEvidenceText(event.details);
+  }
+
   if (event.type === "watchdog.channel_correlation") {
     return channelCorrelationEvidenceText(event.details);
   }
@@ -29,6 +33,19 @@ function uploadFailureEvidenceText(details: Record<string, unknown>) {
   ].filter(Boolean);
 
   return parts.join(" / ");
+}
+
+function flatlineEvidenceText(details: Record<string, unknown>) {
+  const seconds = numberDetail(details.cumulativeFlatlineSeconds);
+  const threshold = numberDetail(details.flatlineThresholdDbfs);
+  const latestRms = numberDetail(details.latestRmsDbfs);
+  const parts = [
+    seconds === undefined ? undefined : `flatline ${formatSeconds(seconds)}`,
+    latestRms === undefined ? undefined : `rms ${latestRms.toFixed(1)} dBFS`,
+    threshold === undefined ? undefined : `max ${threshold.toFixed(1)}`,
+  ].filter(Boolean);
+
+  return parts.join(" / ") || undefined;
 }
 
 function clippingEvidenceText(details: Record<string, unknown>) {

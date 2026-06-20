@@ -16,6 +16,19 @@ test("quality timeline evidence describes clipping channels and duration", () =>
   );
 });
 
+test("quality timeline evidence describes flatline duration", () => {
+  assert.equal(
+    qualityEventEvidenceText(
+      event("watchdog.flatline", {
+        cumulativeFlatlineSeconds: 30,
+        flatlineThresholdDbfs: -80,
+        latestRmsDbfs: -92,
+      }),
+    ),
+    "flatline 30s / rms -92.0 dBFS / max -80.0",
+  );
+});
+
 test("quality timeline evidence describes channel correlation strength", () => {
   assert.equal(
     qualityEventEvidenceText(

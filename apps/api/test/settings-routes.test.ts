@@ -215,8 +215,11 @@ test("settings manage routes update operational templates and audit snapshots", 
       channelCorrelationMode: "alert_on_high",
       channelCorrelationThreshold: 0.97,
       clippingMode: "alert_on_clipping",
+      flatlineMode: "alert_on_flatline",
+      flatlineThresholdDbfs: -105,
       minCumulativeChannelCorrelationSeconds: 15,
       minCumulativeClippingSeconds: 2,
+      minCumulativeFlatlineSeconds: 12,
       minSpeechScore: 0.65,
       name: "Operations Voice Watchdog",
       qualityMode: "speech_required",
@@ -432,8 +435,11 @@ test("settings manage routes update operational templates and audit snapshots", 
   assert.equal(watchdogAudit?.after?.channelCorrelationMode, "alert_on_high");
   assert.equal(watchdogAudit?.after?.channelCorrelationThreshold, 0.97);
   assert.equal(watchdogAudit?.after?.clippingMode, "alert_on_clipping");
+  assert.equal(watchdogAudit?.after?.flatlineMode, "alert_on_flatline");
+  assert.equal(watchdogAudit?.after?.flatlineThresholdDbfs, -105);
   assert.equal(watchdogAudit?.after?.minCumulativeChannelCorrelationSeconds, 15);
   assert.equal(watchdogAudit?.after?.minCumulativeClippingSeconds, 2);
+  assert.equal(watchdogAudit?.after?.minCumulativeFlatlineSeconds, 12);
   const bulkAudit = audits.find(
     (event) => event.action === "settings.channel_map_assignments.bulk_update.succeeded",
   );
