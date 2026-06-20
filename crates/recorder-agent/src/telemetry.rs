@@ -90,12 +90,12 @@ pub fn alsa_meter_sample(
     let output = Command::new(config.command)
         .args(&args)
         .output()
-        .with_context(|| format!("run {} for ALSA meter sampling", config.command))?;
+        .with_context(|| format!("run {} for meter sampling", config.command))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!(
-            "ALSA meter command exited with {}: {}",
+            "meter command exited with {}: {}",
             output.status,
             stderr.trim()
         );

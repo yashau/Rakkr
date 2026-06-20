@@ -199,6 +199,7 @@ test("agent config read returns node recording capacity and recorder-cache polic
       ...node(),
       audioDefaults: {
         captureArgsTemplate: "--capture {device} --rate {sample_rate} --output {output}",
+        captureBackend: "pipewire",
         captureChannels: 4,
         captureCommand: "custom-capture",
         captureDevice: "hw:Loopback,1,0",
@@ -232,6 +233,7 @@ test("agent config read returns node recording capacity and recorder-cache polic
         policyId: string;
       }>;
       audioDefaults: {
+        captureBackend?: string;
         captureCommand?: string;
         captureDevice?: string;
         captureSampleRate?: number;
@@ -242,6 +244,7 @@ test("agent config read returns node recording capacity and recorder-cache polic
   const [event] = await auditStore.list({ action: "nodes.config.read.succeeded" });
 
   assert.equal(response.status, 200);
+  assert.equal(body.data.audioDefaults.captureBackend, "pipewire");
   assert.equal(body.data.audioDefaults.captureCommand, "custom-capture");
   assert.equal(body.data.audioDefaults.captureDevice, "hw:Loopback,1,0");
   assert.equal(body.data.audioDefaults.captureSampleRate, 96_000);

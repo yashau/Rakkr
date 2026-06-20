@@ -16,6 +16,7 @@ type RecordingJobCommand = RecordingJob["command"];
 type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
 type RecordingJobRow = typeof recordingJobsTable.$inferSelect;
 interface RecordingJobOptions {
+  captureBackend?: "alsa" | "pipewire";
   captureDevice?: string;
   captureChannels?: number;
   captureFormat?: string;
@@ -57,6 +58,7 @@ export async function createRecordingJob(
   const recorderCacheRetention = await recorderCacheRetentionForRecording(recording);
   const job: RecordingJob = {
     command: {
+      captureBackend: options.captureBackend,
       captureChannels:
         options.channelMap?.sourceChannels ??
         options.captureChannels ??
@@ -574,6 +576,7 @@ function commandFromValue(value: unknown): RecordingJobCommand {
 
   return {
     captureChannels: positiveIntegerFromUnknown(value.captureChannels, 2),
+    captureBackend: captureBackendFromUnknown(value.captureBackend),
     captureDevice: stringFromUnknown(value.captureDevice, "default"),
     captureFormat: stringFromUnknown(value.captureFormat, "S16_LE"),
     captureInterfaceId: stringOrUndefined(value.captureInterfaceId),
@@ -721,6 +724,7 @@ function isRecordingJob(value: unknown): value is RecordingJob {
     typeof value.recordingId === "string" &&
     recordingJobStatuses.has(value.status as RecordingJobStatus) &&
     typeof value.command.captureChannels === "number" &&
+    optionalCaptureBackend(value.command.captureBackend) &&
     typeof value.command.captureDevice === "string" &&
     typeof value.command.captureFormat === "string" &&
     typeof value.command.captureSampleRate === "number" &&
@@ -728,6 +732,14 @@ function isRecordingJob(value: unknown): value is RecordingJob {
     typeof value.command.outputFileName === "string" &&
     value.command.type === "alsa_capture"
   );
+}
+
+function captureBackendFromUnknown(value: unknown): RecordingJobCommand["captureBackend"] {
+  return value === "pipewire" ? "pipewire" : value === "alsa" ? "alsa" : undefined;
+}
+
+function optionalCaptureBackend(value: unknown) {
+  return value === undefined || value === "alsa" || value === "pipewire";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

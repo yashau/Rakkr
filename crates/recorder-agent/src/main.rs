@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use clap::Parser;
-use config::{AgentConfig, MeterBackend};
+use config::{AgentConfig, CaptureBackend, MeterBackend};
 use meter_command::MeterCaptureConfig;
 use serde_json::{Value, json};
 use telemetry::{
@@ -479,11 +479,14 @@ fn meter_target(config: &AgentConfig, inventory: &inventory::NodeInventory) -> (
 }
 
 fn meter_capture_config<'a>(config: &'a AgentConfig, channel_count: u16) -> MeterCaptureConfig<'a> {
+    let backend = meter_capture_backend(config);
+
     MeterCaptureConfig {
         args_template: config.meter_args_template.as_deref(),
+        backend,
         channel_count,
         clip_dbfs: config.meter_clip_dbfs,
-        command: &config.capture_command,
+        command: config.effective_capture_command(backend),
         device: &config.capture_device,
         format: &config.capture_format,
         sample_rate: config.capture_sample_rate,
@@ -493,6 +496,7 @@ fn meter_capture_config<'a>(config: &'a AgentConfig, channel_count: u16) -> Mete
 
 fn audio_runtime_defaults_changed(left: &AgentConfig, right: &AgentConfig) -> bool {
     left.capture_args_template != right.capture_args_template
+        || left.capture_backend != right.capture_backend
         || left.capture_channels != right.capture_channels
         || left.capture_command != right.capture_command
         || left.capture_device != right.capture_device
@@ -516,6 +520,8 @@ fn strict_meter_frame(
         }
         MeterBackend::Alsa => alsa_meter_frame(node_id, interface_id, meter_capture)
             .context("failed to create ALSA meter frame"),
+        MeterBackend::Pipewire => alsa_meter_frame(node_id, interface_id, meter_capture)
+            .context("failed to create PipeWire meter frame"),
     }
 }
 
@@ -541,7 +547,7 @@ async fn next_meter_sample(
             tick,
         )
         .context("failed to create synthetic meter frame"),
-        MeterBackend::Alsa => {
+        MeterBackend::Alsa | MeterBackend::Pipewire => {
             match alsa_meter_sample(context.node_id, context.interface_id, context.capture) {
                 Ok(sample) => {
                     if let Some(kind) = meter_capture_failure.take() {
@@ -551,7 +557,7 @@ async fn next_meter_sample(
                             "agent.meter.capture_recovered",
                             "info",
                             json!({
-                                "backend": "alsa",
+                                "backend": config.meter_backend.as_str(),
                                 "device": config.capture_device,
                                 "format": config.capture_format,
                                 "previousKind": kind.as_str(),
@@ -575,7 +581,7 @@ async fn next_meter_sample(
                             kind.event_type(),
                             kind.severity(),
                             json!({
-                                "backend": "alsa",
+                                "backend": config.meter_backend.as_str(),
                                 "classification": kind.as_str(),
                                 "device": config.capture_device,
                                 "error": error.to_string(),
@@ -588,7 +594,7 @@ async fn next_meter_sample(
                         .context("append meter capture failure event")?;
                     }
 
-                    warn!(error = %error, "ALSA meter sampling failed; using synthetic fallback");
+                    warn!(error = %error, "meter sampling failed; using synthetic fallback");
                     synthetic_meter_sample(
                         context.node_id,
                         context.interface_id,
@@ -599,6 +605,13 @@ async fn next_meter_sample(
                 }
             }
         }
+    }
+}
+
+fn meter_capture_backend(config: &AgentConfig) -> CaptureBackend {
+    match config.meter_backend {
+        MeterBackend::Alsa | MeterBackend::Synthetic => config.capture_backend,
+        MeterBackend::Pipewire => CaptureBackend::Pipewire,
     }
 }
 

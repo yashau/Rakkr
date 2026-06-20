@@ -10,7 +10,7 @@ use tracing::{info, warn};
 use crate::cache_content_type::content_type_for_codec;
 use crate::capture::spawn_capture_plan;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, CaptureBackend};
 use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
@@ -52,6 +52,7 @@ pub struct ControllerRecordingJob {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ControllerCaptureCommand {
+    pub capture_backend: Option<CaptureBackend>,
     pub capture_channels: u16,
     pub capture_device: String,
     pub capture_format: String,

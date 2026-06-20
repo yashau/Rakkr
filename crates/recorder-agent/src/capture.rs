@@ -8,7 +8,7 @@ use serde::Serialize;
 use tracing::info;
 
 use crate::command_template::{CommandTemplateValues, command_template_args};
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, CaptureBackend};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +34,7 @@ pub struct CaptureChannelMap {
 
 pub struct CapturePlan {
     pub args_template: Option<String>,
+    pub backend: CaptureBackend,
     pub channel_map: Option<CaptureChannelMap>,
     pub channels: u16,
     pub command: String,
@@ -57,9 +58,12 @@ pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CaptureP
 
     Ok(CapturePlan {
         args_template: config.capture_args_template.clone(),
+        backend: config.capture_backend,
         channel_map: None,
         channels: config.capture_channels,
-        command: config.capture_command.clone(),
+        command: config
+            .effective_capture_command(config.capture_backend)
+            .to_string(),
         device: config.capture_device.clone(),
         final_output_path: output_path.clone(),
         format: config.capture_format.clone(),
@@ -118,19 +122,37 @@ pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> anyhow::Re
         .map_err(|error| error.context("capture args template"));
     }
 
-    Ok(vec![
-        "-D".to_string(),
-        plan.device.clone(),
-        "-f".to_string(),
-        plan.format.clone(),
-        "-r".to_string(),
-        plan.sample_rate.to_string(),
-        "-c".to_string(),
-        plan.channels.to_string(),
-        "-d".to_string(),
-        plan.seconds.to_string(),
-        output_path.to_string(),
-    ])
+    match plan.backend {
+        CaptureBackend::Alsa => Ok(vec![
+            "-D".to_string(),
+            plan.device.clone(),
+            "-f".to_string(),
+            plan.format.clone(),
+            "-r".to_string(),
+            plan.sample_rate.to_string(),
+            "-c".to_string(),
+            plan.channels.to_string(),
+            "-d".to_string(),
+            plan.seconds.to_string(),
+            output_path.to_string(),
+        ]),
+        CaptureBackend::Pipewire => Ok(vec![
+            "--record".to_string(),
+            "--target".to_string(),
+            plan.device.clone(),
+            "--rate".to_string(),
+            plan.sample_rate.to_string(),
+            "--channels".to_string(),
+            plan.channels.to_string(),
+            "--format".to_string(),
+            pipewire_sample_format(&plan.format).to_string(),
+            "--sample-count".to_string(),
+            pipewire_sample_count(plan.sample_rate, plan.seconds).to_string(),
+            "--container".to_string(),
+            "wav".to_string(),
+            output_path.to_string(),
+        ]),
+    }
 }
 
 pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
@@ -341,6 +363,20 @@ fn validate_capture_output_size(
     Ok(())
 }
 
+pub fn pipewire_sample_count(sample_rate: u32, seconds: u64) -> u64 {
+    u64::from(sample_rate) * seconds.max(1)
+}
+
+pub fn pipewire_sample_format(format: &str) -> &str {
+    match format.to_ascii_uppercase().as_str() {
+        "S16_LE" => "s16",
+        "S24_LE" => "s24",
+        "S32_LE" => "s32",
+        "FLOAT_LE" | "F32_LE" => "f32",
+        _ => "s16",
+    }
+}
+
 fn safe_file_stem(value: &str) -> String {
     let cleaned = value
         .chars()
@@ -400,6 +436,7 @@ mod tests {
             attach_cache_recording_id: None,
             agent_state_file: PathBuf::from("state.json"),
             capture_args_template: None,
+            capture_backend: crate::config::CaptureBackend::Alsa,
             capture_channels: 1,
             channel_render_command: "ffmpeg".to_string(),
             capture_command: "arecord".to_string(),
@@ -490,6 +527,38 @@ mod tests {
                 "--duration",
                 "15",
                 "--file",
+                "/tmp/rec.wav",
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_pipewire_capture_args() {
+        let mut config = config();
+        config.capture_backend = crate::config::CaptureBackend::Pipewire;
+        config.capture_device = "alsa_input.usb-recorder".to_string();
+        config.capture_format = "S16_LE".to_string();
+        config.capture_sample_rate = 48_000;
+        config.capture_seconds = 2;
+        config.capture_channels = 2;
+
+        assert_eq!(
+            capture_command_args(&capture_plan_from_config(&config).unwrap(), "/tmp/rec.wav")
+                .unwrap(),
+            vec![
+                "--record",
+                "--target",
+                "alsa_input.usb-recorder",
+                "--rate",
+                "48000",
+                "--channels",
+                "2",
+                "--format",
+                "s16",
+                "--sample-count",
+                "96000",
+                "--container",
+                "wav",
                 "/tmp/rec.wav",
             ]
         );

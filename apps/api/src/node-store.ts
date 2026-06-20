@@ -791,6 +791,7 @@ function nodeAudioDefaultsFromMetadata(metadata: unknown): NodeAudioCommandDefau
 
   return nonEmptyAudioDefaults({
     captureArgsTemplate: stringOrUndefined(parsed.captureArgsTemplate),
+    captureBackend: captureBackendOrUndefined(parsed.captureBackend),
     captureChannels: positiveIntegerOrUndefined(parsed.captureChannels),
     captureCommand: stringOrUndefined(parsed.captureCommand),
     captureDevice: stringOrUndefined(parsed.captureDevice),
@@ -806,6 +807,10 @@ function nonEmptyAudioDefaults(
   const entries = Object.entries(defaults).filter(([, value]) => value !== undefined);
 
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function captureBackendOrUndefined(value: unknown) {
+  return value === "alsa" || value === "pipewire" ? value : undefined;
 }
 
 function backend(value: string): AudioInterface["backend"] {

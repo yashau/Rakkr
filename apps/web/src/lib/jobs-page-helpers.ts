@@ -124,6 +124,7 @@ export function recordingJobRelationshipLabel(
 
 export function recordingJobCaptureDetails(job: RecordingJob) {
   const details = [
+    { label: "backend", value: job.command.captureBackend ?? "alsa" },
     { label: "device", value: job.command.captureDevice },
     { label: "format", value: job.command.captureFormat },
     { label: "rate", value: `${job.command.captureSampleRate} Hz` },
@@ -187,6 +188,7 @@ function outputProfileLabel(job: RecordingJob) {
 function recordingJobSearchText(job: RecordingJob) {
   return [
     job.claimedBy,
+    job.command.captureBackend,
     job.command.captureDevice,
     job.command.captureFormat,
     job.command.captureInterfaceId,

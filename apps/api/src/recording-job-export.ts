@@ -34,6 +34,7 @@ export function recordingJobsCsv(jobs: RecordingJob[]) {
     "stopRequestedAt",
     "completedAt",
     "failureReason",
+    "captureBackend",
     "captureDevice",
     "captureInterfaceId",
     "captureFormat",
@@ -62,6 +63,7 @@ export function recordingJobsCsv(jobs: RecordingJob[]) {
         job.stopRequestedAt ?? "",
         job.completedAt ?? "",
         job.failureReason ?? "",
+        job.command.captureBackend ?? "alsa",
         job.command.captureDevice,
         job.command.captureInterfaceId ?? "",
         job.command.captureFormat,
@@ -86,6 +88,7 @@ export function recordingJobsExportFileName(now = new Date()) {
 function recordingJobSearchText(job: RecordingJob) {
   return [
     job.claimedBy,
+    job.command.captureBackend,
     job.command.captureDevice,
     job.command.captureFormat,
     job.command.captureInterfaceId,

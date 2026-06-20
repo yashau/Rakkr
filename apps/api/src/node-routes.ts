@@ -759,6 +759,7 @@ function nodeSearchText(node: RecorderNode) {
     node.agentVersion,
     node.audioDefaults
       ? [
+          node.audioDefaults.captureBackend,
           node.audioDefaults.captureCommand,
           node.audioDefaults.captureDevice,
           node.audioDefaults.captureFormat,

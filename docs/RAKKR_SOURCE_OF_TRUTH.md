@@ -64,7 +64,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, jobs, schedules, settings, central health workbench, bulk health lifecycle controls, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, template-driven capture/meter args, ALSA device matching, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, template-driven capture/meter args, ALSA device matching, PipeWire capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -209,7 +209,7 @@ Current partial implementation:
 - Nodes UI and API can persist per-node audio command defaults, and node config sends those defaults to agents for queued captures and idle metering.
 - Fake-controller agent smoke coverage exercises template-driven capture and meter arguments without audio hardware.
 - Agent meter targeting maps numeric, named, and `CARD=`/`DEV=` ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
-- Agent runtime inventory reports detected PipeWire and JACK command availability without claiming adapter support.
+- Agent runtime inventory reports detected PipeWire and JACK command availability; PipeWire has managed capture/meter backend presets, while JACK remains availability-only.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
@@ -816,12 +816,13 @@ Current implementation baseline:
 208. ✅ Add first-pass broadband-noise telemetry, UI display, and Prometheus metric.
 209. ✅ Add searchable transcript snippet recording metadata.
 210. ✅ Add agent controller CA bundle trust for HTTPS.
+211. ✅ Add PipeWire capture and meter backend presets.
 
 ## Open Questions
 
 | Question | Current Lean |
 | -------- | ------------ |
-| ALSA/JACK/PipeWire order | ALSA first, then JACK/PipeWire adapters |
+| ALSA/JACK/PipeWire order | ALSA default, PipeWire presets now, JACK adapter later |
 | Rust MP3 encoder path | Evaluate during agent recording pipeline hardening |
 | Live monitor protocol | Agent audio chunk polling now; encrypted WebSocket session control later |
 | Node local log store | JSONL now; SQLite likely later |

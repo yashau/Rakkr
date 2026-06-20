@@ -37,6 +37,7 @@ export async function recordingJobTargetOptions({
     : undefined;
 
   return {
+    captureBackend: node?.audioDefaults?.captureBackend,
     captureChannels: node?.audioDefaults?.captureChannels,
     captureDevice: node?.audioDefaults?.captureDevice,
     captureFormat: node?.audioDefaults?.captureFormat,

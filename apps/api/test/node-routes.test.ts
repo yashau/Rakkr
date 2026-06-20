@@ -381,6 +381,7 @@ test("node update changes identity fields and audits before and after", async ()
       notes: "Rack shelf A",
       audioDefaults: {
         captureArgsTemplate: "--input {device} --rate {sample_rate} --output {output}",
+        captureBackend: "pipewire",
         captureChannels: 4,
         captureCommand: "custom-capture",
         captureDevice: "hw:Loopback,1,0",
@@ -405,6 +406,7 @@ test("node update changes identity fields and audits before and after", async ()
   assert.deepEqual(body.data.ipAddresses, ["10.0.0.51"]);
   assert.deepEqual(body.data.tags, ["voice", "council"]);
   assert.equal(body.data.notes, "Rack shelf A");
+  assert.equal(body.data.audioDefaults?.captureBackend, "pipewire");
   assert.equal(body.data.audioDefaults?.captureCommand, "custom-capture");
   assert.equal(body.data.audioDefaults?.captureDevice, "hw:Loopback,1,0");
   assert.equal(body.data.audioDefaults?.captureSampleRate, 96_000);
@@ -416,6 +418,7 @@ test("node update changes identity fields and audits before and after", async ()
   });
   assert.equal(event?.before?.alias, "Monitor Room");
   assert.equal(event?.after?.alias, "Council Chamber Recorder");
+  assert.equal(event?.after?.audioDefaults.captureBackend, "pipewire");
   assert.equal(event?.after?.audioDefaults.captureCommand, "custom-capture");
   assert.equal(event?.after?.recordingCapacity.maxConcurrentRecordings, 6);
   assert.equal(event?.permission, "node:manage");

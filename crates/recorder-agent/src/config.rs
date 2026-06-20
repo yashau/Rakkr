@@ -3,10 +3,28 @@ use std::path::PathBuf;
 use anyhow::{Context, bail};
 use clap::{Parser, ValueEnum};
 use reqwest::Url;
+use serde::Deserialize;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureBackend {
+    Alsa,
+    Pipewire,
+}
+
+impl CaptureBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Alsa => "alsa",
+            Self::Pipewire => "pipewire",
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum MeterBackend {
     Alsa,
+    Pipewire,
     Synthetic,
 }
 
@@ -14,6 +32,7 @@ impl MeterBackend {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Alsa => "alsa",
+            Self::Pipewire => "pipewire",
             Self::Synthetic => "synthetic",
         }
     }
@@ -96,6 +115,9 @@ pub struct AgentConfig {
 
     #[arg(long, env = "RAKKR_CAPTURE_COMMAND", default_value = "arecord")]
     pub capture_command: String,
+
+    #[arg(long, env = "RAKKR_CAPTURE_BACKEND", value_enum, default_value_t = CaptureBackend::Alsa)]
+    pub capture_backend: CaptureBackend,
 
     #[arg(long, env = "RAKKR_CAPTURE_ARGS_TEMPLATE", allow_hyphen_values = true)]
     pub capture_args_template: Option<String>,
@@ -228,6 +250,14 @@ impl AgentConfig {
     pub fn validate_controller_transport(&self) -> anyhow::Result<()> {
         validate_controller_transport(&self.controller_url, self.allow_insecure_controller)
     }
+
+    pub fn effective_capture_command(&self, backend: CaptureBackend) -> &str {
+        if backend == CaptureBackend::Pipewire && self.capture_command == "arecord" {
+            "pw-record"
+        } else {
+            &self.capture_command
+        }
+    }
 }
 
 pub fn validate_controller_transport(
@@ -297,6 +327,21 @@ mod tests {
             config.controller_ca_cert_path.as_deref(),
             Some(std::path::Path::new("/etc/rakkr/controller-ca.pem"))
         );
+    }
+
+    #[test]
+    fn accepts_pipewire_capture_and_meter_backends() {
+        let config = AgentConfig::try_parse_from([
+            "rakkr-recorder-agent",
+            "--capture-backend",
+            "pipewire",
+            "--meter-backend",
+            "pipewire",
+        ])
+        .expect("PipeWire backends should parse");
+
+        assert_eq!(config.capture_backend, CaptureBackend::Pipewire);
+        assert_eq!(config.meter_backend, MeterBackend::Pipewire);
     }
 
     #[test]

@@ -43,6 +43,7 @@ interface NodeInterfaceDraft {
 
 interface NodeAudioDefaultsDraft {
   captureArgsTemplate: string;
+  captureBackend: "" | "alsa" | "pipewire";
   captureChannels: string;
   captureCommand: string;
   captureDevice: string;
@@ -206,6 +207,23 @@ export function NodeAudioDefaultsEditor({
         </Button>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
+        <Field label="Capture Backend">
+          <select
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            onChange={(event) =>
+              setDraftValue(
+                setDraft,
+                "captureBackend",
+                event.target.value as NodeAudioDefaultsDraft["captureBackend"],
+              )
+            }
+            value={draft.captureBackend}
+          >
+            <option value="">ALSA default</option>
+            <option value="alsa">ALSA</option>
+            <option value="pipewire">PipeWire</option>
+          </select>
+        </Field>
         <Field label="Capture Command">
           <Input
             onChange={(event) => setDraftValue(setDraft, "captureCommand", event.target.value)}
@@ -449,6 +467,7 @@ function nodeAudioDefaultsDraft(
 ): NodeAudioDefaultsDraft {
   return {
     captureArgsTemplate: defaults?.captureArgsTemplate ?? "",
+    captureBackend: defaults?.captureBackend ?? "",
     captureChannels:
       defaults?.captureChannels === undefined ? "" : String(defaults.captureChannels),
     captureCommand: defaults?.captureCommand ?? "",
@@ -463,6 +482,7 @@ function nodeAudioDefaultsDraft(
 function nodeAudioDefaultsInput(draft: NodeAudioDefaultsDraft): NodeAudioCommandDefaults {
   return {
     captureArgsTemplate: optionalTextValue(draft.captureArgsTemplate),
+    captureBackend: draft.captureBackend || undefined,
     captureChannels: optionalPositiveInteger(draft.captureChannels),
     captureCommand: optionalTextValue(draft.captureCommand),
     captureDevice: optionalTextValue(draft.captureDevice),

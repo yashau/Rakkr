@@ -20,12 +20,14 @@ test.after(async () => {
 
 test("recording jobs carry node audio command defaults", async () => {
   const job = await createRecordingJob(recording(), {
+    captureBackend: "pipewire",
     captureChannels: 4,
     captureDevice: "hw:Loopback,1,0",
     captureFormat: "S24_LE",
     captureSampleRate: 96_000,
   });
 
+  assert.equal(job.command.captureBackend, "pipewire");
   assert.equal(job.command.captureChannels, 4);
   assert.equal(job.command.captureDevice, "hw:Loopback,1,0");
   assert.equal(job.command.captureFormat, "S24_LE");

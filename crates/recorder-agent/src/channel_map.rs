@@ -25,6 +25,10 @@ pub fn capture_plan_for_job(
         .as_ref()
         .map_or(job.command.capture_channels, |map| map.source_channels);
     let output_codec = output_codec(&job.command);
+    let backend = job
+        .command
+        .capture_backend
+        .unwrap_or(config.capture_backend);
     let final_output_path = local_capture_path(&job.command.output_file_name);
     let output_path = if output_codec == "wav" && channel_map.is_none() {
         final_output_path.clone()
@@ -34,9 +38,10 @@ pub fn capture_plan_for_job(
 
     CapturePlan {
         args_template: config.capture_args_template.clone(),
+        backend,
         channel_map,
         channels,
-        command: config.capture_command.clone(),
+        command: config.effective_capture_command(backend).to_string(),
         device: job.command.capture_device.clone(),
         final_output_path,
         format: job.command.capture_format.clone(),
@@ -433,6 +438,7 @@ fn mp3_vbr_quality(bitrate_kbps: u32) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::CaptureBackend;
     use crate::controller::{
         ControllerChannelMapAssignment, ControllerChannelMapEntry, ControllerChannelMapTemplate,
     };
@@ -521,6 +527,7 @@ mod tests {
 
     fn command_with_pinned_channel_map() -> ControllerCaptureCommand {
         ControllerCaptureCommand {
+            capture_backend: None,
             capture_channels: 2,
             capture_device: "default".to_string(),
             capture_format: "S16_LE".to_string(),
@@ -631,6 +638,7 @@ mod tests {
     #[test]
     fn mp3_job_captures_raw_wav_and_finishes_as_profile_output() {
         let config = AgentConfig {
+            capture_backend: CaptureBackend::Alsa,
             capture_command: "arecord".to_string(),
             channel_render_command: "ffmpeg".to_string(),
             capture_growth_grace_seconds: 10,
@@ -657,6 +665,48 @@ mod tests {
         assert_eq!(plan.output_codec, "mp3");
     }
 
+    #[test]
+    fn pipewire_job_uses_pipewire_capture_backend_and_default_command() {
+        let job = ControllerRecordingJob {
+            command: ControllerCaptureCommand {
+                capture_backend: Some(CaptureBackend::Pipewire),
+                capture_device: "alsa_input.usb-recorder".to_string(),
+                output_file_name: "rec_123.wav".to_string(),
+                output_codec: Some("wav".to_string()),
+                output_vbr: Some(false),
+                ..command_with_pinned_channel_map()
+            },
+            failure_reason: None,
+            id: "job_1".to_string(),
+            node_id: "node_1".to_string(),
+            recording_id: "rec_123".to_string(),
+            status: "running".to_string(),
+        };
+        let plan = capture_plan_for_job(&test_config(), &job, &[]);
+
+        assert_eq!(plan.backend, CaptureBackend::Pipewire);
+        assert_eq!(plan.command, "pw-record");
+        assert_eq!(
+            crate::capture::capture_command_args(&plan, "/tmp/rec.wav").unwrap(),
+            vec![
+                "--record",
+                "--target",
+                "alsa_input.usb-recorder",
+                "--rate",
+                "48000",
+                "--channels",
+                "3",
+                "--format",
+                "s16",
+                "--sample-count",
+                "2880000",
+                "--container",
+                "wav",
+                "/tmp/rec.wav",
+            ]
+        );
+    }
+
     fn render_test_plan(
         output_codec: &str,
         output_bitrate_kbps: Option<u32>,
@@ -665,6 +715,7 @@ mod tests {
     ) -> CapturePlan {
         CapturePlan {
             args_template: None,
+            backend: CaptureBackend::Alsa,
             channel_map: None,
             channels: 2,
             command: "arecord".to_string(),
@@ -768,6 +819,7 @@ mod tests {
             attach_cache_file_name: None,
             attach_cache_recording_id: None,
             capture_args_template: None,
+            capture_backend: CaptureBackend::Alsa,
             capture_channels: 2,
             capture_command: "arecord".to_string(),
             capture_device: "default".to_string(),

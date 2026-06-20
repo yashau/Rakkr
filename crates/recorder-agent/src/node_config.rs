@@ -1,7 +1,7 @@
 use anyhow::Context;
 use serde::Deserialize;
 
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, CaptureBackend};
 use crate::controller_http::controller_http_client;
 use crate::recorder_cache_retention::ControllerRecorderCacheRetention;
 
@@ -30,6 +30,9 @@ impl ControllerNodeConfig {
         if let Some(value) = non_empty_string(&defaults.capture_args_template) {
             config.capture_args_template = Some(value.to_string());
         }
+        if let Some(value) = defaults.capture_backend {
+            config.capture_backend = value;
+        }
         if let Some(value) = defaults.capture_channels {
             config.capture_channels = value;
         }
@@ -57,6 +60,7 @@ impl ControllerNodeConfig {
 #[serde(rename_all = "camelCase")]
 pub struct ControllerAudioDefaults {
     pub capture_args_template: Option<String>,
+    pub capture_backend: Option<CaptureBackend>,
     pub capture_channels: Option<u16>,
     pub capture_command: Option<String>,
     pub capture_device: Option<String>,
@@ -122,8 +126,9 @@ fn non_empty_string(value: &Option<String>) -> Option<&str> {
 
 fn audio_default_signature(config: &AgentConfig) -> String {
     format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         config.capture_args_template.as_deref().unwrap_or_default(),
+        config.capture_backend.as_str(),
         config.capture_channels,
         config.capture_command,
         config.capture_device,
@@ -144,6 +149,7 @@ mod tests {
         let controller_config = ControllerNodeConfig {
             audio_defaults: Some(ControllerAudioDefaults {
                 capture_args_template: Some("--device {device} --output {output}".to_string()),
+                capture_backend: Some(CaptureBackend::Pipewire),
                 capture_channels: Some(4),
                 capture_command: Some("custom-capture".to_string()),
                 capture_device: Some("hw:Loopback,1,0".to_string()),
@@ -157,6 +163,7 @@ mod tests {
 
         assert!(controller_config.apply_audio_defaults(&mut config));
         assert_eq!(config.capture_command, "custom-capture");
+        assert_eq!(config.capture_backend, CaptureBackend::Pipewire);
         assert_eq!(config.capture_device, "hw:Loopback,1,0");
         assert_eq!(config.capture_format, "S24_LE");
         assert_eq!(config.capture_sample_rate, 96_000);

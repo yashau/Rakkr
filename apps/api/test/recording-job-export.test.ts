@@ -42,7 +42,7 @@ test.after(async () => {
 
 test("recording job export helpers filter and render csv", () => {
   const visibleJob = job({
-    command: { ...job().command, captureDevice: "hw:EXPORT,0" },
+    command: { ...job().command, captureBackend: "pipewire", captureDevice: "hw:EXPORT,0" },
     id: "job_export_visible",
     status: "queued",
   });
@@ -68,8 +68,9 @@ test("recording job export helpers filter and render csv", () => {
     ["job_export_visible"],
   );
   assert.match(csv, /^id,recordingId,nodeId,status,claimedBy/m);
+  assert.match(csv, /captureBackend/);
   assert.match(csv, /job_export_visible,rec_1,node_1,queued/);
-  assert.match(csv, /hw:EXPORT/);
+  assert.match(csv, /pipewire,"hw:EXPORT,0"/);
   assert.doesNotMatch(csv, /job_export_failed/);
   assert.doesNotMatch(csv, /job_other/);
 });
@@ -162,6 +163,29 @@ test("recording job retry route is RBAC-gated audited and resets recording state
   assert.equal(event?.after?.jobId, body.data.id);
   assert.equal(event?.correlationIds?.sourceJobId, sourceJob.id);
   assert.equal(event?.correlationIds?.retryJobId, body.data.id);
+});
+
+test("recording job export search matches capture backend", () => {
+  const filtered = filterRecordingJobsForExport(
+    [
+      job({
+        command: { ...job().command, captureBackend: "pipewire" },
+        id: "job_pipewire",
+        status: "queued",
+      }),
+      job({
+        command: { ...job().command, captureBackend: "alsa" },
+        id: "job_alsa",
+        status: "queued",
+      }),
+    ],
+    { search: "pipewire" },
+  );
+
+  assert.deepEqual(
+    filtered.map((recordingJob) => recordingJob.id),
+    ["job_pipewire"],
+  );
 });
 
 interface PermissionCall {

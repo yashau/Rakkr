@@ -77,6 +77,7 @@ test("recording job filters match status and searchable job fields", () => {
     job({ id: "job_1", command: { ...job().command, captureDevice: "hw:CARD=Loopback,DEV=0" } }),
     job({
       id: "job_2",
+      command: { ...job().command, captureBackend: "pipewire" },
       claimedBy: "agent-node-2",
       failureReason: "encoder failed",
       status: "failed",
@@ -90,6 +91,9 @@ test("recording job filters match status and searchable job fields", () => {
     jobs[0],
   ]);
   assert.deepEqual(filterRecordingJobs(jobs, { ...emptyJobsPageFilters, search: "encoder" }), [
+    jobs[1],
+  ]);
+  assert.deepEqual(filterRecordingJobs(jobs, { ...emptyJobsPageFilters, search: "pipewire" }), [
     jobs[1],
   ]);
 });
@@ -135,6 +139,7 @@ test("recording job capture details expose capture output and channel-map contex
       }),
     ),
     [
+      { label: "backend", value: "alsa" },
       { label: "device", value: "hw:0,0" },
       { label: "format", value: "S16_LE" },
       { label: "rate", value: "48000 Hz" },
