@@ -14,6 +14,7 @@ import {
   jobsPagePermissions,
   recordingJobCaptureDetails,
   recordingJobRelationshipLabel,
+  recordingJobRetryActionState,
   recordingJobStopActionState,
   recordingJobSummary,
 } from "./jobs-page-helpers";
@@ -168,6 +169,29 @@ test("recording job stop action state mirrors permission and lifecycle", () => {
   assert.deepEqual(recordingJobStopActionState(job({ status: "completed" }), true), {
     canStop: false,
     title: "Job is terminal",
+  });
+});
+
+test("recording job retry action state mirrors permission and lifecycle", () => {
+  assert.deepEqual(recordingJobRetryActionState(job({ status: "failed" }), false), {
+    canRetry: false,
+    title: "Requires recording control permission",
+  });
+  assert.deepEqual(recordingJobRetryActionState(job({ status: "failed" }), true), {
+    canRetry: true,
+    title: "Retry job",
+  });
+  assert.deepEqual(recordingJobRetryActionState(job({ status: "cancelled" }), true), {
+    canRetry: true,
+    title: "Retry job",
+  });
+  assert.deepEqual(recordingJobRetryActionState(job({ status: "running" }), true), {
+    canRetry: false,
+    title: "Job is active",
+  });
+  assert.deepEqual(recordingJobRetryActionState(job({ status: "completed" }), true), {
+    canRetry: false,
+    title: "Job completed",
   });
 });
 

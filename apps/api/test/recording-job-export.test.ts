@@ -28,10 +28,12 @@ import type { SettingsStore } from "../src/settings-store.js";
 const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-recording-job-export-"));
 process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
+process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(routeRoot, "retention-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { filterRecordingJobsForExport, recordingJobsCsv } =
   await import("../src/recording-job-export.js");
+const { createRecordingJob, failRecordingJob } = await import("../src/recording-jobs.js");
 const { registerRecordingRoutes } = await import("../src/recording-routes.js");
 
 test.after(async () => {
@@ -104,6 +106,62 @@ test("recording job export route is RBAC-gated and audited", async () => {
     search: "room",
     status: "queued",
   });
+});
+
+test("recording job retry route is RBAC-gated audited and resets recording state", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const recording = recordingSummary({
+    cachePath: path.join(routeRoot, "stale.wav"),
+    cached: true,
+    checksum: "stale-checksum",
+    durationSeconds: 12,
+    healthStatus: "critical",
+    id: `rec_retry_${randomUUID()}`,
+    status: "failed",
+  });
+  const recordingStore = memoryRecordingStore([recording]);
+  const sourceJob = await createRecordingJob(recording, {
+    captureDevice: "hw:Retry,0",
+  });
+
+  await failRecordingJob(sourceJob.id, "capture_failed");
+
+  const app = recordingApp({
+    auditStore,
+    permissionCalls,
+    recordingStore,
+  });
+  const response = await app.request(`/api/v1/recording-jobs/${sourceJob.id}/retry`, {
+    method: "POST",
+  });
+  const body = (await response.json()) as { data: RecordingJob };
+  const updatedRecording = await recordingStore.find(recording.id);
+  const [event] = await auditStore.list({ action: "recording_jobs.retry.succeeded" });
+
+  assert.equal(response.status, 201);
+  assert.equal(permissionCalls.at(-1)?.permission, "recording:control");
+  assert.equal(permissionCalls.at(-1)?.action, "recording_jobs.retry");
+  assert.deepEqual(permissionCalls.at(-1)?.target, {
+    id: recording.id,
+    type: "recording",
+  });
+  assert.notEqual(body.data.id, sourceJob.id);
+  assert.equal(body.data.status, "queued");
+  assert.equal(body.data.recordingId, recording.id);
+  assert.equal(body.data.command.captureDevice, "hw:Retry,0");
+  assert.equal(updatedRecording?.status, "recording");
+  assert.equal(updatedRecording?.cached, false);
+  assert.equal(updatedRecording?.cachePath, undefined);
+  assert.equal(updatedRecording?.checksum, undefined);
+  assert.equal(updatedRecording?.durationSeconds, 0);
+  assert.equal(updatedRecording?.healthStatus, "unknown");
+  assert.equal(event?.permission, "recording:control");
+  assert.equal(event?.target.id, recording.id);
+  assert.equal(event?.before?.jobId, sourceJob.id);
+  assert.equal(event?.after?.jobId, body.data.id);
+  assert.equal(event?.correlationIds?.sourceJobId, sourceJob.id);
+  assert.equal(event?.correlationIds?.retryJobId, body.data.id);
 });
 
 interface PermissionCall {
@@ -286,6 +344,23 @@ function job(input: Partial<RecordingJob> = {}): RecordingJob {
     nodeId: "node_1",
     recordingId: "rec_1",
     status: "queued",
+    ...input,
+  };
+}
+
+function recordingSummary(input: Partial<RecordingSummary> = {}): RecordingSummary {
+  return {
+    cached: false,
+    durationSeconds: 0,
+    folder: "tests",
+    healthStatus: "unknown",
+    id: "rec_1",
+    name: "Retry Recording",
+    nodeId: "node_1",
+    recordedAt: "2026-06-20T12:00:00.000Z",
+    source: "ad_hoc",
+    status: "recording",
+    tags: ["voice"],
     ...input,
   };
 }

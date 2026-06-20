@@ -8,6 +8,7 @@ import {
   Download,
   ListChecks,
   RefreshCw,
+  RotateCcw,
   Square,
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ import {
   jobsPagePermissions,
   recordingJobCaptureDetails,
   recordingJobRelationshipLabel,
+  recordingJobRetryActionState,
   recordingJobStopActionState,
   recordingJobStatusClass,
   recordingJobSummary,
@@ -70,6 +72,14 @@ export function JobsPage() {
   });
   const stopJobMutation = useMutation({
     mutationFn: api.stopRecording,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+    },
+  });
+  const retryJobMutation = useMutation({
+    mutationFn: api.retryRecordingJob,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
@@ -199,6 +209,8 @@ export function JobsPage() {
               recordings: recordingsQuery.data?.data,
             }}
             onStop={(recordingId) => stopJobMutation.mutate(recordingId)}
+            onRetry={(jobId) => retryJobMutation.mutate(jobId)}
+            retryPending={retryJobMutation.isPending}
             stopPending={stopJobMutation.isPending}
           />
         ))}
@@ -248,15 +260,20 @@ function JobRow({
   job,
   lookups,
   onStop,
+  onRetry,
+  retryPending,
   stopPending,
 }: {
   canControl: boolean;
   job: RecordingJob;
   lookups: Parameters<typeof recordingJobRelationshipLabel>[1];
   onStop: (recordingId: string) => void;
+  onRetry: (jobId: string) => void;
+  retryPending: boolean;
   stopPending: boolean;
 }) {
   const details = recordingJobCaptureDetails(job);
+  const retryAction = recordingJobRetryActionState(job, canControl);
   const stopAction = recordingJobStopActionState(job, canControl);
 
   return (
@@ -288,16 +305,28 @@ function JobRow({
         </div>
         <div className="flex flex-wrap gap-2 lg:max-w-xl lg:justify-end">
           {canControl ? (
-            <Button
-              disabled={!stopAction.canStop || stopPending}
-              onClick={() => onStop(job.recordingId)}
-              title={stopAction.title}
-              type="button"
-              variant="outline"
-            >
-              <Square className="size-4" />
-              Stop
-            </Button>
+            <>
+              <Button
+                disabled={!retryAction.canRetry || retryPending}
+                onClick={() => onRetry(job.id)}
+                title={retryAction.title}
+                type="button"
+                variant="outline"
+              >
+                <RotateCcw className="size-4" />
+                Retry
+              </Button>
+              <Button
+                disabled={!stopAction.canStop || stopPending}
+                onClick={() => onStop(job.recordingId)}
+                title={stopAction.title}
+                type="button"
+                variant="outline"
+              >
+                <Square className="size-4" />
+                Stop
+              </Button>
+            </>
           ) : null}
           {job.claimedBy ? (
             <Badge className="max-w-full gap-1 overflow-hidden bg-background" variant="outline">

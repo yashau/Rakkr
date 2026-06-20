@@ -49,6 +49,34 @@ export function recordingJobStopActionState(job: RecordingJob, canControl: boole
   };
 }
 
+export function recordingJobRetryActionState(job: RecordingJob, canControl: boolean) {
+  if (!canControl) {
+    return {
+      canRetry: false,
+      title: "Requires recording control permission",
+    };
+  }
+
+  if (retryableJobStatuses.includes(job.status)) {
+    return {
+      canRetry: true,
+      title: "Retry job",
+    };
+  }
+
+  if (activeJobStatuses.includes(job.status)) {
+    return {
+      canRetry: false,
+      title: "Job is active",
+    };
+  }
+
+  return {
+    canRetry: false,
+    title: "Job completed",
+  };
+}
+
 export function recordingJobSummary(jobs: RecordingJob[]) {
   return {
     active: jobs.filter((job) => activeJobStatuses.includes(job.status)).length,
@@ -176,4 +204,5 @@ function recordingJobSearchText(job: RecordingJob) {
 }
 
 const activeJobStatuses: Array<RecordingJob["status"]> = ["queued", "running", "stop_requested"];
+const retryableJobStatuses: Array<RecordingJob["status"]> = ["cancelled", "failed"];
 const stoppableJobStatuses: Array<RecordingJob["status"]> = ["queued", "running"];

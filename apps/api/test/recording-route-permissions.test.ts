@@ -68,6 +68,7 @@ test("recording routes deny users without required permissions", async () => {
     app.request("/api/v1/recordings/facets"),
     app.request("/api/v1/recording-jobs"),
     app.request("/api/v1/recording-jobs/export"),
+    app.request("/api/v1/recording-jobs/job_missing/retry", { method: "POST" }),
     app.request("/api/v1/upload-queue"),
     app.request(`/api/v1/recordings/${recording().id}/playback`, { method: "POST" }),
     app.request(`/api/v1/recordings/${recording().id}/download`, { method: "POST" }),
@@ -105,6 +106,7 @@ test("recording routes deny users without required permissions", async () => {
     {
       "recording_jobs.export": "recording:read",
       "recording_jobs.read": "recording:read",
+      "recording_jobs.retry": "recording:control",
       "recordings.bulk_delete": "recording:delete",
       "recordings.delete": "recording:delete",
       "recordings.download.file": "recording:download",

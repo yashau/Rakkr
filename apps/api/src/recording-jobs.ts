@@ -164,6 +164,61 @@ export async function stopRecordingJob(recordingId: string) {
   return job;
 }
 
+export async function retryRecordingJob(jobId: string) {
+  const jobs = await expireRecordingJobLeases();
+  const job = jobs.find((candidate) => candidate.id === jobId);
+
+  if (!job) {
+    return {
+      ok: false as const,
+      reason: "job_not_found",
+    };
+  }
+
+  if (job.status !== "failed" && job.status !== "cancelled") {
+    return {
+      job,
+      ok: false as const,
+      reason: "job_not_retryable",
+    };
+  }
+
+  const activeJob = jobs.find(
+    (candidate) =>
+      candidate.recordingId === job.recordingId &&
+      candidate.id !== job.id &&
+      (candidate.status === "queued" ||
+        candidate.status === "running" ||
+        candidate.status === "stop_requested"),
+  );
+
+  if (activeJob) {
+    return {
+      activeJob,
+      job,
+      ok: false as const,
+      reason: "active_job_exists",
+    };
+  }
+
+  const retryJob: RecordingJob = {
+    command: structuredClone(job.command),
+    createdAt: new Date().toISOString(),
+    id: `job_${randomUUID()}`,
+    nodeId: job.nodeId,
+    recordingId: job.recordingId,
+    status: "queued",
+  };
+
+  await recordingJobStore.create(retryJob);
+
+  return {
+    job: retryJob,
+    ok: true as const,
+    sourceJob: job,
+  };
+}
+
 export async function completeRecordingJob(recordingId: string, jobId?: string) {
   const jobs = await expireRecordingJobLeases();
   const job = jobs.find(

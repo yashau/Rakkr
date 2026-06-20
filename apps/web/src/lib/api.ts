@@ -545,6 +545,10 @@ export const api = {
   recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
   recordingJobsExport: (filters: RecordingJobFilters = {}) =>
     fetchBlob(withQuery("/api/v1/recording-jobs/export", filters)),
+  retryRecordingJob: (jobId: string) =>
+    fetchJson<{ data: RecordingJob }>(`/api/v1/recording-jobs/${jobId}/retry`, {
+      method: "POST",
+    }),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
   uploadProviders: () =>

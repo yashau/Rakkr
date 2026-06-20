@@ -12,7 +12,7 @@ Status: MVP baseline checked.
 - Cached media supports playback sessions, download preparation, inline stream, and attachment file responses.
 - Stop requests survive agent cancellation without falsely marking the recording unhealthy.
 - Failed and unexpectedly cancelled jobs update recording health and create central health events.
-- Recording jobs workbench shows scoped job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export and RBAC-mirrored stop controls for active jobs.
+- Recording jobs workbench shows scoped job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export, RBAC-mirrored stop controls for active jobs, and audited retry controls for failed/cancelled jobs.
 - Fake-controller smoke coverage proves agent job polling, controller capacity override, bounded concurrent jobs, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, and controller stop handling without hardware.
 
 ## Checked By
@@ -28,6 +28,6 @@ Status: MVP baseline checked.
 | Agent render/cache/stop/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs` |
 | Playback/download UI readiness and cleanup | `apps/web/src/lib/recording-page-helpers.test.ts` |
 | Schedule detail playback/download controls | `apps/web/src/lib/schedule-detail-page-helpers.test.ts` |
-| Recording jobs workbench, export, and stop controls | `apps/api/test/recording-job-export.test.ts`, `apps/web/src/pages/jobs.tsx`, `apps/web/src/lib/jobs-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |
+| Recording jobs workbench, export, stop, and retry controls | `apps/api/test/recording-job-export.test.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/web/src/pages/jobs.tsx`, `apps/web/src/lib/jobs-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |
 
 `mise run recordings:check-first-reliable` validates this baseline, and `mise run check` runs it.

@@ -24,7 +24,7 @@ Status: MVP baseline checked.
 | `node:control` | Recorder-node service lifecycle actions | `apps/api/src/agent-routes.ts` |
 | `node:manage` | Node enrollment, identity edits, interface edits, credential rotation | `apps/api/src/node-routes.ts`, `apps/web/src/lib/node-page-helpers.ts` |
 | `node:read` | Nodes, meters, status, dashboard inventory | `apps/api/src/node-routes.ts`, `apps/api/src/status-routes.ts`, `apps/web/src/lib/dashboard-page-helpers.ts` |
-| `recording:control` | Stop, upload queue, upload runner, job lifecycle control | `apps/api/src/recording-routes.ts`, `apps/api/src/recording-upload-queue-routes.ts`, `apps/api/src/upload-runner-routes.ts` |
+| `recording:control` | Stop, upload queue, upload runner, job retry, job lifecycle control | `apps/api/src/recording-routes.ts`, `apps/api/src/recording-upload-queue-routes.ts`, `apps/api/src/upload-runner-routes.ts` |
 | `recording:create` | Ad-hoc recording starts | `apps/api/src/recording-routes.ts`, `apps/web/src/lib/root-layout-helpers.ts` |
 | `recording:delete` | Single and bulk recording deletes | `apps/api/src/recording-routes.ts`, `apps/api/src/recording-delete.ts` |
 | `recording:download` | Recording download prepare and file routes | `apps/api/src/recording-routes.ts`, `apps/web/src/lib/recording-page-helpers.ts` |

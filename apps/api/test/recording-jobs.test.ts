@@ -11,7 +11,8 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(jobRoot, "jobs.json");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(jobRoot, "retention-policies.json");
 
-const { createRecordingJob } = await import("../src/recording-jobs.js");
+const { createRecordingJob, failRecordingJob, retryRecordingJob } =
+  await import("../src/recording-jobs.js");
 
 test.after(async () => {
   await rm(jobRoot, { force: true, recursive: true });
@@ -29,6 +30,33 @@ test("recording jobs carry node audio command defaults", async () => {
   assert.equal(job.command.captureDevice, "hw:Loopback,1,0");
   assert.equal(job.command.captureFormat, "S24_LE");
   assert.equal(job.command.captureSampleRate, 96_000);
+});
+
+test("recording job retry clones failed jobs and blocks active duplicates", async () => {
+  const failedJob = await createRecordingJob(recording(), {
+    captureDevice: "hw:Retry,0",
+    durationSeconds: 120,
+  });
+
+  await failRecordingJob(failedJob.id, "capture_failed");
+
+  const retried = await retryRecordingJob(failedJob.id);
+
+  assert.equal(retried.ok, true);
+
+  if (!retried.ok) {
+    return;
+  }
+
+  assert.notEqual(retried.job.id, failedJob.id);
+  assert.equal(retried.job.recordingId, failedJob.recordingId);
+  assert.equal(retried.job.status, "queued");
+  assert.deepEqual(retried.job.command, failedJob.command);
+
+  const blocked = await retryRecordingJob(failedJob.id);
+
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.reason, "active_job_exists");
 });
 
 function recording(): RecordingSummary {
