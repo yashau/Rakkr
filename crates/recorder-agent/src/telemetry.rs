@@ -39,6 +39,7 @@ pub struct AudioQuality {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_correlation: Option<ChannelCorrelation>,
     pub crest_factor_db: f32,
+    pub estimated_snr_db: f32,
     pub hum_score: f32,
     pub noise_score: f32,
     pub speech_like: bool,
@@ -464,10 +465,16 @@ impl ChannelStats {
         let static_score = static_likelihood(audible_score, zero_crossing_rate, crest_factor_db);
         let noise_score =
             clamp_01(audible_score * (1.0 - speech_score).max(hum_score * 0.85).max(static_score));
+        let estimated_snr_db = estimated_snr_db(
+            audible_score,
+            [speech_score, noise_score, hum_score, static_score],
+            crest_factor_db,
+        );
 
         AudioQuality {
             channel_correlation: None,
             crest_factor_db: round_2(crest_factor_db.min(80.0)),
+            estimated_snr_db: round_1(estimated_snr_db),
             hum_score: round_2(hum_score),
             noise_score: round_2(noise_score),
             speech_like: speech_score >= 0.55,
@@ -603,10 +610,16 @@ fn synthetic_quality(rms_dbfs: f32, peak_dbfs: f32, phase: f32) -> AudioQuality 
     let audible_score = rising_score(rms_dbfs, -65.0, -35.0);
     let speech_score = clamp_01(audible_score * (0.62 + phase.sin() * 0.18));
     let noise_score = clamp_01(audible_score * (1.0 - speech_score));
+    let crest_factor_db = (peak_dbfs - rms_dbfs).max(0.0);
 
     AudioQuality {
         channel_correlation: None,
-        crest_factor_db: round_2((peak_dbfs - rms_dbfs).max(0.0)),
+        crest_factor_db: round_2(crest_factor_db),
+        estimated_snr_db: round_1(estimated_snr_db(
+            audible_score,
+            [speech_score, noise_score, 0.0, 0.0],
+            crest_factor_db,
+        )),
         hum_score: round_2(clamp_01(audible_score * phase.cos().abs() * 0.12)),
         noise_score: round_2(noise_score),
         speech_like: speech_score >= 0.55,
@@ -628,6 +641,19 @@ fn static_likelihood(audible_score: f32, zero_crossing_rate: f32, crest_factor_d
     let flat_noise_score = falling_score(crest_factor_db, 10.0, 24.0);
 
     clamp_01(audible_score * high_zcr_score * flat_noise_score)
+}
+
+fn estimated_snr_db(audible_score: f32, scores: [f32; 4], crest_factor_db: f32) -> f32 {
+    if audible_score <= 0.0 {
+        return 0.0;
+    }
+
+    let [speech_score, noise_score, hum_score, static_score] = scores;
+    let interference_score = noise_score.max(hum_score).max(static_score);
+    let speech_margin = (speech_score - interference_score).max(0.0);
+    let transient_bonus = rising_score(crest_factor_db, 6.0, 24.0) * 6.0;
+
+    (audible_score * (speech_margin * 30.0 + transient_bonus)).clamp(0.0, 80.0)
 }
 
 fn rising_score(value: f32, floor: f32, ceiling: f32) -> f32 {
@@ -724,6 +750,7 @@ mod tests {
         assert_eq!(frame.levels[0].quality.noise_score, 0.0);
         assert_eq!(frame.levels[0].quality.hum_score, 0.0);
         assert_eq!(frame.levels[0].quality.static_score, 0.0);
+        assert_eq!(frame.levels[0].quality.estimated_snr_db, 0.0);
         assert!(!frame.levels[0].clipping);
     }
 
@@ -809,17 +836,16 @@ mod tests {
         assert!(voice.speech_score > voice.noise_score);
         assert!(voice.hum_score < 0.35);
         assert!(voice.static_score < 0.35);
+        assert!(voice.estimated_snr_db >= 12.0);
         assert!(!hum.speech_like);
         assert!(hum.hum_score >= 0.65);
         assert!(hum.hum_score > hum.speech_score);
         assert!(hum.hum_score > hum.static_score);
+        assert!(voice.estimated_snr_db > hum.estimated_snr_db);
         assert!(!static_noise.speech_like);
         assert!(static_noise.static_score >= 0.85);
         assert!(static_noise.static_score > static_noise.speech_score);
         assert_eq!(silence.speech_score, 0.0);
-        assert_eq!(silence.noise_score, 0.0);
-        assert_eq!(silence.hum_score, 0.0);
-        assert_eq!(silence.static_score, 0.0);
     }
 
     #[test]

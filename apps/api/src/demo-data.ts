@@ -112,6 +112,8 @@ export function buildMeterFrame(): MeterFrame {
       const bump = Math.cos(phase / 2 + index * 0.23);
       const rmsDbfs = forcedLevel ?? Math.max(-72, -42 + wave * 12 + bump * 5);
       const peakDbfs = Math.min(-3, rmsDbfs + 11 + Math.abs(wave) * 6);
+      const noiseScore = Math.max(0, 0.3 - Math.abs(wave) * 0.12);
+      const speechScore = Math.max(0, Math.min(1, (rmsDbfs + 65) / 35));
 
       return {
         channelIndex: index + 1,
@@ -120,10 +122,11 @@ export function buildMeterFrame(): MeterFrame {
         peakDbfs: Number(peakDbfs.toFixed(1)),
         quality: {
           crestFactorDb: Number((peakDbfs - rmsDbfs).toFixed(2)),
+          estimatedSnrDb: Number(Math.max(0, (speechScore - noiseScore) * 30).toFixed(1)),
           humScore: Number(Math.max(0, Math.abs(bump) * 0.09).toFixed(2)),
-          noiseScore: Number(Math.max(0, 0.3 - Math.abs(wave) * 0.12).toFixed(2)),
+          noiseScore: Number(noiseScore.toFixed(2)),
           speechLike: rmsDbfs > -55,
-          speechScore: Number(Math.max(0, Math.min(1, (rmsDbfs + 65) / 35)).toFixed(2)),
+          speechScore: Number(speechScore.toFixed(2)),
           staticScore: Number(Math.max(0, Math.abs(wave) * 0.06).toFixed(2)),
           zeroCrossingRate: Number((0.08 + Math.abs(bump) * 0.08).toFixed(2)),
         },

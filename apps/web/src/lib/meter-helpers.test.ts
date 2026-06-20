@@ -24,6 +24,7 @@ test("meter channel view exposes level voice and clipping state", () => {
             score: 0.99,
           },
           crestFactorDb: 11.8,
+          estimatedSnrDb: 24.6,
           humScore: 0.07,
           noiseScore: 0.18,
           speechLike: true,
@@ -44,6 +45,7 @@ test("meter channel view exposes level voice and clipping state", () => {
       peakPercent: 100,
       rmsDbfs: "-18.0 dBFS",
       rmsPercent: 78.26086956521739,
+      snrDb: "24.6 dB",
       speechLabel: "speech",
       speechPercent: 91,
       staticPercent: 3,
@@ -68,6 +70,7 @@ test("meter bank summary reports empty and populated channel groups", () => {
         peakDbfs: -0.5,
         quality: {
           crestFactorDb: 9,
+          estimatedSnrDb: 18,
           humScore: 0.04,
           noiseScore: 0.2,
           speechLike: true,

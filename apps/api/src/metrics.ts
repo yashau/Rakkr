@@ -129,6 +129,12 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
   pushType(lines, "rakkr_input_static_score", "gauge");
   pushHelp(
     lines,
+    "rakkr_input_estimated_snr_db",
+    "Latest estimated signal-to-noise ratio by channel.",
+  );
+  pushType(lines, "rakkr_input_estimated_snr_db", "gauge");
+  pushHelp(
+    lines,
     "rakkr_input_channel_correlation_score",
     "Latest strongest same-interface channel correlation score by channel.",
   );
@@ -150,6 +156,12 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
         pushMetric(lines, "rakkr_input_noise_score", labels, level.quality.noiseScore);
         pushOptionalMetric(lines, "rakkr_input_hum_score", labels, level.quality.humScore);
         pushOptionalMetric(lines, "rakkr_input_static_score", labels, level.quality.staticScore);
+        pushOptionalMetric(
+          lines,
+          "rakkr_input_estimated_snr_db",
+          labels,
+          level.quality.estimatedSnrDb,
+        );
 
         if (level.quality.channelCorrelation) {
           pushMetric(

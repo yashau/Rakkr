@@ -13,6 +13,7 @@ export interface MeterChannelView {
   peakPercent: number;
   rmsDbfs: string;
   rmsPercent: number;
+  snrDb?: string;
   speechLabel: "speech" | "non-speech" | "unknown";
   speechPercent?: number;
   staticPercent?: number;
@@ -49,6 +50,7 @@ export function meterChannelView(level: AudioLevel): MeterChannelView {
     peakPercent: dbfsToPercent(level.peakDbfs),
     rmsDbfs: formatDbfs(level.rmsDbfs),
     rmsPercent: dbfsToPercent(level.rmsDbfs),
+    snrDb: formatOptionalDb(level.quality?.estimatedSnrDb),
     speechLabel:
       level.quality === undefined ? "unknown" : level.quality.speechLike ? "speech" : "non-speech",
     speechPercent: scoreToPercent(speechScore),
@@ -95,6 +97,10 @@ function maxLevel(levels: AudioLevel[], key: "peakDbfs" | "rmsDbfs") {
 
 function formatDbfs(value: number) {
   return `${value.toFixed(1)} dBFS`;
+}
+
+function formatOptionalDb(value: number | undefined) {
+  return value === undefined ? undefined : `${value.toFixed(1)} dB`;
 }
 
 function scoreToPercent(score: number | undefined) {
