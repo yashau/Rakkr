@@ -14,6 +14,7 @@ const sourceFiles = [
   "apps/web/src/components/meter-bank.tsx",
   "apps/web/src/components/quality-timeline.tsx",
   "apps/web/src/lib/meter-helpers.ts",
+  "apps/web/src/lib/quality-timeline-helpers.ts",
   "crates/recorder-agent/src/main.rs",
   "crates/recorder-agent/src/system_health.rs",
   "crates/recorder-agent/src/health_log.rs",
@@ -26,6 +27,7 @@ const sourceFiles = [
   "apps/api/test/health-store.test.ts",
   "apps/api/test/metrics.test.ts",
   "apps/web/src/lib/meter-helpers.test.ts",
+  "apps/web/src/lib/quality-timeline-helpers.test.ts",
 ];
 const baselinePhrases = [
   "Partial baseline checked",
@@ -47,6 +49,7 @@ const baselinePhrases = [
   "RBAC-gated",
   "resource-scoped",
   "quality timelines",
+  "event-specific evidence",
   "Prometheus export",
   "synthetic PCM calibration fixtures",
   "hum/static likelihood",
@@ -95,6 +98,7 @@ const sourceSnippets = [
   "rakkr_input_channel_correlation_score",
   "MeterBank",
   "QualityTimeline",
+  "qualityEventEvidenceText",
   "speechLabel",
   "agent.meter.clipping",
   "agent.meter.flatline",
@@ -135,6 +139,7 @@ const testSnippets = [
   "rakkr_input_static_score",
   "rakkr_input_channel_correlation_score",
   "meter channel view exposes level voice and clipping state",
+  "quality timeline evidence describes clipping channels and duration",
 ];
 const errors = [];
 

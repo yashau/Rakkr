@@ -261,6 +261,7 @@ Current partial implementation:
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
+- Quality timelines show event-specific signal, speech, channel-correlation, and clipping evidence.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 - `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
 
@@ -724,6 +725,7 @@ Current partial implementation:
 153. ✅ Serialize concurrent agent health-log appends.
 154. ✅ Add policy-tuned scheduled clipping watchdog alerts.
 155. ✅ Tighten health watchdog baseline verifier for clipping lifecycle evidence.
+156. ✅ Add quality timeline event-specific watchdog evidence display.
 
 ## Open Questions
 

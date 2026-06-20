@@ -3,6 +3,7 @@ import type { HealthEvent, RecordingSummary } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime, formatDuration } from "@/lib/dates";
+import { qualityEventEvidenceText } from "@/lib/quality-timeline-helpers";
 import { cn } from "@/lib/utils";
 
 interface TimelineSegment {
@@ -78,8 +79,7 @@ export function QualityTimeline({
 }
 
 function TimelineEventLine({ event }: { event: HealthEvent }) {
-  const maxMetric = numberDetail(event.details.maxMetricDbfs);
-  const threshold = numberDetail(event.details.thresholdDbfs);
+  const evidence = qualityEventEvidenceText(event);
   const Icon =
     event.status === "resolved"
       ? CheckCircle2
@@ -100,12 +100,7 @@ function TimelineEventLine({ event }: { event: HealthEvent }) {
       </Badge>
       <span className="font-medium">{event.type}</span>
       <span className="text-muted-foreground">{event.status}</span>
-      {maxMetric !== undefined ? (
-        <span className="font-mono text-muted-foreground">
-          max {maxMetric.toFixed(1)} dBFS
-          {threshold !== undefined ? ` / min ${threshold.toFixed(1)}` : ""}
-        </span>
-      ) : null}
+      {evidence ? <span className="font-mono text-muted-foreground">{evidence}</span> : null}
     </div>
   );
 }
@@ -188,10 +183,6 @@ function timelineStatusClass(status: RecordingSummary["healthStatus"]) {
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function numberDetail(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function stringDetail(value: unknown) {
