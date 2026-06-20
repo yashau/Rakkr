@@ -618,6 +618,12 @@ export const recordingJobSchema = z.object({
     outputCodec: z.enum(["mp3", "flac", "wav"]).optional(),
     outputFileName: z.string().min(1),
     outputVbr: z.boolean().optional(),
+    recorderCacheRetention: z
+      .object({
+        deleteAfterUpload: z.boolean(),
+        policyId: z.string().min(1),
+      })
+      .optional(),
     trackGroupId: z.string().min(1).optional(),
     trackIndex: z.number().int().positive().optional(),
     trackTotal: z.number().int().positive().optional(),

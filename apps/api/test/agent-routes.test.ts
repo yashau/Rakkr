@@ -26,6 +26,7 @@ const agentRoot = await mkdtemp(path.join(tmpdir(), "rakkr-agent-routes-"));
 process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(agentRoot, "jobs.json");
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(agentRoot, "cache");
+process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(agentRoot, "retention-policies.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(agentRoot, "upload-policies.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(agentRoot, "upload-queue.json");
 
@@ -33,6 +34,7 @@ const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAgentRoutes } = await import("../src/agent-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
 const { createRecordingJob } = await import("../src/recording-jobs.js");
+const { createRetentionPolicy } = await import("../src/retention-policies.js");
 const { registerRecordingRoutes } = await import("../src/recording-routes.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
 
@@ -327,6 +329,27 @@ test("recording job honors custom output profile", async () => {
   assert.equal(job.command.outputCodec, "flac");
   assert.equal(job.command.outputFileName, "rec_custom_profile.flac");
   assert.equal(job.command.outputVbr, false);
+});
+
+test("recording job carries recorder-cache retention policy", async () => {
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: true,
+    enabled: true,
+    id: `retention-recorder-cache-${randomUUID()}`,
+    name: "Delete Recorder Cache After Upload",
+    scope: "recorder_cache",
+  });
+  const job = await createRecordingJob({
+    ...recording(),
+    id: "rec_recorder_cache_retention",
+    retentionPolicyId: policy.id,
+  });
+
+  assert.deepEqual(job.command.recorderCacheRetention, {
+    deleteAfterUpload: true,
+    policyId: policy.id,
+  });
 });
 
 test("ad hoc recording completes through agent cache attach and exposes cached media", async () => {

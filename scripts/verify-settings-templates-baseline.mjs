@@ -36,6 +36,9 @@ const sourceFiles = [
   "apps/api/src/agent-routes.ts",
   "apps/api/test/agent-routes.test.ts",
   "crates/recorder-agent/src/channel_map.rs",
+  "crates/recorder-agent/src/controller.rs",
+  "crates/recorder-agent/src/recorder_cache_retention.rs",
+  "scripts/agent-fake-controller-smoke.mjs",
 ];
 const baselinePhrases = [
   "checked partial baseline",
@@ -60,7 +63,8 @@ const baselinePhrases = [
   "retentionPolicyId",
   "max-age",
   "max-bytes",
-  "Recorder-cache retention execution",
+  "Recorder-cache delete-after-upload",
+  "Recorder-cache age, size, and min-free-disk sweeps",
   "mise run settings:check",
 ];
 const sourceSnippets = [
@@ -104,6 +108,11 @@ const sourceSnippets = [
   "recordings.retention.runner.completed",
   "RAKKR_RETENTION_RUNNER_ENABLED",
   "recording.retentionPolicyId !== policy.id",
+  "recorderCacheRetention",
+  "recorder_cache_retention",
+  "apply_recorder_cache_retention",
+  "delete_recorder_cache_files",
+  "agent.recording_job.recorder_cache_deleted",
   "deleteCacheAfterUpload",
   "applyUploadRetention",
   "Delete controller cache after confirmed upload",
@@ -141,6 +150,8 @@ const testSnippets = [
   "retention runner deletes stale controller cache and audits the lifecycle",
   "retention runner trims oldest uploaded cache when max bytes is exceeded",
   "retentionPolicyId",
+  "recording job carries recorder-cache retention policy",
+  "agent.recording_job.recorder_cache_deleted",
   "creates and updates upload policy templates",
   "upload runner deletes local cache after confirmed upload when policy requests it",
   "settings page permissions are closed by default",
@@ -163,7 +174,8 @@ const allTests = sourceEntries
     (entry) =>
       entry.path.includes("/test/") ||
       entry.path.endsWith(".test.ts") ||
-      entry.path === "crates/recorder-agent/src/channel_map.rs",
+      entry.path === "crates/recorder-agent/src/channel_map.rs" ||
+      entry.path === "scripts/agent-fake-controller-smoke.mjs",
   )
   .map((entry) => entry.content)
   .join("\n");

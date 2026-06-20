@@ -4,11 +4,13 @@ import path from "node:path";
 import { createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
 import {
   defaultVoiceRecordingProfile,
+  type RetentionPolicy,
   type RecordingJob,
   type RecordingJobStatus,
   type RecordingProfile,
   type RecordingSummary,
 } from "@rakkr/shared";
+import { findRetentionPolicy } from "./retention-policies.js";
 
 type RecordingJobCommand = RecordingJob["command"];
 type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
@@ -49,6 +51,7 @@ export async function createRecordingJob(
   options: RecordingJobOptions = {},
 ): Promise<RecordingJob> {
   const profile = options.profile ?? defaultVoiceRecordingProfile;
+  const recorderCacheRetention = await recorderCacheRetentionForRecording(recording);
   const job: RecordingJob = {
     command: {
       captureChannels:
@@ -65,6 +68,7 @@ export async function createRecordingJob(
       outputCodec: profile.codec,
       outputFileName: `${recording.id}.${profile.codec}`,
       outputVbr: profile.vbr,
+      recorderCacheRetention,
       trackGroupId: recording.trackGroupId,
       trackIndex: recording.trackIndex,
       trackTotal: recording.trackTotal,
@@ -519,6 +523,7 @@ function commandFromValue(value: unknown): RecordingJobCommand {
     outputCodec: outputCodecFromUnknown(value.outputCodec),
     outputFileName: stringFromUnknown(value.outputFileName, "recording.wav"),
     outputVbr: typeof value.outputVbr === "boolean" ? value.outputVbr : undefined,
+    recorderCacheRetention: recorderCacheRetentionFromValue(value.recorderCacheRetention),
     trackGroupId: stringOrUndefined(value.trackGroupId),
     trackIndex: optionalPositiveInteger(value.trackIndex),
     trackTotal: optionalPositiveInteger(value.trackTotal),
@@ -612,6 +617,25 @@ function outputCodecFromUnknown(value: unknown): RecordingJobCommand["outputCode
   return value === "mp3" || value === "flac" || value === "wav" ? value : undefined;
 }
 
+function recorderCacheRetentionFromValue(
+  value: unknown,
+): RecordingJobCommand["recorderCacheRetention"] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const policyId = stringOrUndefined(value.policyId);
+
+  if (!policyId || typeof value.deleteAfterUpload !== "boolean") {
+    return undefined;
+  }
+
+  return {
+    deleteAfterUpload: value.deleteAfterUpload,
+    policyId,
+  };
+}
+
 function trackOrder(left: RecordingJobCommand, right: RecordingJobCommand) {
   if (left.trackGroupId && left.trackGroupId === right.trackGroupId) {
     return (left.trackIndex ?? 0) - (right.trackIndex ?? 0);
@@ -647,4 +671,25 @@ function isRecordingJob(value: unknown): value is RecordingJob {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+async function recorderCacheRetentionForRecording(
+  recording: RecordingSummary,
+): Promise<RecordingJobCommand["recorderCacheRetention"]> {
+  const policy = await findRetentionPolicy(recording.retentionPolicyId);
+
+  if (!isExecutableRecorderCachePolicy(policy)) {
+    return undefined;
+  }
+
+  return {
+    deleteAfterUpload: policy.action === "delete_cache",
+    policyId: policy.id,
+  };
+}
+
+function isExecutableRecorderCachePolicy(
+  policy: RetentionPolicy | undefined,
+): policy is RetentionPolicy {
+  return Boolean(policy?.enabled && policy.scope === "recorder_cache");
 }

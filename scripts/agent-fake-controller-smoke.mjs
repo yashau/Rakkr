@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm, writeFile, chmod } from "node:fs/promises";
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,6 +119,9 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   const renderedLocalEvent = healthLogEvents.find(
     (event) => event.type === "agent.recording_job.output_rendered",
   );
+  const retentionLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.recorder_cache_deleted",
+  );
 
   invariant(observed.claimNextReads === 1, "agent did not claim the next queued job");
   invariant(observed.claims === 1, "agent did not claim exactly one queued job");
@@ -133,7 +136,7 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   }
 
   if (scenario.expectSuccess && !scenario.controllerStopRequested) {
-    assertCompletedScenario({ job, scenario, state });
+    await assertCompletedScenario({ job, retentionLocalEvent, scenario, state });
   } else if (!scenario.expectSuccess) {
     assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
   }
@@ -204,7 +207,12 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
 
   try {
     await waitFor(
-      () => jobs.every((job) => job.status === "completed") && observed.cacheUploads.length === 2,
+      () =>
+        jobs.every((job) => job.status === "completed") &&
+        observed.cacheUploads.length === 2 &&
+        observed.healthEvents.filter(
+          (event) => event.type === "agent.recording_job.recorder_cache_deleted",
+        ).length === 2,
       20_000,
       () =>
         `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length}`,
@@ -231,6 +239,9 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     observed.cacheUploads.every((upload) => upload.contentType === "audio/mpeg"),
     "concurrent cache uploads were not rendered MP3",
   );
+  for (const job of jobs) {
+    await assertLocalRecorderCacheDeleted(job.command.outputFileName);
+  }
 
   activeScenario = undefined;
 }
@@ -278,7 +289,7 @@ function assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario }
   );
 }
 
-function assertCompletedScenario({ job, scenario, state }) {
+async function assertCompletedScenario({ job, retentionLocalEvent, scenario, state }) {
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
   invariant(state.jobId === scenario.jobId, "agent state file recorded the wrong job id");
@@ -286,6 +297,12 @@ function assertCompletedScenario({ job, scenario, state }) {
     state.outputPath?.endsWith(scenario.outputFileName),
     "agent state did not end on rendered MP3",
   );
+  invariant(retentionLocalEvent, "agent did not log recorder-cache retention cleanup");
+  invariant(
+    retentionLocalEvent.details?.policyId === job.command.recorderCacheRetention.policyId,
+    "recorder-cache cleanup did not include the retention policy id",
+  );
+  await assertLocalRecorderCacheDeleted(scenario.outputFileName);
 }
 
 function assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state }) {
@@ -366,6 +383,10 @@ function createJob(scenario) {
       outputCodec: "mp3",
       outputFileName: scenario.outputFileName,
       outputVbr: true,
+      recorderCacheRetention: {
+        deleteAfterUpload: true,
+        policyId: "retention-recorder-cache-smoke",
+      },
       type: "alsa_capture",
     },
     failureReason: undefined,
@@ -374,6 +395,33 @@ function createJob(scenario) {
     recordingId: scenario.recordingId,
     status: "queued",
   };
+}
+
+async function assertLocalRecorderCacheDeleted(outputFileName) {
+  const renderedPath = path.join(smokeRoot, "data", "recordings", "local-captures", outputFileName);
+  const rawPath = path.join(
+    smokeRoot,
+    "data",
+    "recordings",
+    "local-captures",
+    outputFileName.replace(/\.[^.]+$/, ".raw.wav"),
+  );
+
+  invariant(!(await fileExists(renderedPath)), `rendered recorder cache remains: ${renderedPath}`);
+  invariant(!(await fileExists(rawPath)), `raw recorder cache remains: ${rawPath}`);
+}
+
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 function createObserved() {

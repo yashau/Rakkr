@@ -540,6 +540,7 @@ mod tests {
             output_codec: Some("mp3".to_string()),
             output_file_name: "rec.wav".to_string(),
             output_vbr: Some(true),
+            recorder_cache_retention: None,
             track_group_id: None,
             track_index: None,
             track_total: None,

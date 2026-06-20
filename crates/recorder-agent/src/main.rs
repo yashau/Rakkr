@@ -1,9 +1,11 @@
+mod cache_content_type;
 mod capture;
 mod channel_map;
 mod config;
 mod controller;
 mod health_log;
 mod inventory;
+mod recorder_cache_retention;
 mod state;
 mod system_health;
 mod telemetry;

@@ -6,11 +6,13 @@ use std::fs;
 use std::time::Duration;
 use tracing::{info, warn};
 
+use crate::cache_content_type::content_type_for_codec;
 use crate::capture::spawn_capture_plan;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
 use crate::config::AgentConfig;
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
+use crate::recorder_cache_retention::delete_recorder_cache_files;
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 
@@ -56,9 +58,17 @@ pub struct ControllerCaptureCommand {
     pub output_codec: Option<String>,
     pub output_file_name: String,
     pub output_vbr: Option<bool>,
+    pub recorder_cache_retention: Option<ControllerRecorderCacheRetention>,
     pub track_group_id: Option<String>,
     pub track_index: Option<u32>,
     pub track_total: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerRecorderCacheRetention {
+    pub delete_after_upload: bool,
+    pub policy_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -555,6 +565,8 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
 
     match upload_result {
         Ok(()) => {
+            apply_recorder_cache_retention(config, token, &job, &raw_output_path, &output_path)
+                .await?;
             write_job_state(config, &job, "completed", Some(&output_path), None)?;
             Ok(())
         }
@@ -581,27 +593,57 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     }
 }
 
-fn content_type_for_codec(codec: Option<&str>, path: &std::path::Path) -> &'static str {
-    match codec.map(str::to_ascii_lowercase).as_deref() {
-        Some("flac") => "audio/flac",
-        Some("mp3") => "audio/mpeg",
-        Some("wav") => "audio/wav",
-        _ => content_type_for_path(path),
-    }
-}
+async fn apply_recorder_cache_retention(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    raw_output_path: &std::path::Path,
+    output_path: &std::path::Path,
+) -> anyhow::Result<()> {
+    let Some(retention) = &job.command.recorder_cache_retention else {
+        return Ok(());
+    };
 
-fn content_type_for_path(path: &std::path::Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("flac") => "audio/flac",
-        Some("mp3") => "audio/mpeg",
-        Some("wav") => "audio/wav",
-        _ => "application/octet-stream",
+    if !retention.delete_after_upload {
+        return Ok(());
     }
+
+    let cleanup = delete_recorder_cache_files(raw_output_path, output_path);
+
+    if cleanup.errors.is_empty() {
+        append_job_health_event(
+            config,
+            token,
+            job,
+            "agent.recording_job.recorder_cache_deleted",
+            "info",
+            json!({
+                "deletedPaths": cleanup.deleted_paths,
+                "jobId": job.id.as_str(),
+                "policyId": retention.policy_id.as_str(),
+                "recordingId": job.recording_id.as_str(),
+            }),
+        )
+        .await?;
+    } else {
+        append_job_health_event(
+            config,
+            token,
+            job,
+            "agent.recording_job.recorder_cache_delete_failed",
+            "warning",
+            json!({
+                "deletedPaths": cleanup.deleted_paths,
+                "errors": cleanup.errors,
+                "jobId": job.id.as_str(),
+                "policyId": retention.policy_id.as_str(),
+                "recordingId": job.recording_id.as_str(),
+            }),
+        )
+        .await?;
+    }
+
+    Ok(())
 }
 
 pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()> {
@@ -951,18 +993,6 @@ mod tests {
         assert_eq!(
             node_url("https://controller.local/", "node_1", "/meter-frame"),
             "https://controller.local/api/v1/nodes/node_1/meter-frame"
-        );
-    }
-
-    #[test]
-    fn maps_encoded_recording_content_types() {
-        assert_eq!(
-            content_type_for_codec(Some("mp3"), std::path::Path::new("recording.wav")),
-            "audio/mpeg"
-        );
-        assert_eq!(
-            content_type_for_codec(None, std::path::Path::new("recording.flac")),
-            "audio/flac"
         );
     }
 }
