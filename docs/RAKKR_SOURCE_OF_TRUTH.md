@@ -160,10 +160,11 @@ Current checked partial baseline:
 - Profile, watchdog, channel map, and assignment APIs.
 - Channel map revisions, promotion metadata, assignment history, rollback.
 - Channel map templates can be bulk-assigned to many node/interface targets in one audited operation.
+- Channel map staged rollout plans require an explicit apply step before assignments change.
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
-- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked partial settings/templates baseline and remaining rollout gaps.
+- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked partial settings/templates baseline and remaining future settings-family gaps.
 
 ## Node Inventory
 
@@ -732,6 +733,7 @@ Current implementation baseline:
 157. ✅ Add checked browser-timezone and ISO date/time baseline.
 158. ✅ Add checked settings/templates partial baseline.
 159. ✅ Add audited bulk channel-map template assignment.
+160. ✅ Add staged channel-map rollout plans with explicit apply.
 
 ## Open Questions
 

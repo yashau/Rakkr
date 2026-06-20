@@ -14,6 +14,10 @@ process.env.RAKKR_CHANNEL_MAP_ASSIGNMENT_STORE_PATH = path.join(
   settingsRoot,
   "channel-map-assignments.json",
 );
+process.env.RAKKR_CHANNEL_MAP_ASSIGNMENT_PLAN_STORE_PATH = path.join(
+  settingsRoot,
+  "channel-map-assignment-plans.json",
+);
 process.env.RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH = path.join(
   settingsRoot,
   "channel-map-templates.json",
@@ -24,6 +28,8 @@ process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(settingsRoot, "upload-p
 process.env.RAKKR_WATCHDOG_POLICY_STORE_PATH = path.join(settingsRoot, "watchdog-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
+const { createChannelMapAssignmentPlanStore } =
+  await import("../src/channel-map-assignment-plans.js");
 const { registerSettingsRoutes } = await import("../src/settings-routes.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
 const { createUploadProviderStore } = await import("../src/upload-providers.js");
@@ -93,6 +99,13 @@ test("settings write routes deny users without settings manage", async () => {
       targets: [{ targetId: "node_blocked", targetType: "node" }],
       templateId: "template_blocked",
     }),
+    requestJson(app, "/api/v1/settings/channel-map-assignment-plans", "POST", {
+      targets: [{ targetId: "node_blocked", targetType: "node" }],
+      templateId: "template_blocked",
+    }),
+    app.request("/api/v1/settings/channel-map-assignment-plans/plan_blocked/apply", {
+      method: "POST",
+    }),
     requestJson(app, "/api/v1/settings/channel-map-assignments/rollback", "POST", {
       targetId: "node_blocked",
       targetType: "node",
@@ -102,9 +115,11 @@ test("settings write routes deny users without settings manage", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignment_plans.apply",
+    "settings.channel_map_assignment_plans.create",
     "settings.channel_map_assignments.bulk_update",
     "settings.channel_map_assignments.rollback",
     "settings.channel_map_assignments.update",
@@ -139,6 +154,7 @@ test("settings read routes deny users without settings read", async () => {
     app.request("/api/v1/settings/watchdog-policies"),
     app.request("/api/v1/settings/channel-map-templates"),
     app.request("/api/v1/settings/channel-map-assignments"),
+    app.request("/api/v1/settings/channel-map-assignment-plans"),
     app.request("/api/v1/settings/upload-providers"),
     app.request("/api/v1/settings/upload-policies"),
   ]);
@@ -146,9 +162,10 @@ test("settings read routes deny users without settings read", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignment_plans.read",
     "settings.channel_map_assignments.read",
     "settings.channel_map_templates.read",
     "settings.recording_profiles.read",
@@ -165,6 +182,7 @@ test("settings manage routes update operational templates and audit snapshots", 
   const auditStore = createAuditStore("");
   const currentUser = viewer(["settings:read", "settings:manage"]);
   const settingsStore = createSettingsStore();
+  const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
   const uploadProviderStore = createUploadProviderStore();
   const primaryTemplateId = `channel_map_ops_${randomUUID()}`;
   const rollbackTemplateId = `channel_map_rollback_${randomUUID()}`;
@@ -173,6 +191,7 @@ test("settings manage routes update operational templates and audit snapshots", 
   registerSettingsRoutes({
     app,
     currentAuth: () => ({ user: currentUser }),
+    channelMapAssignmentPlanStore,
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
     settingsStore,
@@ -285,6 +304,35 @@ test("settings manage routes update operational templates and audit snapshots", 
       templateId: rollbackTemplateId,
     },
   );
+  const planCreateResponse = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-assignment-plans",
+    "POST",
+    {
+      note: "Stage council room rollout",
+      targets: [
+        { targetId: "node_plan_room", targetType: "node" },
+        { targetId: "interface_plan_1", targetType: "interface" },
+        { targetId: "interface_plan_1", targetType: "interface" },
+      ],
+      templateId: primaryTemplateId,
+    },
+  );
+  const planCreateBody = (await planCreateResponse.json()) as {
+    data: { id: string; status: string; targets: Array<{ targetId: string }> };
+  };
+  const planApplyResponse = await app.request(
+    `/api/v1/settings/channel-map-assignment-plans/${planCreateBody.data.id}/apply`,
+    {
+      method: "POST",
+    },
+  );
+  const planApplyAgainResponse = await app.request(
+    `/api/v1/settings/channel-map-assignment-plans/${planCreateBody.data.id}/apply`,
+    {
+      method: "POST",
+    },
+  );
   const rollbackResponse = await requestJson(
     app,
     "/api/v1/settings/channel-map-assignments/rollback",
@@ -306,6 +354,9 @@ test("settings manage routes update operational templates and audit snapshots", 
   assert.equal(assignmentResponse.status, 200);
   assert.equal(reassignmentResponse.status, 200);
   assert.equal(bulkAssignmentResponse.status, 200);
+  assert.equal(planCreateResponse.status, 201);
+  assert.equal(planApplyResponse.status, 200);
+  assert.equal(planApplyAgainResponse.status, 409);
   assert.equal(rollbackResponse.status, 200);
 
   const updatedTemplate = (await templateUpdateResponse.json()) as { data: { revision: number } };
@@ -314,6 +365,12 @@ test("settings manage routes update operational templates and audit snapshots", 
   };
   const bulkAssignment = (await bulkAssignmentResponse.json()) as {
     data: Array<{ targetId: string; targetType: string; templateId: string }>;
+  };
+  const planApply = (await planApplyResponse.json()) as {
+    data: {
+      assignments: Array<{ targetId: string; targetType: string; templateId: string }>;
+      plan: { status: string };
+    };
   };
   const rollback = (await rollbackResponse.json()) as { data: { templateId: string } };
 
@@ -327,8 +384,25 @@ test("settings manage routes update operational templates and audit snapshots", 
   assert.ok(
     bulkAssignment.data.every((assignment) => assignment.templateId === rollbackTemplateId),
   );
+  assert.equal(planCreateBody.data.status, "pending");
+  assert.deepEqual(
+    planCreateBody.data.targets.map((target) => target.targetId),
+    ["node_plan_room", "interface_plan_1"],
+  );
+  assert.equal(planApply.data.plan.status, "applied");
+  assert.deepEqual(
+    planApply.data.assignments.map(
+      (assignment) => `${assignment.targetType}:${assignment.targetId}`,
+    ),
+    ["node:node_plan_room", "interface:interface_plan_1"],
+  );
+  assert.ok(
+    planApply.data.assignments.every((assignment) => assignment.templateId === primaryTemplateId),
+  );
   assert.equal(rollback.data.templateId, primaryTemplateId);
   assert.deepEqual(audits.map((event) => event.action).sort(), [
+    "settings.channel_map_assignment_plans.apply.succeeded",
+    "settings.channel_map_assignment_plans.create.succeeded",
     "settings.channel_map_assignments.bulk_update.succeeded",
     "settings.channel_map_assignments.rollback.succeeded",
     "settings.channel_map_assignments.update.succeeded",
@@ -366,6 +440,13 @@ test("settings manage routes update operational templates and audit snapshots", 
 
   assert.equal(bulkAudit?.after?.targetCount, 2);
   assert.equal(bulkAudit?.target.type, "channel_map_assignment_collection");
+  const planApplyAudit = audits.find(
+    (event) => event.action === "settings.channel_map_assignment_plans.apply.succeeded",
+  );
+
+  assert.equal(planApplyAudit?.before?.status, "pending");
+  assert.equal(planApplyAudit?.after?.plan.status, "applied");
+  assert.equal(planApplyAudit?.after?.targetCount, 2);
 });
 
 function requestJson(

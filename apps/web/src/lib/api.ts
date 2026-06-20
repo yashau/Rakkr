@@ -2,6 +2,8 @@ import type {
   AuditEvent,
   AuditOutcome,
   ChannelMapTemplate,
+  ChannelMapAssignmentPlan,
+  ChannelMapAssignmentPlanInput,
   ChannelMapTemplateAssignment,
   ChannelMapTemplateAssignmentBulkInput,
   ChannelMapTemplateAssignmentInput,
@@ -493,6 +495,10 @@ export const api = {
     fetchJson<{ data: ChannelMapTemplate[] }>("/api/v1/settings/channel-map-templates"),
   channelMapAssignments: () =>
     fetchJson<{ data: ChannelMapTemplateAssignment[] }>("/api/v1/settings/channel-map-assignments"),
+  channelMapAssignmentPlans: () =>
+    fetchJson<{ data: ChannelMapAssignmentPlan[] }>(
+      "/api/v1/settings/channel-map-assignment-plans",
+    ),
   createChannelMapTemplate: (input: ChannelMapTemplateInput) =>
     fetchJson<{ data: ChannelMapTemplate }>("/api/v1/settings/channel-map-templates", {
       body: JSON.stringify(input),
@@ -531,6 +537,23 @@ export const api = {
         method: "PUT",
       },
     ),
+  createChannelMapAssignmentPlan: (input: ChannelMapAssignmentPlanInput) =>
+    fetchJson<{ data: ChannelMapAssignmentPlan }>("/api/v1/settings/channel-map-assignment-plans", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  applyChannelMapAssignmentPlan: (planId: string) =>
+    fetchJson<{
+      data: {
+        assignments: ChannelMapTemplateAssignment[];
+        plan: ChannelMapAssignmentPlan | undefined;
+      };
+    }>(`/api/v1/settings/channel-map-assignment-plans/${planId}/apply`, {
+      method: "POST",
+    }),
   rollbackChannelMapAssignment: (input: ChannelMapTemplateAssignmentRollbackInput) =>
     fetchJson<{ data: ChannelMapTemplateAssignment }>(
       "/api/v1/settings/channel-map-assignments/rollback",

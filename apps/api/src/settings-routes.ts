@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import {
+  channelMapAssignmentPlanInputSchema,
   channelMapTemplateAssignmentBulkInputSchema,
   channelMapTemplateAssignmentInputSchema,
   channelMapTemplateAssignmentRollbackInputSchema,
@@ -13,12 +14,17 @@ import {
   watchdogPolicyUpdateSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
+  type ChannelMapAssignmentPlan,
   type RecordingProfile,
   type UploadPolicy,
   type UploadProviderRuntimeStatus,
   type WatchdogPolicy,
 } from "@rakkr/shared";
 
+import {
+  createChannelMapAssignmentPlanStore,
+  type ChannelMapAssignmentPlanStore,
+} from "./channel-map-assignment-plans.js";
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -31,12 +37,14 @@ interface SettingsRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
+  channelMapAssignmentPlanStore?: ChannelMapAssignmentPlanStore;
   uploadProviderStore?: UploadProviderStore;
 }
 
 export function registerSettingsRoutes({
   app,
   currentAuth,
+  channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore(),
   recordAuditEvent,
   requirePermission,
   settingsStore,
@@ -72,6 +80,14 @@ export function registerSettingsRoutes({
       type: "settings",
     })),
     async (c) => c.json({ data: await settingsStore.listChannelMapAssignments() }),
+  );
+
+  app.get(
+    "/api/v1/settings/channel-map-assignment-plans",
+    requirePermission("settings:read", "settings.channel_map_assignment_plans.read", () => ({
+      type: "settings",
+    })),
+    async (c) => c.json({ data: await channelMapAssignmentPlanStore.list() }),
   );
 
   app.get(
@@ -555,6 +571,140 @@ export function registerSettingsRoutes({
   );
 
   app.post(
+    "/api/v1/settings/channel-map-assignment-plans",
+    requirePermission("settings:manage", "settings.channel_map_assignment_plans.create", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = channelMapAssignmentPlanInputSchema.safeParse(
+        await c.req.json().catch(() => ({})),
+      );
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignment_plans.create.failed",
+          "invalid_request",
+        );
+        return c.json(
+          { error: "Invalid channel map assignment plan", issues: body.error.issues },
+          400,
+        );
+      }
+
+      const template = await settingsStore.findChannelMapTemplate(body.data.templateId);
+
+      if (!template) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignment_plans.create.failed",
+          "template_not_found",
+          {
+            id: body.data.templateId,
+            type: "channel_map_template",
+          },
+        );
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const plan = await channelMapAssignmentPlanStore.create(body.data, currentAuth(c).user?.id);
+
+      await recordAuditEvent(c, {
+        action: "settings.channel_map_assignment_plans.create.succeeded",
+        after: planSnapshot(plan),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: planAuditTarget(plan),
+      });
+
+      return c.json({ data: plan }, 201);
+    },
+  );
+
+  app.post(
+    "/api/v1/settings/channel-map-assignment-plans/:planId/apply",
+    requirePermission("settings:manage", "settings.channel_map_assignment_plans.apply", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const planId = c.req.param("planId");
+      const before = await channelMapAssignmentPlanStore.find(planId);
+
+      if (!before) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignment_plans.apply.failed",
+          "plan_not_found",
+          {
+            id: planId,
+            type: "channel_map_assignment_plan",
+          },
+        );
+        return c.json({ error: "Channel map assignment plan not found" }, 404);
+      }
+
+      if (before.status !== "pending") {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignment_plans.apply.failed",
+          "plan_not_pending",
+          planAuditTarget(before),
+        );
+        return c.json({ error: "Channel map assignment plan is not pending" }, 409);
+      }
+
+      const template = await settingsStore.findChannelMapTemplate(before.templateId);
+
+      if (!template) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignment_plans.apply.failed",
+          "template_not_found",
+          {
+            id: before.templateId,
+            type: "channel_map_template",
+          },
+        );
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const assignments: ChannelMapTemplateAssignment[] = [];
+
+      for (const target of before.targets) {
+        assignments.push(
+          await settingsStore.assignChannelMapTemplate(
+            {
+              targetId: target.targetId,
+              targetType: target.targetType,
+              templateId: before.templateId,
+            },
+            currentAuth(c).user?.id,
+          ),
+        );
+      }
+
+      const applied = await channelMapAssignmentPlanStore.apply(planId, currentAuth(c).user?.id);
+
+      await recordAuditEvent(c, {
+        action: "settings.channel_map_assignment_plans.apply.succeeded",
+        after: {
+          assignments: assignments.map(assignmentSnapshot),
+          plan: applied ? planSnapshot(applied) : undefined,
+          targetCount: assignments.length,
+        },
+        auth: currentAuth(c),
+        before: planSnapshot(before),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: planAuditTarget(applied ?? before),
+      });
+
+      return c.json({ data: { assignments, plan: applied } });
+    },
+  );
+
+  app.post(
     "/api/v1/settings/channel-map-assignments/rollback",
     requirePermission("settings:manage", "settings.channel_map_assignments.rollback", () => ({
       type: "settings",
@@ -670,6 +820,29 @@ function assignmentSnapshot(assignment: ChannelMapTemplateAssignment) {
     targetId: assignment.targetId,
     targetType: assignment.targetType,
     templateId: assignment.templateId,
+  };
+}
+
+function planAuditTarget(plan: ChannelMapAssignmentPlan) {
+  return {
+    id: plan.id,
+    name: plan.templateId,
+    type: "channel_map_assignment_plan",
+  };
+}
+
+function planSnapshot(plan: ChannelMapAssignmentPlan) {
+  return {
+    appliedAt: plan.appliedAt,
+    appliedByUserId: plan.appliedByUserId,
+    createdAt: plan.createdAt,
+    createdByUserId: plan.createdByUserId,
+    id: plan.id,
+    note: plan.note,
+    status: plan.status,
+    targetCount: plan.targets.length,
+    targets: plan.targets,
+    templateId: plan.templateId,
   };
 }
 

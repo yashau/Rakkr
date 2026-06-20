@@ -9,6 +9,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 - Channel-map templates can be created, updated, versioned, assigned to targets, and rolled back.
 - Channel-map templates can be bulk-assigned to many node/interface targets in one audited operation.
 - Bulk deployment is available for channel-map assignments.
+- Staged rollout is available for channel-map assignments through a pending plan and explicit apply step.
 - Upload providers and upload policies share the same settings read/manage permission boundary.
 - Settings writes audit before/after snapshots when the route has an existing resource.
 - Missing `settings:read` and `settings:manage` permissions are denied and audited.
@@ -17,7 +18,6 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 
 ## Remaining Gaps
 
-- Staged rollout/approval workflow beyond channel-map revision and rollback history.
 - Full settings families for every future recorder/device retention policy.
 
 ## Evidence
@@ -28,6 +28,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 | Database schema | `packages/db/src/schema.ts` |
 | API routes | `apps/api/src/settings-routes.ts` |
 | Stores | `apps/api/src/settings-store.ts`, `apps/api/src/recording-profile-settings.ts` |
+| Rollout plans | `apps/api/src/channel-map-assignment-plans.ts` |
 | API coverage | `apps/api/test/settings-routes.test.ts` |
 | UI permissions | `apps/web/src/lib/settings-page-helpers.ts`, `apps/web/src/lib/settings-page-helpers.test.ts` |
 | UI workflow | `apps/web/src/pages/settings.tsx`, `apps/web/src/components/recording-profile-settings-card.tsx`, `apps/web/src/components/watchdog-policy-card.tsx` |

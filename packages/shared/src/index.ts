@@ -362,17 +362,31 @@ export const channelMapTemplateAssignmentInputSchema = z.object({
   targetType: templateAssignmentTargetSchema,
   templateId: z.string().trim().min(1).max(160),
 });
+export const channelMapAssignmentTargetInputSchema = z.object({
+  targetId: z.string().trim().min(1).max(160),
+  targetType: templateAssignmentTargetSchema,
+});
 export const channelMapTemplateAssignmentBulkInputSchema = z.object({
-  targets: z
-    .array(
-      z.object({
-        targetId: z.string().trim().min(1).max(160),
-        targetType: templateAssignmentTargetSchema,
-      }),
-    )
-    .min(1)
-    .max(128),
+  targets: z.array(channelMapAssignmentTargetInputSchema).min(1).max(128),
   templateId: z.string().trim().min(1).max(160),
+});
+export const channelMapAssignmentPlanStatusSchema = z.enum(["applied", "cancelled", "pending"]);
+export const channelMapAssignmentPlanInputSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+  targets: z.array(channelMapAssignmentTargetInputSchema).min(1).max(128),
+  templateId: z.string().trim().min(1).max(160),
+});
+export const channelMapAssignmentPlanSchema = z.object({
+  appliedAt: isoDateTimeSchema.optional(),
+  appliedByUserId: z.string().optional(),
+  cancelledAt: isoDateTimeSchema.optional(),
+  createdAt: isoDateTimeSchema,
+  createdByUserId: z.string().optional(),
+  id: z.string().min(1),
+  note: z.string().optional(),
+  status: channelMapAssignmentPlanStatusSchema,
+  targets: z.array(channelMapAssignmentTargetInputSchema).min(1).max(128),
+  templateId: z.string().min(1),
 });
 export const channelMapTemplateAssignmentRollbackInputSchema = z.object({
   targetId: z.string().trim().min(1).max(160),
@@ -795,6 +809,8 @@ export type ChannelMapTemplateAssignmentInput = z.infer<
 export type ChannelMapTemplateAssignmentBulkInput = z.infer<
   typeof channelMapTemplateAssignmentBulkInputSchema
 >;
+export type ChannelMapAssignmentPlan = z.infer<typeof channelMapAssignmentPlanSchema>;
+export type ChannelMapAssignmentPlanInput = z.infer<typeof channelMapAssignmentPlanInputSchema>;
 export type ChannelMapTemplateAssignmentRollbackInput = z.infer<
   typeof channelMapTemplateAssignmentRollbackInputSchema
 >;

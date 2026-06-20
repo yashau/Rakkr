@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  ChannelMapAssignmentPlan,
   ChannelMapEntry,
   ChannelMapTemplate,
   ChannelMapTemplateAssignment,
@@ -67,6 +68,11 @@ export function SettingsPage() {
     enabled: canReadSettings,
     queryFn: api.channelMapAssignments,
     queryKey: ["channel-map-assignments"],
+  });
+  const assignmentPlansQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: api.channelMapAssignmentPlans,
+    queryKey: ["channel-map-assignment-plans"],
   });
   const nodesQuery = useQuery({
     enabled: canReadSettings && canReadNodes,
@@ -188,6 +194,7 @@ export function SettingsPage() {
             canReadNodes={canReadNodes}
             key={template.id}
             nodes={nodesQuery.data?.data ?? []}
+            plans={assignmentPlansQuery.data?.data ?? []}
             template={template}
           />
         ))}
@@ -314,12 +321,14 @@ function ChannelMapTemplateCard({
   canManage,
   canReadNodes,
   nodes,
+  plans,
   template,
 }: {
   assignments: ChannelMapTemplateAssignment[];
   canManage: boolean;
   canReadNodes: boolean;
   nodes: RecorderNode[];
+  plans: ChannelMapAssignmentPlan[];
   template: ChannelMapTemplate;
 }) {
   const queryClient = useQueryClient();
@@ -329,7 +338,11 @@ function ChannelMapTemplateCard({
   const [selectedTargets, setSelectedTargets] = useState<string[]>(
     targetOptions.slice(0, 3).map((target) => target.value),
   );
+  const [planNote, setPlanNote] = useState("");
   const assignedTargets = assignments.filter((assignment) => assignment.templateId === template.id);
+  const pendingPlans = plans.filter(
+    (plan) => plan.templateId === template.id && plan.status === "pending",
+  );
   const draftChanged = channelMapDraftChanged(template, draft);
   const nextRevision = template.revision + 1;
   const updateMutation = useMutation({
@@ -367,6 +380,32 @@ function ChannelMapTemplateCard({
         templateId: template.id,
       }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-assignments"] });
+    },
+  });
+  const createPlanMutation = useMutation({
+    mutationFn: () =>
+      api.createChannelMapAssignmentPlan({
+        note: planNote.trim() || undefined,
+        targets: selectedTargets.map((value) => {
+          const target = parseTargetValue(value);
+
+          return {
+            targetId: target.id,
+            targetType: target.type,
+          };
+        }),
+        templateId: template.id,
+      }),
+    onSuccess: () => {
+      setPlanNote("");
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-assignment-plans"] });
+    },
+  });
+  const applyPlanMutation = useMutation({
+    mutationFn: (planId: string) => api.applyChannelMapAssignmentPlan(planId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-assignment-plans"] });
       void queryClient.invalidateQueries({ queryKey: ["channel-map-assignments"] });
     },
   });
@@ -635,6 +674,61 @@ function ChannelMapTemplateCard({
         </Button>
       </div>
 
+      <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-end">
+        <Field label="Rollout Note">
+          <Input
+            disabled={!canManage || !canReadNodes}
+            onChange={(event) => setPlanNote(event.target.value)}
+            placeholder="Stage before applying"
+            value={planNote}
+          />
+        </Field>
+        <Button
+          disabled={
+            selectedTargets.length === 0 ||
+            createPlanMutation.isPending ||
+            !canManage ||
+            !canReadNodes
+          }
+          onClick={() => createPlanMutation.mutate()}
+          title={assignTargetTitle(canManage, canReadNodes)}
+          variant="outline"
+        >
+          <Rocket className="size-4" />
+          Stage Plan
+        </Button>
+      </div>
+
+      {pendingPlans.length > 0 ? (
+        <div className="mt-4 grid gap-2">
+          {pendingPlans.map((plan) => (
+            <div
+              className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm md:flex-row md:items-center md:justify-between"
+              key={plan.id}
+            >
+              <div>
+                <div className="font-medium">{plan.targets.length} staged targets</div>
+                <div className="text-xs text-muted-foreground">
+                  {formatDateTime(plan.createdAt)}
+                  {plan.note ? ` / ${plan.note}` : ""}
+                </div>
+              </div>
+              <Button
+                disabled={!canManage || applyPlanMutation.isPending}
+                onClick={() => applyPlanMutation.mutate(plan.id)}
+                size="sm"
+                title={canManage ? "Apply staged rollout" : "Requires settings manage"}
+                type="button"
+                variant="outline"
+              >
+                <Rocket className="size-4" />
+                Apply
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {assignedTargets.length > 0 ? (
         <div className="mt-4 grid gap-2">
           {assignedTargets.map((assignment) => {
@@ -684,6 +778,8 @@ function ChannelMapTemplateCard({
       {updateMutation.isError ||
       assignMutation.isError ||
       bulkAssignMutation.isError ||
+      createPlanMutation.isError ||
+      applyPlanMutation.isError ||
       rollbackMutation.isError ? (
         <p className="mt-3 text-sm text-destructive">Save failed.</p>
       ) : null}
