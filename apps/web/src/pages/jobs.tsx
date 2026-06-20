@@ -115,6 +115,10 @@ export function JobsPage() {
       }),
     onSuccess: downloadBlob,
   });
+  const selectedExportMutation = useMutation({
+    mutationFn: (jobIds: string[]) => api.recordingJobsExportSelected({ jobIds }),
+    onSuccess: downloadBlob,
+  });
 
   if (currentUserQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading recording jobs.</p>;
@@ -243,6 +247,20 @@ export function JobsPage() {
             <span>{selectedVisibleJobIds.length} selected</span>
           </label>
           <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={selectedVisibleJobIds.length === 0 || selectedExportMutation.isPending}
+              onClick={() => selectedExportMutation.mutate(selectedVisibleJobIds)}
+              title={
+                selectedVisibleJobIds.length > 0
+                  ? "Export selected visible jobs"
+                  : "Select visible jobs to export"
+              }
+              type="button"
+              variant="outline"
+            >
+              <Download className="size-4" />
+              Export selected
+            </Button>
             <Button
               disabled={bulkRetryTargets.length === 0 || bulkRetryJobMutation.isPending}
               onClick={() => bulkRetryJobMutation.mutate({ jobIds: bulkRetryTargets })}

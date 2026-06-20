@@ -231,6 +231,10 @@ export interface RecordingJobBulkActionInput {
   jobIds: string[];
 }
 
+export interface RecordingJobSelectedExportInput {
+  jobIds: string[];
+}
+
 export interface RecordingListMeta {
   hasNextPage: boolean;
   hasPreviousPage: boolean;
@@ -550,6 +554,14 @@ export const api = {
   recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
   recordingJobsExport: (filters: RecordingJobFilters = {}) =>
     fetchBlob(withQuery("/api/v1/recording-jobs/export", filters)),
+  recordingJobsExportSelected: (input: RecordingJobSelectedExportInput) =>
+    fetchBlob("/api/v1/recording-jobs/export", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   retryRecordingJob: (jobId: string) =>
     fetchJson<{ data: RecordingJob }>(`/api/v1/recording-jobs/${jobId}/retry`, {
       method: "POST",

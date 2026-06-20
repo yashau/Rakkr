@@ -42,6 +42,11 @@ const recordingJobBulkActionSchema = z
     jobIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
   })
   .strict();
+const recordingJobSelectedExportSchema = z
+  .object({
+    jobIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
+  })
+  .strict();
 const retryableJobStatuses = new Set(["cancelled", "failed"]);
 const stoppableJobStatuses = new Set(["queued", "running"]);
 
@@ -88,6 +93,64 @@ export function registerRecordingJobRoutes({
         details: {
           exportedCount: jobs.length,
           filters: query.data,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: {
+          id: "recording_job_collection",
+          type: "recording_collection",
+        },
+      });
+
+      return c.body(recordingJobsCsv(jobs), 200, {
+        "Content-Disposition": `attachment; filename="${recordingJobsExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
+  );
+
+  app.post(
+    "/api/v1/recording-jobs/export",
+    requirePermission("recording:read", "recording_jobs.export_selected", () => ({
+      id: "recording_job_collection",
+      type: "recording_collection",
+    })),
+    async (c) => {
+      const body = recordingJobSelectedExportSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSelectedJobExportFailure(c, "invalid_request");
+        return c.json(
+          { error: "Invalid recording job export request", issues: body.error.issues },
+          400,
+        );
+      }
+
+      const jobIds = uniqueJobIds(body.data.jobIds);
+      const visibleJobMap = new Map(
+        (await scopedRecordingJobs(currentUser(c))).map((job) => [job.id, job]),
+      );
+      const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
+
+      if (hiddenIds.length > 0) {
+        await recordSelectedJobExportFailure(c, "recording_job_not_visible", {
+          hiddenIds,
+          jobIds,
+        });
+        return c.json({ error: "One or more recording jobs are not visible" }, 404);
+      }
+
+      const jobs = jobIds.map((jobId) => visibleJobMap.get(jobId)!);
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.export_selected.succeeded",
+        auth: currentAuth(c),
+        correlationIds: Object.fromEntries(
+          jobIds.map((jobId, index) => [`jobId${index + 1}`, jobId]),
+        ),
+        details: {
+          exportedCount: jobs.length,
+          requestedCount: body.data.jobIds.length,
         },
         outcome: "succeeded",
         permission: "recording:read",
@@ -531,6 +594,25 @@ export function registerRecordingJobRoutes({
       details,
       outcome: reason === "recording_job_not_visible" ? "denied" : "failed",
       permission: "recording:control",
+      reason,
+      target: {
+        id: "recording_job_collection",
+        type: "recording_collection",
+      },
+    });
+  }
+
+  async function recordSelectedJobExportFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action: "recording_jobs.export_selected.failed",
+      auth: currentAuth(c),
+      details,
+      outcome: reason === "recording_job_not_visible" ? "denied" : "failed",
+      permission: "recording:read",
       reason,
       target: {
         id: "recording_job_collection",

@@ -109,6 +109,86 @@ test("recording job export route is RBAC-gated and audited", async () => {
   });
 });
 
+test("recording job selected export preserves requested order and audits selection", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const recordings = [
+    recordingSummary({ id: `rec_export_selected_a_${randomUUID()}` }),
+    recordingSummary({ id: `rec_export_selected_b_${randomUUID()}` }),
+  ];
+  const recordingStore = memoryRecordingStore(recordings);
+  const firstJob = await createRecordingJob(recordings[0] as RecordingSummary, {
+    captureDevice: "hw:Selected,1",
+  });
+  const secondJob = await createRecordingJob(recordings[1] as RecordingSummary, {
+    captureDevice: "hw:Selected,2",
+  });
+  const app = recordingApp({
+    auditStore,
+    permissionCalls,
+    recordingStore,
+  });
+  const response = await app.request("/api/v1/recording-jobs/export", {
+    body: JSON.stringify({ jobIds: [secondJob.id, firstJob.id, secondJob.id] }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const csv = await response.text();
+  const [event] = await auditStore.list({ action: "recording_jobs.export_selected.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(permissionCalls.at(-1)?.permission, "recording:read");
+  assert.equal(permissionCalls.at(-1)?.action, "recording_jobs.export_selected");
+  assert.deepEqual(permissionCalls.at(-1)?.target, {
+    id: "recording_job_collection",
+    type: "recording_collection",
+  });
+  assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+  assert.match(
+    response.headers.get("content-disposition") ?? "",
+    /^attachment; filename="rakkr-recording-jobs-/,
+  );
+  assert(csv.indexOf(secondJob.id) < csv.indexOf(firstJob.id));
+  assert.equal(event?.permission, "recording:read");
+  assert.equal(event?.target.id, "recording_job_collection");
+  assert.equal(event?.details.requestedCount, 3);
+  assert.equal(event?.details.exportedCount, 2);
+  assert.deepEqual(event?.correlationIds, {
+    jobId1: secondJob.id,
+    jobId2: firstJob.id,
+  });
+});
+
+test("recording job selected export rejects hidden jobs before exporting", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const visible = recordingSummary({ id: `rec_export_visible_${randomUUID()}` });
+  const hidden = recordingSummary({ id: `rec_export_hidden_${randomUUID()}` });
+  const recordingStore = memoryRecordingStore([visible, hidden]);
+  const visibleJob = await createRecordingJob(visible);
+  const hiddenJob = await createRecordingJob(hidden);
+  const app = recordingApp({
+    auditStore,
+    permissionCalls,
+    recordingStore,
+    visibleRecordingIds: [visible.id],
+  });
+  const response = await app.request("/api/v1/recording-jobs/export", {
+    body: JSON.stringify({ jobIds: [visibleJob.id, hiddenJob.id] }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "recording_jobs.export_selected.failed" });
+
+  assert.equal(response.status, 404);
+  assert.equal(permissionCalls.at(-1)?.action, "recording_jobs.export_selected");
+  assert.equal(event?.outcome, "denied");
+  assert.equal(event?.permission, "recording:read");
+  assert.equal(event?.reason, "recording_job_not_visible");
+  assert.deepEqual(event?.details.hiddenIds, [hiddenJob.id]);
+  assert.deepEqual(event?.details.jobIds, [visibleJob.id, hiddenJob.id]);
+});
+
 test("recording job retry route is RBAC-gated audited and resets recording state", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
