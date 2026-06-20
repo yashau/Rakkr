@@ -207,7 +207,7 @@ Current partial implementation:
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
-- RBAC-gated listen monitor start/stream prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
+- RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
 - Nodes UI mirrors RBAC for enrollment, token rotation, live listen, and inventory edits.
@@ -757,6 +757,7 @@ Current implementation baseline:
 169. ✅ Add refreshing browser listen-monitor sessions.
 170. ✅ Add stale monitor-chunk fallback to meter preview.
 171. ✅ Add scoped monitor-chunk freshness Prometheus metrics.
+172. ✅ Add RBAC/audited live-listen session stop lifecycle.
 
 ## Open Questions
 

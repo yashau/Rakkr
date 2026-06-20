@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Radio, RefreshCcw, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,10 @@ export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps
   const pollInterval = listenMonitorPollInterval(preview.session.targetLatencyMs);
   const [audioUrl, setAudioUrl] = useState<string>();
   const [refreshedAt, setRefreshedAt] = useState<string>();
+  const stopMutation = useMutation({
+    mutationFn: () => api.stopListen(preview.session),
+    onSettled: onClose,
+  });
   const streamQuery = useQuery({
     queryFn: () => api.listenStream(preview.session.streamUrl),
     queryKey: ["nodes", "listen-monitor", preview.session.nodeId, preview.session.sessionId],
@@ -68,7 +72,13 @@ export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps
           >
             <RefreshCcw className="size-4" />
           </Button>
-          <Button onClick={onClose} size="icon" title="Close listen monitor" variant="outline">
+          <Button
+            disabled={stopMutation.isPending}
+            onClick={() => stopMutation.mutate()}
+            size="icon"
+            title="Stop listen monitor"
+            variant="outline"
+          >
             <X className="size-4" />
           </Button>
         </div>

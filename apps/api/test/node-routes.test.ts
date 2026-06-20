@@ -15,6 +15,7 @@ import type { NodeInterfaceUpdateInput, NodeStore, NodeUpdateInput } from "../sr
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createListenMonitorStore } = await import("../src/listen-monitor-store.js");
+const { createListenSessionStore } = await import("../src/listen-session-store.js");
 const { registerNodeRoutes } = await import("../src/node-routes.js");
 
 test("node list filters by status", async () => {
@@ -96,6 +97,7 @@ test("node routes deny users without required permissions", async () => {
     app.request("/api/v1/meter-events"),
     app.request(`/api/v1/nodes/${node().id}/listen`, { method: "POST" }),
     app.request(`/api/v1/nodes/${node().id}/listen/stream`),
+    app.request(`/api/v1/nodes/${node().id}/listen/listen_denied`, { method: "DELETE" }),
     app.request("/api/v1/nodes/enroll", {
       body: JSON.stringify({
         alias: "Blocked Node",
@@ -124,10 +126,11 @@ test("node routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
     "listen.monitor.start",
+    "listen.monitor.stop",
     "listen.monitor.stream",
     "meters.read",
     "meters.stream",
@@ -153,7 +156,13 @@ test("listen start returns a monitor stream URL and audits access", async () => 
 
   const response = await app.request(`/api/v1/nodes/${node().id}/listen`, { method: "POST" });
   const body = (await response.json()) as {
-    data: { mode: string; sessionId: string; streamUrl: string; targetLatencyMs: number };
+    data: {
+      mode: string;
+      sessionId: string;
+      stopUrl: string;
+      streamUrl: string;
+      targetLatencyMs: number;
+    };
   };
   const [event] = await auditStore.list({ action: "listen.monitor.start.succeeded" });
 
@@ -162,12 +171,14 @@ test("listen start returns a monitor stream URL and audits access", async () => 
   assert.equal(body.data.targetLatencyMs, 1500);
   assert.match(body.data.streamUrl, new RegExp(`/api/v1/nodes/${node().id}/listen/stream`));
   assert.match(body.data.streamUrl, /sessionId=listen_/);
+  assert.match(body.data.stopUrl, new RegExp(`/api/v1/nodes/${node().id}/listen/listen_`));
   assert.deepEqual(permissionCalls.at(-1), {
     action: "listen.monitor.start",
     permission: "listen:monitor",
     target: { id: node().id, type: "node" },
   });
   assert.equal(event?.details.streamUrl, body.data.streamUrl);
+  assert.equal(event?.details.stopUrl, body.data.stopUrl);
   assert.equal(event?.correlationIds?.listenSessionId, body.data.sessionId);
 });
 
@@ -180,9 +191,8 @@ test("listen stream returns a short wav preview derived from meter levels", asyn
     permissionCalls: [],
   });
 
-  const response = await app.request(
-    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_test`,
-  );
+  const session = await startListenSession(app, node().id);
+  const response = await app.request(session.streamUrl);
   const bytes = Buffer.from(await response.arrayBuffer());
   const [event] = await auditStore.list({ action: "listen.monitor.stream.succeeded" });
 
@@ -194,7 +204,7 @@ test("listen stream returns a short wav preview derived from meter levels", asyn
   assert.equal(bytes.readUInt16LE(22), 1);
   assert.equal(bytes.readUInt32LE(24), 16_000);
   assert.equal(bytes.readUInt32LE(40), 48_000);
-  assert.equal(event?.correlationIds?.listenSessionId, "listen_test");
+  assert.equal(event?.correlationIds?.listenSessionId, session.sessionId);
   assert.equal(event?.details.mode, "controller_meter_preview");
 });
 
@@ -224,11 +234,9 @@ test("listen stream prefers agent audio chunks when available", async () => {
     method: "POST",
   });
   const startBody = (await startResponse.json()) as {
-    data: { mode: string; targetLatencyMs: number };
+    data: { mode: string; streamUrl: string; targetLatencyMs: number };
   };
-  const streamResponse = await app.request(
-    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_agent_chunk`,
-  );
+  const streamResponse = await app.request(startBody.data.streamUrl);
   const bytes = Buffer.from(await streamResponse.arrayBuffer());
   const [event] = await auditStore.list({ action: "listen.monitor.stream.succeeded" });
 
@@ -266,11 +274,9 @@ test("listen stream ignores stale agent audio chunks", async () => {
     method: "POST",
   });
   const startBody = (await startResponse.json()) as {
-    data: { mode: string; targetLatencyMs: number };
+    data: { mode: string; streamUrl: string; targetLatencyMs: number };
   };
-  const streamResponse = await app.request(
-    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_stale_chunk`,
-  );
+  const streamResponse = await app.request(startBody.data.streamUrl);
   const bytes = Buffer.from(await streamResponse.arrayBuffer());
   const [event] = await auditStore.list({ action: "listen.monitor.stream.succeeded" });
 
@@ -291,12 +297,64 @@ test("listen stream reports unavailable monitor data", async () => {
     permissionCalls: [],
   });
 
-  const response = await app.request(`/api/v1/nodes/${node().id}/listen/stream`);
+  const session = await startListenSession(app, node().id);
+  const response = await app.request(session.streamUrl);
   const [event] = await auditStore.list({ action: "listen.monitor.stream.failed" });
 
   assert.equal(response.status, 409);
   assert.equal(event?.reason, "meter_frame_not_found");
   assert.equal(event?.target.id, node().id);
+});
+
+test("listen stream requires an active listen session", async () => {
+  const auditStore = createAuditStore("");
+  const app = nodeApp({
+    auditStore,
+    frames: [meterFrame()],
+    nodes: [node()],
+    permissionCalls: [],
+  });
+
+  const missingSessionResponse = await app.request(`/api/v1/nodes/${node().id}/listen/stream`);
+  const unknownSessionResponse = await app.request(
+    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_unknown`,
+  );
+  const events = await auditStore.list({ action: "listen.monitor.stream.failed" });
+
+  assert.equal(missingSessionResponse.status, 400);
+  assert.equal(unknownSessionResponse.status, 404);
+  assert.deepEqual(events.map((event) => event.reason).sort(), [
+    "session_not_found",
+    "session_required",
+  ]);
+});
+
+test("listen stop ends the active monitor session and audits access", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const app = nodeApp({
+    auditStore,
+    frames: [meterFrame()],
+    nodes: [node()],
+    permissionCalls,
+  });
+  const session = await startListenSession(app, node().id);
+
+  const stopResponse = await app.request(session.stopUrl, { method: "DELETE" });
+  const streamResponse = await app.request(session.streamUrl);
+  const [stopEvent] = await auditStore.list({ action: "listen.monitor.stop.succeeded" });
+  const [streamEvent] = await auditStore.list({ action: "listen.monitor.stream.failed" });
+
+  assert.equal(stopResponse.status, 200);
+  assert.equal(streamResponse.status, 404);
+  assert.equal(stopEvent?.correlationIds?.listenSessionId, session.sessionId);
+  assert.equal(stopEvent?.details.mode, "controller_meter_preview");
+  assert.equal(streamEvent?.reason, "session_not_found");
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "listen.monitor.stream",
+    permission: "listen:monitor",
+    target: { id: node().id, type: "node" },
+  });
 });
 
 test("node update changes identity fields and audits before and after", async () => {
@@ -400,6 +458,21 @@ test("node interface update changes device and channel aliases and audits before
   assert.equal(event?.details.nodeId, node().id);
 });
 
+async function startListenSession(app: Hono<AppBindings>, nodeId: string) {
+  const response = await app.request(`/api/v1/nodes/${nodeId}/listen`, { method: "POST" });
+  const body = (await response.json()) as {
+    data: {
+      sessionId: string;
+      stopUrl: string;
+      streamUrl: string;
+    };
+  };
+
+  assert.equal(response.status, 202);
+
+  return body.data;
+}
+
 interface PermissionCall {
   action: string;
   permission: Permission;
@@ -411,6 +484,7 @@ function nodeApp({
   currentUser = user(),
   frames,
   listenMonitorStore,
+  listenSessionStore,
   nodes,
   permissionCalls,
   permissionMiddleware,
@@ -419,6 +493,7 @@ function nodeApp({
   currentUser?: CurrentUser;
   frames: MeterFrame[];
   listenMonitorStore?: ReturnType<typeof createListenMonitorStore>;
+  listenSessionStore?: ReturnType<typeof createListenSessionStore>;
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
   permissionMiddleware?: RequirePermission;
@@ -431,6 +506,7 @@ function nodeApp({
     currentUser: () => currentUser,
     hasResourceScope: async () => true,
     listenMonitorStore: listenMonitorStore ?? createListenMonitorStore(),
+    listenSessionStore: listenSessionStore ?? createListenSessionStore(),
     meterFrameStore: memoryMeterFrameStore(frames),
     nodeStore: memoryNodeStore(nodes),
     recordAuditEvent: recordAuditEvent(auditStore),

@@ -100,8 +100,13 @@ export interface ListenMonitorSession {
   nodeId: string;
   sessionId: string;
   startedAt: string;
+  stopUrl: string;
   streamUrl: string;
   targetLatencyMs: number;
+}
+
+export interface ListenMonitorStoppedSession extends ListenMonitorSession {
+  endedAt: string;
 }
 
 export interface RecordingFileBlob {
@@ -717,6 +722,10 @@ export const api = {
       method: "POST",
     }),
   listenStream: (streamUrl: string) => fetchBlob(streamUrl),
+  stopListen: (session: ListenMonitorSession) =>
+    fetchJson<{ data: ListenMonitorStoppedSession }>(session.stopUrl, {
+      method: "DELETE",
+    }),
   rotateNodeCredential: (nodeId: string) =>
     fetchJson<{ data: NodeEnrollmentResult }>(`/api/v1/nodes/${nodeId}/credentials/rotate`, {
       method: "POST",

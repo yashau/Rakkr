@@ -32,6 +32,7 @@ import type { RecordAuditEvent } from "./http-types.js";
 import { nodes as seedNodes, recordings, schedules as seedSchedules } from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
 import { createListenMonitorStore } from "./listen-monitor-store.js";
+import { createListenSessionStore } from "./listen-session-store.js";
 import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
@@ -56,6 +57,7 @@ const auditStore = createAuditStore();
 const authService = new LocalAuthService();
 const healthEventStore = createHealthEventStore();
 const listenMonitorStore = createListenMonitorStore();
+const listenSessionStore = createListenSessionStore();
 const meterFrameStore = createMeterFrameStore();
 const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
@@ -894,6 +896,7 @@ registerNodeRoutes({
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   listenMonitorStore,
+  listenSessionStore,
   meterFrameStore,
   nodeStore,
   recordAuditEvent,
