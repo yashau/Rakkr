@@ -400,6 +400,7 @@ export const schedules = pgTable(
     nodeId: varchar("node_id", { length: 160 }),
     recurrence: jsonb("recurrence").notNull(),
     recordingProfileId: varchar("recording_profile_id", { length: 160 }),
+    retentionPolicyId: varchar("retention_policy_id", { length: 160 }),
     room: varchar("room", { length: 160 }).notNull().default("Unknown Room"),
     tags: jsonb("tags")
       .notNull()

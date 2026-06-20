@@ -121,6 +121,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
       stopLateSeconds: 120,
     },
     recordingProfileId: "voice-mp3-vbr",
+    retentionPolicyId: "retention-keep-controller-cache",
     room: "Council Room",
     tags: ["voice", "route", "voice"],
     timezone: "UTC",
@@ -164,6 +165,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
   assert.equal(updatedBody.data.name, "Council Route Test Updated");
   assert.deepEqual(updatedBody.data.tags, ["updated", "voice"]);
   assert.equal(runNowBody.data.scheduleId, scheduleId);
+  assert.equal(runNowBody.data.retentionPolicyId, "retention-keep-controller-cache");
   assert.equal(runNowBody.job.recordingId, runNowBody.data.id);
   assert.deepEqual(
     runNowBody.segments.map((segment) => segment.recordingId),
@@ -358,6 +360,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
     nodeId: node().id,
     recurrence: { mode: "manual" },
     recordingProfileId: "voice-mp3-vbr",
+    retentionPolicyId: "retention-keep-controller-cache",
     room: "Council Room",
     tags: ["council"],
     timezone: "UTC",

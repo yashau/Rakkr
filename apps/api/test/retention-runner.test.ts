@@ -19,17 +19,6 @@ test.after(async () => {
 
 test("retention runner deletes stale controller cache and audits the lifecycle", async () => {
   const auditStore = createAuditStore("");
-  const staleRecording = recording({
-    id: "rec_retention_stale",
-    recordedAt: "2026-05-01T12:00:00.000Z",
-  });
-  const freshRecording = recording({
-    id: "rec_retention_fresh",
-    recordedAt: "2026-06-19T12:00:00.000Z",
-  });
-  const stalePath = await cacheRecording(staleRecording, "stale-bytes");
-  const freshPath = await cacheRecording(freshRecording, "fresh-bytes");
-  const recordingStore = memoryRecordingStore([staleRecording, freshRecording]);
   const policy = await createRetentionPolicy({
     action: "delete_cache",
     deleteOnlyAfterUploaded: false,
@@ -38,6 +27,19 @@ test("retention runner deletes stale controller cache and audits the lifecycle",
     preserveTagged: false,
     scope: "controller_cache",
   });
+  const staleRecording = recording({
+    id: "rec_retention_stale",
+    recordedAt: "2026-05-01T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+  });
+  const freshRecording = recording({
+    id: "rec_retention_fresh",
+    recordedAt: "2026-06-19T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+  });
+  const stalePath = await cacheRecording(staleRecording, "stale-bytes");
+  const freshPath = await cacheRecording(freshRecording, "fresh-bytes");
+  const recordingStore = memoryRecordingStore([staleRecording, freshRecording]);
   const runner = createRetentionRunner({ auditStore, recordingStore });
 
   const summary = await runner.runOnce(new Date("2026-06-20T12:00:00.000Z"));
@@ -61,20 +63,7 @@ test("retention runner deletes stale controller cache and audits the lifecycle",
 
 test("retention runner trims oldest uploaded cache when max bytes is exceeded", async () => {
   const auditStore = createAuditStore("");
-  const oldest = recording({
-    id: "rec_retention_oldest",
-    recordedAt: "2026-06-19T12:00:00.000Z",
-    status: "uploaded",
-  });
-  const newest = recording({
-    id: "rec_retention_newest",
-    recordedAt: "2026-06-20T00:00:00.000Z",
-    status: "uploaded",
-  });
-  const oldestPath = await cacheRecording(oldest, "older-cache");
-  const newestPath = await cacheRecording(newest, "new-cache");
-  const recordingStore = memoryRecordingStore([newest, oldest]);
-  await createRetentionPolicy({
+  const policy = await createRetentionPolicy({
     action: "delete_cache",
     deleteOnlyAfterUploaded: true,
     maxBytes: "older-cache".length,
@@ -82,6 +71,21 @@ test("retention runner trims oldest uploaded cache when max bytes is exceeded", 
     preserveTagged: false,
     scope: "controller_cache",
   });
+  const oldest = recording({
+    id: "rec_retention_oldest",
+    recordedAt: "2026-06-19T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+    status: "uploaded",
+  });
+  const newest = recording({
+    id: "rec_retention_newest",
+    recordedAt: "2026-06-20T00:00:00.000Z",
+    retentionPolicyId: policy.id,
+    status: "uploaded",
+  });
+  const oldestPath = await cacheRecording(oldest, "older-cache");
+  const newestPath = await cacheRecording(newest, "new-cache");
+  const recordingStore = memoryRecordingStore([newest, oldest]);
   const runner = createRetentionRunner({ auditStore, recordingStore });
 
   const summary = await runner.runOnce(new Date("2026-06-20T12:00:00.000Z"));
@@ -100,10 +104,12 @@ test("retention runner trims oldest uploaded cache when max bytes is exceeded", 
 function recording({
   id,
   recordedAt,
+  retentionPolicyId,
   status = "cached",
 }: {
   id: string;
   recordedAt: string;
+  retentionPolicyId: string;
   status?: RecordingSummary["status"];
 }): RecordingSummary {
   return {
@@ -115,6 +121,7 @@ function recording({
     id,
     name: id,
     recordedAt,
+    retentionPolicyId,
     source: "schedule",
     status,
     tags: [],

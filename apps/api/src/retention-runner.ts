@@ -178,6 +178,10 @@ async function retentionCandidates(
       continue;
     }
 
+    if (recording.retentionPolicyId !== policy.id) {
+      continue;
+    }
+
     if (policy.preserveTagged && recording.tags.length > 0) {
       continue;
     }

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import path from "node:path";
 import { createDatabase, desc, eq, schedules as schedulesTable } from "@rakkr/db";
 import {
+  defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
   defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
@@ -281,6 +282,7 @@ class PostgresScheduleStore implements ScheduleStore {
           nodeId: row.nodeId,
           recurrence: row.recurrence,
           recordingProfileId: row.recordingProfileId,
+          retentionPolicyId: row.retentionPolicyId,
           room: row.room,
           tags: row.tags,
           timezone: row.timezone,
@@ -321,6 +323,7 @@ function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
     nodeId: schedule.nodeId,
     recurrence: scheduleRecurrence(schedule),
     recordingProfileId: schedule.recordingProfileId,
+    retentionPolicyId: schedule.retentionPolicyId,
     room: schedule.room,
     tags: schedule.tags,
     timezone: schedule.timezone,
@@ -342,6 +345,7 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
     nodeId: row.nodeId ?? "unassigned",
     recurrence,
     recordingProfileId: row.recordingProfileId ?? defaultVoiceRecordingProfile.id,
+    retentionPolicyId: row.retentionPolicyId ?? defaultKeepControllerCacheRetentionPolicy.id,
     room: row.room,
     tags: stringArray(row.tags),
     timezone: row.timezone,

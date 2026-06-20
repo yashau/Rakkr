@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import {
+  defaultKeepControllerCacheRetentionPolicy,
   defaultVoiceRecordingProfile,
   type Permission,
   type RecorderNode,
@@ -55,6 +56,7 @@ const recordingStartRequestSchema = z
     name: z.string().trim().min(1).max(240).optional(),
     nodeId: z.string().trim().min(1).max(160),
     recordingProfileId: z.string().trim().min(1).max(160).optional(),
+    retentionPolicyId: z.string().trim().min(1).max(160).optional(),
     tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
     uploadPolicyId: z.string().trim().min(1).max(160).optional(),
   })
@@ -667,6 +669,8 @@ export function registerRecordingRoutes({
         nodeId: node.id,
         recordedAt: now.toISOString(),
         recordingProfileId,
+        retentionPolicyId:
+          body.data.retentionPolicyId ?? defaultKeepControllerCacheRetentionPolicy.id,
         source: "ad_hoc",
         status: "recording",
         tags: uniqueTags(body.data.tags ?? ["ad-hoc", "voice"]),

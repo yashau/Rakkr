@@ -209,6 +209,7 @@ test("scheduled recording completes through agent cache attach and exposes sched
   assert.equal(attachedBody.data.recording.folder, "Meetings/2026-06-18/Council Meeting");
   assert.equal(attachedBody.data.recording.name, "2026-06-18_0900_Council Meeting");
   assert.equal(attachedBody.data.recording.scheduleId, scheduled.id);
+  assert.equal(attachedBody.data.recording.retentionPolicyId, scheduled.retentionPolicyId);
   assert.equal(attachedBody.data.recording.source, "schedule");
   assert.deepEqual(attachedBody.data.recording.tags, ["voice"]);
   assert.equal(attachedBody.data.recording.uploadPolicyId, scheduledPolicy.id);
@@ -484,6 +485,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
     nextRunAt: "2026-06-18T09:00:00.000Z",
     nodeId: "node_split",
     recordingProfileId: "voice-split",
+    retentionPolicyId: "retention-keep-controller-cache",
     recurrence: {
       endTime: "11:00",
       interval: 1,

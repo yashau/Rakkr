@@ -167,6 +167,7 @@ function scheduleFixture(overrides: Partial<ScheduleSummary> = {}): ScheduleSumm
     name: "Test Schedule",
     nodeId: "node_test",
     recordingProfileId: "voice-mp3-vbr",
+    retentionPolicyId: "retention-keep-controller-cache",
     recurrence: { mode: "manual" },
     room: "Council Chamber",
     tags: ["voice", "scheduled"],

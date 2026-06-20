@@ -436,6 +436,7 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
     nodeId: input.nodeId,
     recurrence,
     recordingProfileId: input.recordingProfileId,
+    retentionPolicyId: input.retentionPolicyId,
     room: input.room,
     tags: uniqueTags(input.tags),
     timezone: input.timezone,

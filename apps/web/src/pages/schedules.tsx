@@ -546,7 +546,7 @@ export function SchedulesPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-5">
               <div className="grid gap-2">
                 <Label htmlFor="schedule-profile">Recording Profile</Label>
                 <Input
@@ -572,6 +572,15 @@ export function SchedulesPage() {
                   onChange={(event) => updateDraft("uploadPolicyId", event.target.value)}
                   required
                   value={draft.uploadPolicyId}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-retention-policy">Retention Policy</Label>
+                <Input
+                  id="schedule-retention-policy"
+                  onChange={(event) => updateDraft("retentionPolicyId", event.target.value)}
+                  required
+                  value={draft.retentionPolicyId}
                 />
               </div>
               <div className="grid gap-2">
@@ -635,6 +644,10 @@ export function SchedulesPage() {
                   <div>
                     <dt className="font-medium text-foreground">Upload Policy</dt>
                     <dd>{schedule.uploadPolicyId}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Retention Policy</dt>
+                    <dd>{schedule.retentionPolicyId}</dd>
                   </div>
                   <div>
                     <dt className="font-medium text-foreground">Buffers</dt>

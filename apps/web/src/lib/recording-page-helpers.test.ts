@@ -362,6 +362,7 @@ function schedule(): ScheduleSummary {
     nodeId: "node_web_action_test",
     recurrence: { mode: "manual" },
     recordingProfileId: "profile_voice",
+    retentionPolicyId: "retention_keep",
     room: "Council Chamber",
     tags: ["voice"],
     timezone: "Indian/Maldives",

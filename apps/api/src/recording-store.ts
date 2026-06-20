@@ -295,6 +295,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     notes: stringOrUndefined(metadata?.notes),
     recordedAt: row.recordedAt.toISOString(),
     recordingProfileId: stringOrUndefined(metadata?.recordingProfileId),
+    retentionPolicyId: stringOrUndefined(metadata?.retentionPolicyId),
     scheduleId: row.scheduleId ?? undefined,
     source: row.source,
     status: row.status,
@@ -313,6 +314,7 @@ function recordingMetadata(recording: RecordingSummary) {
     cached: recording.cached,
     notes: recording.notes,
     recordingProfileId: recording.recordingProfileId,
+    retentionPolicyId: recording.retentionPolicyId,
     trackGroupId: recording.trackGroupId,
     trackIndex: recording.trackIndex,
     trackTotal: recording.trackTotal,
@@ -376,6 +378,7 @@ function isRecordingSummary(value: unknown): value is RecordingSummary {
     typeof value.durationSeconds === "number" &&
     typeof value.cached === "boolean" &&
     optionalString(value.recordingProfileId) &&
+    optionalString(value.retentionPolicyId) &&
     optionalString(value.uploadPolicyId) &&
     optionalString(value.watchdogPolicyId) &&
     healthStatus(value.healthStatus as string) === value.healthStatus &&

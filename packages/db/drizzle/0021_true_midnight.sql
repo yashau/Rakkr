@@ -1,0 +1,1 @@
+ALTER TABLE "schedules" ADD COLUMN "retention_policy_id" varchar(160);

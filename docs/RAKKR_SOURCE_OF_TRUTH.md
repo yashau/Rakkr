@@ -65,7 +65,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory plus Linux loopback tasks; Linux/hardware validation remains |
-| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, upload retention, controller retention execution, bulk assignment, staged apply; recorder assignment/execution remains |
+| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, bulk assignment, staged apply; recorder execution remains |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, offline, local-log, metrics, and timeline baseline; real-room field calibration remains |
@@ -164,8 +164,9 @@ Current checked partial baseline:
 - Channel map staged rollout plans require an explicit apply step before assignments change.
 - Upload policies cover provider selection, retry budget, trigger, and confirmed-upload cache retention.
 - Retention policy templates cover controller and recorder cache cleanup intent.
+- Schedules and recordings carry retention policy assignment.
 - Retention runner executes controller-cache max-age and max-bytes cleanup with audit events.
-- Retention policy assignment and recorder-cache execution remain pending.
+- Recorder-cache retention execution remains pending.
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
@@ -742,6 +743,7 @@ Current implementation baseline:
 161. ✅ Tie settings/templates baseline to upload-policy cache retention.
 162. ✅ Add audited retention policy templates to settings.
 163. ✅ Add audited controller-cache retention runner.
+164. ✅ Add schedule-owned retention policy assignment.
 
 ## Open Questions
 

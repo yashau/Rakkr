@@ -1,4 +1,5 @@
 import {
+  defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
   defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
@@ -67,6 +68,7 @@ export const schedules: ScheduleSummary[] = [
       startTime: "09:00",
     },
     recordingProfileId: defaultVoiceRecordingProfile.id,
+    retentionPolicyId: defaultKeepControllerCacheRetentionPolicy.id,
     room: "Council Chamber",
     tags: ["council", "scheduled", "voice"],
     timezone: "Indian/Maldives",
@@ -87,6 +89,7 @@ export const recordings: RecordingSummary[] = [
     nodeId: "node_x32_test",
     recordedAt: "2026-06-15T04:00:00.000Z",
     recordingProfileId: defaultVoiceRecordingProfile.id,
+    retentionPolicyId: defaultKeepControllerCacheRetentionPolicy.id,
     scheduleId: "sched_council_weekly",
     source: "schedule",
     status: "completed",

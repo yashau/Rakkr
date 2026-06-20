@@ -1,4 +1,5 @@
 import {
+  defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
   defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
@@ -30,6 +31,7 @@ export interface ScheduleDraft {
   recurrenceMode: ScheduleRecurrence["mode"];
   recurrenceStartAt: string;
   recordingProfileId: string;
+  retentionPolicyId: string;
   room: string;
   startTime: string;
   startEarlyMinutes: number;
@@ -71,6 +73,7 @@ export function defaultDraft(node?: RecorderNode): ScheduleDraft {
     recurrenceMode: "weekly",
     recurrenceStartAt: "",
     recordingProfileId: defaultVoiceRecordingProfile.id,
+    retentionPolicyId: defaultKeepControllerCacheRetentionPolicy.id,
     room: node?.location.room ?? "",
     startTime: "09:00",
     startEarlyMinutes: 0,
@@ -92,6 +95,7 @@ export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
     nextRunAt: localDateTimeInput(schedule.nextRunAt),
     nodeId: schedule.nodeId,
     recordingProfileId: schedule.recordingProfileId,
+    retentionPolicyId: schedule.retentionPolicyId,
     room: schedule.room,
     tags: schedule.tags.join(", "),
     timezone: schedule.timezone,
@@ -114,6 +118,7 @@ export function draftToInput(draft: ScheduleDraft): ScheduleInput {
     nodeId: draft.nodeId,
     recurrence,
     recordingProfileId: draft.recordingProfileId,
+    retentionPolicyId: draft.retentionPolicyId,
     room: draft.room,
     tags: uniqueTags(draft.tags),
     timezone: draft.timezone,

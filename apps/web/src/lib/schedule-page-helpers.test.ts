@@ -97,6 +97,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
       startTime: "09:00",
     },
     recordingProfileId: "profile_voice",
+    retentionPolicyId: "retention_keep",
     room: "Council Chamber",
     tags: ["voice"],
     timezone: "UTC",
