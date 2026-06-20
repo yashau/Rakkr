@@ -11,6 +11,7 @@ Status: Partial baseline checked.
 - Inventory discovers ALSA capture devices from `arecord -l` and `/proc/asound/pcm`, then adds channel count, sample rates, sysfs hardware paths, and serials when available.
 - When `/proc/asound/card*/stream0` lacks capture capability details, inventory falls back to `arecord --dump-hw-params` for ALSA channel and sample-rate metadata.
 - Meter target selection maps numeric, named, and `CARD=`/`DEV=` `hw:`/`plughw:` ALSA capture devices, including `hw:Loopback,1,0`, to collected inventory interfaces when possible.
+- Runtime inventory reports detected PipeWire and JACK command availability alongside collected audio interface backends.
 - Synthetic meters and fake-controller capture/render smoke tests validate agent workflows without hardware.
 - Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, and render/channel-map output on a recorder node.
 - Remaining gaps: Linux loopback smoke execution on a recorder node, physical X32 validation, broader physical-device validation, and JACK/PipeWire adapters are not complete.
@@ -23,6 +24,7 @@ Status: Partial baseline checked.
 | Generic capture command arguments | `crates/recorder-agent/src/capture.rs` |
 | ALSA inventory parsing, `/proc/asound/pcm`, stream/hw-params metadata, sysfs serials | `crates/recorder-agent/src/inventory.rs` |
 | Numeric and named ALSA capture-device inventory matching | `crates/recorder-agent/src/alsa_device.rs` |
+| Runtime PipeWire/JACK availability reporting | `crates/recorder-agent/src/inventory.rs` |
 | ALSA and synthetic meter frame generation | `crates/recorder-agent/src/telemetry.rs` |
 | Channel-map render planning for generic capture inputs | `crates/recorder-agent/src/channel_map.rs` |
 | Linux `snd-aloop` capture, meter, and render smoke tasks | `.mise.toml`, `scripts/alsa-loopback-smoke.sh`, `scripts/agent-loopback-meter-smoke.sh`, `scripts/alsa-loopback-render-smoke.sh` |
