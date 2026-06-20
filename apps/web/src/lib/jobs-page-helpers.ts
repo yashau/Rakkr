@@ -1,11 +1,13 @@
 import type { CurrentUser, RecorderNode, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
 export interface JobsPageFilters {
+  captureBackend: "" | NonNullable<RecordingJob["command"]["captureBackend"]>;
   search: string;
   status: "" | RecordingJob["status"];
 }
 
 export const emptyJobsPageFilters: JobsPageFilters = {
+  captureBackend: "",
   search: "",
   status: "",
 };
@@ -133,6 +135,13 @@ export function filterRecordingJobs(jobs: RecordingJob[], filters: JobsPageFilte
 
   return jobs.filter((job) => {
     if (filters.status && job.status !== filters.status) {
+      return false;
+    }
+
+    if (
+      filters.captureBackend &&
+      (job.command.captureBackend ?? "alsa") !== filters.captureBackend
+    ) {
       return false;
     }
 

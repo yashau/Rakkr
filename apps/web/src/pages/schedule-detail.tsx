@@ -60,7 +60,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   });
   const jobsQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
-    queryFn: api.recordingJobs,
+    queryFn: () => api.recordingJobs(),
     queryKey: ["recording-jobs"],
     refetchInterval: 3000,
   });

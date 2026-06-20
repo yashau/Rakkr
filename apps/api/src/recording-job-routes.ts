@@ -28,6 +28,10 @@ interface RecordingJobRouteDependencies {
 }
 
 const recordingJobsQuerySchema = z.object({
+  captureBackend: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.enum(["alsa", "jack", "pipewire"]).optional(),
+  ),
   search: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     z.string().trim().max(160).optional(),
@@ -63,8 +67,14 @@ export function registerRecordingJobRoutes({
     "/api/v1/recording-jobs",
     requirePermission("recording:read", "recording_jobs.read"),
     async (c) => {
+      const query = recordingJobsQuerySchema.safeParse(c.req.query());
+
+      if (!query.success) {
+        return c.json({ error: "Invalid recording job filters", issues: query.error.issues }, 400);
+      }
+
       return c.json({
-        data: await scopedRecordingJobs(currentUser(c)),
+        data: filterRecordingJobsForExport(await scopedRecordingJobs(currentUser(c)), query.data),
       });
     },
   );

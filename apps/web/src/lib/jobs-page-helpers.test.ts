@@ -98,6 +98,10 @@ test("recording job filters match status and searchable job fields", () => {
   assert.deepEqual(filterRecordingJobs(jobs, { ...emptyJobsPageFilters, search: "pipewire" }), [
     jobs[1],
   ]);
+  assert.deepEqual(
+    filterRecordingJobs(jobs, { ...emptyJobsPageFilters, captureBackend: "pipewire" }),
+    [jobs[1]],
+  );
 });
 
 test("recording job relationship labels prefer permitted friendly names", () => {

@@ -75,6 +75,51 @@ test("recording job export helpers filter and render csv", () => {
   assert.doesNotMatch(csv, /job_other/);
 });
 
+test("recording job list route filters scoped jobs by status search and backend", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const prefix = `filter_${randomUUID()}`;
+  const recordings = [
+    recordingSummary({ id: `rec_${prefix}_jack` }),
+    recordingSummary({ id: `rec_${prefix}_pipewire` }),
+    recordingSummary({ id: `rec_${prefix}_failed` }),
+  ];
+  const recordingStore = memoryRecordingStore(recordings);
+  const jackJob = await createRecordingJob(recordings[0] as RecordingSummary, {
+    captureBackend: "jack",
+    captureDevice: `${prefix}:system:capture_1`,
+  });
+
+  await createRecordingJob(recordings[1] as RecordingSummary, {
+    captureBackend: "pipewire",
+    captureDevice: `${prefix}:alsa_input.usb-recorder`,
+  });
+  const failedJob = await createRecordingJob(recordings[2] as RecordingSummary, {
+    captureBackend: "jack",
+    captureDevice: `${prefix}:system:capture_2`,
+  });
+
+  await failRecordingJob(failedJob.id, "capture_failed");
+
+  const app = recordingApp({
+    auditStore,
+    permissionCalls,
+    recordingStore,
+  });
+  const response = await app.request(
+    `/api/v1/recording-jobs?search=${prefix}&status=queued&captureBackend=jack`,
+  );
+  const body = (await response.json()) as { data: RecordingJob[] };
+
+  assert.equal(response.status, 200);
+  assert.equal(permissionCalls.at(-1)?.permission, "recording:read");
+  assert.equal(permissionCalls.at(-1)?.action, "recording_jobs.read");
+  assert.deepEqual(
+    body.data.map((recordingJob) => recordingJob.id),
+    [jackJob.id],
+  );
+});
+
 test("recording job export route is RBAC-gated and audited", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
@@ -84,7 +129,9 @@ test("recording job export route is RBAC-gated and audited", async () => {
     recordingStore: memoryRecordingStore([]),
   });
 
-  const response = await app.request("/api/v1/recording-jobs/export?status=queued&search=room");
+  const response = await app.request(
+    "/api/v1/recording-jobs/export?status=queued&search=room&captureBackend=jack",
+  );
   const csv = await response.text();
   const [event] = await auditStore.list({ action: "recording_jobs.export.succeeded" });
 
@@ -104,6 +151,7 @@ test("recording job export route is RBAC-gated and audited", async () => {
   assert.equal(event?.permission, "recording:read");
   assert.equal(event?.details.exportedCount, 0);
   assert.deepEqual(event?.details.filters, {
+    captureBackend: "jack",
     search: "room",
     status: "queued",
   });

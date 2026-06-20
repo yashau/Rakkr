@@ -44,6 +44,7 @@ const statuses: Array<"" | RecordingJob["status"]> = [
   "failed",
   "cancelled",
 ];
+const captureBackends: JobsPageFilters["captureBackend"][] = ["", "alsa", "jack", "pipewire"];
 const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
@@ -59,8 +60,8 @@ export function JobsPage() {
   const permissions = jobsPagePermissions(currentUserQuery.data?.data);
   const jobsQuery = useQuery({
     enabled: permissions.canReadJobs,
-    queryFn: api.recordingJobs,
-    queryKey: ["recording-jobs", "workbench"],
+    queryFn: () => api.recordingJobs(recordingJobApiFilters(filters)),
+    queryKey: ["recording-jobs", "workbench", filters],
     refetchInterval: 5000,
   });
   const nodesQuery = useQuery({
@@ -108,11 +109,7 @@ export function JobsPage() {
     },
   });
   const exportMutation = useMutation({
-    mutationFn: () =>
-      api.recordingJobsExport({
-        search: filters.search.trim() || undefined,
-        status: filters.status || undefined,
-      }),
+    mutationFn: () => api.recordingJobsExport(recordingJobApiFilters(filters)),
     onSuccess: downloadBlob,
   });
   const selectedExportMutation = useMutation({
@@ -206,7 +203,7 @@ export function JobsPage() {
           <SummaryTile icon={AlertTriangle} label="Failed" tone="critical" value={summary.failed} />
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[220px_1fr]">
+        <div className="mt-4 grid gap-3 md:grid-cols-[220px_220px_1fr]">
           <Field label="Status">
             <select
               className={selectClassName}
@@ -221,6 +218,24 @@ export function JobsPage() {
               {statuses.map((status) => (
                 <option key={status || "all"} value={status}>
                   {status || "all statuses"}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Backend">
+            <select
+              className={selectClassName}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  captureBackend: event.target.value as JobsPageFilters["captureBackend"],
+                }))
+              }
+              value={filters.captureBackend}
+            >
+              {captureBackends.map((backend) => (
+                <option key={backend || "all"} value={backend}>
+                  {backend || "all backends"}
                 </option>
               ))}
             </select>
@@ -478,6 +493,14 @@ function setJobSelected(
         : [...current, jobId]
       : current.filter((candidate) => candidate !== jobId),
   );
+}
+
+function recordingJobApiFilters(filters: JobsPageFilters) {
+  return {
+    captureBackend: filters.captureBackend || undefined,
+    search: filters.search.trim() || undefined,
+    status: filters.status || undefined,
+  };
 }
 
 function summaryToneClass(tone: "active" | "critical" | "healthy" | "neutral") {

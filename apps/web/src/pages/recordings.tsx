@@ -85,7 +85,7 @@ export function RecordingsPage() {
   });
   const recordingJobsQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
-    queryFn: api.recordingJobs,
+    queryFn: () => api.recordingJobs(),
     queryKey: ["recording-jobs"],
     refetchInterval: 3000,
   });

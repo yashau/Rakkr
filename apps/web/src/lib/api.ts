@@ -223,6 +223,7 @@ export type RecordingSortOrder = "asc" | "desc";
 export type RecordingCacheState = "cached" | "missing";
 
 export interface RecordingJobFilters {
+  captureBackend?: NonNullable<RecordingJob["command"]["captureBackend"]>;
   search?: string;
   status?: RecordingJob["status"];
 }
@@ -551,7 +552,8 @@ export const api = {
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
       method: "POST",
     }),
-  recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
+  recordingJobs: (filters: RecordingJobFilters = {}) =>
+    fetchJson<{ data: RecordingJob[] }>(withQuery("/api/v1/recording-jobs", filters)),
   recordingJobsExport: (filters: RecordingJobFilters = {}) =>
     fetchBlob(withQuery("/api/v1/recording-jobs/export", filters)),
   recordingJobsExportSelected: (input: RecordingJobSelectedExportInput) =>
