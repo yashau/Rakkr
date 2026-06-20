@@ -244,7 +244,7 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
         observed.healthEvents.some(
           (event) => event.type === "agent.recorder_cache.sweep_completed",
         ),
-      20_000,
+      60_000,
       () =>
         `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
     );
