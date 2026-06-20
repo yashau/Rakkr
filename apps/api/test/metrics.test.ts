@@ -93,6 +93,10 @@ test("renders store-backed Prometheus gauges", () => {
   );
   assert.match(
     output,
+    /rakkr_input_broadband_noise_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.27/,
+  );
+  assert.match(
+    output,
     /rakkr_input_hum_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.34/,
   );
   assert.match(
@@ -243,6 +247,7 @@ function meterFrame(): MeterFrame {
         label: "Ch 1",
         peakDbfs: -2.1,
         quality: {
+          broadbandNoiseScore: 0.27,
           channelCorrelation: {
             peerChannelIndex: 2,
             phase: "same",

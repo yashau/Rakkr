@@ -68,7 +68,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
+| Health watchdog | 🟨 | Checked low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
@@ -270,9 +270,9 @@ Current partial implementation:
 
 - Lifecycle health events in Postgres plus local node JSONL logs.
 - Scheduled low-signal alerts open, repeat, and auto-resolve.
-- Local meter frames include speech/noise, estimated SNR, first-pass intelligibility, and hum/static scores; speech-required policies can alert on loud non-speech audio.
+- Local meter frames include speech/noise, estimated SNR, first-pass intelligibility, and hum/static/broadband-noise scores; speech-required policies can alert on loud non-speech audio.
 - Local meter frames include first-pass same/inverted channel correlation scoring for suspicious channel mapping.
-- Agent telemetry includes synthetic PCM calibration fixtures for voice, silence, hum, static, and independent channels.
+- Agent telemetry includes synthetic PCM calibration fixtures for voice, silence, hum, broadband noise, static, and independent channels.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high channel correlation.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained clipping.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained digital flatline.
@@ -542,6 +542,7 @@ Important metric names:
 - `rakkr_input_clipping_ratio`
 - `rakkr_input_speech_score`
 - `rakkr_input_noise_score`
+- `rakkr_input_broadband_noise_score`
 - `rakkr_input_estimated_snr_db`
 - `rakkr_input_intelligibility_score`
 - `rakkr_listen_monitor_chunk_age_seconds`
@@ -810,6 +811,7 @@ Current implementation baseline:
 205. ✅ Add policy-tuned scheduled quality anomaly watchdog alerts.
 206. ✅ Add first-pass estimated SNR telemetry, UI display, and Prometheus metric.
 207. ✅ Add first-pass intelligibility score telemetry, UI display, and Prometheus metric.
+208. ✅ Add first-pass broadband-noise telemetry, UI display, and Prometheus metric.
 
 ## Open Questions
 

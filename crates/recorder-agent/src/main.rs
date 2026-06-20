@@ -929,6 +929,7 @@ mod tests {
                     phase,
                     score,
                 }),
+                broadband_noise_score: 0.18,
                 crest_factor_db: 10.0,
                 estimated_snr_db: 18.0,
                 hum_score: 0.0,

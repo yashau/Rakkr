@@ -5,6 +5,7 @@ const meterCeilingDbfs = -3;
 
 export interface MeterChannelView {
   clipping: boolean;
+  broadbandNoisePercent?: number;
   correlationLabel?: string;
   correlationPercent?: number;
   humPercent?: number;
@@ -41,6 +42,7 @@ export function meterChannelView(level: AudioLevel): MeterChannelView {
 
   return {
     clipping: level.clipping,
+    broadbandNoisePercent: scoreToPercent(level.quality?.broadbandNoiseScore),
     correlationLabel: correlation
       ? `ch ${correlation.peerChannelIndex} ${correlation.phase}`
       : undefined,

@@ -64,6 +64,7 @@ fn computes_silence_as_floor_dbfs() {
     assert_eq!(frame.levels[1].peak_dbfs, -160.0);
     assert_eq!(frame.levels[0].quality.speech_score, 0.0);
     assert_eq!(frame.levels[0].quality.noise_score, 0.0);
+    assert_eq!(frame.levels[0].quality.broadband_noise_score, 0.0);
     assert_eq!(frame.levels[0].quality.hum_score, 0.0);
     assert_eq!(frame.levels[0].quality.static_score, 0.0);
     assert_eq!(frame.levels[0].quality.estimated_snr_db, 0.0);
@@ -139,10 +140,12 @@ fn estimates_hum_and_static_likelihood_from_pcm_shape() {
 fn calibrates_voice_hum_static_and_silence_fixtures() {
     let voice_frame = fixture_frame(&voice_like_pcm(4_800), 1);
     let hum_frame = fixture_frame(&hum_pcm(4_800), 1);
+    let broadband_frame = fixture_frame(&broadband_noise_pcm(4_800), 1);
     let static_frame = fixture_frame(&static_pcm(4_800), 1);
     let silence_frame = fixture_frame(&silence_pcm(4_800), 1);
     let voice = &voice_frame.levels[0].quality;
     let hum = &hum_frame.levels[0].quality;
+    let broadband_noise = &broadband_frame.levels[0].quality;
     let static_noise = &static_frame.levels[0].quality;
     let silence = &silence_frame.levels[0].quality;
 
@@ -159,6 +162,9 @@ fn calibrates_voice_hum_static_and_silence_fixtures() {
     assert!(hum.hum_score > hum.static_score);
     assert!(voice.estimated_snr_db > hum.estimated_snr_db);
     assert!(voice.intelligibility_score > hum.intelligibility_score);
+    assert!(broadband_noise.broadband_noise_score >= 0.65);
+    assert!(broadband_noise.broadband_noise_score > voice.broadband_noise_score);
+    assert!(broadband_noise.broadband_noise_score > hum.broadband_noise_score);
     assert!(!static_noise.speech_like);
     assert!(static_noise.static_score >= 0.85);
     assert!(static_noise.static_score > static_noise.speech_score);
@@ -282,6 +288,22 @@ fn static_pcm(samples: usize) -> Vec<u8> {
             if index % 2 == 0 { 10_000.0 } else { -10_000.0 }
         },
     )
+}
+
+fn broadband_noise_pcm(samples: usize) -> Vec<u8> {
+    mono_pcm(samples, |index| {
+        let mut state = (index as u32).wrapping_mul(0x9E37_79B9);
+
+        state ^= state >> 16;
+        state = state.wrapping_mul(0x85EB_CA6B);
+        state ^= state >> 13;
+        state = state.wrapping_mul(0xC2B2_AE35);
+        state ^= state >> 16;
+
+        let centered = ((state >> 16) as f32 / 65_535.0) * 2.0 - 1.0;
+
+        centered * 9_000.0
+    })
 }
 
 fn silence_pcm(samples: usize) -> Vec<u8> {

@@ -18,6 +18,7 @@ test("meter channel view exposes level voice and clipping state", () => {
         clipping: true,
         peakDbfs: -1.2,
         quality: {
+          broadbandNoiseScore: 0.31,
           channelCorrelation: {
             peerChannelIndex: 2,
             phase: "same",
@@ -37,6 +38,7 @@ test("meter channel view exposes level voice and clipping state", () => {
       }),
     ),
     {
+      broadbandNoisePercent: 31,
       clipping: true,
       correlationLabel: "ch 2 same",
       correlationPercent: 99,
@@ -71,6 +73,7 @@ test("meter bank summary reports empty and populated channel groups", () => {
         clipping: true,
         peakDbfs: -0.5,
         quality: {
+          broadbandNoiseScore: 0.22,
           crestFactorDb: 9,
           estimatedSnrDb: 18,
           humScore: 0.04,

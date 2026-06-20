@@ -251,6 +251,7 @@ export const audioQualitySchema = z.object({
       score: z.number().min(-1).max(1),
     })
     .optional(),
+  broadbandNoiseScore: z.number().min(0).max(1).optional(),
   crestFactorDb: z.number().min(0).max(80),
   estimatedSnrDb: z.number().min(0).max(80).optional(),
   humScore: z.number().min(0).max(1).optional(),

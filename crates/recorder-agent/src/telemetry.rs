@@ -38,6 +38,7 @@ pub struct AudioLevel {
 pub struct AudioQuality {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_correlation: Option<ChannelCorrelation>,
+    pub broadband_noise_score: f32,
     pub crest_factor_db: f32,
     pub estimated_snr_db: f32,
     pub hum_score: f32,
@@ -464,6 +465,12 @@ impl ChannelStats {
         let speech_score = clamp_01(audible_score * (0.2 + zcr_score * 0.45 + crest_score * 0.35));
         let hum_score = hum_likelihood(audible_score, zero_crossing_rate, crest_factor_db);
         let static_score = static_likelihood(audible_score, zero_crossing_rate, crest_factor_db);
+        let broadband_noise_score = broadband_noise_likelihood(
+            audible_score,
+            speech_score,
+            zero_crossing_rate,
+            crest_factor_db,
+        );
         let noise_score =
             clamp_01(audible_score * (1.0 - speech_score).max(hum_score * 0.85).max(static_score));
         let estimated_snr_db = estimated_snr_db(
@@ -480,6 +487,7 @@ impl ChannelStats {
 
         AudioQuality {
             channel_correlation: None,
+            broadband_noise_score: round_2(broadband_noise_score),
             crest_factor_db: round_2(crest_factor_db.min(80.0)),
             estimated_snr_db: round_1(estimated_snr_db),
             hum_score: round_2(hum_score),
@@ -621,6 +629,7 @@ fn synthetic_quality(rms_dbfs: f32, peak_dbfs: f32, phase: f32) -> AudioQuality 
     let crest_factor_db = (peak_dbfs - rms_dbfs).max(0.0);
     let hum_score = clamp_01(audible_score * phase.cos().abs() * 0.12);
     let static_score = clamp_01(audible_score * phase.sin().abs() * 0.08);
+    let broadband_noise_score = clamp_01(noise_score * 0.7);
     let estimated_snr_db = estimated_snr_db(
         audible_score,
         [speech_score, noise_score, hum_score, static_score],
@@ -629,6 +638,7 @@ fn synthetic_quality(rms_dbfs: f32, peak_dbfs: f32, phase: f32) -> AudioQuality 
 
     AudioQuality {
         channel_correlation: None,
+        broadband_noise_score: round_2(broadband_noise_score),
         crest_factor_db: round_2(crest_factor_db),
         estimated_snr_db: round_1(estimated_snr_db),
         hum_score: round_2(hum_score),
@@ -658,6 +668,19 @@ fn static_likelihood(audible_score: f32, zero_crossing_rate: f32, crest_factor_d
     let flat_noise_score = falling_score(crest_factor_db, 10.0, 24.0);
 
     clamp_01(audible_score * high_zcr_score * flat_noise_score)
+}
+
+fn broadband_noise_likelihood(
+    audible_score: f32,
+    speech_score: f32,
+    zero_crossing_rate: f32,
+    crest_factor_db: f32,
+) -> f32 {
+    let broadband_zcr_score = band_score(zero_crossing_rate, 0.18, 0.55);
+    let steady_noise_score = falling_score(crest_factor_db, 8.0, 24.0);
+    let speech_penalty = falling_score(speech_score, 0.55, 0.9);
+
+    clamp_01(audible_score * broadband_zcr_score * steady_noise_score * speech_penalty)
 }
 
 fn estimated_snr_db(audible_score: f32, scores: [f32; 4], crest_factor_db: f32) -> f32 {

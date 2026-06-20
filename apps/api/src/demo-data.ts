@@ -115,6 +115,7 @@ export function buildMeterFrame(): MeterFrame {
       const noiseScore = Math.max(0, 0.3 - Math.abs(wave) * 0.12);
       const speechScore = Math.max(0, Math.min(1, (rmsDbfs + 65) / 35));
       const estimatedSnrDb = Math.max(0, (speechScore - noiseScore) * 30);
+      const broadbandNoiseScore = Math.max(0, noiseScore * (1 - speechScore) * 1.4);
       const intelligibilityScore =
         speechScore * (0.5 + Math.min(1, estimatedSnrDb / 24) * 0.35) * (1 - noiseScore * 0.55);
 
@@ -124,6 +125,7 @@ export function buildMeterFrame(): MeterFrame {
         label: `Ch ${index + 1}`,
         peakDbfs: Number(peakDbfs.toFixed(1)),
         quality: {
+          broadbandNoiseScore: Number(Math.min(1, broadbandNoiseScore).toFixed(2)),
           crestFactorDb: Number((peakDbfs - rmsDbfs).toFixed(2)),
           estimatedSnrDb: Number(estimatedSnrDb.toFixed(1)),
           humScore: Number(Math.max(0, Math.abs(bump) * 0.09).toFixed(2)),
