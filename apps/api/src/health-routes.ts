@@ -97,6 +97,41 @@ export function registerHealthRoutes({
   requirePermission,
 }: HealthRouteDependencies) {
   app.get(
+    "/api/v1/health-events/export",
+    requirePermission("health:read", "health.events.export", healthReadTarget),
+    async (c) => {
+      const query = healthEventsQuerySchema.safeParse(c.req.query());
+
+      if (!query.success) {
+        return c.json({ error: "Invalid health event filters", issues: query.error.issues }, 400);
+      }
+
+      const filters = healthFilters(query.data);
+      const events = await visibleHealthEvents(currentUser(c), filters, {
+        hasResourceScope,
+        healthEventStore,
+      });
+
+      await recordAuditEvent(c, {
+        action: "health.events.export.succeeded",
+        auth: currentAuth(c),
+        details: {
+          exportedCount: events.length,
+          filters,
+        },
+        outcome: "succeeded",
+        permission: "health:read",
+        target: healthReadTarget(c),
+      });
+
+      return c.text(healthEventsCsv(events), 200, {
+        "Content-Disposition": `attachment; filename="${healthExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
+  );
+
+  app.get(
     "/api/v1/health-events",
     requirePermission("health:read", "health.events.read", healthReadTarget),
     async (c) => {
@@ -107,14 +142,10 @@ export function registerHealthRoutes({
       }
 
       const user = currentUser(c);
-      const events = await healthEventStore.list(healthFilters(query.data));
-      const visibleEvents: HealthEvent[] = [];
-
-      for (const event of events) {
-        if (await visibleHealthEvent(user, event, hasResourceScope)) {
-          visibleEvents.push(event);
-        }
-      }
+      const visibleEvents = await visibleHealthEvents(user, healthFilters(query.data), {
+        hasResourceScope,
+        healthEventStore,
+      });
 
       return c.json({ data: visibleEvents });
     },
@@ -434,6 +465,23 @@ async function visibleHealthEvent(
   return false;
 }
 
+async function visibleHealthEvents(
+  user: NonNullable<AuthResult["user"]>,
+  filters: HealthEventFilters,
+  dependencies: Pick<HealthRouteDependencies, "hasResourceScope" | "healthEventStore">,
+) {
+  const events = await dependencies.healthEventStore.list(filters);
+  const visibleEvents: HealthEvent[] = [];
+
+  for (const event of events) {
+    if (await visibleHealthEvent(user, event, dependencies.hasResourceScope)) {
+      visibleEvents.push(event);
+    }
+  }
+
+  return visibleEvents;
+}
+
 function healthEventTargets(event: HealthEvent | HealthEventCreateInput): AuditTarget[] {
   const targets: AuditTarget[] = [];
 
@@ -542,4 +590,55 @@ function healthAuditTarget(event: HealthEvent): AuditTarget {
     name: event.type,
     type: "health_event",
   };
+}
+
+function healthEventsCsv(events: HealthEvent[]) {
+  return [
+    csvRow([
+      "id",
+      "type",
+      "severity",
+      "status",
+      "nodeId",
+      "scheduleId",
+      "recordingId",
+      "openedAt",
+      "acknowledgedAt",
+      "suppressedUntil",
+      "resolvedAt",
+      "details",
+    ]),
+    ...events.map((event) =>
+      csvRow([
+        event.id,
+        event.type,
+        event.severity,
+        event.status,
+        event.nodeId ?? "",
+        event.scheduleId ?? "",
+        event.recordingId ?? "",
+        event.openedAt,
+        event.acknowledgedAt ?? "",
+        event.suppressedUntil ?? "",
+        event.resolvedAt ?? "",
+        jsonCell(event.details),
+      ]),
+    ),
+  ].join("\n");
+}
+
+function csvRow(values: string[]) {
+  return values.map(csvCell).join(",");
+}
+
+function csvCell(value: string) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function jsonCell(value: unknown) {
+  return value ? JSON.stringify(value) : "";
+}
+
+function healthExportFileName() {
+  return `rakkr-health-events-${new Date().toISOString().replaceAll(":", "-")}.csv`;
 }

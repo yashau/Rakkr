@@ -277,8 +277,8 @@ Current partial implementation:
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained clipping.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
-- Health event APIs can filter by event type, node, recording, schedule, severity, and status.
-- Node health summaries, central health workbench, recent events, trends, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
+- Health event APIs can filter by event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
+- Node health summaries, central health workbench, recent events, trends, scoped CSV export, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, clipping, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
@@ -799,6 +799,7 @@ Current implementation baseline:
 198. ✅ Add bulk health event lifecycle controls.
 199. ✅ Add recording jobs workbench.
 200. ✅ Add recording jobs stop controls.
+201. ✅ Add scoped health-event CSV export.
 
 ## Open Questions
 

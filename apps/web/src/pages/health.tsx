@@ -4,6 +4,7 @@ import type { HealthEvent } from "@rakkr/shared";
 import {
   AlertTriangle,
   CheckCircle2,
+  Download,
   HeartPulse,
   RotateCcw,
   ShieldCheck,
@@ -33,6 +34,7 @@ import {
   defaultNodeHealthSuppressedUntil,
   nodeHealthLifecycleInput,
 } from "@/lib/node-page-helpers";
+import { downloadBlob } from "@/lib/recording-page-helpers";
 
 const statuses: Array<"" | HealthEvent["status"]> = [
   "",
@@ -114,6 +116,10 @@ export function HealthPage() {
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
     },
   });
+  const exportMutation = useMutation({
+    mutationFn: () => api.healthEventsExport(apiFilters),
+    onSuccess: downloadBlob,
+  });
 
   if (currentUserQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading health events.</p>;
@@ -151,14 +157,25 @@ export function HealthPage() {
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{summary.total} visible events</p>
           </div>
-          <Button
-            onClick={() => setFilters(emptyHealthPageFilters)}
-            type="button"
-            variant="outline"
-          >
-            <RotateCcw className="size-4" />
-            Reset
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={exportMutation.isPending}
+              onClick={() => exportMutation.mutate()}
+              type="button"
+              variant="outline"
+            >
+              <Download className="size-4" />
+              Export CSV
+            </Button>
+            <Button
+              onClick={() => setFilters(emptyHealthPageFilters)}
+              type="button"
+              variant="outline"
+            >
+              <RotateCcw className="size-4" />
+              Reset
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-4">

@@ -34,6 +34,7 @@ test("health routes deny users without required permissions", async () => {
 
   const responses = await Promise.all([
     app.request("/api/v1/health-events"),
+    app.request("/api/v1/health-events/export"),
     requestJson(app, "/api/v1/health-events", "POST", {
       nodeId: "node_health_denied",
       severity: "warning",
@@ -62,7 +63,7 @@ test("health routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "health:acknowledge:health.events.acknowledge",
@@ -71,10 +72,81 @@ test("health routes deny users without required permissions", async () => {
     "health:acknowledge:health.events.reopen",
     "health:acknowledge:health.events.resolve",
     "health:acknowledge:health.events.suppress",
+    "health:read:health.events.export",
     "health:read:health.events.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
   assert.ok(deniedEvents.every((event) => event.actor.id === currentUser.id));
+});
+
+test("health event export returns scoped filtered csv and audits access", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:read"]);
+  const healthEventStore = createHealthEventStore("", [
+    event({
+      details: { dbfs: -72, reason: "too quiet" },
+      id: "health_visible",
+      nodeId: "node_1",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.scheduled_low_signal",
+    }),
+    event({
+      id: "health_filtered",
+      nodeId: "node_1",
+      severity: "warning",
+      status: "open",
+      type: "watchdog.node_offline",
+    }),
+    event({
+      id: "health_hidden",
+      nodeId: "node_hidden",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.scheduled_low_signal",
+    }),
+  ]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async (_user, target) => target.id !== "node_hidden",
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermission,
+  });
+
+  const response = await app.request(
+    "/api/v1/health-events/export?severity=critical&type=watchdog.scheduled_low_signal",
+  );
+  const csv = await response.text();
+  const [auditEvent] = await auditStore.list({ action: "health.events.export.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+  assert.match(
+    response.headers.get("content-disposition") ?? "",
+    /^attachment; filename="rakkr-health-events-/,
+  );
+  assert.match(csv, /^"id","type","severity","status","nodeId"/m);
+  assert.match(csv, /"health_visible","watchdog\.scheduled_low_signal","critical","open"/);
+  assert.match(csv, /"\{""dbfs"":-72,""reason"":""too quiet""\}"/);
+  assert.doesNotMatch(csv, /health_filtered/);
+  assert.doesNotMatch(csv, /health_hidden/);
+  assert.equal(auditEvent?.permission, "health:read");
+  assert.equal(auditEvent?.details.exportedCount, 1);
+  assert.deepEqual(auditEvent?.details.filters, {
+    limit: undefined,
+    nodeId: undefined,
+    recordingId: undefined,
+    scheduleId: undefined,
+    severity: "critical",
+    status: undefined,
+    type: "watchdog.scheduled_low_signal",
+  });
 });
 
 test("health bulk lifecycle updates visible events and audits each event", async () => {

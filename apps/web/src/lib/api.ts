@@ -452,6 +452,8 @@ export const api = {
     fetchBlob(withQuery("/api/v1/audit-events/export", filters)),
   healthEvents: (filters: HealthEventFilters = {}) =>
     fetchJson<{ data: HealthEvent[] }>(withQuery("/api/v1/health-events", filters)),
+  healthEventsExport: (filters: HealthEventFilters = {}) =>
+    fetchBlob(withQuery("/api/v1/health-events/export", filters)),
   createHealthEvent: (input: HealthEventCreateInput) =>
     fetchJson<{ data: HealthEvent }>("/api/v1/health-events", {
       body: JSON.stringify(input),
