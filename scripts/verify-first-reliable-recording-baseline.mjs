@@ -29,6 +29,7 @@ const sourceFiles = [
   "apps/web/src/pages/jobs.tsx",
   "apps/web/src/pages/schedule-detail.tsx",
   "apps/web/src/lib/schedule-detail-page-helpers.ts",
+  "apps/api/test/recording-start-routes.test.ts",
   "apps/api/test/recording-routes.test.ts",
   "apps/api/test/recording-job-export.test.ts",
   "apps/api/test/recording-jobs.test.ts",
@@ -46,7 +47,7 @@ const sourceFiles = [
 const baselinePhrases = [
   "MVP baseline checked",
   "Ad-hoc recording start",
-  "node, profile, upload policy, folder, name, and tags",
+  "node, profile, upload policy, folder, name, tags, and optional capture backend/interface targeting",
   "Scheduled due runs",
   "schedule-owned recordings",
   "claim jobs",
@@ -137,7 +138,7 @@ const sourceSnippets = [
   "--max-concurrent-recordings",
 ];
 const testSnippets = [
-  "ad hoc recording start uses requested node profile policy and metadata",
+  "ad hoc recording start uses requested capture backend and interface",
   "ad hoc recording completes through agent cache attach and exposes cached media",
   "claim-next lets one node claim multiple queued recordings independently",
   "agent config read returns node recording capacity",

@@ -11,6 +11,8 @@ import {
 test("recording start input trims optional metadata and deduplicates tags", () => {
   assert.deepEqual(
     startInputFromDraft({
+      captureBackend: "jack",
+      captureInterfaceId: " iface_jack ",
       folder: " meetings/voice ",
       name: " Council Room ",
       nodeId: "node_room_101",
@@ -19,6 +21,8 @@ test("recording start input trims optional metadata and deduplicates tags", () =
       uploadPolicyId: " upload_stub ",
     }),
     {
+      captureBackend: "jack",
+      captureInterfaceId: "iface_jack",
       folder: "meetings/voice",
       name: "Council Room",
       nodeId: "node_room_101",
@@ -32,6 +36,8 @@ test("recording start input trims optional metadata and deduplicates tags", () =
 test("recording start input omits blank optional metadata", () => {
   assert.deepEqual(
     startInputFromDraft({
+      captureBackend: "",
+      captureInterfaceId: " ",
       folder: " ",
       name: "",
       nodeId: "node_room_101",
@@ -40,6 +46,8 @@ test("recording start input omits blank optional metadata", () => {
       uploadPolicyId: " ",
     }),
     {
+      captureBackend: undefined,
+      captureInterfaceId: undefined,
       folder: undefined,
       name: undefined,
       nodeId: "node_room_101",

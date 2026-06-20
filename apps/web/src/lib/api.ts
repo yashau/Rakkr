@@ -144,6 +144,8 @@ export interface RecordingBulkUploadQueueInput extends UploadQueueInput {
 }
 
 export interface RecordingStartInput {
+  captureBackend?: NonNullable<RecordingJob["command"]["captureBackend"]>;
+  captureInterfaceId?: string;
   folder?: string;
   name?: string;
   nodeId: string;

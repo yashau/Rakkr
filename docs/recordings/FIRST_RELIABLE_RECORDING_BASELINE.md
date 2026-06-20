@@ -4,7 +4,7 @@ Status: MVP baseline checked.
 
 ## Behavior
 
-- Ad-hoc recording start accepts node, profile, upload policy, folder, name, and tags, then creates a node job with profile-driven output settings.
+- Ad-hoc recording start accepts node, profile, upload policy, folder, name, tags, and optional capture backend/interface targeting, then creates a node job with profile-driven output settings.
 - Scheduled due runs create schedule-owned recordings and jobs with schedule-owned name, folder, tags, profile, watchdog policy, and upload policy.
 - Recorder nodes can claim jobs, heartbeat running jobs, attach cached audio, complete jobs, and auto-queue cached recordings for upload.
 - Long-running recorder agents can claim-next and run bounded simultaneous jobs from controller node capacity, with `RAKKR_MAX_CONCURRENT_RECORDINGS` as the local fallback.
@@ -19,7 +19,7 @@ Status: MVP baseline checked.
 
 | Check | Evidence |
 | ----- | -------- |
-| Ad-hoc start metadata, profile, upload policy | `apps/api/test/recording-routes.test.ts` |
+| Ad-hoc start metadata, profile, upload policy, and capture targeting | `apps/api/test/recording-start-routes.test.ts`, `apps/api/test/recording-routes.test.ts` |
 | Ad-hoc claim, claim-next, heartbeat, cache attach, playback, download, stream, file | `apps/api/test/agent-routes.test.ts` |
 | Scheduled due-run metadata, claim, cache attach, playback, download, stream, file | `apps/api/test/schedule-runner.test.ts` |
 | Cache checksum, duration, waveform preview, file size | `apps/api/test/recording-cache.test.ts` |

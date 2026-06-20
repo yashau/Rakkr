@@ -60,11 +60,11 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, jobs, lifecycle coverage, schedules with backend/interface selection, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -207,6 +207,7 @@ Current partial implementation:
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
 - Agent capture and meter sampling can use operator-provided argument templates for non-`arecord` commands while preserving the default `arecord` path.
 - Nodes UI and API can persist per-node audio command defaults, and node config sends those defaults to agents for queued captures and idle metering.
+- Ad-hoc recording starts can pin capture backend and target audio interface, or inherit node defaults.
 - Fake-controller agent smoke coverage exercises template-driven capture and meter arguments without audio hardware.
 - Agent meter targeting maps numeric, named, and `CARD=`/`DEV=` ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
 - Agent runtime inventory reports detected PipeWire and JACK command availability, and both have managed capture/meter backend presets.
@@ -824,6 +825,7 @@ Current implementation baseline:
 215. ✅ Add server-backed recording-job backend filters.
 216. ✅ Add schedule-level capture backend selection.
 217. ✅ Add schedule-level capture interface selection.
+218. ✅ Add ad-hoc capture backend/interface selection.
 
 ## Open Questions
 

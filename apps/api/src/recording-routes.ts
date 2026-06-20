@@ -53,6 +53,8 @@ interface RecordingRouteDependencies {
 
 const recordingStartRequestSchema = z
   .object({
+    captureBackend: z.enum(["alsa", "jack", "pipewire"]).optional(),
+    captureInterfaceId: z.string().trim().min(1).max(160).optional(),
     folder: z.string().trim().min(1).max(240).optional(),
     name: z.string().trim().min(1).max(240).optional(),
     nodeId: z.string().trim().min(1).max(160),
@@ -638,6 +640,11 @@ export function registerRecordingRoutes({
         return c.json({ error: "Node not found" }, 404);
       }
 
+      if (!requestedInterfaceBelongsToNode(node, body.data.captureInterfaceId)) {
+        await recordRecordingStartFailure(c, "recording_interface_not_found", node.id, node.alias);
+        return c.json({ error: "Recording interface not found" }, 409);
+      }
+
       const recordingProfileId = body.data.recordingProfileId ?? defaultVoiceRecordingProfile.id;
       const profile = await settingsStore.findRecordingProfile(recordingProfileId);
 
@@ -677,6 +684,8 @@ export function registerRecordingRoutes({
       const job = await createRecordingJob(
         recording,
         await recordingJobTargetOptions({
+          captureBackend: body.data.captureBackend,
+          captureInterfaceId: body.data.captureInterfaceId,
           node,
           recordingProfileId: recording.recordingProfileId,
           settingsStore,
@@ -691,6 +700,8 @@ export function registerRecordingRoutes({
           recordingId: recording.id,
         },
         details: {
+          captureBackend: body.data.captureBackend,
+          captureInterfaceId: body.data.captureInterfaceId,
           jobCommand: job.command,
           jobStatus: job.status,
           profileId: recordingProfileId,
@@ -856,4 +867,13 @@ function defaultAdHocName(now: Date, node: RecorderNode) {
 
 function recordingExportFileName(now: Date) {
   return `rakkr-recordings-${now.toISOString().replaceAll(":", "-").replace(".", "-")}.csv`;
+}
+
+function requestedInterfaceBelongsToNode(
+  node: RecorderNode,
+  captureInterfaceId: string | undefined,
+) {
+  return (
+    !captureInterfaceId || node.interfaces.some((candidate) => candidate.id === captureInterfaceId)
+  );
 }

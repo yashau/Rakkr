@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Radio } from "lucide-react";
 import { useState } from "react";
-import type { RecorderNode, RecordingProfile, UploadPolicy } from "@rakkr/shared";
+import type { AudioInterface, RecorderNode, RecordingProfile, UploadPolicy } from "@rakkr/shared";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ interface RecordingStartPanelProps {
 const emptyNodes: RecorderNode[] = [];
 const emptyRecordingProfiles: RecordingProfile[] = [];
 const emptyUploadPolicies: UploadPolicy[] = [];
+const captureBackends: RecordingStartDraft["captureBackend"][] = ["", "alsa", "jack", "pipewire"];
 const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
@@ -70,12 +71,13 @@ export function RecordingStartPanel({
   const recordingProfiles = recordingProfilesQuery.data?.data ?? emptyRecordingProfiles;
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
   const selectedNodeId = draft.nodeId || nodes[0]?.id || "";
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedRecordingProfileId = draft.recordingProfileId || recordingProfiles[0]?.id || "";
   const selectedUploadPolicyId = draft.uploadPolicyId || uploadPolicies[0]?.id || "";
 
   return (
     <form
-      className="grid gap-3 rounded-lg border border-border bg-panel p-4 shadow-sm md:grid-cols-3 xl:grid-cols-6"
+      className="grid gap-3 rounded-lg border border-border bg-panel p-4 shadow-sm md:grid-cols-3 xl:grid-cols-8"
       onSubmit={(event) => {
         event.preventDefault();
         startMutation.mutate(
@@ -93,12 +95,62 @@ export function RecordingStartPanel({
         <select
           className={selectClassName}
           id="recording-start-node"
-          onChange={(event) => setDraft((current) => ({ ...current, nodeId: event.target.value }))}
+          onChange={(event) => {
+            const nextNode = nodes.find((node) => node.id === event.target.value);
+
+            setDraft((current) => ({
+              ...current,
+              captureInterfaceId: nextNode?.interfaces.some(
+                (candidate) => candidate.id === current.captureInterfaceId,
+              )
+                ? current.captureInterfaceId
+                : "",
+              nodeId: event.target.value,
+            }));
+          }}
           value={selectedNodeId}
         >
           {nodes.map((node) => (
             <option key={node.id} value={node.id}>
               {recordingStartNodeLabel(node)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="recording-start-backend">Backend</Label>
+        <select
+          className={selectClassName}
+          id="recording-start-backend"
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              captureBackend: event.target.value as RecordingStartDraft["captureBackend"],
+            }))
+          }
+          value={draft.captureBackend}
+        >
+          {captureBackends.map((backend) => (
+            <option key={backend || "default"} value={backend}>
+              {backend || "Node default"}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="recording-start-interface">Interface</Label>
+        <select
+          className={selectClassName}
+          id="recording-start-interface"
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, captureInterfaceId: event.target.value }))
+          }
+          value={draft.captureInterfaceId}
+        >
+          <option value="">Node default</option>
+          {selectedNode?.interfaces.map((audioInterface) => (
+            <option key={audioInterface.id} value={audioInterface.id}>
+              {recordingStartInterfaceLabel(audioInterface)}
             </option>
           ))}
         </select>
@@ -184,4 +236,8 @@ export function RecordingStartPanel({
       </div>
     </form>
   );
+}
+
+function recordingStartInterfaceLabel(audioInterface: AudioInterface) {
+  return `${audioInterface.alias} / ${audioInterface.systemName} / ${audioInterface.backend}`;
 }

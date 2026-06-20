@@ -3,6 +3,8 @@ import type { RecorderNode } from "@rakkr/shared";
 import type { RecordingStartInput } from "@/lib/api";
 
 export interface RecordingStartDraft {
+  captureBackend: "" | NonNullable<RecordingStartInput["captureBackend"]>;
+  captureInterfaceId: string;
   folder: string;
   name: string;
   nodeId: string;
@@ -12,6 +14,8 @@ export interface RecordingStartDraft {
 }
 
 export const emptyRecordingStartDraft: RecordingStartDraft = {
+  captureBackend: "",
+  captureInterfaceId: "",
   folder: "",
   name: "",
   nodeId: "",
@@ -22,6 +26,8 @@ export const emptyRecordingStartDraft: RecordingStartDraft = {
 
 export function startInputFromDraft(draft: RecordingStartDraft): RecordingStartInput {
   return {
+    captureBackend: draft.captureBackend || undefined,
+    captureInterfaceId: textOrUndefined(draft.captureInterfaceId),
     folder: textOrUndefined(draft.folder),
     name: textOrUndefined(draft.name),
     nodeId: draft.nodeId,

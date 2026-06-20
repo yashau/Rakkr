@@ -33,7 +33,6 @@ process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(routeRoot, "upload-polici
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerRecordingRoutes } = await import("../src/recording-routes.js");
-const { createUploadPolicy } = await import("../src/upload-policies.js");
 
 test.after(async () => {
   await rm(routeRoot, { force: true, recursive: true });
@@ -624,67 +623,6 @@ test("recording delete rejects active recordings and audits failure", async () =
   assert.equal(event?.target.id, "rec_delete_active");
 });
 
-test("ad hoc recording start uses requested node profile policy and metadata", async () => {
-  const auditStore = createAuditStore("");
-  const recordingStore = memoryRecordingStore();
-  const permissionCalls: PermissionCall[] = [];
-  const profile = flacProfile();
-  const node = recorderNode();
-  const policy = await createUploadPolicy({
-    enabled: true,
-    id: "upload-policy-adhoc-flac",
-    maxAttempts: 2,
-    name: "Ad Hoc FLAC Archive",
-    provider: "s3",
-    target: "s3://rakkr-archive/ad-hoc",
-    trigger: "manual",
-  });
-  const app = recordingApp({
-    auditStore,
-    nodes: [node],
-    permissionCalls,
-    profiles: [profile],
-    recordingStore,
-  });
-
-  const response = await app.request("/api/v1/recordings", {
-    body: JSON.stringify({
-      folder: "Ad Hoc/Manual",
-      name: "Manual Capture",
-      nodeId: node.id,
-      recordingProfileId: profile.id,
-      tags: ["voice", "Voice", "council"],
-      uploadPolicyId: policy.id,
-    }),
-    headers: { "content-type": "application/json" },
-    method: "POST",
-  });
-  const body = (await response.json()) as {
-    data: RecordingSummary;
-    job: { command: Record<string, unknown>; nodeId: string };
-  };
-  const [event] = await auditStore.list({ action: "recordings.start.succeeded" });
-  const [stored] = await recordingStore.list();
-
-  assert.equal(response.status, 202);
-  assert.equal(permissionCalls.at(-1)?.permission, "recording:create");
-  assert.equal(permissionCalls.at(-1)?.action, "recordings.start");
-  assert.deepEqual(permissionCalls.at(-1)?.target, { id: node.id, type: "node" });
-  assert.equal(body.data.id, stored?.id);
-  assert.equal(body.data.folder, "Ad Hoc/Manual");
-  assert.equal(body.data.name, "Manual Capture");
-  assert.equal(body.data.nodeId, node.id);
-  assert.equal(body.data.recordingProfileId, profile.id);
-  assert.deepEqual(body.data.tags, ["voice", "council"]);
-  assert.equal(body.data.uploadPolicyId, policy.id);
-  assert.equal(body.job.nodeId, node.id);
-  assert.equal(body.job.command.captureInterfaceId, "iface_usb_1");
-  assert.equal(body.job.command.outputCodec, "flac");
-  assert.equal(body.job.command.outputFileName, `${body.data.id}.flac`);
-  assert.equal(event?.details.profileId, profile.id);
-  assert.equal(event?.target.id, body.data.id);
-});
-
 test("ad hoc recording start audits missing dependencies", async () => {
   const auditStore = createAuditStore("");
   const node = recorderNode();
@@ -975,18 +913,5 @@ function recording(input: Partial<RecordingSummary>): RecordingSummary {
     status: "completed",
     tags: ["voice"],
     ...input,
-  };
-}
-
-function flacProfile(): RecordingProfile {
-  return {
-    bitrateKbps: 256,
-    channelMode: "stereo",
-    codec: "flac",
-    id: "profile_flac",
-    name: "FLAC Archive",
-    silenceDetectionEnabled: false,
-    silenceSkipEnabled: false,
-    vbr: false,
   };
 }
