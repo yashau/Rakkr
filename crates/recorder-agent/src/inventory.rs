@@ -132,7 +132,7 @@ fn discover_arecord_interfaces() -> Vec<AudioInterfaceInventory> {
     parse_alsa_capture_devices(&list_output)
         .into_iter()
         .map(|device| {
-            let metadata = read_alsa_stream_metadata(device.card);
+            let metadata = read_alsa_metadata(device.card, device.device);
             let channel_count = metadata.channel_count.unwrap_or(2);
             let sample_rates = if metadata.sample_rates.is_empty() {
                 vec![48_000]
@@ -162,7 +162,7 @@ fn discover_proc_asound_interfaces() -> Vec<AudioInterfaceInventory> {
             parse_proc_asound_pcm_devices(&content)
                 .into_iter()
                 .map(|device| {
-                    let metadata = read_alsa_stream_metadata(device.card);
+                    let metadata = read_alsa_metadata(device.card, device.device);
                     let channel_count = metadata.channel_count.unwrap_or(2);
                     let sample_rates = if metadata.sample_rates.is_empty() {
                         vec![48_000]
@@ -403,6 +403,45 @@ fn read_alsa_stream_metadata(card: u16) -> AlsaStreamMetadata {
         .unwrap_or_default()
 }
 
+fn read_alsa_metadata(card: u16, device: u16) -> AlsaStreamMetadata {
+    let metadata = read_alsa_stream_metadata(card);
+
+    if metadata.is_complete() {
+        metadata
+    } else {
+        metadata.with_fallback(read_alsa_hw_params_metadata(card, device))
+    }
+}
+
+fn read_alsa_hw_params_metadata(card: u16, device: u16) -> AlsaStreamMetadata {
+    let Ok(output) = Command::new("arecord")
+        .arg("-D")
+        .arg(format!("hw:{card},{device}"))
+        .arg("--dump-hw-params")
+        .arg("-f")
+        .arg("S16_LE")
+        .arg("-r")
+        .arg("48000")
+        .arg("-c")
+        .arg("2")
+        .arg("-d")
+        .arg("1")
+        .arg("/dev/null")
+        .output()
+    else {
+        return AlsaStreamMetadata::default();
+    };
+
+    if !output.status.success() {
+        return AlsaStreamMetadata::default();
+    }
+
+    let mut content = String::from_utf8_lossy(&output.stdout).to_string();
+    content.push_str(&String::from_utf8_lossy(&output.stderr));
+
+    parse_alsa_hw_params_metadata(&content)
+}
+
 fn parse_alsa_stream_metadata(input: &str) -> AlsaStreamMetadata {
     let mut metadata = AlsaStreamMetadata::default();
     let mut in_capture = false;
@@ -433,6 +472,42 @@ fn parse_alsa_stream_metadata(input: &str) -> AlsaStreamMetadata {
     metadata.sample_rates.sort_unstable();
     metadata.sample_rates.dedup();
     metadata
+}
+
+fn parse_alsa_hw_params_metadata(input: &str) -> AlsaStreamMetadata {
+    let mut metadata = AlsaStreamMetadata::default();
+
+    for line in input.lines() {
+        let trimmed = line.trim();
+
+        if let Some(value) = trimmed.strip_prefix("CHANNELS:") {
+            metadata.channel_count = parse_numbers::<u16>(value).into_iter().max();
+        } else if let Some(value) = trimmed.strip_prefix("RATE:") {
+            metadata.sample_rates = parse_numbers(value);
+        }
+    }
+
+    metadata.sample_rates.sort_unstable();
+    metadata.sample_rates.dedup();
+    metadata
+}
+
+impl AlsaStreamMetadata {
+    fn is_complete(&self) -> bool {
+        self.channel_count.is_some() && !self.sample_rates.is_empty()
+    }
+
+    fn with_fallback(mut self, fallback: Self) -> Self {
+        if self.channel_count.is_none() {
+            self.channel_count = fallback.channel_count;
+        }
+
+        if self.sample_rates.is_empty() {
+            self.sample_rates = fallback.sample_rates;
+        }
+
+        self
+    }
 }
 
 fn parse_numbers<T>(value: &str) -> Vec<T>
@@ -488,6 +563,69 @@ Capture:
             metadata,
             AlsaStreamMetadata {
                 channel_count: Some(32),
+                sample_rates: vec![44_100, 48_000],
+            }
+        );
+    }
+
+    #[test]
+    fn parses_arecord_hw_params_metadata() {
+        let metadata = parse_alsa_hw_params_metadata(
+            r#"
+HW Params of device "hw:1,0":
+--------------------
+ACCESS:  MMAP_INTERLEAVED RW_INTERLEAVED
+FORMAT:  S16_LE S24_LE S32_LE
+CHANNELS: [1 32]
+RATE: [44100 96000]
+PERIOD_SIZE: [32 8192]
+"#,
+        );
+
+        assert_eq!(
+            metadata,
+            AlsaStreamMetadata {
+                channel_count: Some(32),
+                sample_rates: vec![44_100, 96_000],
+            }
+        );
+    }
+
+    #[test]
+    fn keeps_proc_stream_metadata_before_hw_params_fallback() {
+        let metadata = AlsaStreamMetadata {
+            channel_count: Some(32),
+            sample_rates: vec![48_000],
+        }
+        .with_fallback(AlsaStreamMetadata {
+            channel_count: Some(2),
+            sample_rates: vec![44_100],
+        });
+
+        assert_eq!(
+            metadata,
+            AlsaStreamMetadata {
+                channel_count: Some(32),
+                sample_rates: vec![48_000],
+            }
+        );
+    }
+
+    #[test]
+    fn fills_missing_stream_metadata_from_hw_params_fallback() {
+        let metadata = AlsaStreamMetadata {
+            channel_count: None,
+            sample_rates: Vec::new(),
+        }
+        .with_fallback(AlsaStreamMetadata {
+            channel_count: Some(8),
+            sample_rates: vec![44_100, 48_000],
+        });
+
+        assert_eq!(
+            metadata,
+            AlsaStreamMetadata {
+                channel_count: Some(8),
                 sample_rates: vec![44_100, 48_000],
             }
         );
