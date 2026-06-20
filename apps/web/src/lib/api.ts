@@ -226,6 +226,7 @@ export type RecordingCacheState = "cached" | "missing";
 
 export interface RecordingJobFilters {
   captureBackend?: NonNullable<RecordingJob["command"]["captureBackend"]>;
+  captureInterfaceId?: string;
   search?: string;
   status?: RecordingJob["status"];
 }

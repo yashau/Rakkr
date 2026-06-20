@@ -203,7 +203,7 @@ export function JobsPage() {
           <SummaryTile icon={AlertTriangle} label="Failed" tone="critical" value={summary.failed} />
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[220px_220px_1fr]">
+        <div className="mt-4 grid gap-3 md:grid-cols-[180px_180px_220px_1fr]">
           <Field label="Status">
             <select
               className={selectClassName}
@@ -239,6 +239,18 @@ export function JobsPage() {
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label="Interface">
+            <Input
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  captureInterfaceId: event.target.value,
+                }))
+              }
+              placeholder="interface id"
+              value={filters.captureInterfaceId}
+            />
           </Field>
           <Field label="Search">
             <Input
@@ -498,6 +510,7 @@ function setJobSelected(
 function recordingJobApiFilters(filters: JobsPageFilters) {
   return {
     captureBackend: filters.captureBackend || undefined,
+    captureInterfaceId: filters.captureInterfaceId.trim() || undefined,
     search: filters.search.trim() || undefined,
     status: filters.status || undefined,
   };

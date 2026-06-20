@@ -487,7 +487,7 @@ Current implementation baseline:
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
 - Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
-- Recording jobs workbench shows server-scoped status/search/backend filters, job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered and selected-job CSV export, RBAC-mirrored stop controls for active jobs, audited retry controls for failed/cancelled jobs, and audited selected-job bulk stop/retry controls.
+- Recording jobs workbench shows server-scoped status/search/backend/interface filters, job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered and selected-job CSV export, RBAC-mirrored stop controls for active jobs, audited retry controls for failed/cancelled jobs, and audited selected-job bulk stop/retry controls.
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
 - `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, controller capacity override, bounded concurrent jobs, concurrent-safe local health log output, rendered MP3/VBR, recorder-cache delete-after-upload, recorder-cache max-bytes idle sweep, cache-upload failure handling, and controller stop requests without audio hardware.
 - `mise run check` includes fake-controller agent smoke coverage for recorder-cache min-free-disk idle sweep using deterministic disk-pressure input.
@@ -826,6 +826,7 @@ Current implementation baseline:
 216. ✅ Add schedule-level capture backend selection.
 217. ✅ Add schedule-level capture interface selection.
 218. ✅ Add ad-hoc capture backend/interface selection.
+219. ✅ Add server-backed recording-job interface filters.
 
 ## Open Questions
 

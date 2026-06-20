@@ -79,7 +79,7 @@ test("recording job filters match status and searchable job fields", () => {
     job({ id: "job_1", command: { ...job().command, captureDevice: "hw:CARD=Loopback,DEV=0" } }),
     job({
       id: "job_2",
-      command: { ...job().command, captureBackend: "pipewire" },
+      command: { ...job().command, captureBackend: "pipewire", captureInterfaceId: "iface_pw" },
       claimedBy: "agent-node-2",
       failureReason: "encoder failed",
       status: "failed",
@@ -100,6 +100,10 @@ test("recording job filters match status and searchable job fields", () => {
   ]);
   assert.deepEqual(
     filterRecordingJobs(jobs, { ...emptyJobsPageFilters, captureBackend: "pipewire" }),
+    [jobs[1]],
+  );
+  assert.deepEqual(
+    filterRecordingJobs(jobs, { ...emptyJobsPageFilters, captureInterfaceId: " iface_pw " }),
     [jobs[1]],
   );
 });

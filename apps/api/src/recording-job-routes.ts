@@ -32,6 +32,10 @@ const recordingJobsQuerySchema = z.object({
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     z.enum(["alsa", "jack", "pipewire"]).optional(),
   ),
+  captureInterfaceId: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().trim().max(160).optional(),
+  ),
   search: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     z.string().trim().max(160).optional(),

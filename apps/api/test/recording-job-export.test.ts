@@ -88,15 +88,18 @@ test("recording job list route filters scoped jobs by status search and backend"
   const jackJob = await createRecordingJob(recordings[0] as RecordingSummary, {
     captureBackend: "jack",
     captureDevice: `${prefix}:system:capture_1`,
+    captureInterfaceId: `${prefix}_iface_jack`,
   });
 
   await createRecordingJob(recordings[1] as RecordingSummary, {
     captureBackend: "pipewire",
     captureDevice: `${prefix}:alsa_input.usb-recorder`,
+    captureInterfaceId: `${prefix}_iface_pipewire`,
   });
   const failedJob = await createRecordingJob(recordings[2] as RecordingSummary, {
     captureBackend: "jack",
     captureDevice: `${prefix}:system:capture_2`,
+    captureInterfaceId: `${prefix}_iface_other`,
   });
 
   await failRecordingJob(failedJob.id, "capture_failed");
@@ -107,7 +110,7 @@ test("recording job list route filters scoped jobs by status search and backend"
     recordingStore,
   });
   const response = await app.request(
-    `/api/v1/recording-jobs?search=${prefix}&status=queued&captureBackend=jack`,
+    `/api/v1/recording-jobs?search=${prefix}&status=queued&captureBackend=jack&captureInterfaceId=${prefix}_iface_jack`,
   );
   const body = (await response.json()) as { data: RecordingJob[] };
 
@@ -130,7 +133,7 @@ test("recording job export route is RBAC-gated and audited", async () => {
   });
 
   const response = await app.request(
-    "/api/v1/recording-jobs/export?status=queued&search=room&captureBackend=jack",
+    "/api/v1/recording-jobs/export?status=queued&search=room&captureBackend=jack&captureInterfaceId=iface_export_jack",
   );
   const csv = await response.text();
   const [event] = await auditStore.list({ action: "recording_jobs.export.succeeded" });
@@ -152,6 +155,7 @@ test("recording job export route is RBAC-gated and audited", async () => {
   assert.equal(event?.details.exportedCount, 0);
   assert.deepEqual(event?.details.filters, {
     captureBackend: "jack",
+    captureInterfaceId: "iface_export_jack",
     search: "room",
     status: "queued",
   });

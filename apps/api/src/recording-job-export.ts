@@ -2,6 +2,7 @@ import type { RecordingJob, RecordingJobStatus } from "@rakkr/shared";
 
 export interface RecordingJobExportFilters {
   captureBackend?: RecordingJob["command"]["captureBackend"];
+  captureInterfaceId?: string;
   search?: string;
   status?: RecordingJobStatus;
 }
@@ -16,6 +17,13 @@ export function filterRecordingJobsForExport(
     if (
       filters.captureBackend &&
       (job.command.captureBackend ?? "alsa") !== filters.captureBackend
+    ) {
+      return false;
+    }
+
+    if (
+      filters.captureInterfaceId &&
+      job.command.captureInterfaceId !== filters.captureInterfaceId
     ) {
       return false;
     }
