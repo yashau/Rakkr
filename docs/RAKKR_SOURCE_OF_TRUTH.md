@@ -64,7 +64,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, schedules, settings, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, template-driven capture args, ALSA device matching, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, template-driven capture/meter args, ALSA device matching, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -205,7 +205,7 @@ Current partial implementation:
 - Nodes page direct access mirrors `node:read`; node health panels mirror `health:read`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
-- Agent capture can use an operator-provided argument template for non-`arecord` capture commands while preserving the default `arecord` path.
+- Agent capture and meter sampling can use operator-provided argument templates for non-`arecord` commands while preserving the default `arecord` path.
 - Agent meter targeting maps numeric, named, and `CARD=`/`DEV=` ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
 - Agent runtime inventory reports detected PipeWire and JACK command availability without claiming adapter support.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
@@ -774,6 +774,7 @@ Current implementation baseline:
 180. ✅ Map ALSA CARD/DEV capture-device strings to inventory meter targets.
 181. ✅ Report PipeWire and JACK availability in agent runtime inventory.
 182. ✅ Add template-driven capture command arguments.
+183. ✅ Add template-driven meter command arguments.
 
 ## Open Questions
 

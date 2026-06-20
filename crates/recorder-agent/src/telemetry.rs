@@ -5,6 +5,8 @@ use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::meter_command::{MeterCaptureConfig, meter_command_args};
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeterFrame {
@@ -53,16 +55,6 @@ pub struct ChannelCorrelation {
     pub score: f32,
 }
 
-pub struct MeterCaptureConfig<'a> {
-    pub channel_count: u16,
-    pub clip_dbfs: f32,
-    pub command: &'a str,
-    pub device: &'a str,
-    pub format: &'a str,
-    pub sample_rate: u32,
-    pub sample_seconds: u64,
-}
-
 const MONITOR_CHUNK_SAMPLE_RATE: u32 = 16_000;
 
 pub fn now_rfc3339() -> String {
@@ -91,20 +83,9 @@ pub fn alsa_meter_sample(
         );
     }
 
+    let args = meter_command_args(config)?;
     let output = Command::new(config.command)
-        .arg("-D")
-        .arg(config.device)
-        .arg("-f")
-        .arg(config.format)
-        .arg("-r")
-        .arg(config.sample_rate.to_string())
-        .arg("-c")
-        .arg(config.channel_count.to_string())
-        .arg("-d")
-        .arg(config.sample_seconds.max(1).to_string())
-        .arg("-t")
-        .arg("raw")
-        .arg("-q")
+        .args(&args)
         .output()
         .with_context(|| format!("run {} for ALSA meter sampling", config.command))?;
 

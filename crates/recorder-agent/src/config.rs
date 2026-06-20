@@ -124,6 +124,9 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_METER_BACKEND", value_enum, default_value_t = MeterBackend::Alsa)]
     pub meter_backend: MeterBackend,
 
+    #[arg(long, env = "RAKKR_METER_ARGS_TEMPLATE")]
+    pub meter_args_template: Option<String>,
+
     #[arg(long, env = "RAKKR_METER_SAMPLE_SECONDS", default_value_t = 1)]
     pub meter_sample_seconds: u64,
 

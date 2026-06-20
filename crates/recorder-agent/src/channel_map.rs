@@ -785,6 +785,7 @@ mod tests {
             heartbeat_seconds: 5,
             job_poll_seconds: 2,
             meter_backend: crate::config::MeterBackend::Synthetic,
+            meter_args_template: None,
             meter_clip_dbfs: -1.0,
             meter_flatline_dbfs: -120.0,
             meter_sample_seconds: 1,

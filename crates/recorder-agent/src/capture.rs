@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use serde::Serialize;
 use tracing::info;
 
+use crate::command_template::{CommandTemplateValues, command_template_args};
 use crate::config::AgentConfig;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -103,7 +104,18 @@ pub fn local_capture_path(file_name: &str) -> PathBuf {
 
 pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> anyhow::Result<Vec<String>> {
     if let Some(template) = &plan.args_template {
-        return capture_template_args(plan, output_path, template);
+        return command_template_args(
+            template,
+            &CommandTemplateValues {
+                channels: plan.channels,
+                device: &plan.device,
+                format: &plan.format,
+                output: output_path,
+                sample_rate: plan.sample_rate,
+                seconds: plan.seconds,
+            },
+        )
+        .map_err(|error| error.context("capture args template"));
     }
 
     Ok(vec![
@@ -119,35 +131,6 @@ pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> anyhow::Re
         plan.seconds.to_string(),
         output_path.to_string(),
     ])
-}
-
-fn capture_template_args(
-    plan: &CapturePlan,
-    output_path: &str,
-    template: &str,
-) -> anyhow::Result<Vec<String>> {
-    let Some(args) = shlex::split(template) else {
-        return Err(anyhow!("parse capture args template"));
-    };
-
-    if args.is_empty() {
-        anyhow::bail!("capture args template must not be empty");
-    }
-
-    Ok(args
-        .into_iter()
-        .map(|arg| capture_template_arg(plan, output_path, &arg))
-        .collect())
-}
-
-fn capture_template_arg(plan: &CapturePlan, output_path: &str, arg: &str) -> String {
-    arg.replace("{device}", &plan.device)
-        .replace("{format}", &plan.format)
-        .replace("{sample_rate}", &plan.sample_rate.to_string())
-        .replace("{channels}", &plan.channels.to_string())
-        .replace("{seconds}", &plan.seconds.to_string())
-        .replace("{output_path}", output_path)
-        .replace("{output}", output_path)
 }
 
 pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
@@ -434,6 +417,7 @@ mod tests {
             heartbeat_seconds: 5,
             job_poll_seconds: 2,
             meter_backend: crate::config::MeterBackend::Alsa,
+            meter_args_template: None,
             meter_clip_dbfs: -1.0,
             meter_flatline_dbfs: -120.0,
             meter_sample_seconds: 1,
@@ -539,7 +523,7 @@ mod tests {
             capture_command_args(&capture_plan_from_config(&config).unwrap(), "/tmp/rec.wav")
                 .expect_err("unterminated quote should fail");
 
-        assert!(error.to_string().contains("parse capture args template"));
+        assert!(error.to_string().contains("capture args template"));
     }
 
     #[test]

@@ -2,10 +2,12 @@ mod alsa_device;
 mod cache_content_type;
 mod capture;
 mod channel_map;
+mod command_template;
 mod config;
 mod controller;
 mod health_log;
 mod inventory;
+mod meter_command;
 mod monitor_sync;
 mod node_config;
 mod recorder_cache_retention;
@@ -18,10 +20,11 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Parser;
 use config::{AgentConfig, MeterBackend};
+use meter_command::MeterCaptureConfig;
 use serde_json::{Value, json};
 use telemetry::{
-    MeterCaptureConfig, MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample,
-    synthetic_meter_frame, synthetic_meter_sample,
+    MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample, synthetic_meter_frame,
+    synthetic_meter_sample,
 };
 use tokio::task::JoinSet;
 use tracing::{info, warn};
@@ -459,6 +462,7 @@ fn meter_target(config: &AgentConfig, inventory: &inventory::NodeInventory) -> (
 
 fn meter_capture_config<'a>(config: &'a AgentConfig, channel_count: u16) -> MeterCaptureConfig<'a> {
     MeterCaptureConfig {
+        args_template: config.meter_args_template.as_deref(),
         channel_count,
         clip_dbfs: config.meter_clip_dbfs,
         command: &config.capture_command,
