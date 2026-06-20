@@ -5,7 +5,21 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeFakeCaptureCommand, writeFakeDfCommand, writeFakeRenderCommand } from "./agent-fake-controller-smoke-support.mjs";
+import {
+  writeFakeCaptureCommand,
+  writeFakeDfCommand,
+  writeFakeRenderCommand,
+  writeFakeTemplateCaptureCommand,
+} from "./agent-fake-controller-smoke-support.mjs";
+import {
+  empty,
+  invariant,
+  json,
+  listen,
+  readBody,
+  run,
+  waitFor,
+} from "./agent-fake-controller-smoke-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -52,11 +66,26 @@ const server = createServer(async (request, response) => {
 try {
   const address = await listen(server);
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
+  const templateCaptureCommand = await writeFakeTemplateCaptureCommand(smokeRoot);
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
   for (const scenario of scenarios) {
     await runScenario({ address, captureCommand, renderCommand, scenario });
   }
+  await runScenario({
+    address,
+    captureCommand: templateCaptureCommand,
+    renderCommand,
+    scenario: {
+      captureArgsTemplate:
+        "--template-mode --write-output {output} --device {device} --rate {sample_rate} --channels {channels} --duration {seconds}",
+      expectSuccess: true,
+      jobId: "job_fake_controller_template_capture",
+      name: "template-capture",
+      outputFileName: "rec_fake_controller_template_capture.mp3",
+      recordingId: "rec_fake_controller_template_capture",
+    },
+  });
   await runConcurrentScenario({ address, captureCommand, renderCommand });
   await runDeferredSweepScenario({ address, captureCommand, renderCommand });
   await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
@@ -72,7 +101,7 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   const job = createJob(scenario);
   const observed = createObserved();
   activeScenario = { job, jobs: [job], observed, scenario };
-  const result = await run("cargo", [
+  const agentArgs = [
     "run",
     "--quiet",
     "--manifest-path",
@@ -87,6 +116,13 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     stateFile,
     "--capture-command",
     captureCommand,
+  ];
+
+  if (scenario.captureArgsTemplate) {
+    agentArgs.push("--capture-args-template", scenario.captureArgsTemplate);
+  }
+
+  agentArgs.push(
     "--capture-growth-grace-seconds",
     "0",
     "--capture-min-output-bytes",
@@ -102,7 +138,9 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     "--node-id",
     nodeId,
     "--run-next-job",
-  ]);
+  );
+
+  const result = await run("cargo", agentArgs, { cwd: smokeRoot });
 
   if (scenario.expectSuccess && result.code !== 0) {
     throw new Error(
@@ -822,22 +860,6 @@ function rememberRunningJobs(observed, jobs) {
   );
 }
 
-function listen(server) {
-  return new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-
-      if (!address || typeof address === "string") {
-        reject(new Error("HTTP server did not return a TCP address"));
-        return;
-      }
-
-      resolve(address);
-    });
-  });
-}
-
 function spawnAgent(agentArgs, extraEnv = {}) {
   const child = spawn(
     "cargo",
@@ -917,83 +939,4 @@ function spawnDaemonAgent(
     ],
     extraEnv,
   );
-}
-
-function run(command, args) {
-  const timeoutMs = Number(process.env.RAKKR_AGENT_FAKE_CONTROLLER_TIMEOUT_MS ?? 120000);
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: smokeRoot,
-      env: { ...process.env, CARGO_TERM_COLOR: "never" },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let done = false;
-    let stderr = "";
-    let stdout = "";
-    const timeout = setTimeout(() => {
-      child.kill();
-      finish({ code: -1, stderr: `${stderr}\nprocess timed out after ${timeoutMs}ms`, stdout });
-    }, timeoutMs);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", reject);
-    child.on("close", (code) => finish({ code: code ?? -1, stderr, stdout }));
-
-    function finish(result) {
-      if (done) {
-        return;
-      }
-
-      done = true;
-      clearTimeout(timeout);
-      resolve(result);
-    }
-  });
-}
-
-async function waitFor(predicate, timeoutMs, describe) {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  throw new Error(`Timed out waiting for condition: ${describe()}`);
-}
-
-async function readBody(request) {
-  const chunks = [];
-
-  for await (const chunk of request) {
-    chunks.push(Buffer.from(chunk));
-  }
-
-  return Buffer.concat(chunks);
-}
-
-function json(response, status, payload) {
-  response.writeHead(status, { "content-type": "application/json" });
-  response.end(JSON.stringify(payload));
-}
-
-function empty(response) {
-  response.writeHead(204);
-  response.end();
-}
-
-function invariant(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
 }

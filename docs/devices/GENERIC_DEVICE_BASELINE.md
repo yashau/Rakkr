@@ -9,11 +9,13 @@ Status: Partial baseline checked.
 - Capture and meter sampling are configured by command, optional argument templates, device, format, sample rate, channel count, duration, and output path/stdout.
 - Agent capture and meter paths use `arecord` with configurable devices such as `default`, `hw:2,0`, `plughw:2,0`, `hw:CARD=Loopback,DEV=1`, or loopback devices.
 - Capture and meter argument templates can target non-`arecord` tools with placeholders for device, format, sample rate, channels, duration, and output target while the default path keeps `arecord` arguments.
+- Capture and meter template CLI flags accept hyphen-leading template values.
+- Fake-controller smoke coverage exercises template-driven capture arguments through agent job claim, capture, render, cache attach, and cleanup.
 - Inventory discovers ALSA capture devices from `arecord -l` and `/proc/asound/pcm`, then adds channel count, sample rates, sysfs hardware paths, and serials when available.
 - When `/proc/asound/card*/stream0` lacks capture capability details, inventory falls back to `arecord --dump-hw-params` for ALSA channel and sample-rate metadata.
 - Meter target selection maps numeric, named, and `CARD=`/`DEV=` `hw:`/`plughw:` ALSA capture devices, including `hw:Loopback,1,0`, to collected inventory interfaces when possible.
 - Runtime inventory reports detected PipeWire and JACK command availability alongside collected audio interface backends.
-- Synthetic meters and fake-controller capture/render smoke tests validate agent workflows without hardware.
+- Synthetic meters and fake-controller capture/render smoke tests validate agent workflows, including template-driven capture arguments, without hardware.
 - Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, and render/channel-map output on a recorder node.
 - Remaining gaps: Linux loopback smoke execution on a recorder node, physical X32 validation, broader physical-device validation, and JACK/PipeWire adapters are not complete.
 

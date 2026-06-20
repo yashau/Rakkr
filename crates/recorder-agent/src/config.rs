@@ -94,7 +94,7 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CAPTURE_COMMAND", default_value = "arecord")]
     pub capture_command: String,
 
-    #[arg(long, env = "RAKKR_CAPTURE_ARGS_TEMPLATE")]
+    #[arg(long, env = "RAKKR_CAPTURE_ARGS_TEMPLATE", allow_hyphen_values = true)]
     pub capture_args_template: Option<String>,
 
     #[arg(long, env = "RAKKR_CHANNEL_RENDER_COMMAND", default_value = "ffmpeg")]
@@ -124,7 +124,7 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_METER_BACKEND", value_enum, default_value_t = MeterBackend::Alsa)]
     pub meter_backend: MeterBackend,
 
-    #[arg(long, env = "RAKKR_METER_ARGS_TEMPLATE")]
+    #[arg(long, env = "RAKKR_METER_ARGS_TEMPLATE", allow_hyphen_values = true)]
     pub meter_args_template: Option<String>,
 
     #[arg(long, env = "RAKKR_METER_SAMPLE_SECONDS", default_value_t = 1)]
@@ -276,5 +276,23 @@ mod tests {
     #[test]
     fn can_explicitly_allow_insecure_controller_transport() {
         validate_controller_transport("http://172.22.145.10:8787", true).unwrap();
+    }
+
+    #[test]
+    fn accepts_hyphen_leading_command_templates() {
+        let config = AgentConfig::try_parse_from([
+            "rakkr-recorder-agent",
+            "--capture-args-template",
+            "--write-output {output}",
+            "--meter-args-template",
+            "--raw -",
+        ])
+        .expect("template args should parse");
+
+        assert_eq!(
+            config.capture_args_template.as_deref(),
+            Some("--write-output {output}")
+        );
+        assert_eq!(config.meter_args_template.as_deref(), Some("--raw -"));
     }
 }

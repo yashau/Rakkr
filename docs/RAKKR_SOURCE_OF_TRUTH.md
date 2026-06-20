@@ -206,6 +206,7 @@ Current partial implementation:
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
 - Agent capture and meter sampling can use operator-provided argument templates for non-`arecord` commands while preserving the default `arecord` path.
+- Fake-controller agent smoke coverage exercises template-driven capture arguments without audio hardware.
 - Agent meter targeting maps numeric, named, and `CARD=`/`DEV=` ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
 - Agent runtime inventory reports detected PipeWire and JACK command availability without claiming adapter support.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
@@ -775,6 +776,7 @@ Current implementation baseline:
 181. ✅ Report PipeWire and JACK availability in agent runtime inventory.
 182. ✅ Add template-driven capture command arguments.
 183. ✅ Add template-driven meter command arguments.
+184. ✅ Add fake-controller smoke coverage for template-driven capture arguments.
 
 ## Open Questions
 

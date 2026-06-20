@@ -30,17 +30,31 @@ console.log(${JSON.stringify(output)});
 }
 
 export async function writeFakeCaptureCommand(directory) {
-  const captureScript = path.join(directory, "fake-capture.mjs");
+  return writeFakeCaptureCommandScript(directory, "fake-capture", false);
+}
+
+export async function writeFakeTemplateCaptureCommand(directory) {
+  return writeFakeCaptureCommandScript(directory, "fake-template-capture", true);
+}
+
+async function writeFakeCaptureCommandScript(directory, commandName, requireTemplateOutputFlag) {
+  const captureScript = path.join(directory, `${commandName}.mjs`);
   await writeFile(
     captureScript,
     `#!/usr/bin/env node
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const outputPath = process.argv.at(-1);
+const outputFlagIndex = process.argv.indexOf("--write-output");
+const outputPath = outputFlagIndex >= 0 ? process.argv[outputFlagIndex + 1] : process.argv.at(-1);
 
 if (!outputPath || outputPath.startsWith("-")) {
   console.error("missing output path");
+  process.exit(2);
+}
+
+if (${JSON.stringify(requireTemplateOutputFlag)} && outputFlagIndex < 0) {
+  console.error("missing template output flag");
   process.exit(2);
 }
 
@@ -73,7 +87,7 @@ function wavFile(samples) {
   );
 
   if (process.platform === "win32") {
-    const commandPath = path.join(directory, "fake-capture.cmd");
+    const commandPath = path.join(directory, `${commandName}.cmd`);
     await writeFile(commandPath, commandShim(captureScript));
 
     return commandPath;
