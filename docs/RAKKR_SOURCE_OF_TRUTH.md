@@ -65,6 +65,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory plus Linux loopback tasks; Linux/hardware validation remains |
+| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, bulk assignment, staged apply; future settings families remain |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, offline, local-log, metrics, and timeline baseline; real-room field calibration remains |
