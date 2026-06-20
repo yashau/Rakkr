@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Permission } from "@rakkr/shared";
 
-import { nodePageActionPermissions, rotateNodeTokenTitle } from "./node-page-helpers";
+import {
+  listenMonitorModeLabel,
+  listenMonitorPollInterval,
+  nodePageActionPermissions,
+  rotateNodeTokenTitle,
+} from "./node-page-helpers";
 
 test("node page action permissions split listen and management actions", () => {
   assert.deepEqual(nodePageActionPermissions(["node:read"]), {
@@ -29,4 +34,13 @@ test("node token rotation titles explain permission and persistence state", () =
   assert.equal(rotateNodeTokenTitle(false, true), "Requires node manage");
   assert.equal(rotateNodeTokenTitle(true, false), "Demo node tokens are not persisted");
   assert.equal(rotateNodeTokenTitle(true, true), "Rotate node token");
+});
+
+test("listen monitor helpers expose source labels and bounded refresh intervals", () => {
+  assert.equal(listenMonitorModeLabel("agent_audio_chunk"), "Agent audio");
+  assert.equal(listenMonitorModeLabel("controller_meter_preview"), "Meter preview");
+  assert.equal(listenMonitorPollInterval(200), 750);
+  assert.equal(listenMonitorPollInterval(1250), 1250);
+  assert.equal(listenMonitorPollInterval(10_000), 3000);
+  assert.equal(listenMonitorPollInterval(Number.NaN), 1500);
 });

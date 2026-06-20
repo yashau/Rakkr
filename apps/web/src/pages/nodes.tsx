@@ -1,4 +1,4 @@
-import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { HealthEvent, NodeRuntime, NodeStatus } from "@rakkr/shared";
 import {
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { NodeIdentityEditor, NodeInterfaceEditor } from "@/components/node-inventory-editors";
+import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -78,12 +79,7 @@ export function NodesPage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [nodeStatusFilter, setNodeStatusFilter] = useState<"" | NodeStatus>("");
   const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
-  const [listenPreview, setListenPreview] = useState<{
-    nodeAlias: string;
-    sessionId: string;
-    startedAt: string;
-    url: string;
-  }>();
+  const [listenPreview, setListenPreview] = useState<ListenMonitorPreview>();
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -111,29 +107,14 @@ export function NodesPage() {
   const listenMutation = useMutation({
     mutationFn: async (node: { alias: string; id: string }) => {
       const session = await api.startListen(node.id);
-      const stream = await api.listenStream(session.data.streamUrl);
 
       return {
         nodeAlias: node.alias,
         session: session.data,
-        stream,
       };
     },
-    onSuccess: ({ nodeAlias, session, stream }) => {
-      const url = URL.createObjectURL(stream.blob);
-
-      setListenPreview((current) => {
-        if (current?.url) {
-          URL.revokeObjectURL(current.url);
-        }
-
-        return {
-          nodeAlias,
-          sessionId: session.sessionId,
-          startedAt: session.startedAt,
-          url,
-        };
-      });
+    onSuccess: ({ nodeAlias, session }) => {
+      setListenPreview({ nodeAlias, session });
     },
   });
   const enrollMutation = useMutation({
@@ -151,15 +132,6 @@ export function NodesPage() {
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
     },
   });
-
-  useEffect(
-    () => () => {
-      if (listenPreview?.url) {
-        URL.revokeObjectURL(listenPreview.url);
-      }
-    },
-    [listenPreview?.url],
-  );
 
   const nodes = nodesQuery.data?.data ?? [];
 
@@ -347,15 +319,7 @@ export function NodesPage() {
       ) : null}
 
       {listenPreview ? (
-        <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
-          <div className="mb-2 text-sm font-medium">
-            {listenPreview.nodeAlias} / {listenPreview.sessionId} /{" "}
-            {formatDateTime(listenPreview.startedAt)}
-          </div>
-          <audio className="w-full" controls src={listenPreview.url}>
-            <track kind="captions" />
-          </audio>
-        </section>
+        <ListenMonitorPanel onClose={() => setListenPreview(undefined)} preview={listenPreview} />
       ) : null}
 
       <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">

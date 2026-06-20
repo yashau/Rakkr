@@ -207,7 +207,7 @@ Current partial implementation:
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
-- RBAC-gated listen monitor start/stream prefers agent-provided audio chunks and falls back to a controller meter-preview WAV for browser playback.
+- RBAC-gated listen monitor start/stream prefers agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
 - Nodes UI mirrors RBAC for enrollment, token rotation, live listen, and inventory edits.
@@ -752,6 +752,7 @@ Current implementation baseline:
 166. ✅ Add idle recorder-cache max-age/max-bytes sweep execution.
 167. ✅ Add idle recorder-cache min-free-disk sweep execution.
 168. ✅ Add agent-provided live monitor audio chunk ingest and streaming.
+169. ✅ Add refreshing browser listen-monitor sessions.
 
 ## Open Questions
 
@@ -759,7 +760,7 @@ Current implementation baseline:
 | -------- | ------------ |
 | ALSA/JACK/PipeWire order | ALSA first, then JACK/PipeWire adapters |
 | Rust MP3 encoder path | Evaluate during agent recording pipeline hardening |
-| Live monitor protocol | Agent audio chunk ingest now; encrypted WebSocket session control later |
+| Live monitor protocol | Agent audio chunk polling now; encrypted WebSocket session control later |
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 
