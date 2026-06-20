@@ -5,7 +5,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 ## Baseline Checked
 
 - Recording profiles can be read and updated through RBAC-gated settings routes.
-- Watchdog policies can be read and updated through RBAC-gated settings routes, including quality, channel-correlation, clipping, and flatline controls.
+- Watchdog policies can be read and updated through RBAC-gated settings routes, including speech, quality anomaly, channel-correlation, clipping, and flatline controls.
 - Channel-map templates can be created, updated, versioned, assigned to targets, and rolled back.
 - Channel-map templates can be bulk-assigned to many node/interface targets in one audited operation.
 - Bulk deployment is available for channel-map assignments.

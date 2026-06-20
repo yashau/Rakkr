@@ -182,6 +182,22 @@ export function WatchdogPolicyCard({
             <option value="alert_on_flatline">Alert On Flatline</option>
           </select>
         </Field>
+        <Field label="Quality Alert Mode">
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={!canManage}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                qualityAlertMode: event.target.value as WatchdogPolicy["qualityAlertMode"],
+              }))
+            }
+            value={draft.qualityAlertMode ?? "off"}
+          >
+            <option value="off">Off</option>
+            <option value="alert_on_noise_hum_static">Alert On Noise Hum Static</option>
+          </select>
+        </Field>
         <NumberField
           disabled={!canManage}
           label="Threshold dBFS"
@@ -271,6 +287,48 @@ export function WatchdogPolicyCard({
             setDraft((current) => ({ ...current, minCumulativeFlatlineSeconds }))
           }
           value={draft.minCumulativeFlatlineSeconds ?? 10}
+        />
+        <NumberField
+          disabled={!canManage}
+          label="Noise Score Threshold"
+          max={1}
+          min={0}
+          onChange={(noiseScoreThreshold) =>
+            setDraft((current) => ({ ...current, noiseScoreThreshold }))
+          }
+          step={0.01}
+          value={draft.noiseScoreThreshold ?? 0.9}
+        />
+        <NumberField
+          disabled={!canManage}
+          label="Hum Score Threshold"
+          max={1}
+          min={0}
+          onChange={(humScoreThreshold) =>
+            setDraft((current) => ({ ...current, humScoreThreshold }))
+          }
+          step={0.01}
+          value={draft.humScoreThreshold ?? 0.8}
+        />
+        <NumberField
+          disabled={!canManage}
+          label="Static Score Threshold"
+          max={1}
+          min={0}
+          onChange={(staticScoreThreshold) =>
+            setDraft((current) => ({ ...current, staticScoreThreshold }))
+          }
+          step={0.01}
+          value={draft.staticScoreThreshold ?? 0.8}
+        />
+        <NumberField
+          disabled={!canManage}
+          label="Min Quality Seconds"
+          min={0}
+          onChange={(minCumulativeQualitySeconds) =>
+            setDraft((current) => ({ ...current, minCumulativeQualitySeconds }))
+          }
+          value={draft.minCumulativeQualitySeconds ?? draft.minCumulativeSecondsAboveThreshold}
         />
         <Field label="Severity">
           <select

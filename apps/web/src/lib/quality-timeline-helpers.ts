@@ -13,6 +13,10 @@ export function qualityEventEvidenceText(event: HealthEvent) {
     return flatlineEvidenceText(event.details);
   }
 
+  if (event.type === "watchdog.quality_anomaly") {
+    return qualityAnomalyEvidenceText(event.details);
+  }
+
   if (event.type === "watchdog.channel_correlation") {
     return channelCorrelationEvidenceText(event.details);
   }
@@ -59,6 +63,25 @@ function clippingEvidenceText(details: Record<string, unknown>) {
   return parts.join(" / ") || undefined;
 }
 
+function qualityAnomalyEvidenceText(details: Record<string, unknown>) {
+  const noiseScore = numberDetail(details.maxNoiseScore);
+  const humScore = numberDetail(details.maxHumScore);
+  const staticScore = numberDetail(details.maxStaticScore);
+  const seconds = Math.max(
+    numberDetail(details.cumulativeHighNoiseSeconds) ?? 0,
+    numberDetail(details.cumulativeHighHumSeconds) ?? 0,
+    numberDetail(details.cumulativeHighStaticSeconds) ?? 0,
+  );
+  const parts = [
+    noiseScore === undefined ? undefined : `noise ${formatPercent(noiseScore)}`,
+    humScore === undefined ? undefined : `hum ${formatPercent(humScore)}`,
+    staticScore === undefined ? undefined : `static ${formatPercent(staticScore)}`,
+    seconds > 0 ? formatSeconds(seconds) : undefined,
+  ].filter(Boolean);
+
+  return parts.join(" / ") || undefined;
+}
+
 function channelCorrelationEvidenceText(details: Record<string, unknown>) {
   const score = numberDetail(details.maxChannelCorrelationScore);
   const seconds = numberDetail(details.cumulativeCorrelatedSeconds);
@@ -98,6 +121,10 @@ function signalEvidenceText(details: Record<string, unknown>) {
 
 function formatSeconds(value: number) {
   return `${Number(value.toFixed(1))}s`;
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
 }
 
 function numberDetail(value: unknown) {

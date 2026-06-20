@@ -12,6 +12,7 @@ import {
   createWatchdogRunner,
   flatlineEventType,
   nodeOfflineEventType,
+  qualityAnomalyEventType,
 } from "../src/watchdog-runner.js";
 
 test("keeps signal-only watchdog policies compatible with loud non-speech audio", async () => {
@@ -270,6 +271,64 @@ test("creates and resolves scheduled flatline alerts from policy", async () => {
   assert.equal(resolvedAudit.length, 1);
 });
 
+test("creates and resolves scheduled quality anomaly alerts from policy", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  let frame = loudNoiseFrame();
+  const policy: WatchdogPolicy = {
+    ...watchdogPolicy(),
+    humScoreThreshold: 0.8,
+    minCumulativeQualitySeconds: 30,
+    noiseScoreThreshold: 0.9,
+    qualityAlertMode: "alert_on_noise_hum_static",
+    qualityMode: "signal_only",
+    staticScoreThreshold: 0.8,
+  };
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    meterFrameProvider: () => frame,
+    policies: [policy],
+    recordingStore: memoryRecordingStore([recording()]),
+  });
+
+  await runner.runOnce(new Date("2026-06-18T12:00:30.000Z"));
+  const createdResults = await runner.runOnce(new Date("2026-06-18T12:01:00.000Z"));
+  const [openEvent] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+
+  frame = speechFrame();
+
+  const resolvedResults = await runner.runOnce(new Date("2026-06-18T12:02:01.000Z"));
+  const [resolvedEvent] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+  const createdAudit = await auditStore.list({
+    action: "health.watchdog.quality_anomaly.created",
+  });
+  const resolvedAudit = await auditStore.list({
+    action: "health.watchdog.quality_anomaly.resolved",
+  });
+
+  assert.equal(
+    createdResults.find((result) => result.reason === "quality_anomaly_detected")?.outcome,
+    "alert_created",
+  );
+  assert.equal(openEvent?.type, qualityAnomalyEventType);
+  assert.equal(openEvent?.details.qualityAnomalyAboveThreshold, true);
+  assert.equal(openEvent?.details.cumulativeHighNoiseSeconds, 30);
+  assert.equal(openEvent?.details.cumulativeHighHumSeconds, 30);
+  assert.equal(openEvent?.details.cumulativeHighStaticSeconds, 30);
+  assert.equal(openEvent?.details.maxNoiseScore, 0.91);
+  assert.equal(openEvent?.details.maxHumScore, 0.82);
+  assert.equal(openEvent?.details.maxStaticScore, 0.86);
+  assert.equal(
+    resolvedResults.find((result) => result.reason === "quality_anomaly_recovered")?.outcome,
+    "alert_resolved",
+  );
+  assert.equal(resolvedEvent?.status, "resolved");
+  assert.equal(resolvedEvent?.details.autoResolvedReason, "quality_anomaly_recovered");
+  assert.equal(createdAudit.length, 1);
+  assert.equal(resolvedAudit.length, 1);
+});
+
 test("creates and resolves stale node heartbeat health events", async () => {
   const auditStore = createAuditStore("");
   const healthEventStore = createHealthEventStore("", []);
@@ -349,7 +408,9 @@ function loudNoiseFrame(): MeterFrame {
         peakDbfs: -6,
         quality: {
           crestFactorDb: 5,
+          humScore: 0.82,
           noiseScore: 0.91,
+          staticScore: 0.86,
           speechLike: false,
           speechScore: 0.2,
           zeroCrossingRate: 0.48,
@@ -397,7 +458,9 @@ function speechFrame(): MeterFrame {
         peakDbfs: -8,
         quality: {
           crestFactorDb: 14,
+          humScore: 0.05,
           noiseScore: 0.18,
+          staticScore: 0.04,
           speechLike: true,
           speechScore: 0.84,
           zeroCrossingRate: 0.11,

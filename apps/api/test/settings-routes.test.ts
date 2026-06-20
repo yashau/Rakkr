@@ -217,12 +217,17 @@ test("settings manage routes update operational templates and audit snapshots", 
       clippingMode: "alert_on_clipping",
       flatlineMode: "alert_on_flatline",
       flatlineThresholdDbfs: -105,
+      humScoreThreshold: 0.76,
       minCumulativeChannelCorrelationSeconds: 15,
       minCumulativeClippingSeconds: 2,
       minCumulativeFlatlineSeconds: 12,
+      minCumulativeQualitySeconds: 18,
       minSpeechScore: 0.65,
       name: "Operations Voice Watchdog",
+      noiseScoreThreshold: 0.88,
+      qualityAlertMode: "alert_on_noise_hum_static",
       qualityMode: "speech_required",
+      staticScoreThreshold: 0.79,
     },
   );
   const providerResponse = await requestJson(
@@ -437,9 +442,14 @@ test("settings manage routes update operational templates and audit snapshots", 
   assert.equal(watchdogAudit?.after?.clippingMode, "alert_on_clipping");
   assert.equal(watchdogAudit?.after?.flatlineMode, "alert_on_flatline");
   assert.equal(watchdogAudit?.after?.flatlineThresholdDbfs, -105);
+  assert.equal(watchdogAudit?.after?.humScoreThreshold, 0.76);
   assert.equal(watchdogAudit?.after?.minCumulativeChannelCorrelationSeconds, 15);
   assert.equal(watchdogAudit?.after?.minCumulativeClippingSeconds, 2);
   assert.equal(watchdogAudit?.after?.minCumulativeFlatlineSeconds, 12);
+  assert.equal(watchdogAudit?.after?.minCumulativeQualitySeconds, 18);
+  assert.equal(watchdogAudit?.after?.noiseScoreThreshold, 0.88);
+  assert.equal(watchdogAudit?.after?.qualityAlertMode, "alert_on_noise_hum_static");
+  assert.equal(watchdogAudit?.after?.staticScoreThreshold, 0.79);
   const bulkAudit = audits.find(
     (event) => event.action === "settings.channel_map_assignments.bulk_update.succeeded",
   );

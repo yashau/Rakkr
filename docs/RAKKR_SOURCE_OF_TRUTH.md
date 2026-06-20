@@ -276,11 +276,12 @@ Current partial implementation:
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high channel correlation.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained clipping.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained digital flatline.
+- Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high noise, hum, or static likelihood.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
 - Node health summaries, central health workbench, recent events, trends, scoped CSV export, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
-- Quality timelines show event-specific signal, speech, channel-correlation, clipping, flatline, and upload-failure evidence.
+- Quality timelines show event-specific signal, speech, channel-correlation, clipping, flatline, quality anomaly, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
@@ -804,6 +805,7 @@ Current implementation baseline:
 202. ✅ Add scoped recording-job CSV export.
 203. ✅ Add recording job retry controls.
 204. ✅ Add policy-tuned scheduled flatline watchdog alerts.
+205. ✅ Add policy-tuned scheduled quality anomaly watchdog alerts.
 
 ## Open Questions
 
@@ -815,4 +817,4 @@ Current implementation baseline:
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 
-Last updated: `2026-06-20`
+Last updated: `2026-06-21`

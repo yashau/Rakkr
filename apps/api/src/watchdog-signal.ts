@@ -19,12 +19,17 @@ interface SignalSample {
   clippingChannelIndexes: number[];
   durationSeconds: number;
   flatline: boolean;
+  highHum: boolean;
+  highNoise: boolean;
+  highStatic: boolean;
   interfaceId?: string;
   maxChannelCorrelationScore: number;
+  maxHumScore: number;
   maxNoiseScore: number;
   maxPeakDbfs: number;
   maxRmsDbfs: number;
   maxSpeechScore: number;
+  maxStaticScore: number;
   metricDbfs: number;
   speechLike: boolean;
 }
@@ -34,23 +39,30 @@ export interface SignalEvaluation {
   cumulativeCorrelatedSeconds: number;
   cumulativeClippingSeconds: number;
   cumulativeFlatlineSeconds: number;
+  cumulativeHighHumSeconds: number;
+  cumulativeHighNoiseSeconds: number;
+  cumulativeHighStaticSeconds: number;
   cumulativeSecondsAboveThreshold: number;
   cumulativeSpeechLikeSeconds: number;
   latestChannelCorrelationPairs: ChannelCorrelationPair[];
   latestChannelIndex?: number;
   latestClippingChannelIndexes: number[];
   latestFlatline: boolean;
+  latestHumScore: number;
   latestInterfaceId?: string;
   latestMetricDbfs: number;
   latestNoiseScore: number;
   latestPeakDbfs: number;
   latestRmsDbfs: number;
   latestSpeechScore: number;
+  latestStaticScore: number;
   maxChannelCorrelationScore: number;
   maxClippingChannelCount: number;
+  maxHumScore: number;
   maxMetricDbfs: number;
   maxNoiseScore: number;
   maxSpeechScore: number;
+  maxStaticScore: number;
   sampleCount: number;
   windowStartedAt: string;
 }
@@ -103,11 +115,16 @@ export function signalSample(
       clippingChannelIndexes: [],
       durationSeconds,
       flatline: true,
+      highHum: false,
+      highNoise: false,
+      highStatic: false,
       maxChannelCorrelationScore: 0,
+      maxHumScore: 0,
       maxNoiseScore: 0,
       maxPeakDbfs: -160,
       maxRmsDbfs: -160,
       maxSpeechScore: 0,
+      maxStaticScore: 0,
       metricDbfs: -160,
       speechLike: false,
     };
@@ -122,12 +139,17 @@ export function signalSample(
     0,
     ...channelCorrelationPairs.map((pair) => Math.abs(pair.score)),
   );
+  const maxHumScore = Math.max(0, ...frame.levels.map((level) => level.quality?.humScore ?? 0));
   const maxPeak = Math.max(...frame.levels.map((level) => level.peakDbfs));
   const maxRms = Math.max(...frame.levels.map((level) => level.rmsDbfs));
   const maxNoiseScore = Math.max(0, ...frame.levels.map((level) => level.quality?.noiseScore ?? 0));
   const maxSpeechScore = Math.max(
     0,
     ...frame.levels.map((level) => level.quality?.speechScore ?? 0),
+  );
+  const maxStaticScore = Math.max(
+    0,
+    ...frame.levels.map((level) => level.quality?.staticScore ?? 0),
   );
   const metricLevel =
     policy.metric === "peak"
@@ -141,12 +163,17 @@ export function signalSample(
     clippingChannelIndexes,
     durationSeconds,
     flatline: maxRms <= flatlineThresholdDbfs(policy),
+    highHum: maxHumScore >= humScoreThreshold(policy),
+    highNoise: maxNoiseScore >= noiseScoreThreshold(policy),
+    highStatic: maxStaticScore >= staticScoreThreshold(policy),
     interfaceId: frame.interfaceId,
     maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
+    maxHumScore: Number(maxHumScore.toFixed(2)),
     maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
     maxPeakDbfs: Number(maxPeak.toFixed(1)),
     maxRmsDbfs: Number(maxRms.toFixed(1)),
     maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
+    maxStaticScore: Number(maxStaticScore.toFixed(2)),
     metricDbfs: Number(metricValue(frame, policy).toFixed(1)),
     speechLike: maxSpeechScore >= minSpeechScore(policy),
   };
@@ -179,17 +206,30 @@ export function signalEvaluation(
   const cumulativeFlatlineSeconds = samples
     .filter((sample) => sample.flatline)
     .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeHighHumSeconds = samples
+    .filter((sample) => sample.highHum)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeHighNoiseSeconds = samples
+    .filter((sample) => sample.highNoise)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeHighStaticSeconds = samples
+    .filter((sample) => sample.highStatic)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
   const maxChannelCorrelationScore = samples.length
     ? Math.max(...samples.map((sample) => sample.maxChannelCorrelationScore))
     : 0;
   const maxClippingChannelCount = samples.length
     ? Math.max(...samples.map((sample) => sample.clippingChannelIndexes.length))
     : 0;
+  const maxHumScore = samples.length ? Math.max(...samples.map((sample) => sample.maxHumScore)) : 0;
   const maxNoiseScore = samples.length
     ? Math.max(...samples.map((sample) => sample.maxNoiseScore))
     : 0;
   const maxSpeechScore = samples.length
     ? Math.max(...samples.map((sample) => sample.maxSpeechScore))
+    : 0;
+  const maxStaticScore = samples.length
+    ? Math.max(...samples.map((sample) => sample.maxStaticScore))
     : 0;
 
   return {
@@ -197,23 +237,30 @@ export function signalEvaluation(
     cumulativeCorrelatedSeconds,
     cumulativeClippingSeconds,
     cumulativeFlatlineSeconds,
+    cumulativeHighHumSeconds,
+    cumulativeHighNoiseSeconds,
+    cumulativeHighStaticSeconds,
     cumulativeSecondsAboveThreshold,
     cumulativeSpeechLikeSeconds,
     latestChannelCorrelationPairs: latest?.channelCorrelationPairs ?? [],
     latestChannelIndex: latest?.channelIndex,
     latestClippingChannelIndexes: latest?.clippingChannelIndexes ?? [],
     latestFlatline: latest?.flatline ?? false,
+    latestHumScore: latest?.maxHumScore ?? 0,
     latestInterfaceId: latest?.interfaceId,
     latestMetricDbfs: latest?.metricDbfs ?? -160,
     latestNoiseScore: latest?.maxNoiseScore ?? 0,
     latestPeakDbfs: latest?.maxPeakDbfs ?? -160,
     latestRmsDbfs: latest?.maxRmsDbfs ?? -160,
     latestSpeechScore: latest?.maxSpeechScore ?? 0,
+    latestStaticScore: latest?.maxStaticScore ?? 0,
     maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
     maxClippingChannelCount,
+    maxHumScore: Number(maxHumScore.toFixed(2)),
     maxMetricDbfs: Number(maxMetricDbfs.toFixed(1)),
     maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
     maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
+    maxStaticScore: Number(maxStaticScore.toFixed(2)),
     sampleCount: samples.length,
     windowStartedAt: new Date(windowStartMs).toISOString(),
   };
@@ -302,12 +349,42 @@ export function flatlineIsAbovePolicy(evaluation: SignalEvaluation, policy: Watc
   return evaluation.cumulativeFlatlineSeconds >= requiredSeconds;
 }
 
+export function qualityAnomalyIsAbovePolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  if (policy.qualityAlertMode !== "alert_on_noise_hum_static") {
+    return false;
+  }
+
+  const requiredSeconds = minCumulativeQualitySeconds(policy);
+
+  if (requiredSeconds <= 0) {
+    return (
+      evaluation.cumulativeHighNoiseSeconds > 0 ||
+      evaluation.cumulativeHighHumSeconds > 0 ||
+      evaluation.cumulativeHighStaticSeconds > 0
+    );
+  }
+
+  if (evaluation.coverageSeconds < requiredSeconds) {
+    return false;
+  }
+
+  return (
+    evaluation.cumulativeHighNoiseSeconds >= requiredSeconds ||
+    evaluation.cumulativeHighHumSeconds >= requiredSeconds ||
+    evaluation.cumulativeHighStaticSeconds >= requiredSeconds
+  );
+}
+
 export function channelCorrelationThreshold(policy: WatchdogPolicy) {
   return policy.channelCorrelationThreshold ?? 0.98;
 }
 
 export function flatlineThresholdDbfs(policy: WatchdogPolicy) {
   return policy.flatlineThresholdDbfs ?? -100;
+}
+
+export function humScoreThreshold(policy: WatchdogPolicy) {
+  return policy.humScoreThreshold ?? 0.8;
 }
 
 export function minCumulativeChannelCorrelationSeconds(policy: WatchdogPolicy) {
@@ -322,12 +399,24 @@ export function minCumulativeFlatlineSeconds(policy: WatchdogPolicy) {
   return policy.minCumulativeFlatlineSeconds ?? policy.minCumulativeSecondsAboveThreshold;
 }
 
+export function minCumulativeQualitySeconds(policy: WatchdogPolicy) {
+  return policy.minCumulativeQualitySeconds ?? policy.minCumulativeSecondsAboveThreshold;
+}
+
 export function minCumulativeSpeechSeconds(policy: WatchdogPolicy) {
   return policy.minCumulativeSpeechSeconds ?? policy.minCumulativeSecondsAboveThreshold;
 }
 
 export function minSpeechScore(policy: WatchdogPolicy) {
   return policy.minSpeechScore ?? 0.55;
+}
+
+export function noiseScoreThreshold(policy: WatchdogPolicy) {
+  return policy.noiseScoreThreshold ?? 0.9;
+}
+
+export function staticScoreThreshold(policy: WatchdogPolicy) {
+  return policy.staticScoreThreshold ?? 0.8;
 }
 
 function strongestCorrelationPairs(frame: MeterFrame): ChannelCorrelationPair[] {

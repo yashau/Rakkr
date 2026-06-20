@@ -17,6 +17,7 @@ import type { RecordingStore } from "./recording-store.js";
 import { reconcileClippingEvent } from "./watchdog-clipping.js";
 import { reconcileFlatlineEvent } from "./watchdog-flatline.js";
 import { nodeOfflineEventType, reconcileNodeLivenessEvents } from "./watchdog-node-liveness.js";
+import { reconcileQualityAnomalyEvent } from "./watchdog-quality.js";
 import {
   channelCorrelationIsAbovePolicy,
   channelCorrelationThreshold,
@@ -40,6 +41,7 @@ export const channelCorrelationEventType = "watchdog.channel_correlation";
 export { clippingEventType } from "./watchdog-clipping.js";
 export { flatlineEventType } from "./watchdog-flatline.js";
 export { nodeOfflineEventType };
+export { qualityAnomalyEventType } from "./watchdog-quality.js";
 
 export type MeterFrameProvider = (
   nodeId: string,
@@ -232,6 +234,18 @@ async function runWatchdogPass(
 
     results.push(
       await reconcileFlatlineEvent({
+        auditStore,
+        evaluation,
+        healthEventStore,
+        now,
+        policy,
+        recording,
+        recordingStore,
+      }),
+    );
+
+    results.push(
+      await reconcileQualityAnomalyEvent({
         auditStore,
         evaluation,
         healthEventStore,

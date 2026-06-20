@@ -29,6 +29,22 @@ test("quality timeline evidence describes flatline duration", () => {
   );
 });
 
+test("quality timeline evidence describes quality anomaly scores", () => {
+  assert.equal(
+    qualityEventEvidenceText(
+      event("watchdog.quality_anomaly", {
+        cumulativeHighHumSeconds: 12,
+        cumulativeHighNoiseSeconds: 30,
+        cumulativeHighStaticSeconds: 6,
+        maxHumScore: 0.82,
+        maxNoiseScore: 0.91,
+        maxStaticScore: 0.86,
+      }),
+    ),
+    "noise 91% / hum 82% / static 86% / 30s",
+  );
+});
+
 test("quality timeline evidence describes channel correlation strength", () => {
   assert.equal(
     qualityEventEvidenceText(
