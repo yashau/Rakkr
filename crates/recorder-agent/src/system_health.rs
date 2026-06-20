@@ -21,6 +21,14 @@ pub struct SystemHealthEvent {
     pub severity: &'static str,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct DiskUsage {
+    pub free_bytes: u64,
+    pub free_percent: f32,
+    pub total_bytes: u64,
+    pub used_percent: f32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SystemHealthLevel {
     Healthy,
@@ -49,9 +57,9 @@ pub fn collect_system_health_events(
 
     let mut events = Vec::new();
 
-    if let Some(disk_used_percent) = disk_used_percent(&config.system_health_disk_path) {
+    if let Some(disk_usage) = disk_usage(&config.system_health_disk_path) {
         let level = pressure_level(
-            disk_used_percent,
+            disk_usage.used_percent,
             config.system_health_disk_warning_percent,
             config.system_health_disk_critical_percent,
         );
@@ -66,7 +74,7 @@ pub fn collect_system_health_events(
                 "criticalPercent": config.system_health_disk_critical_percent,
                 "nodeId": config.node_id,
                 "path": config.system_health_disk_path.display().to_string(),
-                "usedPercent": round_one(disk_used_percent),
+                "usedPercent": round_one(disk_usage.used_percent),
                 "warningPercent": config.system_health_disk_warning_percent,
             }),
         );
@@ -168,20 +176,36 @@ fn pressure_level(
     }
 }
 
-fn disk_used_percent(path: &Path) -> Option<f32> {
+pub fn disk_usage(path: &Path) -> Option<DiskUsage> {
     let output = Command::new("df").arg("-Pk").arg(path).output().ok()?;
 
     if !output.status.success() {
         return None;
     }
 
-    parse_df_used_percent(&String::from_utf8_lossy(&output.stdout))
+    parse_df_disk_usage(&String::from_utf8_lossy(&output.stdout))
 }
 
-fn parse_df_used_percent(input: &str) -> Option<f32> {
+fn parse_df_disk_usage(input: &str) -> Option<DiskUsage> {
     input.lines().skip(1).find_map(|line| {
-        let usage = line.split_whitespace().nth(4)?;
-        usage.trim_end_matches('%').parse::<f32>().ok()
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        let total_blocks = fields.get(1)?.parse::<u64>().ok()?;
+        let available_blocks = fields.get(3)?.parse::<u64>().ok()?;
+        let used_percent = fields.get(4)?.trim_end_matches('%').parse::<f32>().ok()?;
+        let total_bytes = total_blocks.saturating_mul(1024);
+        let free_bytes = available_blocks.saturating_mul(1024);
+        let free_percent = if total_bytes == 0 {
+            0.0
+        } else {
+            (free_bytes as f32 / total_bytes as f32) * 100.0
+        };
+
+        Some(DiskUsage {
+            free_bytes,
+            free_percent,
+            total_bytes,
+            used_percent,
+        })
     })
 }
 
@@ -217,13 +241,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_df_used_percent() {
+    fn parses_df_disk_usage() {
         let output = r#"
 Filesystem     1024-blocks    Used Available Capacity Mounted on
 /dev/sda1         10000000 8750000   1250000      88% /
 "#;
+        let disk_usage = parse_df_disk_usage(output).unwrap();
 
-        assert_eq!(parse_df_used_percent(output), Some(88.0));
+        assert_eq!(disk_usage.used_percent, 88.0);
+        assert_eq!(disk_usage.free_bytes, 1_280_000_000);
+        assert_eq!(disk_usage.total_bytes, 10_240_000_000);
     }
 
     #[test]

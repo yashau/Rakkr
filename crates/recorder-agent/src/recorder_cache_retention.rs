@@ -18,7 +18,25 @@ pub struct ControllerRecorderCacheRetention {
 
 impl ControllerRecorderCacheRetention {
     pub fn has_deferred_sweep(&self) -> bool {
-        self.max_age_days.is_some() || self.max_bytes.is_some()
+        self.max_age_days.is_some()
+            || self.max_bytes.is_some()
+            || self.min_free_disk_percent.is_some()
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RecorderCacheDiskUsage {
+    pub free_bytes: u64,
+    pub free_percent: f32,
+    pub total_bytes: u64,
+}
+
+impl RecorderCacheDiskUsage {
+    fn bytes_needed_for_min_free(self, min_free_disk_percent: u8) -> u64 {
+        let required_free_bytes =
+            ((self.total_bytes as f64) * (f64::from(min_free_disk_percent) / 100.0)).ceil() as u64;
+
+        required_free_bytes.saturating_sub(self.free_bytes)
     }
 }
 
@@ -121,6 +139,7 @@ pub fn record_uploaded_cache_files(
 pub fn run_recorder_cache_sweep(
     manifest_path: &Path,
     policies: &[ControllerRecorderCacheRetention],
+    disk_usage: Option<RecorderCacheDiskUsage>,
     now: SystemTime,
 ) -> anyhow::Result<RecorderCacheSweepSummary> {
     let mut manifest = load_manifest(manifest_path)?;
@@ -134,7 +153,7 @@ pub fn run_recorder_cache_sweep(
         }
     }
 
-    let deletion_plan = deletion_plan(&candidates, policies, now);
+    let deletion_plan = deletion_plan(&candidates, policies, disk_usage, now);
     let mut summary = RecorderCacheSweepSummary {
         scanned: candidates.len(),
         ..RecorderCacheSweepSummary::default()
@@ -183,8 +202,10 @@ pub fn run_recorder_cache_sweep(
 fn deletion_plan(
     candidates: &[RecorderCacheCandidate],
     policies: &[ControllerRecorderCacheRetention],
+    disk_usage: Option<RecorderCacheDiskUsage>,
     now: SystemTime,
 ) -> Vec<(String, String)> {
+    let mut freed_bytes = 0_u64;
     let mut planned = Vec::new();
 
     for policy in policies {
@@ -204,8 +225,8 @@ fn deletion_plan(
                 if now
                     .duration_since(candidate.modified_at)
                     .is_ok_and(|age| age >= max_age)
+                    && push_deletion(&mut planned, &mut freed_bytes, candidate, "max_age")
                 {
-                    planned.push((candidate.entry.recording_id.clone(), "max_age".to_string()));
                     retained_bytes = retained_bytes.saturating_sub(candidate.size);
                 }
             }
@@ -214,28 +235,58 @@ fn deletion_plan(
         if let Some(max_bytes) = policy.max_bytes {
             policy_candidates.sort_by_key(|candidate| candidate.modified_at);
 
-            for candidate in policy_candidates {
+            for candidate in &policy_candidates {
                 if retained_bytes <= max_bytes {
                     break;
                 }
 
-                if planned
-                    .iter()
-                    .any(|(recording_id, _)| recording_id == &candidate.entry.recording_id)
-                {
-                    continue;
+                if push_deletion(&mut planned, &mut freed_bytes, candidate, "max_bytes") {
+                    retained_bytes = retained_bytes.saturating_sub(candidate.size);
+                }
+            }
+        }
+
+        if let (Some(min_free_disk_percent), Some(disk_usage)) =
+            (policy.min_free_disk_percent, disk_usage)
+            && disk_usage.free_percent < f32::from(min_free_disk_percent)
+        {
+            let mut bytes_needed = disk_usage
+                .bytes_needed_for_min_free(min_free_disk_percent)
+                .saturating_sub(freed_bytes);
+
+            policy_candidates.sort_by_key(|candidate| candidate.modified_at);
+
+            for candidate in &policy_candidates {
+                if bytes_needed == 0 {
+                    break;
                 }
 
-                planned.push((
-                    candidate.entry.recording_id.clone(),
-                    "max_bytes".to_string(),
-                ));
-                retained_bytes = retained_bytes.saturating_sub(candidate.size);
+                if push_deletion(&mut planned, &mut freed_bytes, candidate, "min_free_disk") {
+                    bytes_needed = bytes_needed.saturating_sub(candidate.size);
+                }
             }
         }
     }
 
     planned
+}
+
+fn push_deletion(
+    planned: &mut Vec<(String, String)>,
+    freed_bytes: &mut u64,
+    candidate: &RecorderCacheCandidate,
+    reason: &str,
+) -> bool {
+    if planned
+        .iter()
+        .any(|(recording_id, _)| recording_id == &candidate.entry.recording_id)
+    {
+        return false;
+    }
+
+    planned.push((candidate.entry.recording_id.clone(), reason.to_string()));
+    *freed_bytes = freed_bytes.saturating_add(candidate.size);
+    true
 }
 
 fn candidate_for_entry(entry: &RecorderCacheManifestEntry) -> Option<RecorderCacheCandidate> {
@@ -352,5 +403,80 @@ mod tests {
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("rakkr-recorder-cache-retention-{name}"))
+    }
+
+    fn candidate(
+        recording_id: &str,
+        policy_id: &str,
+        modified_offset: u64,
+        size: u64,
+    ) -> RecorderCacheCandidate {
+        RecorderCacheCandidate {
+            entry: RecorderCacheManifestEntry {
+                output_path: format!("{recording_id}.mp3"),
+                policy_id: policy_id.to_string(),
+                raw_output_path: format!("{recording_id}.raw.wav"),
+                recording_id: recording_id.to_string(),
+            },
+            modified_at: SystemTime::UNIX_EPOCH + Duration::from_secs(modified_offset),
+            size,
+        }
+    }
+
+    fn policy(policy_id: &str) -> ControllerRecorderCacheRetention {
+        ControllerRecorderCacheRetention {
+            delete_after_upload: false,
+            max_age_days: None,
+            max_bytes: None,
+            min_free_disk_percent: None,
+            policy_id: policy_id.to_string(),
+        }
+    }
+
+    #[test]
+    fn treats_min_free_disk_as_deferred_sweep() {
+        let mut policy = policy("retention-min-free");
+        policy.min_free_disk_percent = Some(70);
+
+        assert!(policy.has_deferred_sweep());
+    }
+
+    #[test]
+    fn plans_oldest_cache_until_min_free_target_is_met() {
+        let mut policy = policy("retention-min-free");
+        policy.min_free_disk_percent = Some(70);
+        let candidates = vec![
+            candidate("newer", "retention-min-free", 20, 300),
+            candidate("oldest", "retention-min-free", 10, 300),
+            candidate("other-policy", "retention-other", 1, 900),
+        ];
+        let disk_usage = RecorderCacheDiskUsage {
+            free_bytes: 400,
+            free_percent: 40.0,
+            total_bytes: 1000,
+        };
+
+        let planned = deletion_plan(
+            &candidates,
+            &[policy],
+            Some(disk_usage),
+            SystemTime::UNIX_EPOCH,
+        );
+
+        assert_eq!(
+            planned,
+            vec![("oldest".to_string(), "min_free_disk".to_string())]
+        );
+    }
+
+    #[test]
+    fn skips_min_free_sweep_without_disk_usage() {
+        let mut policy = policy("retention-min-free");
+        policy.min_free_disk_percent = Some(70);
+        let candidates = vec![candidate("oldest", "retention-min-free", 10, 300)];
+
+        let planned = deletion_plan(&candidates, &[policy], None, SystemTime::UNIX_EPOCH);
+
+        assert!(planned.is_empty());
     }
 }

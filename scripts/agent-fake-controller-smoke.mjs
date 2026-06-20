@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeFakeCaptureCommand, writeFakeDfCommand, writeFakeRenderCommand } from "./agent-fake-controller-smoke-support.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -51,15 +52,14 @@ const server = createServer(async (request, response) => {
 try {
   const address = await listen(server);
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
+  const fakeDfPath = await writeFakeDfCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
-
   for (const scenario of scenarios) {
     await runScenario({ address, captureCommand, renderCommand, scenario });
   }
-
   await runConcurrentScenario({ address, captureCommand, renderCommand });
   await runDeferredSweepScenario({ address, captureCommand, renderCommand });
-
+  await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
   console.log("Agent fake-controller smoke passed.");
 } finally {
   server.close();
@@ -286,6 +286,73 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
   activeScenario = undefined;
 }
 
+async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand }) {
+  const stateFile = path.join(smokeRoot, "min-free-sweep-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "min-free-sweep-health-events.jsonl");
+  const jobs = ["a", "b"].map((suffix) =>
+    createJob({
+      expectSuccess: true,
+      jobId: `job_fake_controller_min_free_sweep_${suffix}`,
+      name: `min-free-sweep-${suffix}`,
+      outputFileName: `rec_fake_controller_min_free_sweep_${suffix}.mp3`,
+      recordingId: `rec_fake_controller_min_free_sweep_${suffix}`,
+      recorderCacheRetention: minFreeSweepRetention(),
+    }),
+  );
+  const observed = createObserved();
+
+  activeScenario = {
+    jobs,
+    observed,
+    scenario: {
+      concurrent: true,
+      expectSuccess: true,
+      minFreeSweep: true,
+      name: "min-free-sweep",
+    },
+  };
+
+  const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile, {
+    PATH: `${fakeDfPath}${path.delimiter}${process.env.PATH ?? ""}`,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        jobs.every((job) => job.status === "completed") &&
+        observed.cacheUploads.length === 2 &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.recorder_cache.sweep_completed",
+        ),
+      20_000,
+      () =>
+        `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const sweepEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recorder_cache.sweep_completed",
+  );
+
+  invariant(
+    sweepEvent?.details?.deleted >= 1,
+    "min-free recorder-cache sweep did not delete files",
+  );
+  invariant(
+    sweepEvent?.details?.items?.some((item) => item.reason === "min_free_disk"),
+    "min-free recorder-cache sweep did not report min_free_disk reason",
+  );
+
+  for (const job of jobs) {
+    await assertLocalRecorderCacheDeleted(job.command.outputFileName);
+  }
+
+  activeScenario = undefined;
+}
+
 function assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario }) {
   invariant(
     observed.cacheUpload?.recordingId === scenario.recordingId,
@@ -454,6 +521,28 @@ function deferredSweepRetention() {
   };
 }
 
+function minFreeSweepRetention() {
+  return {
+    deleteAfterUpload: false,
+    maxAgeDays: null,
+    maxBytes: null,
+    minFreeDiskPercent: 95,
+    policyId: "retention-recorder-cache-min-free-smoke",
+  };
+}
+
+function recorderCachePoliciesForScenario(scenario) {
+  if (scenario.deferredSweep) {
+    return [deferredSweepRetention()];
+  }
+
+  if (scenario.minFreeSweep) {
+    return [minFreeSweepRetention()];
+  }
+
+  return [];
+}
+
 async function assertLocalRecorderCacheDeleted(outputFileName) {
   const renderedPath = path.join(smokeRoot, "data", "recordings", "local-captures", outputFileName);
   const rawPath = path.join(
@@ -541,7 +630,7 @@ async function handleControllerRequest(request, response) {
         recordingCapacity: {
           maxConcurrentRecordings: scenario.concurrent ? 2 : 1,
         },
-        recorderCachePolicies: scenario.deferredSweep ? [deferredSweepRetention()] : [],
+        recorderCachePolicies: recorderCachePoliciesForScenario(scenario),
       },
     });
   }
@@ -748,98 +837,7 @@ function listen(server) {
   });
 }
 
-async function writeFakeCaptureCommand(directory) {
-  const captureScript = path.join(directory, "fake-capture.mjs");
-  await writeFile(
-    captureScript,
-    `#!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
-
-const outputPath = process.argv.at(-1);
-
-if (!outputPath || outputPath.startsWith("-")) {
-  console.error("missing output path");
-  process.exit(2);
-}
-
-mkdirSync(path.dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, wavFile([0, 12000, -12000, 6000, -6000, 3000]));
-await new Promise((resolve) => setTimeout(resolve, 750));
-
-function wavFile(samples) {
-  const dataSize = samples.length * 2;
-  const buffer = Buffer.alloc(44 + dataSize);
-
-  buffer.write("RIFF", 0, "ascii");
-  buffer.writeUInt32LE(36 + dataSize, 4);
-  buffer.write("WAVE", 8, "ascii");
-  buffer.write("fmt ", 12, "ascii");
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(1, 22);
-  buffer.writeUInt32LE(48000, 24);
-  buffer.writeUInt32LE(96000, 28);
-  buffer.writeUInt16LE(2, 32);
-  buffer.writeUInt16LE(16, 34);
-  buffer.write("data", 36, "ascii");
-  buffer.writeUInt32LE(dataSize, 40);
-  samples.forEach((sample, index) => buffer.writeInt16LE(sample, 44 + index * 2));
-
-  return buffer;
-}
-`,
-  );
-
-  if (process.platform === "win32") {
-    const commandPath = path.join(directory, "fake-capture.cmd");
-    await writeFile(commandPath, `@echo off\r\n"${process.execPath}" "${captureScript}" %*\r\n`);
-
-    return commandPath;
-  }
-
-  await chmod(captureScript, 0o755);
-
-  return captureScript;
-}
-
-async function writeFakeRenderCommand(directory) {
-  const renderScript = path.join(directory, "fake-render.mjs");
-  await writeFile(
-    renderScript,
-    `#!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
-
-const inputIndex = process.argv.indexOf("-i");
-const inputPath = inputIndex >= 0 ? process.argv[inputIndex + 1] : undefined;
-const outputPath = process.argv.at(-1);
-
-if (!inputPath || !outputPath || outputPath.startsWith("-")) {
-  console.error("missing input or output path");
-  process.exit(2);
-}
-
-mkdirSync(path.dirname(outputPath), { recursive: true });
-const source = readFileSync(inputPath);
-const payload = Buffer.concat([Buffer.from("FAKE_MP3_VBR_128\\n"), source]);
-writeFileSync(outputPath, payload);
-`,
-  );
-
-  if (process.platform === "win32") {
-    const commandPath = path.join(directory, "fake-render.cmd");
-    await writeFile(commandPath, `@echo off\r\n"${process.execPath}" "${renderScript}" %*\r\n`);
-
-    return commandPath;
-  }
-
-  await chmod(renderScript, 0o755);
-
-  return renderScript;
-}
-
-function spawnAgent(agentArgs) {
+function spawnAgent(agentArgs, extraEnv = {}) {
   const child = spawn(
     "cargo",
     [
@@ -854,7 +852,7 @@ function spawnAgent(agentArgs) {
     ],
     {
       cwd: smokeRoot,
-      env: { ...process.env, CARGO_TERM_COLOR: "never" },
+      env: { ...process.env, ...extraEnv, CARGO_TERM_COLOR: "never" },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
@@ -878,36 +876,46 @@ function spawnAgent(agentArgs) {
   };
 }
 
-function spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile) {
-  return spawnAgent([
-    "--allow-insecure-controller",
-    "--agent-health-log-file",
-    healthLogFile,
-    "--agent-state-file",
-    stateFile,
-    "--capture-command",
-    captureCommand,
-    "--capture-growth-grace-seconds",
-    "0",
-    "--capture-min-output-bytes",
-    "44",
-    "--controller-token",
-    token,
-    "--controller-url",
-    `http://127.0.0.1:${address.port}`,
-    "--channel-render-command",
-    renderCommand,
-    "--heartbeat-seconds",
-    "1",
-    "--job-poll-seconds",
-    "1",
-    "--max-concurrent-recordings",
-    "1",
-    "--meter-backend",
-    "synthetic",
-    "--node-id",
-    nodeId,
-  ]);
+function spawnDaemonAgent(
+  address,
+  captureCommand,
+  healthLogFile,
+  renderCommand,
+  stateFile,
+  extraEnv = {},
+) {
+  return spawnAgent(
+    [
+      "--allow-insecure-controller",
+      "--agent-health-log-file",
+      healthLogFile,
+      "--agent-state-file",
+      stateFile,
+      "--capture-command",
+      captureCommand,
+      "--capture-growth-grace-seconds",
+      "0",
+      "--capture-min-output-bytes",
+      "44",
+      "--controller-token",
+      token,
+      "--controller-url",
+      `http://127.0.0.1:${address.port}`,
+      "--channel-render-command",
+      renderCommand,
+      "--heartbeat-seconds",
+      "1",
+      "--job-poll-seconds",
+      "1",
+      "--max-concurrent-recordings",
+      "1",
+      "--meter-backend",
+      "synthetic",
+      "--node-id",
+      nodeId,
+    ],
+    extraEnv,
+  );
 }
 
 function run(command, args) {

@@ -41,10 +41,12 @@ const sourceFiles = [
   "crates/recorder-agent/src/main.rs",
   "crates/recorder-agent/src/node_config.rs",
   "crates/recorder-agent/src/recorder_cache_retention.rs",
+  "crates/recorder-agent/src/system_health.rs",
   "scripts/agent-fake-controller-smoke.mjs",
+  "scripts/agent-fake-controller-smoke-support.mjs",
 ];
 const baselinePhrases = [
-  "checked partial baseline",
+  "checked baseline",
   "Recording profiles",
   "Watchdog policies",
   "Channel-map templates",
@@ -68,7 +70,8 @@ const baselinePhrases = [
   "max-bytes",
   "Recorder-cache delete-after-upload",
   "Recorder-cache max-age and max-bytes sweep",
-  "Recorder-cache min-free-disk sweeps",
+  "Recorder-cache min-free-disk sweep",
+  "system disk pressure",
   "mise run settings:check",
 ];
 const sourceSnippets = [
@@ -119,6 +122,9 @@ const sourceSnippets = [
   "record_uploaded_cache_files",
   "recorderCachePolicies",
   "run_recorder_cache_sweep",
+  "RecorderCacheDiskUsage",
+  "min_free_disk",
+  "disk_usage",
   "agent.recorder_cache.sweep_completed",
   "agent.recording_job.recorder_cache_deleted",
   "deleteCacheAfterUpload",
@@ -161,6 +167,7 @@ const testSnippets = [
   "agent config read returns node recording capacity and recorder-cache policies",
   "recording job carries recorder-cache retention policy",
   "agent.recorder_cache.sweep_completed",
+  "min-free recorder-cache sweep did not delete files",
   "agent.recording_job.recorder_cache_deleted",
   "creates and updates upload policy templates",
   "upload runner deletes local cache after confirmed upload when policy requests it",

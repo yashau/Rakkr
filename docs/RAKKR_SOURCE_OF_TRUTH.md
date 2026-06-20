@@ -65,7 +65,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory plus Linux loopback tasks; Linux/hardware validation remains |
-| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes execution, bulk assignment, staged apply; min-free sweep remains |
+| Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, offline, local-log, metrics, and timeline baseline; real-room field calibration remains |
@@ -155,7 +155,7 @@ Central settings must cover:
 - staged rollout and rollback;
 - bulk deployment to similar recorders.
 
-Current checked partial baseline:
+Current checked baseline:
 
 - Drizzle/Postgres plus JSON fallback stores.
 - Profile, watchdog, channel map, and assignment APIs.
@@ -168,11 +168,11 @@ Current checked partial baseline:
 - Retention runner executes controller-cache max-age and max-bytes cleanup with audit events.
 - Recorder-cache delete-after-upload policies are pinned to jobs and executed by the agent after successful controller attach.
 - Recorder-cache max-age and max-bytes sweep policies are sent through node config and executed by idle agents from a local uploaded-cache manifest.
-- Recorder-cache min-free-disk sweeps on idle nodes remain pending.
+- Recorder-cache min-free-disk sweep policies are sent through node config and executed by idle agents using system disk pressure and the local uploaded-cache manifest.
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
-- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked partial settings/templates baseline and remaining recorder-cache min-free sweep gap.
+- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked settings/templates baseline.
 
 ## Node Inventory
 
@@ -471,6 +471,7 @@ Current implementation baseline:
 - Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
 - `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, controller capacity override, bounded concurrent jobs, concurrent-safe local health log output, rendered MP3/VBR, recorder-cache delete-after-upload, recorder-cache max-bytes idle sweep, cache-upload failure handling, and controller stop requests without audio hardware.
+- `mise run check` includes fake-controller agent smoke coverage for recorder-cache min-free-disk idle sweep using deterministic disk-pressure input.
 - Agent job claim-next, controller-polled capacity, bounded concurrency, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
@@ -748,6 +749,7 @@ Current implementation baseline:
 164. ✅ Add schedule-owned retention policy assignment.
 165. ✅ Add job-pinned recorder-cache delete-after-upload execution.
 166. ✅ Add idle recorder-cache max-age/max-bytes sweep execution.
+167. ✅ Add idle recorder-cache min-free-disk sweep execution.
 
 ## Open Questions
 

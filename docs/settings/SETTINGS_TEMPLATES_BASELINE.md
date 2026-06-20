@@ -1,8 +1,8 @@
 # Settings/Templates Baseline
 
-Rakkr centralizes operator-managed recording settings and reusable channel-map templates. This is a checked partial baseline for the current settings workflow.
+Rakkr centralizes operator-managed recording settings and reusable channel-map templates. This is the checked baseline for the current settings workflow.
 
-## Partial Baseline Checked
+## Baseline Checked
 
 - Recording profiles can be read and updated through RBAC-gated settings routes.
 - Watchdog policies can be read and updated through RBAC-gated settings routes.
@@ -18,14 +18,11 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 - Schedules and recordings carry `retentionPolicyId` so controller-cache cleanup only applies to assigned recordings.
 - Recorder-cache delete-after-upload policies are pinned to recording jobs and executed by the agent after successful controller attach.
 - Recorder-cache max-age and max-bytes sweep policies are sent through node config and executed by idle agents from a local uploaded-cache manifest.
+- Recorder-cache min-free-disk sweep policies are sent through node config and executed by idle agents using system disk pressure and the local uploaded-cache manifest.
 - Settings writes audit before/after snapshots when the route has an existing resource.
 - Missing `settings:read` and `settings:manage` permissions are denied and audited.
 - Settings data persists through Postgres stores with JSON fallback stores for MVP development.
 - Settings UI mirrors read/manage permissions and hides node target lookup unless `node:read` is present.
-
-## Remaining Gaps
-
-- Recorder-cache min-free-disk sweeps on idle nodes remain pending.
 
 ## Evidence
 
@@ -44,7 +41,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 | Retention assignment | `apps/api/src/schedule-engine.ts`, `apps/api/src/schedule-store.ts`, `apps/api/test/schedule-routes.test.ts`, `apps/api/test/schedule-runner.test.ts`, `apps/web/src/lib/schedule-draft.ts` |
 | UI workflow | `apps/web/src/pages/settings.tsx`, `apps/web/src/components/recording-profile-settings-card.tsx`, `apps/web/src/components/watchdog-policy-card.tsx` |
 | Agent pinning | `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/src/agent-routes.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/channel_map.rs` |
-| Recorder-cache execution | `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/controller.rs`, `crates/recorder-agent/src/main.rs`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs`, `scripts/agent-fake-controller-smoke.mjs` |
+| Recorder-cache execution | `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/controller.rs`, `crates/recorder-agent/src/main.rs`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs`, `crates/recorder-agent/src/system_health.rs`, `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-support.mjs` |
 
 ## Verification
 
