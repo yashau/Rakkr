@@ -723,6 +723,7 @@ Current partial implementation:
 152. ✅ Add controller-visible node recording capacity and agent capacity polling.
 153. ✅ Serialize concurrent agent health-log appends.
 154. ✅ Add policy-tuned scheduled clipping watchdog alerts.
+155. ✅ Tighten health watchdog baseline verifier for clipping lifecycle evidence.
 
 ## Open Questions
 
