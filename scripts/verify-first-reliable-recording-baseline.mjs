@@ -29,6 +29,7 @@ const sourceFiles = [
   "apps/api/test/recording-cache.test.ts",
   "apps/web/src/lib/recording-page-helpers.test.ts",
   "apps/web/src/lib/schedule-detail-page-helpers.test.ts",
+  "scripts/agent-fake-controller-smoke-assertions.mjs",
   "scripts/agent-fake-controller-smoke.mjs",
 ];
 const baselinePhrases = [
@@ -140,6 +141,7 @@ const allTests = sourceEntries
     (entry) =>
       entry.path.includes("/test/") ||
       entry.path.endsWith(".test.ts") ||
+      entry.path.endsWith("agent-fake-controller-smoke-assertions.mjs") ||
       entry.path.endsWith("agent-fake-controller-smoke.mjs"),
   )
   .map((entry) => entry.content)

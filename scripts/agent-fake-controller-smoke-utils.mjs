@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { access, readFile } from "node:fs/promises";
+import path from "node:path";
 
 export function listen(server) {
   return new Promise((resolve, reject) => {
@@ -93,4 +95,41 @@ export function invariant(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+export async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+export async function readJsonLines(filePath) {
+  try {
+    return (await readFile(filePath, "utf8"))
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+export function localRecorderCachePaths(rootDirectory, outputFileName) {
+  const cacheDir = path.join(rootDirectory, "data", "recordings", "local-captures");
+
+  return [
+    path.join(cacheDir, outputFileName),
+    path.join(cacheDir, outputFileName.replace(/\.[^.]+$/, ".raw.wav")),
+  ];
 }

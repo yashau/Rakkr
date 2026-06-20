@@ -432,6 +432,7 @@ mod tests {
             room: "Room".to_string(),
             site: "Site".to_string(),
             system_health_disk_critical_percent: 95.0,
+            system_health_df_command: "df".to_string(),
             system_health_disk_path: PathBuf::from("."),
             system_health_disk_warning_percent: 85.0,
             system_health_enabled: true,

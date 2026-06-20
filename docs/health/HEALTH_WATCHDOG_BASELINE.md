@@ -12,6 +12,8 @@ Status: Partial baseline checked.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
+- Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
+- Fake-controller smoke coverage exercises controller-synced agent disk-pressure system health and stalled-capture health without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, hum/static likelihood, and independent-channel behavior for local quality scoring.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
@@ -35,6 +37,6 @@ Status: Partial baseline checked.
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |
 | Agent clipping, flatline, channel correlation, xrun, system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
-| Agent capture growth and cache upload health smoke | `scripts/agent-fake-controller-smoke.mjs` |
+| Agent capture growth, cache upload, stalled-capture, and system-health smoke | `scripts/agent-fake-controller-smoke.mjs` |
 
 `mise run health:check-watchdog` validates this partial baseline, and `mise run check` runs it.

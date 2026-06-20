@@ -312,12 +312,14 @@ async fn run_idle_recorder_cache_sweep(
     let summary = recorder_cache_retention::run_recorder_cache_sweep(
         &config.recorder_cache_manifest_file,
         &node_config.recorder_cache_policies,
-        system_health::disk_usage(&config.system_health_disk_path).map(|usage| {
-            recorder_cache_retention::RecorderCacheDiskUsage {
-                free_bytes: usage.free_bytes,
-                free_percent: usage.free_percent,
-                total_bytes: usage.total_bytes,
-            }
+        system_health::disk_usage(
+            &config.system_health_df_command,
+            &config.system_health_disk_path,
+        )
+        .map(|usage| recorder_cache_retention::RecorderCacheDiskUsage {
+            free_bytes: usage.free_bytes,
+            free_percent: usage.free_percent,
+            total_bytes: usage.total_bytes,
         }),
         std::time::SystemTime::now(),
     )?;

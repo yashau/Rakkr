@@ -24,6 +24,7 @@ const sourceFiles = [
   "crates/recorder-agent/src/telemetry.rs",
   "crates/recorder-agent/src/capture.rs",
   "crates/recorder-agent/src/controller.rs",
+  "scripts/agent-fake-controller-smoke-assertions.mjs",
   "scripts/agent-fake-controller-smoke.mjs",
   "apps/api/test/watchdog-runner.test.ts",
   "apps/api/test/watchdog-calibration-routes.test.ts",
@@ -45,6 +46,8 @@ const baselinePhrases = [
   "Node liveness",
   "local JSONL health logs",
   "meter capture failure/recovery",
+  "explicit `df` command path",
+  "controller-synced agent disk-pressure system health",
   "device unavailable/xrun",
   "clipping",
   "flatline",
@@ -116,6 +119,12 @@ const sourceSnippets = [
   "agent.meter.channel_correlation",
   "agent.meter.xrun",
   "agent.system.disk_pressure",
+  "system_health_df_command",
+  "--system-health-df-command",
+  "runSystemHealthScenario",
+  "system health disk event did not use fake df pressure",
+  "assertStalledCaptureScenario",
+  "job_fake_controller_stalled_capture",
   "agent.audio_backend.unavailable",
   "append_health_event_with_targets",
   "rotate_if_needed",
@@ -201,7 +210,9 @@ for (const snippet of testSnippets) {
 }
 
 if (/Status:\s*MVP baseline checked/iu.test(baseline)) {
-  errors.push(`${baselineFile} must remain partial until long-duration real-room validation closes`);
+  errors.push(
+    `${baselineFile} must remain partial until long-duration real-room validation closes`,
+  );
 }
 
 if (errors.length > 0) {

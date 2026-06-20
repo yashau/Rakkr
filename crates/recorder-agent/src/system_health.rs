@@ -57,7 +57,10 @@ pub fn collect_system_health_events(
 
     let mut events = Vec::new();
 
-    if let Some(disk_usage) = disk_usage(&config.system_health_disk_path) {
+    if let Some(disk_usage) = disk_usage(
+        &config.system_health_df_command,
+        &config.system_health_disk_path,
+    ) {
         let level = pressure_level(
             disk_usage.used_percent,
             config.system_health_disk_warning_percent,
@@ -176,8 +179,8 @@ fn pressure_level(
     }
 }
 
-pub fn disk_usage(path: &Path) -> Option<DiskUsage> {
-    let output = Command::new("df").arg("-Pk").arg(path).output().ok()?;
+pub fn disk_usage(command: &str, path: &Path) -> Option<DiskUsage> {
+    let output = Command::new(command).arg("-Pk").arg(path).output().ok()?;
 
     if !output.status.success() {
         return None;

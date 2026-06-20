@@ -280,6 +280,8 @@ Current partial implementation:
 - Quality timelines show event-specific signal, speech, channel-correlation, and clipping evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
+- Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
+- Fake-controller smoke coverage exercises controller-synced agent disk-pressure system health and stalled-capture health without audio hardware.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 - `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
 
@@ -777,6 +779,8 @@ Current implementation baseline:
 182. ✅ Add template-driven capture command arguments.
 183. ✅ Add template-driven meter command arguments.
 184. ✅ Add fake-controller smoke coverage for template-driven capture arguments.
+185. ✅ Add fake-controller smoke coverage for agent system-health sync.
+186. ✅ Add fake-controller smoke coverage for stalled-capture health sync.
 
 ## Open Questions
 

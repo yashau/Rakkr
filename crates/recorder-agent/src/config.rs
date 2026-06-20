@@ -186,6 +186,9 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_SYSTEM_HEALTH_ENABLED", default_value_t = true)]
     pub system_health_enabled: bool,
 
+    #[arg(long, env = "RAKKR_SYSTEM_HEALTH_DF_COMMAND", default_value = "df")]
+    pub system_health_df_command: String,
+
     #[arg(long, env = "RAKKR_SYSTEM_HEALTH_DISK_PATH", default_value = ".")]
     pub system_health_disk_path: PathBuf,
 

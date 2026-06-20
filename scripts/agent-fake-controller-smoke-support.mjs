@@ -37,6 +37,39 @@ export async function writeFakeTemplateCaptureCommand(directory) {
   return writeFakeCaptureCommandScript(directory, "fake-template-capture", true);
 }
 
+export async function writeFakeStalledCaptureCommand(directory) {
+  const captureScript = path.join(directory, "fake-stalled-capture.mjs");
+  await writeFile(
+    captureScript,
+    `#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const outputPath = process.argv.at(-1);
+
+if (!outputPath || outputPath.startsWith("-")) {
+  console.error("missing output path");
+  process.exit(2);
+}
+
+mkdirSync(path.dirname(outputPath), { recursive: true });
+writeFileSync(outputPath, Buffer.from("RIFF-stalled-capture"));
+await new Promise((resolve) => setTimeout(resolve, 10000));
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-stalled-capture.cmd");
+    await writeFile(commandPath, commandShim(captureScript));
+
+    return commandPath;
+  }
+
+  await chmod(captureScript, 0o755);
+
+  return captureScript;
+}
+
 async function writeFakeCaptureCommandScript(directory, commandName, requireTemplateOutputFlag) {
   const captureScript = path.join(directory, `${commandName}.mjs`);
   await writeFile(
