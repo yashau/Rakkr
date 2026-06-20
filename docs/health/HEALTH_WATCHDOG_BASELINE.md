@@ -21,7 +21,7 @@ Status: Partial baseline checked.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, filterable, and audited.
-- UI exposes live meter speech/noise/hum/static/clipping/channel correlation cues plus recording and schedule quality timelines with event-specific evidence.
+- UI exposes live meter speech/noise/hum/static/clipping/channel correlation cues plus recording and schedule quality timelines with event-specific watchdog and upload-failure evidence.
 - Prometheus export covers health totals, active watchdog alerts, node-offline alerts, xrun totals, clipping, speech score, noise score, hum score, static score, and channel correlation score.
 - Remaining gaps: long-duration real-room validation is not complete.
 

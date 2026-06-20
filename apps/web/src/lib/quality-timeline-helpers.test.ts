@@ -54,6 +54,19 @@ test("quality timeline evidence falls back to dBFS signal detail", () => {
   );
 });
 
+test("quality timeline evidence describes upload queue failures", () => {
+  assert.equal(
+    qualityEventEvidenceText(
+      event("controller.recording.upload_queue_failed", {
+        provider: "smb",
+        reason: "cache_path_missing",
+        source: "upload_runner",
+      }),
+    ),
+    "upload smb / cache path missing",
+  );
+});
+
 function event(type: string, details: Record<string, unknown>): HealthEvent {
   return {
     acknowledgedAt: null,

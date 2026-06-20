@@ -1,6 +1,10 @@
 import type { HealthEvent } from "@rakkr/shared";
 
 export function qualityEventEvidenceText(event: HealthEvent) {
+  if (event.type === "controller.recording.upload_queue_failed") {
+    return uploadFailureEvidenceText(event.details);
+  }
+
   if (event.type === "watchdog.clipping") {
     return clippingEvidenceText(event.details);
   }
@@ -14,6 +18,17 @@ export function qualityEventEvidenceText(event: HealthEvent) {
   }
 
   return signalEvidenceText(event.details);
+}
+
+function uploadFailureEvidenceText(details: Record<string, unknown>) {
+  const provider = stringDetail(details.provider);
+  const reason = stringDetail(details.reason);
+  const parts = [
+    provider ? `upload ${provider}` : "upload failed",
+    reason ? reason.replaceAll("_", " ") : undefined,
+  ].filter(Boolean);
+
+  return parts.join(" / ");
 }
 
 function clippingEvidenceText(details: Record<string, unknown>) {
@@ -76,4 +91,8 @@ function numberArrayDetail(value: unknown) {
   return Array.isArray(value)
     ? value.filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry))
     : [];
+}
+
+function stringDetail(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }

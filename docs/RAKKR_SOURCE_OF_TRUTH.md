@@ -278,7 +278,7 @@ Current partial implementation:
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
-- Quality timelines show event-specific signal, speech, channel-correlation, and clipping evidence.
+- Quality timelines show event-specific signal, speech, channel-correlation, clipping, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
@@ -789,6 +789,7 @@ Current implementation baseline:
 190. ✅ Add fake-controller smoke coverage for meter recovery health sync.
 191. ✅ Add fake-controller smoke coverage for listen-monitor chunk sync recovery.
 192. ✅ Add upload runner terminal-failure health event coverage.
+193. ✅ Add quality timeline upload-failure evidence display.
 
 ## Open Questions
 

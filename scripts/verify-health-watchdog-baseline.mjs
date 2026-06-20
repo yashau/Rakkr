@@ -64,7 +64,7 @@ const baselinePhrases = [
   "RBAC-gated",
   "resource-scoped",
   "quality timelines",
-  "event-specific evidence",
+  "event-specific watchdog and upload-failure evidence",
   "Prometheus export",
   "synthetic PCM calibration fixtures",
   "field calibration",
@@ -187,6 +187,7 @@ const testSnippets = [
   "rakkr_input_channel_correlation_score",
   "meter channel view exposes level voice and clipping state",
   "quality timeline evidence describes clipping channels and duration",
+  "quality timeline evidence describes upload queue failures",
 ];
 const errors = [];
 
