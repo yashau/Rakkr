@@ -8,6 +8,7 @@ export interface MeterChannelView {
   correlationLabel?: string;
   correlationPercent?: number;
   humPercent?: number;
+  intelligibilityPercent?: number;
   noisePercent?: number;
   peakDbfs: string;
   peakPercent: number;
@@ -45,6 +46,7 @@ export function meterChannelView(level: AudioLevel): MeterChannelView {
       : undefined,
     correlationPercent: scoreToPercent(correlation ? Math.abs(correlation.score) : undefined),
     humPercent: scoreToPercent(level.quality?.humScore),
+    intelligibilityPercent: scoreToPercent(level.quality?.intelligibilityScore),
     noisePercent: scoreToPercent(noiseScore),
     peakDbfs: formatDbfs(level.peakDbfs),
     peakPercent: dbfsToPercent(level.peakDbfs),

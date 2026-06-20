@@ -135,6 +135,12 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
   pushType(lines, "rakkr_input_estimated_snr_db", "gauge");
   pushHelp(
     lines,
+    "rakkr_input_intelligibility_score",
+    "Latest first-pass voice intelligibility score by channel.",
+  );
+  pushType(lines, "rakkr_input_intelligibility_score", "gauge");
+  pushHelp(
+    lines,
     "rakkr_input_channel_correlation_score",
     "Latest strongest same-interface channel correlation score by channel.",
   );
@@ -161,6 +167,12 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
           "rakkr_input_estimated_snr_db",
           labels,
           level.quality.estimatedSnrDb,
+        );
+        pushOptionalMetric(
+          lines,
+          "rakkr_input_intelligibility_score",
+          labels,
+          level.quality.intelligibilityScore,
         );
 
         if (level.quality.channelCorrelation) {

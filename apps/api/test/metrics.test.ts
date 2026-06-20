@@ -105,6 +105,10 @@ test("renders store-backed Prometheus gauges", () => {
   );
   assert.match(
     output,
+    /rakkr_input_intelligibility_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test"\} 0.74/,
+  );
+  assert.match(
+    output,
     /rakkr_input_channel_correlation_score\{channel="1",interface_id="iface_x32_usb",node_id="node_x32_test",peer_channel="2",phase="same"\} 0.99/,
   );
   assert.match(
@@ -247,6 +251,7 @@ function meterFrame(): MeterFrame {
           crestFactorDb: 16.4,
           estimatedSnrDb: 21.7,
           humScore: 0.34,
+          intelligibilityScore: 0.74,
           noiseScore: 0.12,
           speechLike: true,
           speechScore: 0.82,

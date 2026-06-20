@@ -932,6 +932,7 @@ mod tests {
                 crest_factor_db: 10.0,
                 estimated_snr_db: 18.0,
                 hum_score: 0.0,
+                intelligibility_score: 0.72,
                 noise_score: 0.1,
                 speech_like: true,
                 speech_score: 0.8,

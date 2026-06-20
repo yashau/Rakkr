@@ -106,6 +106,9 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
                       <span>noise {channel.noisePercent}%</span>
                     ) : null}
                     {channel.snrDb !== undefined ? <span>SNR {channel.snrDb}</span> : null}
+                    {channel.intelligibilityPercent !== undefined ? (
+                      <span>intel {channel.intelligibilityPercent}%</span>
+                    ) : null}
                     {channel.humPercent !== undefined ? (
                       <span>hum {channel.humPercent}%</span>
                     ) : null}
