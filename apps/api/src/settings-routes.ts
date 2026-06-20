@@ -933,6 +933,7 @@ function uploadPolicySnapshot(policy: UploadPolicy) {
 function watchdogSnapshot(policy: WatchdogPolicy) {
   return {
     activeDuring: policy.activeDuring,
+    broadbandNoiseScoreThreshold: policy.broadbandNoiseScoreThreshold,
     channelCorrelationMode: policy.channelCorrelationMode ?? "off",
     channelCorrelationThreshold: policy.channelCorrelationThreshold,
     clippingMode: policy.clippingMode ?? "off",

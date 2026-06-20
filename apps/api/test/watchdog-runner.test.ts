@@ -329,6 +329,40 @@ test("creates and resolves scheduled quality anomaly alerts from policy", async 
   assert.equal(resolvedAudit.length, 1);
 });
 
+test("creates quality anomaly alerts for sustained broadband noise", async () => {
+  const healthEventStore = createHealthEventStore("", []);
+  const policy: WatchdogPolicy = {
+    ...watchdogPolicy(),
+    broadbandNoiseScoreThreshold: 0.85,
+    minCumulativeQualitySeconds: 30,
+    qualityAlertMode: "alert_on_noise_hum_static",
+    qualityMode: "signal_only",
+  };
+  const runner = createWatchdogRunner({
+    auditStore: createAuditStore(""),
+    healthEventStore,
+    meterFrameProvider: () => broadbandNoiseFrame(),
+    policies: [policy],
+    recordingStore: memoryRecordingStore([recording()]),
+  });
+
+  await runner.runOnce(new Date("2026-06-18T12:00:30.000Z"));
+  const results = await runner.runOnce(new Date("2026-06-18T12:01:00.000Z"));
+  const [event] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+
+  assert.equal(
+    results.find((result) => result.reason === "quality_anomaly_detected")?.outcome,
+    "alert_created",
+  );
+  assert.equal(event?.type, qualityAnomalyEventType);
+  assert.equal(event?.details.cumulativeHighBroadbandNoiseSeconds, 30);
+  assert.equal(event?.details.cumulativeHighNoiseSeconds, 0);
+  assert.equal(event?.details.cumulativeHighHumSeconds, 0);
+  assert.equal(event?.details.cumulativeHighStaticSeconds, 0);
+  assert.equal(event?.details.maxBroadbandNoiseScore, 0.87);
+  assert.equal(event?.details.broadbandNoiseScoreThreshold, 0.85);
+});
+
 test("creates and resolves stale node heartbeat health events", async () => {
   const auditStore = createAuditStore("");
   const healthEventStore = createHealthEventStore("", []);
@@ -407,10 +441,38 @@ function loudNoiseFrame(): MeterFrame {
         label: "Input 1",
         peakDbfs: -6,
         quality: {
+          broadbandNoiseScore: 0.87,
           crestFactorDb: 5,
           humScore: 0.82,
           noiseScore: 0.91,
           staticScore: 0.86,
+          speechLike: false,
+          speechScore: 0.2,
+          zeroCrossingRate: 0.48,
+        },
+        rmsDbfs: -18,
+      },
+    ],
+    nodeId: "node_quality",
+  };
+}
+
+function broadbandNoiseFrame(): MeterFrame {
+  return {
+    capturedAt: "2026-06-18T12:01:00.000Z",
+    interfaceId: "iface_noise",
+    levels: [
+      {
+        channelIndex: 1,
+        clipping: false,
+        label: "Input 1",
+        peakDbfs: -6,
+        quality: {
+          broadbandNoiseScore: 0.87,
+          crestFactorDb: 5,
+          humScore: 0.12,
+          noiseScore: 0.42,
+          staticScore: 0.16,
           speechLike: false,
           speechScore: 0.2,
           zeroCrossingRate: 0.48,

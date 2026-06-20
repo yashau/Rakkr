@@ -68,7 +68,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Checked low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
+| Health watchdog | 🟨 | Checked low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, policy-tuned broadband quality alerts, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, checked baseline |
@@ -278,7 +278,7 @@ Current partial implementation:
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high channel correlation.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained clipping.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained digital flatline.
-- Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high noise, hum, or static likelihood.
+- Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high broadband-noise, noise, hum, or static likelihood.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
@@ -827,6 +827,7 @@ Current implementation baseline:
 217. ✅ Add schedule-level capture interface selection.
 218. ✅ Add ad-hoc capture backend/interface selection.
 219. ✅ Add server-backed recording-job interface filters.
+220. ✅ Add policy-tuned broadband-noise quality anomaly alerts.
 
 ## Open Questions
 

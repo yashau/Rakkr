@@ -19,11 +19,13 @@ interface SignalSample {
   clippingChannelIndexes: number[];
   durationSeconds: number;
   flatline: boolean;
+  highBroadbandNoise: boolean;
   highHum: boolean;
   highNoise: boolean;
   highStatic: boolean;
   interfaceId?: string;
   maxChannelCorrelationScore: number;
+  maxBroadbandNoiseScore: number;
   maxHumScore: number;
   maxNoiseScore: number;
   maxPeakDbfs: number;
@@ -37,6 +39,7 @@ interface SignalSample {
 export interface SignalEvaluation {
   coverageSeconds: number;
   cumulativeCorrelatedSeconds: number;
+  cumulativeHighBroadbandNoiseSeconds: number;
   cumulativeClippingSeconds: number;
   cumulativeFlatlineSeconds: number;
   cumulativeHighHumSeconds: number;
@@ -48,6 +51,7 @@ export interface SignalEvaluation {
   latestChannelIndex?: number;
   latestClippingChannelIndexes: number[];
   latestFlatline: boolean;
+  latestBroadbandNoiseScore: number;
   latestHumScore: number;
   latestInterfaceId?: string;
   latestMetricDbfs: number;
@@ -57,6 +61,7 @@ export interface SignalEvaluation {
   latestSpeechScore: number;
   latestStaticScore: number;
   maxChannelCorrelationScore: number;
+  maxBroadbandNoiseScore: number;
   maxClippingChannelCount: number;
   maxHumScore: number;
   maxMetricDbfs: number;
@@ -115,10 +120,12 @@ export function signalSample(
       clippingChannelIndexes: [],
       durationSeconds,
       flatline: true,
+      highBroadbandNoise: false,
       highHum: false,
       highNoise: false,
       highStatic: false,
       maxChannelCorrelationScore: 0,
+      maxBroadbandNoiseScore: 0,
       maxHumScore: 0,
       maxNoiseScore: 0,
       maxPeakDbfs: -160,
@@ -138,6 +145,10 @@ export function signalSample(
   const maxChannelCorrelationScore = Math.max(
     0,
     ...channelCorrelationPairs.map((pair) => Math.abs(pair.score)),
+  );
+  const maxBroadbandNoiseScore = Math.max(
+    0,
+    ...frame.levels.map((level) => level.quality?.broadbandNoiseScore ?? 0),
   );
   const maxHumScore = Math.max(0, ...frame.levels.map((level) => level.quality?.humScore ?? 0));
   const maxPeak = Math.max(...frame.levels.map((level) => level.peakDbfs));
@@ -163,11 +174,13 @@ export function signalSample(
     clippingChannelIndexes,
     durationSeconds,
     flatline: maxRms <= flatlineThresholdDbfs(policy),
+    highBroadbandNoise: maxBroadbandNoiseScore >= broadbandNoiseScoreThreshold(policy),
     highHum: maxHumScore >= humScoreThreshold(policy),
     highNoise: maxNoiseScore >= noiseScoreThreshold(policy),
     highStatic: maxStaticScore >= staticScoreThreshold(policy),
     interfaceId: frame.interfaceId,
     maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
+    maxBroadbandNoiseScore: Number(maxBroadbandNoiseScore.toFixed(2)),
     maxHumScore: Number(maxHumScore.toFixed(2)),
     maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
     maxPeakDbfs: Number(maxPeak.toFixed(1)),
@@ -203,6 +216,9 @@ export function signalEvaluation(
   const cumulativeClippingSeconds = samples
     .filter((sample) => sample.clippingChannelIndexes.length > 0)
     .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeHighBroadbandNoiseSeconds = samples
+    .filter((sample) => sample.highBroadbandNoise)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
   const cumulativeFlatlineSeconds = samples
     .filter((sample) => sample.flatline)
     .reduce((total, sample) => total + sample.durationSeconds, 0);
@@ -217,6 +233,9 @@ export function signalEvaluation(
     .reduce((total, sample) => total + sample.durationSeconds, 0);
   const maxChannelCorrelationScore = samples.length
     ? Math.max(...samples.map((sample) => sample.maxChannelCorrelationScore))
+    : 0;
+  const maxBroadbandNoiseScore = samples.length
+    ? Math.max(...samples.map((sample) => sample.maxBroadbandNoiseScore))
     : 0;
   const maxClippingChannelCount = samples.length
     ? Math.max(...samples.map((sample) => sample.clippingChannelIndexes.length))
@@ -235,6 +254,7 @@ export function signalEvaluation(
   return {
     coverageSeconds,
     cumulativeCorrelatedSeconds,
+    cumulativeHighBroadbandNoiseSeconds,
     cumulativeClippingSeconds,
     cumulativeFlatlineSeconds,
     cumulativeHighHumSeconds,
@@ -246,6 +266,7 @@ export function signalEvaluation(
     latestChannelIndex: latest?.channelIndex,
     latestClippingChannelIndexes: latest?.clippingChannelIndexes ?? [],
     latestFlatline: latest?.flatline ?? false,
+    latestBroadbandNoiseScore: latest?.maxBroadbandNoiseScore ?? 0,
     latestHumScore: latest?.maxHumScore ?? 0,
     latestInterfaceId: latest?.interfaceId,
     latestMetricDbfs: latest?.metricDbfs ?? -160,
@@ -255,6 +276,7 @@ export function signalEvaluation(
     latestSpeechScore: latest?.maxSpeechScore ?? 0,
     latestStaticScore: latest?.maxStaticScore ?? 0,
     maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
+    maxBroadbandNoiseScore: Number(maxBroadbandNoiseScore.toFixed(2)),
     maxClippingChannelCount,
     maxHumScore: Number(maxHumScore.toFixed(2)),
     maxMetricDbfs: Number(maxMetricDbfs.toFixed(1)),
@@ -359,6 +381,7 @@ export function qualityAnomalyIsAbovePolicy(evaluation: SignalEvaluation, policy
   if (requiredSeconds <= 0) {
     return (
       evaluation.cumulativeHighNoiseSeconds > 0 ||
+      evaluation.cumulativeHighBroadbandNoiseSeconds > 0 ||
       evaluation.cumulativeHighHumSeconds > 0 ||
       evaluation.cumulativeHighStaticSeconds > 0
     );
@@ -370,6 +393,7 @@ export function qualityAnomalyIsAbovePolicy(evaluation: SignalEvaluation, policy
 
   return (
     evaluation.cumulativeHighNoiseSeconds >= requiredSeconds ||
+    evaluation.cumulativeHighBroadbandNoiseSeconds >= requiredSeconds ||
     evaluation.cumulativeHighHumSeconds >= requiredSeconds ||
     evaluation.cumulativeHighStaticSeconds >= requiredSeconds
   );
@@ -377,6 +401,10 @@ export function qualityAnomalyIsAbovePolicy(evaluation: SignalEvaluation, policy
 
 export function channelCorrelationThreshold(policy: WatchdogPolicy) {
   return policy.channelCorrelationThreshold ?? 0.98;
+}
+
+export function broadbandNoiseScoreThreshold(policy: WatchdogPolicy) {
+  return policy.broadbandNoiseScoreThreshold ?? 0.85;
 }
 
 export function flatlineThresholdDbfs(policy: WatchdogPolicy) {

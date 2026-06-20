@@ -10,7 +10,7 @@ Status: Partial baseline checked.
 - Channel-correlation policies can alert when scheduled audio channels remain suspiciously same-phase or inverted for enough cumulative time.
 - Clipping policies can alert when scheduled audio clips for enough cumulative time and auto-resolve after recovery.
 - Flatline policies can alert when scheduled audio remains digitally flatlined below a configurable dBFS threshold for enough cumulative time and auto-resolve after recovery.
-- Quality anomaly policies can alert when scheduled audio has sustained high noise, hum, or static likelihood and auto-resolve after recovery.
+- Quality anomaly policies can alert when scheduled audio has sustained high broadband noise, noise, hum, or static likelihood and auto-resolve after recovery.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.

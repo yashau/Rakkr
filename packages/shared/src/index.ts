@@ -71,10 +71,8 @@ export const permissions = [
 ] as const;
 
 export const roles = ["owner", "admin", "operator", "viewer", "auditor"] as const;
-
 export type Permission = (typeof permissions)[number];
 export type Role = (typeof roles)[number];
-
 export const permissionSchema = z.enum(permissions);
 export const roleSchema = z.enum(roles);
 export const accessPolicyEffectSchema = z.enum(["allow", "deny"]);
@@ -477,6 +475,7 @@ export const scheduleRecurrenceSchema = z.discriminatedUnion("mode", [
 
 export const watchdogPolicySchema = z.object({
   activeDuring: z.enum(["always", "scheduled_recording", "recording"]),
+  broadbandNoiseScoreThreshold: z.number().min(0).max(1).optional(),
   channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
   channelCorrelationThreshold: z.number().min(0).max(1).optional(),
   clippingMode: z.enum(["off", "alert_on_clipping"]).optional(),
@@ -506,6 +505,7 @@ export const watchdogPolicySchema = z.object({
 export const watchdogPolicyUpdateSchema = z
   .object({
     activeDuring: z.enum(["always", "scheduled_recording", "recording"]).optional(),
+    broadbandNoiseScoreThreshold: z.number().min(0).max(1).optional(),
     channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
     channelCorrelationThreshold: z.number().min(0).max(1).optional(),
     clippingMode: z.enum(["off", "alert_on_clipping"]).optional(),
@@ -892,6 +892,7 @@ export const defaultKeepControllerCacheRetentionPolicy = {
 
 export const defaultScheduledVoiceWatchdogPolicy = {
   activeDuring: "scheduled_recording",
+  broadbandNoiseScoreThreshold: 0.85,
   channelCorrelationMode: "alert_on_high",
   channelCorrelationThreshold: 0.98,
   clippingMode: "alert_on_clipping",

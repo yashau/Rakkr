@@ -23,6 +23,7 @@ export function recordingProfileUpdate(profile: RecordingProfile): RecordingProf
 export function watchdogPolicyUpdate(policy: WatchdogPolicy): WatchdogPolicyUpdate {
   return {
     activeDuring: policy.activeDuring,
+    broadbandNoiseScoreThreshold: policy.broadbandNoiseScoreThreshold,
     channelCorrelationMode: policy.channelCorrelationMode,
     channelCorrelationThreshold: policy.channelCorrelationThreshold,
     clippingMode: policy.clippingMode,

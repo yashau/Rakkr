@@ -290,6 +290,17 @@ export function WatchdogPolicyCard({
         />
         <NumberField
           disabled={!canManage}
+          label="Broadband Noise Threshold"
+          max={1}
+          min={0}
+          onChange={(broadbandNoiseScoreThreshold) =>
+            setDraft((current) => ({ ...current, broadbandNoiseScoreThreshold }))
+          }
+          step={0.01}
+          value={draft.broadbandNoiseScoreThreshold ?? 0.85}
+        />
+        <NumberField
+          disabled={!canManage}
           label="Noise Score Threshold"
           max={1}
           min={0}

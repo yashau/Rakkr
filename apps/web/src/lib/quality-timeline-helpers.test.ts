@@ -33,15 +33,17 @@ test("quality timeline evidence describes quality anomaly scores", () => {
   assert.equal(
     qualityEventEvidenceText(
       event("watchdog.quality_anomaly", {
+        cumulativeHighBroadbandNoiseSeconds: 24,
         cumulativeHighHumSeconds: 12,
         cumulativeHighNoiseSeconds: 30,
         cumulativeHighStaticSeconds: 6,
+        maxBroadbandNoiseScore: 0.87,
         maxHumScore: 0.82,
         maxNoiseScore: 0.91,
         maxStaticScore: 0.86,
       }),
     ),
-    "noise 91% / hum 82% / static 86% / 30s",
+    "broadband 87% / noise 91% / hum 82% / static 86% / 30s",
   );
 });
 

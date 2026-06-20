@@ -212,6 +212,7 @@ test("settings manage routes update operational templates and audit snapshots", 
     "/api/v1/settings/watchdog-policies/scheduled-voice-watchdog",
     "PATCH",
     {
+      broadbandNoiseScoreThreshold: 0.84,
       channelCorrelationMode: "alert_on_high",
       channelCorrelationThreshold: 0.97,
       clippingMode: "alert_on_clipping",
@@ -438,6 +439,7 @@ test("settings manage routes update operational templates and audit snapshots", 
   );
 
   assert.equal(watchdogAudit?.after?.channelCorrelationMode, "alert_on_high");
+  assert.equal(watchdogAudit?.after?.broadbandNoiseScoreThreshold, 0.84);
   assert.equal(watchdogAudit?.after?.channelCorrelationThreshold, 0.97);
   assert.equal(watchdogAudit?.after?.clippingMode, "alert_on_clipping");
   assert.equal(watchdogAudit?.after?.flatlineMode, "alert_on_flatline");

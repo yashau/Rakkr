@@ -7,6 +7,7 @@ import { syncRecordingHealth } from "./health-sync.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { WatchdogRunResult } from "./watchdog-runner.js";
 import {
+  broadbandNoiseScoreThreshold,
   humScoreThreshold,
   minCumulativeQualitySeconds,
   noiseScoreThreshold,
@@ -252,14 +253,20 @@ function qualityAnomalyDetails(
 
 function qualityAnomalyEvaluationDetails(policy: WatchdogPolicy, evaluation: SignalEvaluation) {
   return {
+    broadbandNoiseScoreThreshold: broadbandNoiseScoreThreshold(policy),
     coverageSeconds: Number(evaluation.coverageSeconds.toFixed(1)),
+    cumulativeHighBroadbandNoiseSeconds: Number(
+      evaluation.cumulativeHighBroadbandNoiseSeconds.toFixed(1),
+    ),
     cumulativeHighHumSeconds: Number(evaluation.cumulativeHighHumSeconds.toFixed(1)),
     cumulativeHighNoiseSeconds: Number(evaluation.cumulativeHighNoiseSeconds.toFixed(1)),
     cumulativeHighStaticSeconds: Number(evaluation.cumulativeHighStaticSeconds.toFixed(1)),
     humScoreThreshold: humScoreThreshold(policy),
+    latestBroadbandNoiseScore: evaluation.latestBroadbandNoiseScore,
     latestHumScore: evaluation.latestHumScore,
     latestNoiseScore: evaluation.latestNoiseScore,
     latestStaticScore: evaluation.latestStaticScore,
+    maxBroadbandNoiseScore: evaluation.maxBroadbandNoiseScore,
     maxHumScore: evaluation.maxHumScore,
     maxNoiseScore: evaluation.maxNoiseScore,
     maxStaticScore: evaluation.maxStaticScore,

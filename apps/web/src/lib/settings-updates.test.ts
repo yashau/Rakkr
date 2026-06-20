@@ -7,6 +7,7 @@ import { watchdogPolicyUpdate } from "./settings-updates";
 test("watchdog policy update preserves quality and flatline fields", () => {
   assert.deepEqual(watchdogPolicyUpdate(watchdogPolicy()), {
     activeDuring: "scheduled_recording",
+    broadbandNoiseScoreThreshold: 0.84,
     channelCorrelationMode: "alert_on_high",
     channelCorrelationThreshold: 0.97,
     clippingMode: "alert_on_clipping",
@@ -37,6 +38,7 @@ test("watchdog policy update preserves quality and flatline fields", () => {
 function watchdogPolicy(): WatchdogPolicy {
   return {
     activeDuring: "scheduled_recording",
+    broadbandNoiseScoreThreshold: 0.84,
     channelCorrelationMode: "alert_on_high",
     channelCorrelationThreshold: 0.97,
     clippingMode: "alert_on_clipping",

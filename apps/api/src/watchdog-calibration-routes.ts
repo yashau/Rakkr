@@ -118,6 +118,7 @@ function watchdogAuditTarget(policy: WatchdogPolicy | { id?: string }) {
 function watchdogSnapshot(policy: WatchdogPolicy) {
   return {
     activeDuring: policy.activeDuring,
+    broadbandNoiseScoreThreshold: policy.broadbandNoiseScoreThreshold,
     channelCorrelationMode: policy.channelCorrelationMode ?? "off",
     channelCorrelationThreshold: policy.channelCorrelationThreshold,
     clippingMode: policy.clippingMode ?? "off",

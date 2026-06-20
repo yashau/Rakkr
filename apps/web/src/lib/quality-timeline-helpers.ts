@@ -64,15 +64,20 @@ function clippingEvidenceText(details: Record<string, unknown>) {
 }
 
 function qualityAnomalyEvidenceText(details: Record<string, unknown>) {
+  const broadbandNoiseScore = numberDetail(details.maxBroadbandNoiseScore);
   const noiseScore = numberDetail(details.maxNoiseScore);
   const humScore = numberDetail(details.maxHumScore);
   const staticScore = numberDetail(details.maxStaticScore);
   const seconds = Math.max(
+    numberDetail(details.cumulativeHighBroadbandNoiseSeconds) ?? 0,
     numberDetail(details.cumulativeHighNoiseSeconds) ?? 0,
     numberDetail(details.cumulativeHighHumSeconds) ?? 0,
     numberDetail(details.cumulativeHighStaticSeconds) ?? 0,
   );
   const parts = [
+    broadbandNoiseScore === undefined
+      ? undefined
+      : `broadband ${formatPercent(broadbandNoiseScore)}`,
     noiseScore === undefined ? undefined : `noise ${formatPercent(noiseScore)}`,
     humScore === undefined ? undefined : `hum ${formatPercent(humScore)}`,
     staticScore === undefined ? undefined : `static ${formatPercent(staticScore)}`,
