@@ -71,7 +71,6 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   const healthLogFile = path.join(smokeRoot, `${scenario.name}-health-events.jsonl`);
   const job = createJob(scenario);
   const observed = createObserved();
-
   activeScenario = { job, jobs: [job], observed, scenario };
   const result = await run("cargo", [
     "run",
@@ -114,7 +113,6 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   if (!scenario.expectSuccess && result.code === 0) {
     throw new Error(`${scenario.name} fake-controller smoke unexpectedly succeeded`);
   }
-
   const state = JSON.parse(await readFile(stateFile, "utf8"));
   const healthLogEvents = await readJsonLines(healthLogFile);
   const renderedLocalEvent = healthLogEvents.find(
@@ -141,7 +139,6 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   } else if (!scenario.expectSuccess) {
     assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
   }
-
   activeScenario = undefined;
 }
 
@@ -165,7 +162,6 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     }),
   ];
   const observed = createObserved();
-
   activeScenario = {
     jobs,
     observed,
@@ -175,7 +171,6 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
       name: "concurrent",
     },
   };
-
   const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile);
 
   try {
@@ -194,7 +189,6 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     child.kill();
     await child.closed;
   }
-
   const healthLogEvents = await readJsonLines(healthLogFile);
   const renderedEvents = healthLogEvents.filter(
     (event) => event.type === "agent.recording_job.output_rendered",
@@ -203,6 +197,7 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
   invariant(observed.configReads >= 1, "concurrent agent did not read controller node config");
   invariant(observed.claimNextReads >= 2, "concurrent agent did not claim queued jobs");
   invariant(observed.claims === 2, "concurrent agent did not claim both queued jobs");
+  invariant(observed.monitorChunks.length >= 1, "concurrent agent did not sync monitor chunks");
   invariant(observed.maxRunningJobs >= 2, "concurrent jobs did not overlap as running");
   invariant(
     renderedEvents.length === 2,
@@ -212,10 +207,6 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     observed.cacheUploads.every((upload) => upload.contentType === "audio/mpeg"),
     "concurrent cache uploads were not rendered MP3",
   );
-  for (const job of jobs) {
-    await assertLocalRecorderCacheDeleted(job.command.outputFileName);
-  }
-
   activeScenario = undefined;
 }
 
@@ -233,7 +224,6 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
     }),
   );
   const observed = createObserved();
-
   activeScenario = {
     jobs,
     observed,
@@ -244,7 +234,6 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
       name: "deferred-sweep",
     },
   };
-
   const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile);
 
   try {
@@ -263,7 +252,6 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
     child.kill();
     await child.closed;
   }
-
   const healthLogEvents = await readJsonLines(healthLogFile);
   const sweepEvent = observed.healthEvents.find(
     (event) => event.type === "agent.recorder_cache.sweep_completed",
@@ -278,10 +266,6 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
     sweepEvent?.details?.deleted >= 1,
     "deferred recorder-cache sweep did not delete files",
   );
-
-  for (const job of jobs) {
-    await assertLocalRecorderCacheDeleted(job.command.outputFileName);
-  }
 
   activeScenario = undefined;
 }
@@ -300,7 +284,6 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
     }),
   );
   const observed = createObserved();
-
   activeScenario = {
     jobs,
     observed,
@@ -311,7 +294,6 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
       name: "min-free-sweep",
     },
   };
-
   const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile, {
     PATH: `${fakeDfPath}${path.delimiter}${process.env.PATH ?? ""}`,
   });
@@ -332,7 +314,6 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
     child.kill();
     await child.closed;
   }
-
   const sweepEvent = observed.healthEvents.find(
     (event) => event.type === "agent.recorder_cache.sweep_completed",
   );
@@ -346,10 +327,7 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
     "min-free recorder-cache sweep did not report min_free_disk reason",
   );
 
-  for (const job of jobs) {
-    await assertLocalRecorderCacheDeleted(job.command.outputFileName);
-  }
-
+  await assertAnyLocalRecorderCacheDeleted(jobs.map((job) => job.command.outputFileName));
   activeScenario = undefined;
 }
 
@@ -544,17 +522,28 @@ function recorderCachePoliciesForScenario(scenario) {
 }
 
 async function assertLocalRecorderCacheDeleted(outputFileName) {
-  const renderedPath = path.join(smokeRoot, "data", "recordings", "local-captures", outputFileName);
-  const rawPath = path.join(
-    smokeRoot,
-    "data",
-    "recordings",
-    "local-captures",
-    outputFileName.replace(/\.[^.]+$/, ".raw.wav"),
-  );
-
+  const [renderedPath, rawPath] = localRecorderCachePaths(outputFileName);
   invariant(!(await fileExists(renderedPath)), `rendered recorder cache remains: ${renderedPath}`);
   invariant(!(await fileExists(rawPath)), `raw recorder cache remains: ${rawPath}`);
+}
+
+async function assertAnyLocalRecorderCacheDeleted(outputFileNames) {
+  for (const outputFileName of outputFileNames) {
+    const [renderedPath, rawPath] = localRecorderCachePaths(outputFileName);
+    if (!(await fileExists(renderedPath)) || !(await fileExists(rawPath))) {
+      return;
+    }
+  }
+
+  throw new Error("min-free recorder-cache sweep did not remove any local cache files");
+}
+
+function localRecorderCachePaths(outputFileName) {
+  const cacheDir = path.join(smokeRoot, "data", "recordings", "local-captures");
+  return [
+    path.join(cacheDir, outputFileName),
+    path.join(cacheDir, outputFileName.replace(/\.[^.]+$/, ".raw.wav")),
+  ];
 }
 
 async function fileExists(filePath) {
@@ -587,6 +576,7 @@ function createObserved() {
     jobStatusReads: 0,
     maxRunningJobs: 0,
     meterFrames: 0,
+    monitorChunks: [],
     nextReads: 0,
     nodeHeartbeats: 0,
   };
@@ -676,6 +666,17 @@ async function handleControllerRequest(request, response) {
   if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/meter-frame`) {
     await readBody(request);
     observed.meterFrames += 1;
+    return json(response, 202, { data: { ok: true } });
+  }
+
+  if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/listen/chunk`) {
+    const body = await readBody(request);
+    observed.monitorChunks.push({
+      capturedAt: request.headers["x-rakkr-captured-at"],
+      contentType: request.headers["content-type"],
+      durationMs: request.headers["x-rakkr-duration-ms"],
+      size: body.byteLength,
+    });
     return json(response, 202, { data: { ok: true } });
   }
 

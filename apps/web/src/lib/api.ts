@@ -96,7 +96,7 @@ export interface RecordingPlaybackSession {
 }
 
 export interface ListenMonitorSession {
-  mode: "controller_meter_preview";
+  mode: "agent_audio_chunk" | "controller_meter_preview";
   nodeId: string;
   sessionId: string;
   startedAt: string;

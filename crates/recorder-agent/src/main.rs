@@ -5,6 +5,7 @@ mod config;
 mod controller;
 mod health_log;
 mod inventory;
+mod monitor_sync;
 mod node_config;
 mod recorder_cache_retention;
 mod state;
@@ -17,7 +18,10 @@ use anyhow::Context;
 use clap::Parser;
 use config::{AgentConfig, MeterBackend};
 use serde_json::{Value, json};
-use telemetry::{MeterCaptureConfig, MeterFrame, alsa_meter_frame, synthetic_meter_frame};
+use telemetry::{
+    MeterCaptureConfig, MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample,
+    synthetic_meter_frame, synthetic_meter_sample,
+};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -116,6 +120,7 @@ async fn main() -> anyhow::Result<()> {
     let mut meter_channel_correlation_active = false;
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
+    let mut monitor_sync_failed = false;
     let mut meter_sync_failed = false;
     let mut node_config_sync_failed = false;
     let mut recording_jobs = JoinSet::new();
@@ -153,12 +158,13 @@ async fn main() -> anyhow::Result<()> {
             }
             _ = ticker.tick() => {
                 tick += 1;
-                let frame = next_meter_frame(
+                let sample = next_meter_sample(
                     &config,
                     &meter_context,
                     tick,
                     &mut meter_capture_failure,
                 ).await?;
+                let frame = &sample.frame;
 
                 info!(
                     captured_at = %frame.captured_at,
@@ -169,7 +175,7 @@ async fn main() -> anyhow::Result<()> {
                 update_meter_health(
                     &config,
                     token,
-                    &frame,
+                    frame,
                     &mut meter_channel_correlation_active,
                     &mut meter_clipping_active,
                     &mut meter_flatline_active,
@@ -195,7 +201,7 @@ async fn main() -> anyhow::Result<()> {
                         warn!(error = %error, "failed to post node heartbeat");
                     }
 
-                    match controller::post_meter_frame(&config, token, &frame).await {
+                    match controller::post_meter_frame(&config, token, frame).await {
                         Ok(()) if meter_sync_failed => {
                             meter_sync_failed = false;
                             append_and_sync_health_event(
@@ -234,6 +240,13 @@ async fn main() -> anyhow::Result<()> {
                             warn!(error = %error, "failed to post meter frame");
                         }
                     }
+
+                    sync_monitor_chunk(
+                        &config,
+                        token,
+                        &sample,
+                        &mut monitor_sync_failed,
+                    ).await?;
 
                     match node_config::fetch_node_config(&config, token).await {
                         Ok(node_config) => {
@@ -328,6 +341,60 @@ async fn run_idle_recorder_cache_sweep(
         }),
     )
     .await
+}
+
+async fn sync_monitor_chunk(
+    config: &AgentConfig,
+    token: &str,
+    sample: &MeterSample,
+    monitor_sync_failed: &mut bool,
+) -> anyhow::Result<()> {
+    if !config.monitor_chunk_sync_enabled {
+        return Ok(());
+    }
+
+    match monitor_sync::post_monitor_chunk(config, token, sample).await {
+        Ok(()) if *monitor_sync_failed => {
+            *monitor_sync_failed = false;
+            append_and_sync_health_event(
+                config,
+                Some(token),
+                "agent.listen_monitor.chunk_sync_recovered",
+                "info",
+                json!({
+                    "capturedAt": sample.frame.captured_at,
+                    "durationMs": sample.monitor_duration_ms,
+                    "nodeId": config.node_id,
+                }),
+            )
+            .await
+            .context("append monitor chunk sync recovery event")?;
+        }
+        Ok(()) => {}
+        Err(error) if !*monitor_sync_failed => {
+            *monitor_sync_failed = true;
+            append_and_sync_health_event(
+                config,
+                Some(token),
+                "agent.listen_monitor.chunk_sync_failed",
+                "warning",
+                json!({
+                    "capturedAt": sample.frame.captured_at,
+                    "durationMs": sample.monitor_duration_ms,
+                    "error": error.to_string(),
+                    "nodeId": config.node_id,
+                }),
+            )
+            .await
+            .context("append monitor chunk sync failure event")?;
+            warn!(error = %error, "failed to post monitor chunk");
+        }
+        Err(error) => {
+            warn!(error = %error, "failed to post monitor chunk");
+        }
+    }
+
+    Ok(())
 }
 
 fn reap_recording_job_workers(jobs: &mut JoinSet<anyhow::Result<()>>) {
@@ -435,14 +502,14 @@ struct MeterLoopContext<'a> {
     token: Option<&'a str>,
 }
 
-async fn next_meter_frame(
+async fn next_meter_sample(
     config: &AgentConfig,
     context: &MeterLoopContext<'_>,
     tick: u64,
     meter_capture_failure: &mut Option<MeterFailureKind>,
-) -> anyhow::Result<MeterFrame> {
+) -> anyhow::Result<MeterSample> {
     match config.meter_backend {
-        MeterBackend::Synthetic => synthetic_meter_frame(
+        MeterBackend::Synthetic => synthetic_meter_sample(
             context.node_id,
             context.interface_id,
             context.channel_count,
@@ -450,8 +517,8 @@ async fn next_meter_frame(
         )
         .context("failed to create synthetic meter frame"),
         MeterBackend::Alsa => {
-            match alsa_meter_frame(context.node_id, context.interface_id, context.capture) {
-                Ok(frame) => {
+            match alsa_meter_sample(context.node_id, context.interface_id, context.capture) {
+                Ok(sample) => {
                     if let Some(kind) = meter_capture_failure.take() {
                         append_and_sync_health_event(
                             config,
@@ -471,7 +538,7 @@ async fn next_meter_frame(
                         .context("append meter capture recovery event")?;
                     }
 
-                    Ok(frame)
+                    Ok(sample)
                 }
                 Err(error) => {
                     let kind = MeterFailureKind::classify(&error.to_string());
@@ -497,7 +564,7 @@ async fn next_meter_frame(
                     }
 
                     warn!(error = %error, "ALSA meter sampling failed; using synthetic fallback");
-                    synthetic_meter_frame(
+                    synthetic_meter_sample(
                         context.node_id,
                         context.interface_id,
                         context.channel_count,

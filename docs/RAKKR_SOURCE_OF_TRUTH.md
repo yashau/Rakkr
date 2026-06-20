@@ -207,7 +207,7 @@ Current partial implementation:
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
-- RBAC-gated listen monitor start/stream returns a controller meter-preview WAV for browser playback.
+- RBAC-gated listen monitor start/stream prefers agent-provided audio chunks and falls back to a controller meter-preview WAV for browser playback.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
 - Nodes UI mirrors RBAC for enrollment, token rotation, live listen, and inventory edits.
@@ -472,6 +472,7 @@ Current implementation baseline:
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
 - `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, controller capacity override, bounded concurrent jobs, concurrent-safe local health log output, rendered MP3/VBR, recorder-cache delete-after-upload, recorder-cache max-bytes idle sweep, cache-upload failure handling, and controller stop requests without audio hardware.
 - `mise run check` includes fake-controller agent smoke coverage for recorder-cache min-free-disk idle sweep using deterministic disk-pressure input.
+- `mise run check` includes fake-controller agent smoke coverage for agent monitor chunk sync without audio hardware.
 - Agent job claim-next, controller-polled capacity, bounded concurrency, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
@@ -750,6 +751,7 @@ Current implementation baseline:
 165. ✅ Add job-pinned recorder-cache delete-after-upload execution.
 166. ✅ Add idle recorder-cache max-age/max-bytes sweep execution.
 167. ✅ Add idle recorder-cache min-free-disk sweep execution.
+168. ✅ Add agent-provided live monitor audio chunk ingest and streaming.
 
 ## Open Questions
 
@@ -757,7 +759,7 @@ Current implementation baseline:
 | -------- | ------------ |
 | ALSA/JACK/PipeWire order | ALSA first, then JACK/PipeWire adapters |
 | Rust MP3 encoder path | Evaluate during agent recording pipeline hardening |
-| Live monitor protocol | HTTP WAV preview now; encrypted WebSocket/chunk stream for agent audio next |
+| Live monitor protocol | Agent audio chunk ingest now; encrypted WebSocket session control later |
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 

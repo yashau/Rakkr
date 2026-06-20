@@ -14,6 +14,12 @@ pub struct MeterFrame {
     pub node_id: String,
 }
 
+pub struct MeterSample {
+    pub frame: MeterFrame,
+    pub monitor_duration_ms: u64,
+    pub monitor_wav: Vec<u8>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioLevel {
@@ -57,6 +63,8 @@ pub struct MeterCaptureConfig<'a> {
     pub sample_seconds: u64,
 }
 
+const MONITOR_CHUNK_SAMPLE_RATE: u32 = 16_000;
+
 pub fn now_rfc3339() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -68,6 +76,14 @@ pub fn alsa_meter_frame(
     interface_id: &str,
     config: &MeterCaptureConfig<'_>,
 ) -> anyhow::Result<MeterFrame> {
+    Ok(alsa_meter_sample(node_id, interface_id, config)?.frame)
+}
+
+pub fn alsa_meter_sample(
+    node_id: &str,
+    interface_id: &str,
+    config: &MeterCaptureConfig<'_>,
+) -> anyhow::Result<MeterSample> {
     if !config.format.eq_ignore_ascii_case("S16_LE") {
         anyhow::bail!(
             "meter sampling currently supports S16_LE PCM, not {}",
@@ -101,13 +117,7 @@ pub fn alsa_meter_frame(
         );
     }
 
-    pcm_s16le_meter_frame(
-        node_id,
-        interface_id,
-        &output.stdout,
-        config.channel_count,
-        config.clip_dbfs,
-    )
+    meter_sample_from_pcm(node_id, interface_id, &output.stdout, config)
 }
 
 pub fn pcm_s16le_meter_frame(
@@ -129,6 +139,35 @@ pub fn pcm_s16le_meter_frame(
         clip_dbfs,
         &captured_at,
     )
+}
+
+fn meter_sample_from_pcm(
+    node_id: &str,
+    interface_id: &str,
+    pcm: &[u8],
+    config: &MeterCaptureConfig<'_>,
+) -> anyhow::Result<MeterSample> {
+    let frame = pcm_s16le_meter_frame(
+        node_id,
+        interface_id,
+        pcm,
+        config.channel_count,
+        config.clip_dbfs,
+    )?;
+    let monitor_duration_ms = pcm_duration_ms(pcm, config.sample_rate, config.channel_count)
+        .unwrap_or_else(|| config.sample_seconds.max(1).saturating_mul(1000));
+    let monitor_wav = pcm_s16le_monitor_wav(
+        pcm,
+        config.sample_rate,
+        config.channel_count,
+        MONITOR_CHUNK_SAMPLE_RATE,
+    )?;
+
+    Ok(MeterSample {
+        frame,
+        monitor_duration_ms,
+        monitor_wav,
+    })
 }
 
 fn pcm_s16le_meter_frame_at(
@@ -252,6 +291,129 @@ pub fn synthetic_meter_frame(
         levels,
         node_id: node_id.to_string(),
     })
+}
+
+pub fn synthetic_meter_sample(
+    node_id: &str,
+    interface_id: &str,
+    channel_count: u16,
+    tick: u64,
+) -> anyhow::Result<MeterSample> {
+    let frame = synthetic_meter_frame(node_id, interface_id, channel_count, tick)?;
+    let monitor_duration_ms = 1000;
+    let monitor_wav = meter_frame_monitor_wav(&frame, monitor_duration_ms);
+
+    Ok(MeterSample {
+        frame,
+        monitor_duration_ms,
+        monitor_wav,
+    })
+}
+
+fn pcm_s16le_monitor_wav(
+    pcm: &[u8],
+    source_sample_rate: u32,
+    channel_count: u16,
+    target_sample_rate: u32,
+) -> anyhow::Result<Vec<u8>> {
+    if source_sample_rate == 0 || target_sample_rate == 0 || channel_count == 0 {
+        anyhow::bail!("monitor WAV requires non-zero sample rates and channels");
+    }
+
+    let channel_count = usize::from(channel_count);
+    let frame_bytes = channel_count * 2;
+
+    if pcm.len() < frame_bytes || !pcm.len().is_multiple_of(frame_bytes) {
+        anyhow::bail!("monitor PCM payload has incomplete interleaved frames");
+    }
+
+    let source_frames = pcm.len() / frame_bytes;
+    let target_samples = ((source_frames as f64 / f64::from(source_sample_rate))
+        * f64::from(target_sample_rate))
+    .round()
+    .max(1.0) as usize;
+    let mut samples = Vec::with_capacity(target_samples);
+
+    for index in 0..target_samples {
+        let source_index = ((index as f64 * f64::from(source_sample_rate))
+            / f64::from(target_sample_rate))
+        .floor()
+        .min((source_frames - 1) as f64) as usize;
+        let frame = &pcm[source_index * frame_bytes..(source_index + 1) * frame_bytes];
+        let mixed = (0..channel_count)
+            .map(|channel| {
+                let offset = channel * 2;
+                i32::from(i16::from_le_bytes([frame[offset], frame[offset + 1]]))
+            })
+            .sum::<i32>()
+            / i32::try_from(channel_count).unwrap_or(1);
+
+        samples.push(mixed.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16);
+    }
+
+    Ok(wav_mono_s16le(&samples, target_sample_rate))
+}
+
+fn meter_frame_monitor_wav(frame: &MeterFrame, duration_ms: u64) -> Vec<u8> {
+    let sample_count = ((u64::from(MONITOR_CHUNK_SAMPLE_RATE) * duration_ms) / 1000).max(1);
+    let peak_dbfs = frame
+        .levels
+        .iter()
+        .map(|level| level.peak_dbfs)
+        .fold(-90.0_f32, f32::max);
+    let amplitude = (10.0_f32.powf(peak_dbfs / 20.0)).clamp(0.02, 0.25);
+    let samples = (0..sample_count)
+        .map(|index| {
+            let phase = (2.0 * std::f32::consts::PI * 440.0 * index as f32)
+                / MONITOR_CHUNK_SAMPLE_RATE as f32;
+
+            (phase.sin() * amplitude * f32::from(i16::MAX)).round() as i16
+        })
+        .collect::<Vec<_>>();
+
+    wav_mono_s16le(&samples, MONITOR_CHUNK_SAMPLE_RATE)
+}
+
+fn wav_mono_s16le(samples: &[i16], sample_rate: u32) -> Vec<u8> {
+    let data_bytes = samples.len().saturating_mul(2);
+    let mut bytes = vec![0_u8; 44 + data_bytes];
+
+    bytes[0..4].copy_from_slice(b"RIFF");
+    bytes[4..8].copy_from_slice(&(36_u32 + data_bytes as u32).to_le_bytes());
+    bytes[8..12].copy_from_slice(b"WAVE");
+    bytes[12..16].copy_from_slice(b"fmt ");
+    bytes[16..20].copy_from_slice(&16_u32.to_le_bytes());
+    bytes[20..22].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[22..24].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[24..28].copy_from_slice(&sample_rate.to_le_bytes());
+    bytes[28..32].copy_from_slice(&(sample_rate * 2).to_le_bytes());
+    bytes[32..34].copy_from_slice(&2_u16.to_le_bytes());
+    bytes[34..36].copy_from_slice(&16_u16.to_le_bytes());
+    bytes[36..40].copy_from_slice(b"data");
+    bytes[40..44].copy_from_slice(&(data_bytes as u32).to_le_bytes());
+
+    for (index, sample) in samples.iter().enumerate() {
+        let offset = 44 + index * 2;
+
+        bytes[offset..offset + 2].copy_from_slice(&sample.to_le_bytes());
+    }
+
+    bytes
+}
+
+fn pcm_duration_ms(pcm: &[u8], sample_rate: u32, channel_count: u16) -> Option<u64> {
+    if sample_rate == 0 || channel_count == 0 {
+        return None;
+    }
+
+    let frame_bytes = usize::from(channel_count) * 2;
+    let frames = pcm.len() / frame_bytes;
+
+    Some(
+        ((frames as f64 / f64::from(sample_rate)) * 1000.0)
+            .round()
+            .max(1.0) as u64,
+    )
 }
 
 #[derive(Default)]
@@ -531,6 +693,21 @@ mod tests {
         assert!(frame.levels[0].clipping);
         assert!(frame.levels[0].peak_dbfs >= -0.1);
         assert!(frame.levels[1].rms_dbfs < frame.levels[1].peak_dbfs);
+    }
+
+    #[test]
+    fn builds_mono_monitor_wav_from_interleaved_pcm() {
+        let pcm = [1000_i16, -1000_i16, 3000_i16, -3000_i16]
+            .into_iter()
+            .flat_map(i16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let wav = pcm_s16le_monitor_wav(&pcm, 2, 2, 2).expect("monitor wav");
+
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(u16::from_le_bytes([wav[22], wav[23]]), 1);
+        assert_eq!(u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]), 2);
+        assert_eq!(u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]), 4);
     }
 
     #[test]

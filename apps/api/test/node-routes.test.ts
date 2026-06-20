@@ -14,6 +14,7 @@ import type { MeterFrameStore } from "../src/meter-store.js";
 import type { NodeInterfaceUpdateInput, NodeStore, NodeUpdateInput } from "../src/node-store.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
+const { createListenMonitorStore } = await import("../src/listen-monitor-store.js");
 const { registerNodeRoutes } = await import("../src/node-routes.js");
 
 test("node list filters by status", async () => {
@@ -197,6 +198,48 @@ test("listen stream returns a short wav preview derived from meter levels", asyn
   assert.equal(event?.details.mode, "controller_meter_preview");
 });
 
+test("listen stream prefers agent audio chunks when available", async () => {
+  const auditStore = createAuditStore("");
+  const listenMonitorStore = createListenMonitorStore();
+  const audio = wavChunk();
+  const app = nodeApp({
+    auditStore,
+    frames: [meterFrame()],
+    listenMonitorStore,
+    nodes: [node()],
+    permissionCalls: [],
+  });
+
+  await listenMonitorStore.save({
+    audio,
+    capturedAt: "2026-06-20T08:00:00.000Z",
+    contentType: "audio/wav",
+    durationMs: 900,
+    nodeId: node().id,
+  });
+
+  const startResponse = await app.request(`/api/v1/nodes/${node().id}/listen`, {
+    method: "POST",
+  });
+  const startBody = (await startResponse.json()) as {
+    data: { mode: string; targetLatencyMs: number };
+  };
+  const streamResponse = await app.request(
+    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_agent_chunk`,
+  );
+  const bytes = Buffer.from(await streamResponse.arrayBuffer());
+  const [event] = await auditStore.list({ action: "listen.monitor.stream.succeeded" });
+
+  assert.equal(startResponse.status, 202);
+  assert.equal(startBody.data.mode, "agent_audio_chunk");
+  assert.equal(startBody.data.targetLatencyMs, 900);
+  assert.equal(streamResponse.status, 200);
+  assert.deepEqual(bytes, Buffer.from(audio));
+  assert.equal(event?.details.mode, "agent_audio_chunk");
+  assert.equal(event?.details.durationMs, 900);
+  assert.equal(event?.details.sourceCapturedAt, "2026-06-20T08:00:00.000Z");
+});
+
 test("listen stream reports unavailable monitor data", async () => {
   const auditStore = createAuditStore("");
   const app = nodeApp({
@@ -325,6 +368,7 @@ function nodeApp({
   auditStore,
   currentUser = user(),
   frames,
+  listenMonitorStore,
   nodes,
   permissionCalls,
   permissionMiddleware,
@@ -332,6 +376,7 @@ function nodeApp({
   auditStore: ReturnType<typeof createAuditStore>;
   currentUser?: CurrentUser;
   frames: MeterFrame[];
+  listenMonitorStore?: ReturnType<typeof createListenMonitorStore>;
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
   permissionMiddleware?: RequirePermission;
@@ -343,6 +388,7 @@ function nodeApp({
     currentAuth: () => auth(currentUser),
     currentUser: () => currentUser,
     hasResourceScope: async () => true,
+    listenMonitorStore: listenMonitorStore ?? createListenMonitorStore(),
     meterFrameStore: memoryMeterFrameStore(frames),
     nodeStore: memoryNodeStore(nodes),
     recordAuditEvent: recordAuditEvent(auditStore),
@@ -604,4 +650,26 @@ function meterFrame(): MeterFrame {
     ],
     nodeId: node().id,
   };
+}
+
+function wavChunk() {
+  const bytes = Buffer.alloc(48);
+
+  bytes.write("RIFF", 0);
+  bytes.writeUInt32LE(40, 4);
+  bytes.write("WAVE", 8);
+  bytes.write("fmt ", 12);
+  bytes.writeUInt32LE(16, 16);
+  bytes.writeUInt16LE(1, 20);
+  bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(16_000, 24);
+  bytes.writeUInt32LE(32_000, 28);
+  bytes.writeUInt16LE(2, 32);
+  bytes.writeUInt16LE(16, 34);
+  bytes.write("data", 36);
+  bytes.writeUInt32LE(4, 40);
+  bytes.writeInt16LE(100, 44);
+  bytes.writeInt16LE(-100, 46);
+
+  return bytes;
 }

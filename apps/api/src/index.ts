@@ -6,6 +6,7 @@ import { logger } from "hono/logger";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
+import { registerAgentMonitorRoutes } from "./agent-monitor-routes.js";
 import { registerAgentRoutes } from "./agent-routes.js";
 import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
@@ -30,6 +31,7 @@ import { createHealthEventStore } from "./health-store.js";
 import type { RecordAuditEvent } from "./http-types.js";
 import { nodes as seedNodes, recordings, schedules as seedSchedules } from "./demo-data.js";
 import type { AppBindings, AuditTarget } from "./http-types.js";
+import { createListenMonitorStore } from "./listen-monitor-store.js";
 import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
@@ -53,6 +55,7 @@ const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
 const healthEventStore = createHealthEventStore();
+const listenMonitorStore = createListenMonitorStore();
 const meterFrameStore = createMeterFrameStore();
 const nodeStore = createNodeStore(seedNodes);
 const recordingStore = createRecordingStore(recordings);
@@ -889,6 +892,7 @@ registerNodeRoutes({
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
+  listenMonitorStore,
   meterFrameStore,
   nodeStore,
   recordAuditEvent,
@@ -907,6 +911,13 @@ registerScheduleRoutes({
   scheduleStore,
   scopedSchedules,
   settingsStore,
+});
+
+registerAgentMonitorRoutes({
+  app,
+  listenMonitorStore,
+  nodeStore,
+  recordAuditEvent,
 });
 
 registerAgentRoutes({

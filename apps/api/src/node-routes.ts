@@ -19,6 +19,7 @@ import type {
   RecordAuditEvent,
   RequirePermission,
 } from "./http-types.js";
+import type { ListenMonitorStore } from "./listen-monitor-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
@@ -31,6 +32,7 @@ interface NodeRouteDependencies {
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
   ) => Promise<boolean>;
+  listenMonitorStore: ListenMonitorStore;
   meterFrameStore: MeterFrameStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
@@ -133,6 +135,7 @@ export function registerNodeRoutes({
   currentAuth,
   currentUser,
   hasResourceScope,
+  listenMonitorStore,
   meterFrameStore,
   nodeStore,
   recordAuditEvent,
@@ -452,7 +455,10 @@ export function registerNodeRoutes({
       }
 
       const sessionId = `listen_${randomUUID()}`;
+      const monitorChunk = await listenMonitorStore.latest(node.id);
+      const mode = monitorChunk ? "agent_audio_chunk" : "controller_meter_preview";
       const streamUrl = listenStreamUrl(node.id, sessionId);
+      const targetLatencyMs = monitorChunk?.durationMs ?? monitorChunkDurationMs;
 
       await recordAuditEvent(c, {
         action: "listen.monitor.start.succeeded",
@@ -461,9 +467,9 @@ export function registerNodeRoutes({
           listenSessionId: sessionId,
         },
         details: {
-          mode: "controller_meter_preview",
+          mode,
           streamUrl,
-          targetLatencyMs: 1500,
+          targetLatencyMs,
         },
         outcome: "succeeded",
         permission: "listen:monitor",
@@ -477,12 +483,12 @@ export function registerNodeRoutes({
       return c.json(
         {
           data: {
-            mode: "controller_meter_preview",
+            mode,
             nodeId: node.id,
             sessionId,
             startedAt: new Date().toISOString(),
             streamUrl,
-            targetLatencyMs: 1500,
+            targetLatencyMs,
           },
         },
         202,
@@ -508,9 +514,10 @@ export function registerNodeRoutes({
         return c.json({ error: "Node not found" }, 404);
       }
 
-      const frame = await monitorMeterFrame(node.id);
+      const monitorChunk = await listenMonitorStore.latest(node.id);
+      const frame = monitorChunk ? undefined : await monitorMeterFrame(node.id);
 
-      if (!frame) {
+      if (!monitorChunk && !frame) {
         await recordNodeFailure(
           c,
           "listen.monitor.stream.failed",
@@ -524,17 +531,20 @@ export function registerNodeRoutes({
         return c.json({ error: "Monitor data unavailable" }, 409);
       }
 
-      const chunk = monitorWavChunk(frame);
+      const chunk = monitorChunk?.audio ?? monitorWavChunk(frame as MeterFrame);
       const sessionId = c.req.query("sessionId");
+      const sourceCapturedAt = monitorChunk?.capturedAt ?? (frame as MeterFrame).capturedAt;
+      const durationMs = monitorChunk?.durationMs ?? monitorChunkDurationMs;
+      const mode = monitorChunk?.source ?? "controller_meter_preview";
 
       await recordAuditEvent(c, {
         action: "listen.monitor.stream.succeeded",
         auth: currentAuth(c),
         correlationIds: sessionId ? { listenSessionId: sessionId } : undefined,
         details: {
-          durationMs: monitorChunkDurationMs,
-          mode: "controller_meter_preview",
-          sourceCapturedAt: frame.capturedAt,
+          durationMs,
+          mode,
+          sourceCapturedAt,
         },
         outcome: "succeeded",
         permission: "listen:monitor",
@@ -549,7 +559,7 @@ export function registerNodeRoutes({
         "Cache-Control": "no-store",
         "Content-Disposition": `inline; filename="${node.id}-monitor.wav"`,
         "Content-Length": chunk.byteLength.toString(),
-        "Content-Type": "audio/wav",
+        "Content-Type": monitorChunk?.contentType ?? "audio/wav",
       });
     },
   );

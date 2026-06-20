@@ -958,7 +958,7 @@ fn recording_cache_url(controller_url: &str, recording_id: &str) -> String {
     )
 }
 
-fn node_url(controller_url: &str, node_id: &str, suffix: &str) -> String {
+pub(crate) fn node_url(controller_url: &str, node_id: &str, suffix: &str) -> String {
     format!(
         "{}/api/v1/nodes/{}/{}",
         controller_url.trim_end_matches('/'),

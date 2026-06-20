@@ -7,7 +7,7 @@ export async function writeFakeDfCommand(directory) {
   const output = [
     "Filesystem 1024-blocks Used Available Capacity Mounted on",
     "rakkr-smoke 1000 900 100 90% /",
-  ].join("\\n");
+  ].join("\n");
 
   await mkdir(fakeBin, { recursive: true });
   await writeFile(
