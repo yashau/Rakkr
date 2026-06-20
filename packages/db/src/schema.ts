@@ -388,6 +388,15 @@ export const templateAssignments = pgTable(
   }),
 );
 
+export const uploadProviders = pgTable("upload_providers", {
+  credentialRef: text("credential_ref"),
+  displayName: varchar("display_name", { length: 160 }).notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  provider: varchar("provider", { length: 32 }).primaryKey(),
+  target: text("target"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const schedules = pgTable(
   "schedules",
   {

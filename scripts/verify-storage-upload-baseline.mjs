@@ -3,6 +3,8 @@ import { access, readFile } from "node:fs/promises";
 const baselineFile = "docs/storage/STORAGE_UPLOAD_BASELINE.md";
 const sourceFiles = [
   "packages/shared/src/index.ts",
+  "packages/db/src/schema.ts",
+  "packages/db/drizzle/0022_bizarre_mastermind.sql",
   "apps/api/src/upload-executor.ts",
   "apps/api/src/upload-providers.ts",
   "apps/api/src/upload-policies.ts",
@@ -40,15 +42,20 @@ const baselinePhrases = [
   "run-now",
   "confirmed non-stub upload",
   "`settings:*` and `recording:*` RBAC",
-  "JSON-backed MVP operational stores",
-  "Postgres-backed upload stores remain a hardening item",
+  "Provider config persistence is Postgres-backed with JSON fallback",
+  "Policy and queue stores remain JSON-backed MVP operational stores",
   "mise run storage:check",
 ];
 const sourceSnippets = [
   "uploadProviderSchema",
+  "uploadProviders",
+  "upload_providers",
   "uploadQueueItemSchema",
   "uploadPolicySchema",
   "createUploadProviderStore",
+  "PostgresUploadProviderStore",
+  "uploadProvidersTable",
+  "onConflictDoUpdate",
   "uploadProviderRuntimeStatus",
   "createUploadPolicy",
   "uploadPolicyForCachedRecording",
@@ -148,10 +155,6 @@ for (const snippet of testSnippets) {
   if (!allTests.includes(snippet)) {
     errors.push(`storage upload tests must include "${snippet}"`);
   }
-}
-
-if (/Drizzle\/Postgres/iu.test(baseline)) {
-  errors.push(`${baselineFile} should not claim upload stores are Drizzle/Postgres-backed yet`);
 }
 
 if (errors.length > 0) {

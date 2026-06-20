@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createDatabase, eq, uploadProviders as uploadProvidersTable } from "@rakkr/db";
 import {
   uploadProviderConfigSchema,
   uploadProviderConfigUpdateSchema,
@@ -10,6 +11,7 @@ import {
 } from "@rakkr/shared";
 
 type UploadProviderConfigField = "credentialRef" | "target";
+type UploadProviderRow = typeof uploadProvidersTable.$inferSelect;
 
 interface UploadProviderDriver {
   implemented: boolean;
@@ -39,7 +41,16 @@ const uploadProviderDrivers: Record<UploadProvider, UploadProviderDriver> = {
   },
 };
 
-export class UploadProviderStore {
+export interface UploadProviderStore {
+  findStatus(provider: UploadProvider): Promise<UploadProviderRuntimeStatus>;
+  listStatuses(): Promise<UploadProviderRuntimeStatus[]>;
+  update(
+    provider: UploadProvider,
+    input: UploadProviderConfigUpdate,
+  ): Promise<UploadProviderRuntimeStatus | undefined>;
+}
+
+class JsonUploadProviderStore implements UploadProviderStore {
   private readonly configs = loadProviderConfigs();
 
   async listStatuses() {
@@ -93,8 +104,112 @@ export class UploadProviderStore {
   }
 }
 
+class PostgresUploadProviderStore implements UploadProviderStore {
+  private dbAvailable = true;
+  private readonly db;
+
+  constructor(
+    databaseUrl: string,
+    private readonly fallback: UploadProviderStore,
+  ) {
+    this.db = createDatabase(databaseUrl);
+  }
+
+  async listStatuses() {
+    if (!this.dbAvailable) {
+      return this.fallback.listStatuses();
+    }
+
+    try {
+      const configs = await this.listConfigs();
+
+      return configs.map(uploadProviderRuntimeStatus);
+    } catch (error) {
+      await this.failover("upload provider query unavailable; using JSON store", error);
+      return this.fallback.listStatuses();
+    }
+  }
+
+  async findStatus(provider: UploadProvider) {
+    if (!this.dbAvailable) {
+      return this.fallback.findStatus(provider);
+    }
+
+    try {
+      const [row] = await this.db
+        .select()
+        .from(uploadProvidersTable)
+        .where(eq(uploadProvidersTable.provider, provider))
+        .limit(1);
+
+      return uploadProviderRuntimeStatus(row ? configFromRow(row) : defaultConfig(provider));
+    } catch (error) {
+      await this.failover("upload provider lookup unavailable; using JSON store", error);
+      return this.fallback.findStatus(provider);
+    }
+  }
+
+  async update(provider: UploadProvider, input: UploadProviderConfigUpdate) {
+    if (!this.dbAvailable) {
+      return this.fallback.update(provider, input);
+    }
+
+    try {
+      const existing = configFromStatus(await this.findStatus(provider));
+      const next = uploadProviderConfigSchema.parse({
+        ...existing,
+        ...uploadProviderConfigUpdateSchema.parse(input),
+        provider,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await this.writeConfig(next);
+
+      return uploadProviderRuntimeStatus(next);
+    } catch (error) {
+      await this.failover("upload provider update unavailable; using JSON store", error);
+      return this.fallback.update(provider, input);
+    }
+  }
+
+  private async listConfigs() {
+    const rows = await this.db.select().from(uploadProvidersTable);
+    const byProvider = new Map(defaultProviderConfigs().map((config) => [config.provider, config]));
+
+    for (const row of rows) {
+      byProvider.set(row.provider as UploadProvider, configFromRow(row));
+    }
+
+    return orderedProviders().map((provider) => byProvider.get(provider)!);
+  }
+
+  private async writeConfig(config: UploadProviderConfig) {
+    await this.db
+      .insert(uploadProvidersTable)
+      .values(configToRow(config))
+      .onConflictDoUpdate({
+        set: {
+          credentialRef: config.credentialRef ?? null,
+          displayName: config.displayName,
+          enabled: config.enabled,
+          target: config.target ?? null,
+          updatedAt: new Date(config.updatedAt),
+        },
+        target: uploadProvidersTable.provider,
+      });
+  }
+
+  private async failover(message: string, error: unknown) {
+    this.dbAvailable = false;
+    console.warn(message, error);
+  }
+}
+
 export function createUploadProviderStore() {
-  return new UploadProviderStore();
+  const fallback = new JsonUploadProviderStore();
+  const databaseUrl = process.env.DATABASE_URL;
+
+  return databaseUrl ? new PostgresUploadProviderStore(databaseUrl, fallback) : fallback;
 }
 
 export function uploadProviderRuntimeStatus(
@@ -163,7 +278,7 @@ function loadProviderConfigs() {
     byProvider.set(config.provider, config);
   }
 
-  return ["stub", "smb", "s3"].map((provider) => byProvider.get(provider as UploadProvider)!);
+  return orderedProviders().map((provider) => byProvider.get(provider)!);
 }
 
 function readProviderConfigs() {
@@ -183,7 +298,7 @@ function isProviderStore(value: unknown): value is { providers: unknown[] } {
 }
 
 function defaultProviderConfigs() {
-  return ["stub", "smb", "s3"].map((provider) => defaultConfig(provider as UploadProvider));
+  return orderedProviders().map((provider) => defaultConfig(provider));
 }
 
 function defaultConfig(provider: UploadProvider): UploadProviderConfig {
@@ -204,5 +319,42 @@ function defaultConfig(provider: UploadProvider): UploadProviderConfig {
     enabled: false,
     provider,
     updatedAt,
+  };
+}
+
+function orderedProviders(): UploadProvider[] {
+  return ["stub", "smb", "s3"];
+}
+
+function configFromRow(row: UploadProviderRow): UploadProviderConfig {
+  return uploadProviderConfigSchema.parse({
+    credentialRef: row.credentialRef ?? undefined,
+    displayName: row.displayName,
+    enabled: row.enabled,
+    provider: row.provider,
+    target: row.target ?? undefined,
+    updatedAt: row.updatedAt.toISOString(),
+  });
+}
+
+function configFromStatus(status: UploadProviderRuntimeStatus): UploadProviderConfig {
+  return uploadProviderConfigSchema.parse({
+    credentialRef: status.credentialRef,
+    displayName: status.displayName,
+    enabled: status.enabled,
+    provider: status.provider,
+    target: status.target,
+    updatedAt: status.updatedAt,
+  });
+}
+
+function configToRow(config: UploadProviderConfig) {
+  return {
+    credentialRef: config.credentialRef ?? null,
+    displayName: config.displayName,
+    enabled: config.enabled,
+    provider: config.provider,
+    target: config.target ?? null,
+    updatedAt: new Date(config.updatedAt),
   };
 }
