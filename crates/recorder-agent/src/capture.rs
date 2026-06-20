@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use serde::Serialize;
 use tracing::info;
 
@@ -32,6 +32,7 @@ pub struct CaptureChannelMap {
 }
 
 pub struct CapturePlan {
+    pub args_template: Option<String>,
     pub channel_map: Option<CaptureChannelMap>,
     pub channels: u16,
     pub command: String,
@@ -54,6 +55,7 @@ pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CaptureP
     let output_path = capture_output_path(config)?;
 
     Ok(CapturePlan {
+        args_template: config.capture_args_template.clone(),
         channel_map: None,
         channels: config.capture_channels,
         command: config.capture_command.clone(),
@@ -99,8 +101,12 @@ pub fn local_capture_path(file_name: &str) -> PathBuf {
         .join(safe_file_name(file_name))
 }
 
-pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> Vec<String> {
-    vec![
+pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> anyhow::Result<Vec<String>> {
+    if let Some(template) = &plan.args_template {
+        return capture_template_args(plan, output_path, template);
+    }
+
+    Ok(vec![
         "-D".to_string(),
         plan.device.clone(),
         "-f".to_string(),
@@ -112,7 +118,36 @@ pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> Vec<String
         "-d".to_string(),
         plan.seconds.to_string(),
         output_path.to_string(),
-    ]
+    ])
+}
+
+fn capture_template_args(
+    plan: &CapturePlan,
+    output_path: &str,
+    template: &str,
+) -> anyhow::Result<Vec<String>> {
+    let Some(args) = shlex::split(template) else {
+        return Err(anyhow!("parse capture args template"));
+    };
+
+    if args.is_empty() {
+        anyhow::bail!("capture args template must not be empty");
+    }
+
+    Ok(args
+        .into_iter()
+        .map(|arg| capture_template_arg(plan, output_path, &arg))
+        .collect())
+}
+
+fn capture_template_arg(plan: &CapturePlan, output_path: &str, arg: &str) -> String {
+    arg.replace("{device}", &plan.device)
+        .replace("{format}", &plan.format)
+        .replace("{sample_rate}", &plan.sample_rate.to_string())
+        .replace("{channels}", &plan.channels.to_string())
+        .replace("{seconds}", &plan.seconds.to_string())
+        .replace("{output_path}", output_path)
+        .replace("{output}", output_path)
 }
 
 pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
@@ -140,7 +175,7 @@ pub fn spawn_capture_plan(plan: &CapturePlan) -> anyhow::Result<CaptureChild> {
     }
 
     let output_text = output_path.to_string_lossy().to_string();
-    let args = capture_command_args(plan, &output_text);
+    let args = capture_command_args(plan, &output_text)?;
     let child = Command::new(&plan.command)
         .args(&args)
         .spawn()
@@ -381,6 +416,7 @@ mod tests {
             attach_cache_file_name: None,
             attach_cache_recording_id: None,
             agent_state_file: PathBuf::from("state.json"),
+            capture_args_template: None,
             capture_channels: 1,
             channel_render_command: "ffmpeg".to_string(),
             capture_command: "arecord".to_string(),
@@ -426,7 +462,8 @@ mod tests {
             capture_command_args(
                 &capture_plan_from_config(&config()).unwrap(),
                 "/tmp/rec.wav"
-            ),
+            )
+            .unwrap(),
             vec![
                 "-D",
                 "hw:2,0",
@@ -441,6 +478,68 @@ mod tests {
                 "/tmp/rec.wav",
             ]
         );
+    }
+
+    #[test]
+    fn builds_templated_capture_args() {
+        let mut config = config();
+
+        config.capture_args_template = Some(
+            "--target {device} --rate {sample_rate} --channels {channels} --format {format} --duration {seconds} --file {output}"
+                .to_string(),
+        );
+
+        assert_eq!(
+            capture_command_args(&capture_plan_from_config(&config).unwrap(), "/tmp/rec.wav")
+                .unwrap(),
+            vec![
+                "--target",
+                "hw:2,0",
+                "--rate",
+                "48000",
+                "--channels",
+                "1",
+                "--format",
+                "S16_LE",
+                "--duration",
+                "15",
+                "--file",
+                "/tmp/rec.wav",
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_quoted_capture_template_segments_as_single_args() {
+        let mut config = config();
+
+        config.capture_args_template =
+            Some("--property media.name='Rakkr Capture' {output_path}".to_string());
+
+        assert_eq!(
+            capture_command_args(
+                &capture_plan_from_config(&config).unwrap(),
+                "/tmp/recording with spaces.wav"
+            )
+            .unwrap(),
+            vec![
+                "--property",
+                "media.name=Rakkr Capture",
+                "/tmp/recording with spaces.wav",
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_capture_args_template() {
+        let mut config = config();
+
+        config.capture_args_template = Some("--target 'unterminated".to_string());
+        let error =
+            capture_command_args(&capture_plan_from_config(&config).unwrap(), "/tmp/rec.wav")
+                .expect_err("unterminated quote should fail");
+
+        assert!(error.to_string().contains("parse capture args template"));
     }
 
     #[test]

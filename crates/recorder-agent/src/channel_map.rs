@@ -33,6 +33,7 @@ pub fn capture_plan_for_job(
     };
 
     CapturePlan {
+        args_template: config.capture_args_template.clone(),
         channel_map,
         channels,
         command: config.capture_command.clone(),
@@ -663,6 +664,7 @@ mod tests {
         final_output_path: &str,
     ) -> CapturePlan {
         CapturePlan {
+            args_template: None,
             channel_map: None,
             channels: 2,
             command: "arecord".to_string(),
@@ -765,6 +767,7 @@ mod tests {
             attach_cache_file: None,
             attach_cache_file_name: None,
             attach_cache_recording_id: None,
+            capture_args_template: None,
             capture_channels: 2,
             capture_command: "arecord".to_string(),
             capture_device: "default".to_string(),

@@ -7,6 +7,7 @@ Current capabilities:
 - parses node/controller configuration;
 - reports stable node identity fields;
 - emits JSON inventory;
+- captures configurable inputs through the local capture command with optional argument templates for non-`arecord` tools;
 - samples ALSA S16_LE PCM through `arecord` for live RMS/peak meter frames, with synthetic fallback for development hosts;
 - polls controller node capacity and runs bounded simultaneous recording jobs with `--max-concurrent-recordings` as the local fallback;
 - detects meter capture failure/recovery, device-unavailable/xrun failures, clipping, flatline, and suspicious same/inverted channel correlation transitions;

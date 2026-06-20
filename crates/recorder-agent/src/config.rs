@@ -94,6 +94,9 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CAPTURE_COMMAND", default_value = "arecord")]
     pub capture_command: String,
 
+    #[arg(long, env = "RAKKR_CAPTURE_ARGS_TEMPLATE")]
+    pub capture_args_template: Option<String>,
+
     #[arg(long, env = "RAKKR_CHANNEL_RENDER_COMMAND", default_value = "ffmpeg")]
     pub channel_render_command: String,
 
