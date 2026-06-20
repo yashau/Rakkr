@@ -550,9 +550,10 @@ Examples:
 - Date/time: `2026-06-18 14:45`
 - Exact timestamp: `2026-06-18T10:45:03.123Z`
 
-Current partial implementation:
+Current implementation baseline:
 
 - Web date helpers centralize browser-timezone, year-first display and local date-to-UTC conversion with regression coverage.
+- Schedule timezone rendering, recording names, local date filters, and generated export filenames are covered by `docs/time/DATE_TIME_BASELINE.md`.
 
 ---
 
@@ -726,6 +727,7 @@ Current partial implementation:
 154. ✅ Add policy-tuned scheduled clipping watchdog alerts.
 155. ✅ Tighten health watchdog baseline verifier for clipping lifecycle evidence.
 156. ✅ Add quality timeline event-specific watchdog evidence display.
+157. ✅ Add checked browser-timezone and ISO date/time baseline.
 
 ## Open Questions
 
