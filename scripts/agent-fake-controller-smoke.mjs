@@ -13,6 +13,7 @@ import {
   writeFakeRenderCommand,
   writeFakeStalledCaptureCommand,
   writeFakeTemplateCaptureCommand,
+  writeFakeTemplateMeterCommand,
   writeFakeXrunMeterCommand,
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
@@ -21,6 +22,7 @@ import {
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
+import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
   runMeterRecoveryScenario,
@@ -89,6 +91,7 @@ try {
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
   const stalledCaptureCommand = await writeFakeStalledCaptureCommand(smokeRoot);
   const templateCaptureCommand = await writeFakeTemplateCaptureCommand(smokeRoot);
+  const templateMeterCommand = await writeFakeTemplateMeterCommand(smokeRoot);
   const deviceUnavailableMeterCommand = await writeFakeDeviceUnavailableMeterCommand(smokeRoot);
   const recoveringMeterCommand = await writeFakeRecoveringMeterCommand(smokeRoot);
   const xrunMeterCommand = await writeFakeXrunMeterCommand(smokeRoot);
@@ -112,6 +115,9 @@ try {
       recordingId: "rec_fake_controller_template_capture",
     },
   });
+  await runTemplateMeterScenario(
+    healthScenarioDeps({ address, renderCommand, templateMeterCommand }),
+  );
   await runScenario({
     address,
     captureCommand: stalledCaptureCommand,

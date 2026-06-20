@@ -14,6 +14,7 @@ const sourceFiles = [
   "scripts/alsa-loopback-smoke.sh",
   "scripts/agent-loopback-meter-smoke.sh",
   "scripts/alsa-loopback-render-smoke.sh",
+  "scripts/agent-fake-controller-smoke-devices.mjs",
   "scripts/agent-fake-controller-smoke.mjs",
 ];
 const baselinePhrases = [
@@ -61,6 +62,11 @@ const sourceSnippets = [
   "writeFakeTemplateCaptureCommand",
   "--capture-args-template",
   "job_fake_controller_template_capture",
+  "writeFakeTemplateMeterCommand",
+  "runTemplateMeterScenario",
+  "--meter-args-template",
+  "fake-template-meter-device",
+  "fake-template-meter-args.json",
   "builds_default_arecord_meter_args",
   "builds_templated_meter_args_for_stdout_pcm",
   "parse_alsa_capture_devices",

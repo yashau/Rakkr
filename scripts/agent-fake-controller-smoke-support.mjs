@@ -37,6 +37,65 @@ export async function writeFakeTemplateCaptureCommand(directory) {
   return writeFakeCaptureCommandScript(directory, "fake-template-capture", true);
 }
 
+export async function writeFakeTemplateMeterCommand(directory) {
+  const meterScript = path.join(directory, "fake-template-meter.mjs");
+  await writeFile(
+    meterScript,
+    `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+const expected = new Map([
+  ["--target", "fake-template-meter-device"],
+  ["--rate", "48000"],
+  ["--format", "S16_LE"],
+  ["--duration", "1"],
+  ["--raw", "-"],
+]);
+
+if (!args.includes("--template-meter")) {
+  console.error("missing template meter marker");
+  process.exit(2);
+}
+
+for (const [flag, value] of expected) {
+  const index = args.indexOf(flag);
+  if (index < 0 || args[index + 1] !== value) {
+    console.error(\`unexpected \${flag}: \${args[index + 1] ?? "<missing>"}\`);
+    process.exit(2);
+  }
+}
+
+const channelsIndex = args.indexOf("--channels");
+const channels = Number(args[channelsIndex + 1]);
+if (!Number.isInteger(channels) || channels < 1) {
+  console.error("invalid template meter channels");
+  process.exit(2);
+}
+
+writeFileSync(${JSON.stringify(path.join(directory, "fake-template-meter-args.json"))}, JSON.stringify(args));
+
+const samples = Array.from({ length: channels * 6 }, (_, index) =>
+  index % 2 === 0 ? 9000 : -9000,
+);
+const buffer = Buffer.alloc(samples.length * 2);
+samples.forEach((sample, index) => buffer.writeInt16LE(sample, index * 2));
+process.stdout.write(buffer);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-template-meter.cmd");
+    await writeFile(commandPath, commandShim(meterScript));
+
+    return commandPath;
+  }
+
+  await chmod(meterScript, 0o755);
+
+  return meterScript;
+}
+
 export async function writeFakeStalledCaptureCommand(directory) {
   const captureScript = path.join(directory, "fake-stalled-capture.mjs");
   await writeFile(
