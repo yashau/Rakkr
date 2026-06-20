@@ -21,6 +21,7 @@ Status: Partial baseline checked.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, filterable, and audited.
+- Central health workbench lists, filters, summarizes, and manages visible health events with RBAC-mirrored relationship lookups and lifecycle controls.
 - Node health panels expose RBAC-mirrored acknowledge, one-hour suppress, resolve, and reopen lifecycle controls.
 - UI exposes live meter speech/noise/hum/static/clipping/channel correlation cues plus recording and schedule quality timelines with event-specific watchdog and upload-failure evidence.
 - Prometheus export covers health totals, active watchdog alerts, node-offline alerts, xrun totals, clipping, speech score, noise score, hum score, static score, and channel correlation score.
@@ -37,6 +38,7 @@ Status: Partial baseline checked.
 | Health/watchdog/xrun Prometheus metrics | `apps/api/test/metrics.test.ts` |
 | Watchdog field calibration route | `apps/api/test/watchdog-calibration-routes.test.ts` |
 | Watchdog calibration UI gating | `apps/web/src/lib/settings-page-helpers.test.ts` |
+| Central health workbench | `apps/web/src/pages/health.tsx`, `apps/web/src/lib/health-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |
 | Node health lifecycle controls | `apps/web/src/components/node-health-events.tsx`, `apps/web/src/lib/node-page-helpers.test.ts` |
 | Meter speech/noise/hum/static/clipping UI helpers | `apps/web/src/lib/meter-helpers.test.ts` |
 | Recording and schedule quality timelines | `apps/web/src/components/quality-timeline.tsx`, `apps/web/src/lib/quality-timeline-helpers.test.ts` |

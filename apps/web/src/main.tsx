@@ -18,6 +18,7 @@ import {
   CalendarDays,
   Database,
   Gauge,
+  HeartPulse,
   LogIn,
   LogOut,
   Radio,
@@ -46,6 +47,7 @@ import {
 import { AccessPage } from "@/pages/access";
 import { AuditPage } from "@/pages/audit";
 import { DashboardPage } from "@/pages/dashboard";
+import { HealthPage } from "@/pages/health";
 import { NodesPage } from "@/pages/nodes";
 import { RecordingsPage } from "@/pages/recordings";
 import { ScheduleDetailPage } from "@/pages/schedule-detail";
@@ -60,6 +62,7 @@ const navIcons: Record<RootNavItem["id"], typeof Gauge> = {
   access: Users,
   audit: ShieldCheck,
   dashboard: Gauge,
+  health: HeartPulse,
   nodes: Radio,
   recordings: Database,
   schedules: CalendarDays,
@@ -288,6 +291,12 @@ const nodesRoute = createRoute({
   path: "/nodes",
 });
 
+const healthRoute = createRoute({
+  component: HealthPage,
+  getParentRoute: () => rootRoute,
+  path: "/health",
+});
+
 const schedulesRoute = createRoute({
   component: SchedulesPage,
   getParentRoute: () => rootRoute,
@@ -333,6 +342,7 @@ const accessRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   nodesRoute,
+  healthRoute,
   schedulesRoute,
   scheduleDetailRoute,
   recordingsRoute,

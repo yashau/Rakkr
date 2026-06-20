@@ -3,9 +3,25 @@ import type { CurrentUser } from "@rakkr/shared";
 export type RootLayoutPermissions = ReturnType<typeof rootLayoutPermissions>;
 
 export type RootNavItem = {
-  id: "access" | "audit" | "dashboard" | "nodes" | "recordings" | "schedules" | "settings";
+  id:
+    | "access"
+    | "audit"
+    | "dashboard"
+    | "health"
+    | "nodes"
+    | "recordings"
+    | "schedules"
+    | "settings";
   label: string;
-  to: "/" | "/access" | "/audit" | "/nodes" | "/recordings" | "/schedules" | "/settings";
+  to:
+    | "/"
+    | "/access"
+    | "/audit"
+    | "/health"
+    | "/nodes"
+    | "/recordings"
+    | "/schedules"
+    | "/settings";
 };
 
 export function rootLayoutPermissions(user: CurrentUser | undefined) {
@@ -16,6 +32,7 @@ export function rootLayoutPermissions(user: CurrentUser | undefined) {
     canManageAccess: permissions.includes("auth:manage"),
     canReadAudit: permissions.includes("audit:read"),
     canReadDashboard: permissions.includes("node:read"),
+    canReadHealth: permissions.includes("health:read"),
     canReadNodes: permissions.includes("node:read"),
     canReadRecordings: permissions.includes("recording:read"),
     canReadSchedules: permissions.includes("schedule:read"),
@@ -27,6 +44,7 @@ export function rootLayoutNavItems(permissions: RootLayoutPermissions): RootNavI
   return [
     ...(permissions.canReadDashboard ? [navItem("dashboard", "Dashboard", "/")] : []),
     ...(permissions.canReadNodes ? [navItem("nodes", "Nodes", "/nodes")] : []),
+    ...(permissions.canReadHealth ? [navItem("health", "Health", "/health")] : []),
     ...(permissions.canReadSchedules ? [navItem("schedules", "Schedules", "/schedules")] : []),
     ...(permissions.canReadRecordings ? [navItem("recordings", "Recordings", "/recordings")] : []),
     ...(permissions.canReadSettings ? [navItem("settings", "Settings", "/settings")] : []),

@@ -1,0 +1,118 @@
+import type {
+  CurrentUser,
+  HealthEvent,
+  HealthEventStatus,
+  HealthSeverity,
+  RecorderNode,
+  RecordingSummary,
+  ScheduleSummary,
+} from "@rakkr/shared";
+
+import type { HealthEventFilters } from "@/lib/api";
+
+export interface HealthPageFilterDraft {
+  limit: string;
+  nodeId: string;
+  recordingId: string;
+  scheduleId: string;
+  severity: "" | HealthSeverity;
+  status: "" | HealthEventStatus;
+  type: string;
+}
+
+export const emptyHealthPageFilters: HealthPageFilterDraft = {
+  limit: "200",
+  nodeId: "",
+  recordingId: "",
+  scheduleId: "",
+  severity: "",
+  status: "",
+  type: "",
+};
+
+export function healthPagePermissions(user: CurrentUser | undefined) {
+  const permissions = user?.permissions ?? [];
+
+  return {
+    canAcknowledgeHealth: permissions.includes("health:acknowledge"),
+    canReadHealth: permissions.includes("health:read"),
+    canReadNodes: permissions.includes("node:read"),
+    canReadRecordings: permissions.includes("recording:read"),
+    canReadSchedules: permissions.includes("schedule:read"),
+  };
+}
+
+export function healthEventFiltersFromDraft(draft: HealthPageFilterDraft): HealthEventFilters {
+  const limit = Number(draft.limit);
+
+  return {
+    limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : undefined,
+    nodeId: trimmed(draft.nodeId),
+    recordingId: trimmed(draft.recordingId),
+    scheduleId: trimmed(draft.scheduleId),
+    severity: draft.severity || undefined,
+    status: draft.status || undefined,
+    type: trimmed(draft.type),
+  };
+}
+
+export function healthEventSummary(events: HealthEvent[]) {
+  return {
+    activeCritical: events.filter(
+      (event) => event.severity === "critical" && event.status !== "resolved",
+    ).length,
+    open: events.filter((event) => event.status === "open").length,
+    resolved: events.filter((event) => event.status === "resolved").length,
+    suppressed: events.filter((event) => event.status === "suppressed").length,
+    total: events.length,
+  };
+}
+
+export function healthEventTargetLabel(
+  event: HealthEvent,
+  lookups: {
+    nodes?: RecorderNode[];
+    recordings?: RecordingSummary[];
+    schedules?: ScheduleSummary[];
+  },
+) {
+  const schedule = event.scheduleId
+    ? lookups.schedules?.find((candidate) => candidate.id === event.scheduleId)
+    : undefined;
+  const recording = event.recordingId
+    ? lookups.recordings?.find((candidate) => candidate.id === event.recordingId)
+    : undefined;
+  const node = event.nodeId
+    ? lookups.nodes?.find((candidate) => candidate.id === event.nodeId)
+    : undefined;
+
+  return [
+    node ? `Node ${node.alias}` : event.nodeId,
+    schedule ? `Schedule ${schedule.name}` : event.scheduleId,
+    recording ? `Recording ${recording.name}` : event.recordingId,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+export function readableHealthEventType(type: string) {
+  if (type === "watchdog.node_offline") {
+    return "node offline";
+  }
+
+  if (type === "controller.recording.upload_queue_failed") {
+    return "upload queue failed";
+  }
+
+  return type
+    .replace(/^agent\./u, "")
+    .replace(/^watchdog\./u, "")
+    .replaceAll("_", " ")
+    .replaceAll(".", " ");
+}
+
+function trimmed(value: string) {
+  const next = value.trim();
+
+  return next || undefined;
+}

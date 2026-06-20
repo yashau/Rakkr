@@ -10,6 +10,7 @@ test("root layout permissions are closed by default", () => {
     canManageAccess: false,
     canReadAudit: false,
     canReadDashboard: false,
+    canReadHealth: false,
     canReadNodes: false,
     canReadRecordings: false,
     canReadSchedules: false,
@@ -23,6 +24,7 @@ test("root layout separates navigation and header action permissions", () => {
     canManageAccess: false,
     canReadAudit: false,
     canReadDashboard: true,
+    canReadHealth: false,
     canReadNodes: true,
     canReadRecordings: false,
     canReadSchedules: false,
@@ -33,6 +35,7 @@ test("root layout separates navigation and header action permissions", () => {
       user([
         "audit:read",
         "auth:manage",
+        "health:read",
         "node:read",
         "recording:read",
         "schedule:read",
@@ -44,6 +47,7 @@ test("root layout separates navigation and header action permissions", () => {
       canManageAccess: true,
       canReadAudit: true,
       canReadDashboard: true,
+      canReadHealth: true,
       canReadNodes: true,
       canReadRecordings: true,
       canReadSchedules: true,
@@ -57,12 +61,20 @@ test("root layout nav items only include permitted sections", () => {
   assert.deepEqual(
     rootLayoutNavItems(
       rootLayoutPermissions(
-        user(["audit:read", "auth:manage", "node:read", "recording:read", "settings:read"]),
+        user([
+          "audit:read",
+          "auth:manage",
+          "health:read",
+          "node:read",
+          "recording:read",
+          "settings:read",
+        ]),
       ),
     ),
     [
       { id: "dashboard", label: "Dashboard", to: "/" },
       { id: "nodes", label: "Nodes", to: "/nodes" },
+      { id: "health", label: "Health", to: "/health" },
       { id: "recordings", label: "Recordings", to: "/recordings" },
       { id: "settings", label: "Settings", to: "/settings" },
       { id: "audit", label: "Audit", to: "/audit" },
@@ -71,6 +83,9 @@ test("root layout nav items only include permitted sections", () => {
   );
   assert.deepEqual(rootLayoutNavItems(rootLayoutPermissions(user(["schedule:read"]))), [
     { id: "schedules", label: "Schedules", to: "/schedules" },
+  ]);
+  assert.deepEqual(rootLayoutNavItems(rootLayoutPermissions(user(["health:read"]))), [
+    { id: "health", label: "Health", to: "/health" },
   ]);
 });
 
