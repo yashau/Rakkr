@@ -143,6 +143,13 @@ pub struct AgentConfig {
     )]
     pub agent_state_file: PathBuf,
 
+    #[arg(
+        long,
+        env = "RAKKR_RECORDER_CACHE_MANIFEST_FILE",
+        default_value = "data/agent/recorder-cache-manifest.json"
+    )]
+    pub recorder_cache_manifest_file: PathBuf,
+
     #[arg(long, env = "RAKKR_JOB_POLL_SECONDS", default_value_t = 2)]
     pub job_poll_seconds: u64,
 

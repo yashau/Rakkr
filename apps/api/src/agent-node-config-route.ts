@@ -1,10 +1,11 @@
 import type { Context, Hono } from "hono";
-import { defaultNodeRecordingCapacity } from "@rakkr/shared";
+import { defaultNodeRecordingCapacity, type RetentionPolicy } from "@rakkr/shared";
 
 import { nodeActor } from "./agent-route-helpers.js";
 import { bearerToken } from "./auth-utils.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
 import type { NodeCredentialAuth, NodeStore } from "./node-store.js";
+import { listRetentionPolicies } from "./retention-policies.js";
 
 interface AgentNodeConfigRouteDependencies {
   app: Hono<AppBindings>;
@@ -44,11 +45,14 @@ export function registerAgentNodeConfigRoute({
     }
 
     const recordingCapacity = node.recordingCapacity ?? defaultNodeRecordingCapacity;
+    const recorderCachePolicies = (await listRetentionPolicies())
+      .filter(isExecutableRecorderCachePolicy)
+      .map(recorderCachePolicyConfig);
 
     await recordAuditEvent(c, {
       action: "nodes.config.read.succeeded",
       actor: nodeActor(auth.credential),
-      details: { recordingCapacity },
+      details: { recorderCachePolicyCount: recorderCachePolicies.length, recordingCapacity },
       outcome: "succeeded",
       permission: "node:control",
       target: {
@@ -57,7 +61,7 @@ export function registerAgentNodeConfigRoute({
       },
     });
 
-    return c.json({ data: { recordingCapacity } });
+    return c.json({ data: { recorderCachePolicies, recordingCapacity } });
   });
 }
 
@@ -103,4 +107,19 @@ async function recordNodeConfigFailure(
     reason,
     target: options.target,
   });
+}
+
+function isExecutableRecorderCachePolicy(policy: RetentionPolicy) {
+  return policy.enabled && policy.scope === "recorder_cache" && policy.action === "delete_cache";
+}
+
+function recorderCachePolicyConfig(policy: RetentionPolicy) {
+  return {
+    deleteAfterUpload:
+      policy.maxAgeDays === null && policy.maxBytes === null && policy.minFreeDiskPercent === null,
+    maxAgeDays: policy.maxAgeDays,
+    maxBytes: policy.maxBytes,
+    minFreeDiskPercent: policy.minFreeDiskPercent,
+    policyId: policy.id,
+  };
 }

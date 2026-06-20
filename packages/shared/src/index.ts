@@ -621,6 +621,9 @@ export const recordingJobSchema = z.object({
     recorderCacheRetention: z
       .object({
         deleteAfterUpload: z.boolean(),
+        maxAgeDays: z.number().int().positive().nullable().optional(),
+        maxBytes: z.number().int().positive().nullable().optional(),
+        minFreeDiskPercent: z.number().int().min(0).max(95).nullable().optional(),
         policyId: z.string().min(1),
       })
       .optional(),

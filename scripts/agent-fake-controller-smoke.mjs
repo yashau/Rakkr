@@ -58,6 +58,7 @@ try {
   }
 
   await runConcurrentScenario({ address, captureCommand, renderCommand });
+  await runDeferredSweepScenario({ address, captureCommand, renderCommand });
 
   console.log("Agent fake-controller smoke passed.");
 } finally {
@@ -175,35 +176,7 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     },
   };
 
-  const child = spawnAgent([
-    "--allow-insecure-controller",
-    "--agent-health-log-file",
-    healthLogFile,
-    "--agent-state-file",
-    stateFile,
-    "--capture-command",
-    captureCommand,
-    "--capture-growth-grace-seconds",
-    "0",
-    "--capture-min-output-bytes",
-    "44",
-    "--controller-token",
-    token,
-    "--controller-url",
-    `http://127.0.0.1:${address.port}`,
-    "--channel-render-command",
-    renderCommand,
-    "--heartbeat-seconds",
-    "1",
-    "--job-poll-seconds",
-    "1",
-    "--max-concurrent-recordings",
-    "1",
-    "--meter-backend",
-    "synthetic",
-    "--node-id",
-    nodeId,
-  ]);
+  const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile);
 
   try {
     await waitFor(
@@ -239,6 +212,73 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     observed.cacheUploads.every((upload) => upload.contentType === "audio/mpeg"),
     "concurrent cache uploads were not rendered MP3",
   );
+  for (const job of jobs) {
+    await assertLocalRecorderCacheDeleted(job.command.outputFileName);
+  }
+
+  activeScenario = undefined;
+}
+
+async function runDeferredSweepScenario({ address, captureCommand, renderCommand }) {
+  const stateFile = path.join(smokeRoot, "deferred-sweep-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "deferred-sweep-health-events.jsonl");
+  const jobs = ["a", "b"].map((suffix) =>
+    createJob({
+      expectSuccess: true,
+      jobId: `job_fake_controller_deferred_sweep_${suffix}`,
+      name: `deferred-sweep-${suffix}`,
+      outputFileName: `rec_fake_controller_deferred_sweep_${suffix}.mp3`,
+      recordingId: `rec_fake_controller_deferred_sweep_${suffix}`,
+      recorderCacheRetention: deferredSweepRetention(),
+    }),
+  );
+  const observed = createObserved();
+
+  activeScenario = {
+    jobs,
+    observed,
+    scenario: {
+      concurrent: true,
+      deferredSweep: true,
+      expectSuccess: true,
+      name: "deferred-sweep",
+    },
+  };
+
+  const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile);
+
+  try {
+    await waitFor(
+      () =>
+        jobs.every((job) => job.status === "completed") &&
+        observed.cacheUploads.length === 2 &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.recorder_cache.sweep_completed",
+        ),
+      20_000,
+      () =>
+        `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const sweepEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recorder_cache.sweep_completed",
+  );
+
+  invariant(
+    healthLogEvents.filter((event) => event.type === "agent.recording_job.recorder_cache_tracked")
+      .length === 2,
+    "deferred retention jobs were not tracked in the local health log",
+  );
+  invariant(
+    sweepEvent?.details?.deleted >= 1,
+    "deferred recorder-cache sweep did not delete files",
+  );
+
   for (const job of jobs) {
     await assertLocalRecorderCacheDeleted(job.command.outputFileName);
   }
@@ -383,10 +423,7 @@ function createJob(scenario) {
       outputCodec: "mp3",
       outputFileName: scenario.outputFileName,
       outputVbr: true,
-      recorderCacheRetention: {
-        deleteAfterUpload: true,
-        policyId: "retention-recorder-cache-smoke",
-      },
+      recorderCacheRetention: scenario.recorderCacheRetention ?? immediateRetention(),
       type: "alsa_capture",
     },
     failureReason: undefined,
@@ -394,6 +431,26 @@ function createJob(scenario) {
     nodeId,
     recordingId: scenario.recordingId,
     status: "queued",
+  };
+}
+
+function immediateRetention() {
+  return {
+    deleteAfterUpload: true,
+    maxAgeDays: null,
+    maxBytes: null,
+    minFreeDiskPercent: null,
+    policyId: "retention-recorder-cache-smoke",
+  };
+}
+
+function deferredSweepRetention() {
+  return {
+    deleteAfterUpload: false,
+    maxAgeDays: null,
+    maxBytes: 1,
+    minFreeDiskPercent: null,
+    policyId: "retention-recorder-cache-sweep-smoke",
   };
 }
 
@@ -484,6 +541,7 @@ async function handleControllerRequest(request, response) {
         recordingCapacity: {
           maxConcurrentRecordings: scenario.concurrent ? 2 : 1,
         },
+        recorderCachePolicies: scenario.deferredSweep ? [deferredSweepRetention()] : [],
       },
     });
   }
@@ -818,6 +876,38 @@ function spawnAgent(agentArgs) {
     closed,
     kill: () => child.kill(),
   };
+}
+
+function spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile) {
+  return spawnAgent([
+    "--allow-insecure-controller",
+    "--agent-health-log-file",
+    healthLogFile,
+    "--agent-state-file",
+    stateFile,
+    "--capture-command",
+    captureCommand,
+    "--capture-growth-grace-seconds",
+    "0",
+    "--capture-min-output-bytes",
+    "44",
+    "--controller-token",
+    token,
+    "--controller-url",
+    `http://127.0.0.1:${address.port}`,
+    "--channel-render-command",
+    renderCommand,
+    "--heartbeat-seconds",
+    "1",
+    "--job-poll-seconds",
+    "1",
+    "--max-concurrent-recordings",
+    "1",
+    "--meter-backend",
+    "synthetic",
+    "--node-id",
+    nodeId,
+  ]);
 }
 
 function run(command, args) {

@@ -406,6 +406,7 @@ mod tests {
             print_channel_map_assignments: false,
             print_inventory: false,
             print_meter_frame: false,
+            recorder_cache_manifest_file: PathBuf::from("recorder-cache-manifest.json"),
             run_next_job: false,
             room: "Room".to_string(),
             site: "Site".to_string(),

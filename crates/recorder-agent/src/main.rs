@@ -5,6 +5,7 @@ mod config;
 mod controller;
 mod health_log;
 mod inventory;
+mod node_config;
 mod recorder_cache_retention;
 mod state;
 mod system_health;
@@ -181,6 +182,8 @@ async fn main() -> anyhow::Result<()> {
                     &mut system_health_state,
                 ).await?;
 
+                reap_recording_job_workers(&mut recording_jobs);
+
                 if let Some(token) = token {
                     let heartbeat = inventory::heartbeat_snapshot(&inventory);
 
@@ -232,7 +235,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
 
-                    match controller::fetch_node_config(&config, token).await {
+                    match node_config::fetch_node_config(&config, token).await {
                         Ok(node_config) => {
                             if let Some(next_limit) = node_config.max_concurrent_recordings() {
                                 if next_limit != recording_job_limit {
@@ -248,6 +251,11 @@ async fn main() -> anyhow::Result<()> {
                             if node_config_sync_failed {
                                 node_config_sync_failed = false;
                                 info!("controller node config sync recovered");
+                            }
+
+                            if recording_jobs.is_empty() {
+                                run_idle_recorder_cache_sweep(&config, Some(token), &node_config)
+                                    .await?;
                             }
                         }
                         Err(error) if !node_config_sync_failed => {
@@ -273,6 +281,46 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn run_idle_recorder_cache_sweep(
+    config: &AgentConfig,
+    token: Option<&str>,
+    node_config: &node_config::ControllerNodeConfig,
+) -> anyhow::Result<()> {
+    if node_config.recorder_cache_policies.is_empty() {
+        return Ok(());
+    }
+
+    let summary = recorder_cache_retention::run_recorder_cache_sweep(
+        &config.recorder_cache_manifest_file,
+        &node_config.recorder_cache_policies,
+        std::time::SystemTime::now(),
+    )?;
+
+    if summary.deleted == 0 && summary.errors == 0 {
+        return Ok(());
+    }
+
+    let severity = if summary.errors > 0 {
+        "warning"
+    } else {
+        "info"
+    };
+
+    append_and_sync_health_event(
+        config,
+        token,
+        "agent.recorder_cache.sweep_completed",
+        severity,
+        json!({
+            "deleted": summary.deleted,
+            "errors": summary.errors,
+            "items": summary.items,
+            "scanned": summary.scanned,
+        }),
+    )
+    .await
 }
 
 fn reap_recording_job_workers(jobs: &mut JoinSet<anyhow::Result<()>>) {

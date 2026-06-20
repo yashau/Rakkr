@@ -790,6 +790,7 @@ mod tests {
             print_channel_map_assignments: false,
             print_inventory: false,
             print_meter_frame: false,
+            recorder_cache_manifest_file: PathBuf::from("recorder-cache-manifest.json"),
             room: "Room".to_string(),
             run_next_job: false,
             site: "Site".to_string(),

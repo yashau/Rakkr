@@ -180,9 +180,19 @@ test("agent heartbeat updates node runtime details and audits inventory changes"
   assert.equal(event?.after?.hostname, "agent-route-node-live");
 });
 
-test("agent config read returns node recording capacity", async () => {
+test("agent config read returns node recording capacity and recorder-cache policies", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: true,
+    enabled: true,
+    id: `retention-node-config-${randomUUID()}`,
+    maxAgeDays: 7,
+    maxBytes: 2048,
+    name: "Node Config Recorder Cache Sweep",
+    scope: "recorder_cache",
+  });
   const nodeStore = memoryNodeStore([
     {
       ...node(),
@@ -204,14 +214,33 @@ test("agent config read returns node recording capacity", async () => {
     headers: { authorization: "Bearer node-token" },
   });
   const body = (await response.json()) as {
-    data: { recordingCapacity: { maxConcurrentRecordings: number } };
+    data: {
+      recorderCachePolicies: Array<{
+        deleteAfterUpload: boolean;
+        maxAgeDays: number | null;
+        maxBytes: number | null;
+        policyId: string;
+      }>;
+      recordingCapacity: { maxConcurrentRecordings: number };
+    };
   };
   const [event] = await auditStore.list({ action: "nodes.config.read.succeeded" });
 
   assert.equal(response.status, 200);
   assert.equal(body.data.recordingCapacity.maxConcurrentRecordings, 8);
+  assert.deepEqual(
+    body.data.recorderCachePolicies.find((item) => item.policyId === policy.id),
+    {
+      deleteAfterUpload: false,
+      maxAgeDays: 7,
+      maxBytes: 2048,
+      minFreeDiskPercent: null,
+      policyId: policy.id,
+    },
+  );
   assert.equal(event?.permission, "node:control");
   assert.equal(event?.details.recordingCapacity.maxConcurrentRecordings, 8);
+  assert.ok(Number(event?.details.recorderCachePolicyCount) >= 1);
 });
 
 test("agent service routes audit missing node credentials with route permissions", async () => {
@@ -337,6 +366,7 @@ test("recording job carries recorder-cache retention policy", async () => {
     deleteOnlyAfterUploaded: true,
     enabled: true,
     id: `retention-recorder-cache-${randomUUID()}`,
+    maxAgeDays: 2,
     name: "Delete Recorder Cache After Upload",
     scope: "recorder_cache",
   });
@@ -347,7 +377,10 @@ test("recording job carries recorder-cache retention policy", async () => {
   });
 
   assert.deepEqual(job.command.recorderCacheRetention, {
-    deleteAfterUpload: true,
+    deleteAfterUpload: false,
+    maxAgeDays: 2,
+    maxBytes: null,
+    minFreeDiskPercent: null,
     policyId: policy.id,
   });
 });

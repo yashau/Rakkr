@@ -683,7 +683,10 @@ async function recorderCacheRetentionForRecording(
   }
 
   return {
-    deleteAfterUpload: policy.action === "delete_cache",
+    deleteAfterUpload: !hasDeferredRecorderCacheLimits(policy),
+    maxAgeDays: policy.maxAgeDays,
+    maxBytes: policy.maxBytes,
+    minFreeDiskPercent: policy.minFreeDiskPercent,
     policyId: policy.id,
   };
 }
@@ -691,5 +694,13 @@ async function recorderCacheRetentionForRecording(
 function isExecutableRecorderCachePolicy(
   policy: RetentionPolicy | undefined,
 ): policy is RetentionPolicy {
-  return Boolean(policy?.enabled && policy.scope === "recorder_cache");
+  return Boolean(
+    policy?.enabled && policy.scope === "recorder_cache" && policy.action === "delete_cache",
+  );
+}
+
+function hasDeferredRecorderCacheLimits(policy: RetentionPolicy) {
+  return (
+    policy.maxAgeDays !== null || policy.maxBytes !== null || policy.minFreeDiskPercent !== null
+  );
 }
