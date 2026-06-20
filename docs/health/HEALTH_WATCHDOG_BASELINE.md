@@ -8,6 +8,7 @@ Status: Partial baseline checked.
 - Low-signal events open, repeat, and auto-resolve, then sync recording health and write system audit events.
 - Speech-required policies can alert when audio is loud but not speech-like.
 - Channel-correlation policies can alert when scheduled audio channels remain suspiciously same-phase or inverted for enough cumulative time.
+- Clipping policies can alert when scheduled audio clips for enough cumulative time and auto-resolve after recovery.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
@@ -21,7 +22,7 @@ Status: Partial baseline checked.
 
 | Check | Evidence |
 | ----- | -------- |
-| Scheduled low-signal, repeat, auto-resolve, speech-required, channel-correlation, node offline | `apps/api/test/watchdog-runner.test.ts` |
+| Scheduled low-signal, repeat, auto-resolve, speech-required, channel-correlation, clipping, node offline | `apps/api/test/watchdog-runner.test.ts` |
 | Health route RBAC and lifecycle denials | `apps/api/test/health-routes.test.ts` |
 | Health event type filtering | `apps/api/test/health-store.test.ts` |
 | Health/watchdog/xrun Prometheus metrics | `apps/api/test/metrics.test.ts` |

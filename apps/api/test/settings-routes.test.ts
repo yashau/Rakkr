@@ -190,7 +190,9 @@ test("settings manage routes update operational templates and audit snapshots", 
     {
       channelCorrelationMode: "alert_on_high",
       channelCorrelationThreshold: 0.97,
+      clippingMode: "alert_on_clipping",
       minCumulativeChannelCorrelationSeconds: 15,
+      minCumulativeClippingSeconds: 2,
       minSpeechScore: 0.65,
       name: "Operations Voice Watchdog",
       qualityMode: "speech_required",
@@ -325,7 +327,9 @@ test("settings manage routes update operational templates and audit snapshots", 
 
   assert.equal(watchdogAudit?.after?.channelCorrelationMode, "alert_on_high");
   assert.equal(watchdogAudit?.after?.channelCorrelationThreshold, 0.97);
+  assert.equal(watchdogAudit?.after?.clippingMode, "alert_on_clipping");
   assert.equal(watchdogAudit?.after?.minCumulativeChannelCorrelationSeconds, 15);
+  assert.equal(watchdogAudit?.after?.minCumulativeClippingSeconds, 2);
 });
 
 function requestJson(

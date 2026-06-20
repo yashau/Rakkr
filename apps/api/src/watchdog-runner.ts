@@ -14,6 +14,7 @@ import type { HealthEventStore } from "./health-store.js";
 import type { NodeStore } from "./node-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { RecordingStore } from "./recording-store.js";
+import { reconcileClippingEvent } from "./watchdog-clipping.js";
 import { nodeOfflineEventType, reconcileNodeLivenessEvents } from "./watchdog-node-liveness.js";
 import {
   channelCorrelationIsAbovePolicy,
@@ -35,6 +36,7 @@ import {
 
 export const scheduledLowSignalEventType = "watchdog.scheduled_low_signal";
 export const channelCorrelationEventType = "watchdog.channel_correlation";
+export { clippingEventType } from "./watchdog-clipping.js";
 export { nodeOfflineEventType };
 
 export type MeterFrameProvider = (
@@ -212,6 +214,18 @@ async function runWatchdogPass(
             recording,
             recordingStore,
           }),
+    );
+
+    results.push(
+      await reconcileClippingEvent({
+        auditStore,
+        evaluation,
+        healthEventStore,
+        now,
+        policy,
+        recording,
+        recordingStore,
+      }),
     );
   }
 

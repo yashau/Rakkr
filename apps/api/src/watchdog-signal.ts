@@ -16,6 +16,7 @@ interface SignalSample {
   capturedAtMs: number;
   channelCorrelationPairs: ChannelCorrelationPair[];
   channelIndex?: number;
+  clippingChannelIndexes: number[];
   durationSeconds: number;
   interfaceId?: string;
   maxChannelCorrelationScore: number;
@@ -30,10 +31,12 @@ interface SignalSample {
 export interface SignalEvaluation {
   coverageSeconds: number;
   cumulativeCorrelatedSeconds: number;
+  cumulativeClippingSeconds: number;
   cumulativeSecondsAboveThreshold: number;
   cumulativeSpeechLikeSeconds: number;
   latestChannelCorrelationPairs: ChannelCorrelationPair[];
   latestChannelIndex?: number;
+  latestClippingChannelIndexes: number[];
   latestInterfaceId?: string;
   latestMetricDbfs: number;
   latestNoiseScore: number;
@@ -41,6 +44,7 @@ export interface SignalEvaluation {
   latestRmsDbfs: number;
   latestSpeechScore: number;
   maxChannelCorrelationScore: number;
+  maxClippingChannelCount: number;
   maxMetricDbfs: number;
   maxNoiseScore: number;
   maxSpeechScore: number;
@@ -93,6 +97,7 @@ export function signalSample(
     return {
       capturedAtMs: now.getTime(),
       channelCorrelationPairs: [],
+      clippingChannelIndexes: [],
       durationSeconds,
       maxChannelCorrelationScore: 0,
       maxNoiseScore: 0,
@@ -105,6 +110,10 @@ export function signalSample(
   }
 
   const channelCorrelationPairs = strongestCorrelationPairs(frame);
+  const clippingChannelIndexes = frame.levels
+    .filter((level) => level.clipping)
+    .map((level) => level.channelIndex)
+    .sort((left, right) => left - right);
   const maxChannelCorrelationScore = Math.max(
     0,
     ...channelCorrelationPairs.map((pair) => Math.abs(pair.score)),
@@ -125,6 +134,7 @@ export function signalSample(
     capturedAtMs: now.getTime(),
     channelCorrelationPairs,
     channelIndex: metricLevel.channelIndex,
+    clippingChannelIndexes,
     durationSeconds,
     interfaceId: frame.interfaceId,
     maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
@@ -158,8 +168,14 @@ export function signalEvaluation(
   const cumulativeCorrelatedSeconds = samples
     .filter((sample) => sample.maxChannelCorrelationScore >= channelCorrelationThreshold(policy))
     .reduce((total, sample) => total + sample.durationSeconds, 0);
+  const cumulativeClippingSeconds = samples
+    .filter((sample) => sample.clippingChannelIndexes.length > 0)
+    .reduce((total, sample) => total + sample.durationSeconds, 0);
   const maxChannelCorrelationScore = samples.length
     ? Math.max(...samples.map((sample) => sample.maxChannelCorrelationScore))
+    : 0;
+  const maxClippingChannelCount = samples.length
+    ? Math.max(...samples.map((sample) => sample.clippingChannelIndexes.length))
     : 0;
   const maxNoiseScore = samples.length
     ? Math.max(...samples.map((sample) => sample.maxNoiseScore))
@@ -171,10 +187,12 @@ export function signalEvaluation(
   return {
     coverageSeconds,
     cumulativeCorrelatedSeconds,
+    cumulativeClippingSeconds,
     cumulativeSecondsAboveThreshold,
     cumulativeSpeechLikeSeconds,
     latestChannelCorrelationPairs: latest?.channelCorrelationPairs ?? [],
     latestChannelIndex: latest?.channelIndex,
+    latestClippingChannelIndexes: latest?.clippingChannelIndexes ?? [],
     latestInterfaceId: latest?.interfaceId,
     latestMetricDbfs: latest?.metricDbfs ?? -160,
     latestNoiseScore: latest?.maxNoiseScore ?? 0,
@@ -182,6 +200,7 @@ export function signalEvaluation(
     latestRmsDbfs: latest?.maxRmsDbfs ?? -160,
     latestSpeechScore: latest?.maxSpeechScore ?? 0,
     maxChannelCorrelationScore: Number(maxChannelCorrelationScore.toFixed(2)),
+    maxClippingChannelCount,
     maxMetricDbfs: Number(maxMetricDbfs.toFixed(1)),
     maxNoiseScore: Number(maxNoiseScore.toFixed(2)),
     maxSpeechScore: Number(maxSpeechScore.toFixed(2)),
@@ -237,12 +256,34 @@ export function channelCorrelationIsAbovePolicy(
   return evaluation.cumulativeCorrelatedSeconds >= requiredSeconds;
 }
 
+export function clippingIsAbovePolicy(evaluation: SignalEvaluation, policy: WatchdogPolicy) {
+  if (policy.clippingMode !== "alert_on_clipping") {
+    return false;
+  }
+
+  const requiredSeconds = minCumulativeClippingSeconds(policy);
+
+  if (requiredSeconds <= 0) {
+    return evaluation.cumulativeClippingSeconds > 0;
+  }
+
+  if (evaluation.coverageSeconds < requiredSeconds) {
+    return false;
+  }
+
+  return evaluation.cumulativeClippingSeconds >= requiredSeconds;
+}
+
 export function channelCorrelationThreshold(policy: WatchdogPolicy) {
   return policy.channelCorrelationThreshold ?? 0.98;
 }
 
 export function minCumulativeChannelCorrelationSeconds(policy: WatchdogPolicy) {
   return policy.minCumulativeChannelCorrelationSeconds ?? policy.minCumulativeSecondsAboveThreshold;
+}
+
+export function minCumulativeClippingSeconds(policy: WatchdogPolicy) {
+  return policy.minCumulativeClippingSeconds ?? 1;
 }
 
 export function minCumulativeSpeechSeconds(policy: WatchdogPolicy) {

@@ -7,7 +7,6 @@ import type {
   ChannelMapTemplateUpdate,
   RecorderNode,
   UploadProviderRuntimeStatus,
-  WatchdogPolicy,
 } from "@rakkr/shared";
 import {
   Cable,
@@ -28,10 +27,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UploadPolicyPanel } from "@/components/upload-policy-panel";
 import { UploadRunnerPanel } from "@/components/upload-runner-panel";
+import { WatchdogPolicyCard } from "@/components/watchdog-policy-card";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import { settingsPagePermissions } from "@/lib/settings-page-helpers";
-import { uploadProviderUpdate, watchdogPolicyUpdate } from "@/lib/settings-updates";
+import { uploadProviderUpdate } from "@/lib/settings-updates";
 import { uploadProviderStatusClass } from "@/lib/upload-status";
 
 export function SettingsPage() {
@@ -302,225 +302,6 @@ function UploadProviderCard({
           <span>Missing {provider.missingFields.join(", ")}</span>
         ) : null}
         {provider.reason ? <span>{provider.reason}</span> : null}
-      </div>
-
-      {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}
-    </Card>
-  );
-}
-
-function WatchdogPolicyCard({ canManage, policy }: { canManage: boolean; policy: WatchdogPolicy }) {
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState(policy);
-  const mutation = useMutation({
-    mutationFn: () => api.updateWatchdogPolicy(policy.id, watchdogPolicyUpdate(draft)),
-    onSuccess: ({ data }) => {
-      setDraft(data);
-      void queryClient.invalidateQueries({ queryKey: ["watchdog-policies"] });
-      void queryClient.invalidateQueries({ queryKey: ["status"] });
-    },
-  });
-
-  useEffect(() => {
-    setDraft(policy);
-  }, [policy]);
-
-  return (
-    <Card className="rounded-lg p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <ShieldAlert className="size-4" />
-            <h3 className="text-base font-semibold">{policy.name}</h3>
-            <Badge className="border-amber-200 bg-amber-50 text-amber-700" variant="outline">
-              {policy.id}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {policy.metric} below {policy.thresholdDbfs} dBFS / {policy.windowSeconds}s
-          </p>
-        </div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          title={canManage ? "Save watchdog policy" : "Requires settings manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <Field label="Name">
-          <Input
-            disabled={!canManage}
-            onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-            value={draft.name}
-          />
-        </Field>
-        <Field label="Active During">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            disabled={!canManage}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                activeDuring: event.target.value as WatchdogPolicy["activeDuring"],
-              }))
-            }
-            value={draft.activeDuring}
-          >
-            <option value="always">Always</option>
-            <option value="recording">Recording</option>
-            <option value="scheduled_recording">Scheduled Recording</option>
-          </select>
-        </Field>
-        <Field label="Metric">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            disabled={!canManage}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                metric: event.target.value as WatchdogPolicy["metric"],
-              }))
-            }
-            value={draft.metric}
-          >
-            <option value="rms">RMS</option>
-            <option value="peak">Peak</option>
-            <option value="percentile_95">Percentile 95</option>
-          </select>
-        </Field>
-        <Field label="Correlation Mode">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            disabled={!canManage}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                channelCorrelationMode: event.target
-                  .value as WatchdogPolicy["channelCorrelationMode"],
-              }))
-            }
-            value={draft.channelCorrelationMode ?? "off"}
-          >
-            <option value="off">Off</option>
-            <option value="alert_on_high">Alert On High</option>
-          </select>
-        </Field>
-        <Field label="Threshold dBFS">
-          <Input
-            disabled={!canManage}
-            max={24}
-            min={-160}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, thresholdDbfs: Number(event.target.value) }))
-            }
-            type="number"
-            value={draft.thresholdDbfs}
-          />
-        </Field>
-        <Field label="Window Seconds">
-          <Input
-            disabled={!canManage}
-            min={1}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, windowSeconds: Number(event.target.value) }))
-            }
-            type="number"
-            value={draft.windowSeconds}
-          />
-        </Field>
-        <Field label="Grace Seconds">
-          <Input
-            disabled={!canManage}
-            min={0}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, graceSeconds: Number(event.target.value) }))
-            }
-            type="number"
-            value={draft.graceSeconds}
-          />
-        </Field>
-        <Field label="Repeat Seconds">
-          <Input
-            disabled={!canManage}
-            min={1}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                repeatEverySeconds: Number(event.target.value),
-              }))
-            }
-            type="number"
-            value={draft.repeatEverySeconds}
-          />
-        </Field>
-        <Field label="Min Above Seconds">
-          <Input
-            disabled={!canManage}
-            min={0}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                minCumulativeSecondsAboveThreshold: Number(event.target.value),
-              }))
-            }
-            type="number"
-            value={draft.minCumulativeSecondsAboveThreshold}
-          />
-        </Field>
-        <Field label="Correlation Threshold">
-          <Input
-            disabled={!canManage}
-            max={1}
-            min={0}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                channelCorrelationThreshold: Number(event.target.value),
-              }))
-            }
-            step={0.01}
-            type="number"
-            value={draft.channelCorrelationThreshold ?? 0.98}
-          />
-        </Field>
-        <Field label="Min Correlated Seconds">
-          <Input
-            disabled={!canManage}
-            min={0}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                minCumulativeChannelCorrelationSeconds: Number(event.target.value),
-              }))
-            }
-            type="number"
-            value={
-              draft.minCumulativeChannelCorrelationSeconds ??
-              draft.minCumulativeSecondsAboveThreshold
-            }
-          />
-        </Field>
-        <Field label="Severity">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            disabled={!canManage}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                severity: event.target.value as WatchdogPolicy["severity"],
-              }))
-            }
-            value={draft.severity}
-          >
-            <option value="info">Info</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
-          </select>
-        </Field>
       </div>
 
       {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}

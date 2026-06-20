@@ -8,6 +8,7 @@ import type { NodeStore } from "../src/node-store.js";
 import type { RecordingStore } from "../src/recording-store.js";
 import {
   channelCorrelationEventType,
+  clippingEventType,
   createWatchdogRunner,
   nodeOfflineEventType,
 } from "../src/watchdog-runner.js";
@@ -168,6 +169,53 @@ test("creates and resolves scheduled channel correlation alerts from policy", as
   );
   assert.equal(resolvedEvent?.status, "resolved");
   assert.equal(resolvedEvent?.details.autoResolvedReason, "channel_correlation_below_threshold");
+  assert.equal(createdAudit.length, 1);
+  assert.equal(resolvedAudit.length, 1);
+});
+
+test("creates and resolves scheduled clipping alerts from policy", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  let frame = clippedSpeechFrame();
+  const policy: WatchdogPolicy = {
+    ...watchdogPolicy(),
+    clippingMode: "alert_on_clipping",
+    minCumulativeClippingSeconds: 30,
+    qualityMode: "signal_only",
+  };
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    meterFrameProvider: () => frame,
+    policies: [policy],
+    recordingStore: memoryRecordingStore([recording()]),
+  });
+
+  await runner.runOnce(new Date("2026-06-18T12:00:30.000Z"));
+  const createdResults = await runner.runOnce(new Date("2026-06-18T12:01:00.000Z"));
+  const [openEvent] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+
+  frame = speechFrame();
+
+  const resolvedResults = await runner.runOnce(new Date("2026-06-18T12:02:01.000Z"));
+  const [resolvedEvent] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+  const createdAudit = await auditStore.list({ action: "health.watchdog.clipping.created" });
+  const resolvedAudit = await auditStore.list({ action: "health.watchdog.clipping.resolved" });
+
+  assert.equal(
+    createdResults.find((result) => result.reason === "clipping_detected")?.outcome,
+    "alert_created",
+  );
+  assert.equal(openEvent?.type, clippingEventType);
+  assert.equal(openEvent?.details.clippingAboveThreshold, true);
+  assert.deepEqual(openEvent?.details.latestClippingChannelIndexes, [1]);
+  assert.equal(openEvent?.details.cumulativeClippingSeconds, 30);
+  assert.equal(
+    resolvedResults.find((result) => result.reason === "clipping_recovered")?.outcome,
+    "alert_resolved",
+  );
+  assert.equal(resolvedEvent?.status, "resolved");
+  assert.equal(resolvedEvent?.details.autoResolvedReason, "clipping_recovered");
   assert.equal(createdAudit.length, 1);
   assert.equal(resolvedAudit.length, 1);
 });
@@ -344,6 +392,19 @@ function correlatedSpeechFrame(): MeterFrame {
           zeroCrossingRate: 0.11,
         },
         rmsDbfs: -21,
+      },
+    ],
+  };
+}
+
+function clippedSpeechFrame(): MeterFrame {
+  return {
+    ...speechFrame(),
+    levels: [
+      {
+        ...speechFrame().levels[0]!,
+        clipping: true,
+        peakDbfs: 0,
       },
     ],
   };

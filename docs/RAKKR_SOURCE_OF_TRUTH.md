@@ -257,6 +257,7 @@ Current partial implementation:
 - Local meter frames include first-pass same/inverted channel correlation scoring for suspicious channel mapping.
 - Agent telemetry includes synthetic PCM calibration fixtures for voice, silence, hum, static, and independent channels.
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high channel correlation.
+- Watchdog policies can alert and auto-resolve when scheduled recordings show sustained clipping.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
@@ -721,6 +722,7 @@ Current partial implementation:
 151. ✅ Add bounded simultaneous recording jobs in the recorder agent.
 152. ✅ Add controller-visible node recording capacity and agent capacity polling.
 153. ✅ Serialize concurrent agent health-log appends.
+154. ✅ Add policy-tuned scheduled clipping watchdog alerts.
 
 ## Open Questions
 
