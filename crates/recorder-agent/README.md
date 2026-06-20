@@ -13,7 +13,7 @@ Current capabilities:
 - detects meter capture failure/recovery, device-unavailable/xrun failures, clipping, flatline, and suspicious same/inverted channel correlation transitions;
 - samples disk pressure, Linux load average, and audio-backend availability transitions;
 - writes a lifecycle-managed local JSONL health log with size-based retention and syncs node health events to the controller when a node token is configured;
-- reports ALSA interfaces plus PipeWire/JACK command availability in runtime inventory while full non-ALSA capture adapters remain future work.
+- reports ALSA interfaces plus PipeWire/JACK command availability in runtime inventory, with managed PipeWire and JACK capture/meter presets.
 
 ```powershell
 cargo run -p rakkr-recorder-agent -- --print-inventory

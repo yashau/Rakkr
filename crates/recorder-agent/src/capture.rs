@@ -136,6 +136,22 @@ pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> anyhow::Re
             plan.seconds.to_string(),
             output_path.to_string(),
         ]),
+        CaptureBackend::Jack => {
+            let mut args = vec![
+                "--channels".to_string(),
+                plan.channels.to_string(),
+                "--duration".to_string(),
+                plan.seconds.to_string(),
+                "--format".to_string(),
+                "wav".to_string(),
+                "--disable-console".to_string(),
+            ];
+
+            args.extend(jack_capture_port_args(&plan.device));
+            args.push(output_path.to_string());
+
+            Ok(args)
+        }
         CaptureBackend::Pipewire => Ok(vec![
             "--record".to_string(),
             "--target".to_string(),
@@ -152,6 +168,14 @@ pub fn capture_command_args(plan: &CapturePlan, output_path: &str) -> anyhow::Re
             "wav".to_string(),
             output_path.to_string(),
         ]),
+    }
+}
+
+fn jack_capture_port_args(device: &str) -> Vec<String> {
+    if device == "default" {
+        Vec::new()
+    } else {
+        vec!["--port".to_string(), device.to_string()]
     }
 }
 
@@ -559,6 +583,32 @@ mod tests {
                 "96000",
                 "--container",
                 "wav",
+                "/tmp/rec.wav",
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_jack_capture_args() {
+        let mut config = config();
+        config.capture_backend = crate::config::CaptureBackend::Jack;
+        config.capture_device = "system:capture_1".to_string();
+        config.capture_seconds = 2;
+        config.capture_channels = 2;
+
+        assert_eq!(
+            capture_command_args(&capture_plan_from_config(&config).unwrap(), "/tmp/rec.wav")
+                .unwrap(),
+            vec![
+                "--channels",
+                "2",
+                "--duration",
+                "2",
+                "--format",
+                "wav",
+                "--disable-console",
+                "--port",
+                "system:capture_1",
                 "/tmp/rec.wav",
             ]
         );

@@ -810,7 +810,7 @@ function nonEmptyAudioDefaults(
 }
 
 function captureBackendOrUndefined(value: unknown) {
-  return value === "alsa" || value === "pipewire" ? value : undefined;
+  return value === "alsa" || value === "jack" || value === "pipewire" ? value : undefined;
 }
 
 function backend(value: string): AudioInterface["backend"] {

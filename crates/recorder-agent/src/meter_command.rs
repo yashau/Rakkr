@@ -48,6 +48,20 @@ pub fn meter_command_args(config: &MeterCaptureConfig<'_>) -> anyhow::Result<Vec
             "raw".to_string(),
             "-q".to_string(),
         ]),
+        CaptureBackend::Jack => {
+            let mut args = vec![
+                "--channels".to_string(),
+                config.channel_count.to_string(),
+                "--duration".to_string(),
+                sample_seconds.to_string(),
+                "--write-to-stdout".to_string(),
+                "--disable-console".to_string(),
+            ];
+
+            args.extend(jack_capture_port_args(config.device));
+
+            Ok(args)
+        }
         CaptureBackend::Pipewire => Ok(vec![
             "--record".to_string(),
             "--target".to_string(),
@@ -63,6 +77,14 @@ pub fn meter_command_args(config: &MeterCaptureConfig<'_>) -> anyhow::Result<Vec
             pipewire_sample_count(config.sample_rate, sample_seconds).to_string(),
             "-".to_string(),
         ]),
+    }
+}
+
+fn jack_capture_port_args(device: &str) -> Vec<String> {
+    if device == "default" {
+        Vec::new()
+    } else {
+        vec!["--port".to_string(), device.to_string()]
     }
 }
 
@@ -149,6 +171,30 @@ mod tests {
                 "--sample-count",
                 "96000",
                 "-",
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_jack_meter_args_for_stdout_pcm() {
+        let config = MeterCaptureConfig {
+            backend: CaptureBackend::Jack,
+            device: "system:capture_1",
+            sample_seconds: 2,
+            ..meter_config()
+        };
+
+        assert_eq!(
+            meter_command_args(&config).unwrap(),
+            vec![
+                "--channels",
+                "2",
+                "--duration",
+                "2",
+                "--write-to-stdout",
+                "--disable-console",
+                "--port",
+                "system:capture_1",
             ]
         );
     }

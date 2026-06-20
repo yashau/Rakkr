@@ -520,6 +520,8 @@ fn strict_meter_frame(
         }
         MeterBackend::Alsa => alsa_meter_frame(node_id, interface_id, meter_capture)
             .context("failed to create ALSA meter frame"),
+        MeterBackend::Jack => alsa_meter_frame(node_id, interface_id, meter_capture)
+            .context("failed to create JACK meter frame"),
         MeterBackend::Pipewire => alsa_meter_frame(node_id, interface_id, meter_capture)
             .context("failed to create PipeWire meter frame"),
     }
@@ -547,7 +549,7 @@ async fn next_meter_sample(
             tick,
         )
         .context("failed to create synthetic meter frame"),
-        MeterBackend::Alsa | MeterBackend::Pipewire => {
+        MeterBackend::Alsa | MeterBackend::Jack | MeterBackend::Pipewire => {
             match alsa_meter_sample(context.node_id, context.interface_id, context.capture) {
                 Ok(sample) => {
                     if let Some(kind) = meter_capture_failure.take() {
@@ -611,6 +613,7 @@ async fn next_meter_sample(
 fn meter_capture_backend(config: &AgentConfig) -> CaptureBackend {
     match config.meter_backend {
         MeterBackend::Alsa | MeterBackend::Synthetic => config.capture_backend,
+        MeterBackend::Jack => CaptureBackend::Jack,
         MeterBackend::Pipewire => CaptureBackend::Pipewire,
     }
 }

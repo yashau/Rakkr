@@ -43,7 +43,7 @@ interface NodeInterfaceDraft {
 
 interface NodeAudioDefaultsDraft {
   captureArgsTemplate: string;
-  captureBackend: "" | "alsa" | "pipewire";
+  captureBackend: "" | "alsa" | "jack" | "pipewire";
   captureChannels: string;
   captureCommand: string;
   captureDevice: string;
@@ -221,6 +221,7 @@ export function NodeAudioDefaultsEditor({
           >
             <option value="">ALSA default</option>
             <option value="alsa">ALSA</option>
+            <option value="jack">JACK</option>
             <option value="pipewire">PipeWire</option>
           </select>
         </Field>

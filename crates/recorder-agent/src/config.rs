@@ -9,6 +9,7 @@ use serde::Deserialize;
 #[serde(rename_all = "snake_case")]
 pub enum CaptureBackend {
     Alsa,
+    Jack,
     Pipewire,
 }
 
@@ -16,6 +17,7 @@ impl CaptureBackend {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Alsa => "alsa",
+            Self::Jack => "jack",
             Self::Pipewire => "pipewire",
         }
     }
@@ -24,6 +26,7 @@ impl CaptureBackend {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum MeterBackend {
     Alsa,
+    Jack,
     Pipewire,
     Synthetic,
 }
@@ -32,6 +35,7 @@ impl MeterBackend {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Alsa => "alsa",
+            Self::Jack => "jack",
             Self::Pipewire => "pipewire",
             Self::Synthetic => "synthetic",
         }
@@ -252,10 +256,10 @@ impl AgentConfig {
     }
 
     pub fn effective_capture_command(&self, backend: CaptureBackend) -> &str {
-        if backend == CaptureBackend::Pipewire && self.capture_command == "arecord" {
-            "pw-record"
-        } else {
-            &self.capture_command
+        match backend {
+            CaptureBackend::Pipewire if self.capture_command == "arecord" => "pw-record",
+            CaptureBackend::Jack if self.capture_command == "arecord" => "jack_capture",
+            _ => &self.capture_command,
         }
     }
 }
@@ -342,6 +346,21 @@ mod tests {
 
         assert_eq!(config.capture_backend, CaptureBackend::Pipewire);
         assert_eq!(config.meter_backend, MeterBackend::Pipewire);
+    }
+
+    #[test]
+    fn accepts_jack_capture_and_meter_backends() {
+        let config = AgentConfig::try_parse_from([
+            "rakkr-recorder-agent",
+            "--capture-backend",
+            "jack",
+            "--meter-backend",
+            "jack",
+        ])
+        .expect("JACK backends should parse");
+
+        assert_eq!(config.capture_backend, CaptureBackend::Jack);
+        assert_eq!(config.meter_backend, MeterBackend::Jack);
     }
 
     #[test]

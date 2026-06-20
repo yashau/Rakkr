@@ -149,7 +149,7 @@ mod tests {
         let controller_config = ControllerNodeConfig {
             audio_defaults: Some(ControllerAudioDefaults {
                 capture_args_template: Some("--device {device} --output {output}".to_string()),
-                capture_backend: Some(CaptureBackend::Pipewire),
+                capture_backend: Some(CaptureBackend::Jack),
                 capture_channels: Some(4),
                 capture_command: Some("custom-capture".to_string()),
                 capture_device: Some("hw:Loopback,1,0".to_string()),
@@ -163,7 +163,7 @@ mod tests {
 
         assert!(controller_config.apply_audio_defaults(&mut config));
         assert_eq!(config.capture_command, "custom-capture");
-        assert_eq!(config.capture_backend, CaptureBackend::Pipewire);
+        assert_eq!(config.capture_backend, CaptureBackend::Jack);
         assert_eq!(config.capture_device, "hw:Loopback,1,0");
         assert_eq!(config.capture_format, "S24_LE");
         assert_eq!(config.capture_sample_rate, 96_000);

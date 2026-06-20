@@ -707,6 +707,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn jack_job_uses_jack_capture_backend_and_default_command() {
+        let job = ControllerRecordingJob {
+            command: ControllerCaptureCommand {
+                capture_backend: Some(CaptureBackend::Jack),
+                capture_device: "system:capture_1".to_string(),
+                output_file_name: "rec_123.wav".to_string(),
+                output_codec: Some("wav".to_string()),
+                output_vbr: Some(false),
+                ..command_with_pinned_channel_map()
+            },
+            failure_reason: None,
+            id: "job_1".to_string(),
+            node_id: "node_1".to_string(),
+            recording_id: "rec_123".to_string(),
+            status: "running".to_string(),
+        };
+        let plan = capture_plan_for_job(&test_config(), &job, &[]);
+
+        assert_eq!(plan.backend, CaptureBackend::Jack);
+        assert_eq!(plan.command, "jack_capture");
+        assert_eq!(
+            crate::capture::capture_command_args(&plan, "/tmp/rec.wav").unwrap(),
+            vec![
+                "--channels",
+                "3",
+                "--duration",
+                "60",
+                "--format",
+                "wav",
+                "--disable-console",
+                "--port",
+                "system:capture_1",
+                "/tmp/rec.wav",
+            ]
+        );
+    }
+
     fn render_test_plan(
         output_codec: &str,
         output_bitrate_kbps: Option<u32>,

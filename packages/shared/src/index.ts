@@ -235,7 +235,7 @@ export const nodeRecordingCapacitySchema = z.object({
 });
 export const nodeAudioCommandDefaultsSchema = z.object({
   captureArgsTemplate: z.string().trim().min(1).max(1000).optional(),
-  captureBackend: z.enum(["alsa", "pipewire"]).optional(),
+  captureBackend: z.enum(["alsa", "jack", "pipewire"]).optional(),
   captureChannels: z.number().int().positive().max(256).optional(),
   captureCommand: z.string().trim().min(1).max(255).optional(),
   captureDevice: z.string().trim().min(1).max(255).optional(),
@@ -638,7 +638,7 @@ export const recordingJobChannelMapSchema = z.object({
 export const recordingJobSchema = z.object({
   claimedBy: z.string().min(1).optional(),
   command: z.object({
-    captureBackend: z.enum(["alsa", "pipewire"]).optional(),
+    captureBackend: z.enum(["alsa", "jack", "pipewire"]).optional(),
     captureChannels: z.number().int().positive(),
     captureDevice: z.string().min(1),
     captureFormat: z.string().min(1),

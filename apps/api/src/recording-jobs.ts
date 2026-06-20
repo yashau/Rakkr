@@ -16,7 +16,7 @@ type RecordingJobCommand = RecordingJob["command"];
 type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
 type RecordingJobRow = typeof recordingJobsTable.$inferSelect;
 interface RecordingJobOptions {
-  captureBackend?: "alsa" | "pipewire";
+  captureBackend?: "alsa" | "jack" | "pipewire";
   captureDevice?: string;
   captureChannels?: number;
   captureFormat?: string;
@@ -753,11 +753,17 @@ function isRecordingJob(value: unknown): value is RecordingJob {
 }
 
 function captureBackendFromUnknown(value: unknown): RecordingJobCommand["captureBackend"] {
-  return value === "pipewire" ? "pipewire" : value === "alsa" ? "alsa" : undefined;
+  return value === "pipewire"
+    ? "pipewire"
+    : value === "jack"
+      ? "jack"
+      : value === "alsa"
+        ? "alsa"
+        : undefined;
 }
 
 function optionalCaptureBackend(value: unknown) {
-  return value === undefined || value === "alsa" || value === "pipewire";
+  return value === undefined || value === "alsa" || value === "jack" || value === "pipewire";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
