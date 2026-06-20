@@ -1,16 +1,13 @@
 use crate::inventory::NodeInventory;
 
 pub fn capture_device_interface_id(value: &str, inventory: &NodeInventory) -> Option<String> {
-    let after_prefix = alsa_device_suffix(value)?;
-    let mut parts = after_prefix.split(',');
-    let card = parts.next()?;
-    let device = parts.next()?.parse::<u16>().ok()?;
+    let request = parse_alsa_device_request(value)?;
 
-    if let Ok(card) = card.parse::<u16>() {
-        return Some(format!("alsa_hw_{card}_{device}"));
+    if let Ok(card) = request.card.parse::<u16>() {
+        return Some(format!("alsa_hw_{}_{}", card, request.device));
     }
 
-    let card = normalize_alsa_token(card);
+    let card = normalize_alsa_token(&request.card);
     if card.is_empty() {
         return None;
     }
@@ -23,18 +20,54 @@ pub fn capture_device_interface_id(value: &str, inventory: &NodeInventory) -> Op
                 && audio_interface
                     .system_ref
                     .as_deref()
-                    .is_some_and(|system_ref| alsa_system_ref_device(system_ref) == Some(device))
+                    .is_some_and(|system_ref| {
+                        parse_alsa_device_request(system_ref)
+                            .is_some_and(|system_ref| system_ref.device == request.device)
+                    })
                 && normalize_alsa_token(&audio_interface.system_name).contains(&card)
         })
         .map(|audio_interface| audio_interface.id.clone())
 }
 
-fn alsa_system_ref_device(value: &str) -> Option<u16> {
-    let after_prefix = alsa_device_suffix(value)?;
-    let mut parts = after_prefix.split(',');
-    let _card = parts.next()?;
+struct AlsaDeviceRequest {
+    card: String,
+    device: u16,
+}
 
-    parts.next()?.parse::<u16>().ok()
+fn parse_alsa_device_request(value: &str) -> Option<AlsaDeviceRequest> {
+    let after_prefix = alsa_device_suffix(value)?;
+    let mut positional = Vec::new();
+    let mut card = None;
+    let mut device = None;
+
+    for part in after_prefix
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        if let Some((key, value)) = part.split_once('=') {
+            match key.trim().to_ascii_uppercase().as_str() {
+                "CARD" => card = Some(value.trim().to_string()),
+                "DEV" | "DEVICE" => device = value.trim().parse::<u16>().ok(),
+                _ => {}
+            }
+
+            continue;
+        }
+
+        positional.push(part);
+    }
+
+    let card = card.or_else(|| positional.first().map(|value| (*value).to_string()))?;
+    let device = device
+        .or_else(|| {
+            positional
+                .get(1)
+                .and_then(|value| value.parse::<u16>().ok())
+        })
+        .unwrap_or(0);
+
+    Some(AlsaDeviceRequest { card, device })
 }
 
 fn alsa_device_suffix(value: &str) -> Option<&str> {
@@ -77,6 +110,16 @@ mod tests {
     }
 
     #[test]
+    fn maps_key_value_alsa_capture_device_to_inventory_id() {
+        let inventory = inventory_with_interfaces(Vec::new());
+
+        assert_eq!(
+            capture_device_interface_id("hw:CARD=3,DEV=1,SUBDEV=0", &inventory).as_deref(),
+            Some("alsa_hw_3_1")
+        );
+    }
+
+    #[test]
     fn maps_named_alsa_capture_device_to_inventory_id() {
         let inventory = inventory_with_interfaces(vec![AudioInterfaceInventory {
             alias: "Loopback PCM".to_string(),
@@ -93,6 +136,27 @@ mod tests {
 
         assert_eq!(
             capture_device_interface_id("hw:Loopback,1,0", &inventory).as_deref(),
+            Some("alsa_hw_2_1")
+        );
+    }
+
+    #[test]
+    fn maps_named_key_value_plughw_capture_device_to_inventory_id() {
+        let inventory = inventory_with_interfaces(vec![AudioInterfaceInventory {
+            alias: "Loopback PCM".to_string(),
+            backend: "alsa".to_string(),
+            channel_count: 2,
+            channels: Vec::new(),
+            hardware_path: None,
+            id: "alsa_hw_2_1".to_string(),
+            sample_rates: vec![48_000],
+            serial_number: None,
+            system_name: "Loopback Loopback PCM".to_string(),
+            system_ref: Some("hw:2,1".to_string()),
+        }]);
+
+        assert_eq!(
+            capture_device_interface_id("plughw:CARD=Loopback,DEV=1", &inventory).as_deref(),
             Some("alsa_hw_2_1")
         );
     }
@@ -115,6 +179,16 @@ mod tests {
         assert_eq!(
             capture_device_interface_id("plughw:Scarlett,0", &inventory).as_deref(),
             Some("alsa_hw_4_0")
+        );
+    }
+
+    #[test]
+    fn defaults_missing_alsa_device_to_zero() {
+        let inventory = inventory_with_interfaces(Vec::new());
+
+        assert_eq!(
+            capture_device_interface_id("hw:CARD=5", &inventory).as_deref(),
+            Some("alsa_hw_5_0")
         );
     }
 

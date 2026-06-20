@@ -64,7 +64,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, schedules, settings, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, `hw:`/`plughw:` device matching, and Linux loopback tasks; Linux/hardware validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, positional and `CARD=`/`DEV=` device matching, and Linux loopback tasks; Linux/hardware validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -205,7 +205,7 @@ Current partial implementation:
 - Nodes page direct access mirrors `node:read`; node health panels mirror `health:read`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
-- Agent meter targeting maps numeric and named ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
+- Agent meter targeting maps numeric, named, and `CARD=`/`DEV=` ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
@@ -769,6 +769,7 @@ Current implementation baseline:
 177. ✅ Add ALSA hw-params metadata fallback for generic device inventory.
 178. ✅ Map named ALSA hw capture devices to inventory meter targets.
 179. ✅ Map ALSA plughw capture devices to inventory meter targets.
+180. ✅ Map ALSA CARD/DEV capture-device strings to inventory meter targets.
 
 ## Open Questions
 
