@@ -139,6 +139,27 @@ export const recordingSortOrders: Array<{ label: string; value: RecordingSortOrd
   { label: "Descending", value: "desc" },
   { label: "Ascending", value: "asc" },
 ];
+
+export function transcriptSnippetsFromText(value: string) {
+  const seen = new Set<string>();
+  const snippets: string[] = [];
+
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const key = trimmed.toLocaleLowerCase();
+
+    if (trimmed && !seen.has(key)) {
+      seen.add(key);
+      snippets.push(trimmed);
+    }
+  }
+
+  return snippets;
+}
+
+export function transcriptSnippetsToText(snippets: string[] | undefined) {
+  return snippets?.join("\n") ?? "";
+}
 export const recordingPageSizes = [10, 25, 50, 100];
 export const recordingCacheStateOptions: Array<{ label: string; value: RecordingCacheState }> = [
   { label: "Cached", value: "cached" },

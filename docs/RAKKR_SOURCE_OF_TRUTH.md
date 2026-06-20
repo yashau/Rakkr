@@ -301,7 +301,7 @@ Future analysis targets:
 - estimated SNR;
 - static/hum/broadband noise;
 - intelligibility score;
-- optional transcription snippets for search.
+- optional generated transcription snippets for search.
 
 Current path: local DSP/VAD scores first; optional AI/classifier second opinion later.
 
@@ -467,6 +467,7 @@ Current implementation baseline:
 - Recording library can export a scoped, filtered CSV manifest with audit coverage.
 - Recording library can export selected visible recordings as a scoped, audited CSV manifest.
 - Recording metadata supports searchable operator notes with audit snapshots and manifest export.
+- Recording metadata supports searchable transcript snippets with audit snapshots and manifest export; generation remains deferred.
 - Recording card action readiness uses tested cached/terminal recording predicates.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
@@ -812,6 +813,7 @@ Current implementation baseline:
 206. ✅ Add first-pass estimated SNR telemetry, UI display, and Prometheus metric.
 207. ✅ Add first-pass intelligibility score telemetry, UI display, and Prometheus metric.
 208. ✅ Add first-pass broadband-noise telemetry, UI display, and Prometheus metric.
+209. ✅ Add searchable transcript snippet recording metadata.
 
 ## Open Questions
 

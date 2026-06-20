@@ -77,6 +77,83 @@ test("recording metadata update saves and clears operator notes with audit snaps
   assert.equal((events[0]?.after as { notes?: string } | undefined)?.notes, undefined);
 });
 
+test("recording metadata update saves and clears transcript snippets with audit snapshots", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const recordingStore = memoryRecordingStore([
+    recording({
+      id: "rec_transcript_snippets",
+      name: "Transcript Snippets Test",
+      transcriptSnippets: ["Initial public comment"],
+    }),
+  ]);
+  const app = new Hono<AppBindings>();
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser() }),
+    currentUser,
+    nodeStore: {},
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission(permissionCalls),
+    scopedRecordings: () => recordingStore.list(),
+    settingsStore: {},
+  });
+
+  const saveResponse = await app.request("/api/v1/recordings/rec_transcript_snippets/metadata", {
+    body: JSON.stringify({
+      transcriptSnippets: [
+        "  motion passed unanimously  ",
+        "budget hearing continued",
+        "Motion passed unanimously",
+      ],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const saveBody = (await saveResponse.json()) as { data: RecordingSummary };
+  const clearResponse = await app.request("/api/v1/recordings/rec_transcript_snippets/metadata", {
+    body: JSON.stringify({ transcriptSnippets: [] }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const clearBody = (await clearResponse.json()) as { data: RecordingSummary };
+  const stored = await recordingStore.find("rec_transcript_snippets");
+  const events = await auditStore.list({ action: "recordings.metadata.update.succeeded" });
+
+  assert.equal(saveResponse.status, 200);
+  assert.equal(clearResponse.status, 200);
+  assert.equal(permissionCalls.at(-1)?.permission, "recording:edit");
+  assert.equal(saveBody.data.transcriptSnippets?.length, 2);
+  assert.deepEqual(saveBody.data.transcriptSnippets, [
+    "motion passed unanimously",
+    "budget hearing continued",
+  ]);
+  assert.equal(clearBody.data.transcriptSnippets, undefined);
+  assert.equal(stored?.transcriptSnippets, undefined);
+  assert.deepEqual(
+    events.map((event) => event.details.fields),
+    [["transcriptSnippets"], ["transcriptSnippets"]],
+  );
+  assert.deepEqual(
+    (events[1]?.before as { transcriptSnippets?: string[] } | undefined)?.transcriptSnippets,
+    ["Initial public comment"],
+  );
+  assert.deepEqual(
+    (events[1]?.after as { transcriptSnippets?: string[] } | undefined)?.transcriptSnippets,
+    ["motion passed unanimously", "budget hearing continued"],
+  );
+  assert.deepEqual(
+    (events[0]?.before as { transcriptSnippets?: string[] } | undefined)?.transcriptSnippets,
+    events[1]?.after?.transcriptSnippets,
+  );
+  assert.equal(
+    (events[0]?.after as { transcriptSnippets?: string[] } | undefined)?.transcriptSnippets,
+    undefined,
+  );
+});
+
 interface PermissionCall {
   action: string;
   permission: Permission;

@@ -23,6 +23,25 @@ test("recording listing filters cached and missing cache states", () => {
   );
 });
 
+test("recording listing searches transcript snippets", () => {
+  const recordings = [
+    recording({
+      id: "rec_transcript_match",
+      transcriptSnippets: ["The zoning motion passed after public comment."],
+    }),
+    recording({
+      id: "rec_notes_only",
+      notes: "Budget hearing",
+      transcriptSnippets: ["No matching phrase here."],
+    }),
+  ];
+
+  assert.deepEqual(
+    filterRecordings(recordings, { search: "zoning motion" }).map((item) => item.id),
+    ["rec_transcript_match"],
+  );
+});
+
 function recording(input: Partial<RecordingSummary>): RecordingSummary {
   return {
     cached: false,

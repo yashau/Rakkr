@@ -607,6 +607,7 @@ export const recordingSummarySchema = z.object({
   source: recordingSourceSchema,
   status: recordingStatusSchema,
   tags: z.array(z.string().min(1)),
+  transcriptSnippets: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
   trackGroupId: z.string().min(1).optional(),
   trackIndex: z.number().int().positive().optional(),
   trackTotal: z.number().int().positive().optional(),

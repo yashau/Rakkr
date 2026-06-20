@@ -120,6 +120,7 @@ export interface RecordingMetadataUpdate {
   name?: string;
   notes?: string | null;
   tags?: string[];
+  transcriptSnippets?: string[] | null;
 }
 
 export interface RecordingBulkMetadataUpdate {

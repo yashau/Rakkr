@@ -206,6 +206,7 @@ const recordingExportHeaders = [
   "id",
   "name",
   "notes",
+  "transcriptSnippets",
   "folder",
   "tags",
   "status",
@@ -231,12 +232,25 @@ export function recordingManifestCsv(recordings: RecordingSummary[]) {
     recordingExportHeaders.join(","),
     ...recordings.map((recording) =>
       recordingExportHeaders
-        .map((header) =>
-          csvCell(header === "tags" ? recording.tags.join(";") : String(recording[header] ?? "")),
-        )
+        .map((header) => csvCell(recordingExportValue(recording, header)))
         .join(","),
     ),
   ].join("\n");
+}
+
+function recordingExportValue(
+  recording: RecordingSummary,
+  header: (typeof recordingExportHeaders)[number],
+) {
+  if (header === "tags") {
+    return recording.tags.join(";");
+  }
+
+  if (header === "transcriptSnippets") {
+    return recording.transcriptSnippets?.join(" | ") ?? "";
+  }
+
+  return String(recording[header] ?? "");
 }
 
 function recordingMatchesSearch(recording: RecordingSummary, search: string) {
@@ -253,6 +267,7 @@ function recordingMatchesSearch(recording: RecordingSummary, search: string) {
     recording.trackGroupId,
     recording.uploadPolicyId,
     ...recording.tags,
+    ...(recording.transcriptSnippets ?? []),
   ];
 
   return searchableValues.some((value) => value && includesText(value, search));

@@ -33,6 +33,8 @@ import {
   isCachedRecording,
   isTerminalRecording,
   recordingRelationshipBadges,
+  transcriptSnippetsFromText,
+  transcriptSnippetsToText,
   type RecordingRelationshipReferences,
   waveformBarHeightPercent,
   waveformPreviewSummary,
@@ -43,6 +45,7 @@ interface RecordingMetadataDraft {
   name: string;
   notes: string;
   tags: string;
+  transcriptSnippets: string;
 }
 
 export function RecordingCard({
@@ -143,6 +146,7 @@ export function RecordingCard({
                   name: draft.name.trim(),
                   notes: draft.notes.trim() || null,
                   tags: tagsFromText(draft.tags),
+                  transcriptSnippets: transcriptSnippetsFromText(draft.transcriptSnippets),
                 })
                   .then(() => setIsEditing(false))
                   .catch(() => undefined);
@@ -188,6 +192,20 @@ export function RecordingCard({
                     }
                     rows={3}
                     value={draft.notes}
+                  />
+                </div>
+                <div className="grid gap-1.5 md:col-span-2">
+                  <Label htmlFor={`${recording.id}-transcript-snippets`}>Transcript snippets</Label>
+                  <Textarea
+                    id={`${recording.id}-transcript-snippets`}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        transcriptSnippets: event.target.value,
+                      }))
+                    }
+                    rows={3}
+                    value={draft.transcriptSnippets}
                   />
                 </div>
               </div>
@@ -260,6 +278,20 @@ export function RecordingCard({
                 <p className="mt-3 rounded-md border border-border bg-muted/20 p-2 text-sm whitespace-pre-wrap text-muted-foreground">
                   {recording.notes}
                 </p>
+              ) : null}
+              {recording.transcriptSnippets?.length ? (
+                <div className="mt-3 grid gap-1.5 rounded-md border border-border bg-muted/20 p-2 text-sm text-muted-foreground">
+                  {recording.transcriptSnippets.slice(0, 3).map((snippet) => (
+                    <p className="max-h-10 overflow-hidden" key={snippet}>
+                      {snippet}
+                    </p>
+                  ))}
+                  {recording.transcriptSnippets.length > 3 ? (
+                    <span className="text-xs">
+                      +{recording.transcriptSnippets.length - 3} more snippets
+                    </span>
+                  ) : null}
+                </div>
               ) : null}
               {recording.checksum || recording.waveformPreview ? (
                 <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/20 p-2">
@@ -519,6 +551,7 @@ function draftFromRecording(recording: RecordingSummary): RecordingMetadataDraft
     name: recording.name,
     notes: recording.notes ?? "",
     tags: tagsToText(recording.tags),
+    transcriptSnippets: transcriptSnippetsToText(recording.transcriptSnippets),
   };
 }
 

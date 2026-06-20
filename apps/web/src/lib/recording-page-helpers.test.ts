@@ -21,6 +21,8 @@ import {
   recordingFileActionState,
   recordingPagePermissions,
   recordingRelationshipBadges,
+  transcriptSnippetsFromText,
+  transcriptSnippetsToText,
   uploadQueueStatusSummary,
   replacePlaybackPreview,
   type RecordingPlaybackPreview,
@@ -158,6 +160,19 @@ test("upload queue status summary counts visible recording items in operator ord
     { count: 1, status: "retrying" },
     { count: 1, status: "queued" },
   ]);
+});
+
+test("transcript snippet text helpers trim, dedupe, and preserve lines", () => {
+  const snippets = transcriptSnippetsFromText(
+    " motion passed unanimously \n\nBudget hearing continued\r\nMotion passed unanimously",
+  );
+
+  assert.deepEqual(snippets, ["motion passed unanimously", "Budget hearing continued"]);
+  assert.equal(
+    transcriptSnippetsToText(snippets),
+    "motion passed unanimously\nBudget hearing continued",
+  );
+  assert.equal(transcriptSnippetsToText(undefined), "");
 });
 
 test("recording page permissions are closed by default", () => {

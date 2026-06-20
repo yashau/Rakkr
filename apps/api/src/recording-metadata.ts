@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { RecordingSummary } from "@rakkr/shared";
 
 const tagsSchema = z.array(z.string().trim().min(1).max(48)).max(32);
+const transcriptSnippetsSchema = z.array(z.string().trim().min(1).max(500)).max(20);
 
 export const recordingMetadataUpdateSchema = z
   .object({
@@ -9,6 +10,7 @@ export const recordingMetadataUpdateSchema = z
     name: z.string().trim().min(1).max(240).optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
     tags: tagsSchema.optional(),
+    transcriptSnippets: transcriptSnippetsSchema.nullable().optional(),
   })
   .strict()
   .refine(
@@ -16,7 +18,8 @@ export const recordingMetadataUpdateSchema = z
       value.folder !== undefined ||
       value.name !== undefined ||
       value.notes !== undefined ||
-      value.tags !== undefined,
+      value.tags !== undefined ||
+      value.transcriptSnippets !== undefined,
     "Expected at least one metadata field",
   );
 
@@ -57,6 +60,10 @@ export function applyRecordingMetadataUpdate(
     name: update.name ?? recording.name,
     notes: update.notes === undefined ? recording.notes : update.notes || undefined,
     tags: update.tags ? uniqueTags(update.tags) : recording.tags,
+    transcriptSnippets:
+      update.transcriptSnippets === undefined
+        ? recording.transcriptSnippets
+        : uniqueTranscriptSnippets(update.transcriptSnippets),
   };
 }
 
@@ -83,6 +90,7 @@ export function recordingMetadataSnapshot(recording: RecordingSummary) {
     name: recording.name,
     notes: recording.notes,
     tags: recording.tags,
+    transcriptSnippets: recording.transcriptSnippets,
   };
 }
 
@@ -117,6 +125,30 @@ function bulkTags(tags: string[], update: BulkMetadataUpdate) {
   return uniqueTags([...kept, ...(update.addTags ?? [])]);
 }
 
+function uniqueTranscriptSnippets(snippets: string[] | null) {
+  if (!snippets) {
+    return undefined;
+  }
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const snippet of snippets) {
+    const key = snippetKey(snippet);
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(snippet);
+    }
+  }
+
+  return result.length > 0 ? result : undefined;
+}
+
 function tagKey(tag: string) {
   return tag.toLocaleLowerCase();
+}
+
+function snippetKey(snippet: string) {
+  return snippet.toLocaleLowerCase();
 }

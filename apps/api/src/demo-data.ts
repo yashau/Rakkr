@@ -94,6 +94,10 @@ export const recordings: RecordingSummary[] = [
     source: "schedule",
     status: "completed",
     tags: ["council", "voice"],
+    transcriptSnippets: [
+      "Call to order and roll call.",
+      "Motion approved for the June finance packet.",
+    ],
     uploadPolicyId: defaultStubUploadPolicy.id,
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },

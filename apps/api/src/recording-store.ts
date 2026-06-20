@@ -300,6 +300,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     source: row.source,
     status: row.status,
     tags: stringArray(row.tags),
+    transcriptSnippets: transcriptSnippetsOrUndefined(metadata?.transcriptSnippets),
     trackGroupId: stringOrUndefined(metadata?.trackGroupId),
     trackIndex: positiveIntegerOrUndefined(metadata?.trackIndex),
     trackTotal: positiveIntegerOrUndefined(metadata?.trackTotal),
@@ -315,6 +316,7 @@ function recordingMetadata(recording: RecordingSummary) {
     notes: recording.notes,
     recordingProfileId: recording.recordingProfileId,
     retentionPolicyId: recording.retentionPolicyId,
+    transcriptSnippets: recording.transcriptSnippets,
     trackGroupId: recording.trackGroupId,
     trackIndex: recording.trackIndex,
     trackTotal: recording.trackTotal,
@@ -326,6 +328,12 @@ function recordingMetadata(recording: RecordingSummary) {
 
 function waveformPreviewOrUndefined(value: unknown) {
   const result = recordingSummarySchema.shape.waveformPreview.safeParse(value);
+
+  return result.success ? result.data : undefined;
+}
+
+function transcriptSnippetsOrUndefined(value: unknown) {
+  const result = recordingSummarySchema.shape.transcriptSnippets.safeParse(value);
 
   return result.success ? result.data : undefined;
 }
