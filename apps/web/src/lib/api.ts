@@ -157,6 +157,32 @@ export interface UploadQueueInput {
   uploadPolicyId?: string;
 }
 
+export interface WatchdogCalibrationInput {
+  apply?: boolean;
+  frameLimit?: number;
+  minFrames?: number;
+  nodeId: string;
+  signalMarginDb?: number;
+}
+
+export interface WatchdogCalibrationResult {
+  analysis: {
+    frameCount: number;
+    maxNoiseScore: number;
+    medianMetricDbfs: number;
+    medianSpeechScore: number;
+    observedMaxMetricDbfs: number;
+    observedP95MetricDbfs: number;
+    speechLikeFrameCount: number;
+  };
+  applied: boolean;
+  recommendation: {
+    marginDb: number;
+    update: WatchdogPolicyUpdate;
+  };
+  warnings: string[];
+}
+
 export interface UploadQueueFilters {
   provider?: UploadProvider;
   recordingId?: string;
@@ -634,6 +660,17 @@ export const api = {
       },
       method: "PATCH",
     }),
+  calibrateWatchdogPolicy: (policyId: string, input: WatchdogCalibrationInput) =>
+    fetchJson<{ data: { calibration: WatchdogCalibrationResult; policy?: WatchdogPolicy } }>(
+      `/api/v1/settings/watchdog-policies/${policyId}/calibrations`,
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    ),
   recordings: (filters: RecordingFilters = {}) =>
     fetchJson<RecordingListResponse>(withQuery("/api/v1/recordings", filters)),
   exportRecordingManifest: (filters: RecordingFilters = {}) =>

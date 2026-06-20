@@ -1,24 +1,36 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { WatchdogPolicy } from "@rakkr/shared";
-import { Save, ShieldAlert } from "lucide-react";
+import type { RecorderNode, WatchdogPolicy } from "@rakkr/shared";
+import { Gauge, Save, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
+import { watchdogCalibrationActionState } from "@/lib/settings-page-helpers";
 import { watchdogPolicyUpdate } from "@/lib/settings-updates";
 
 export function WatchdogPolicyCard({
   canManage,
+  canReadNodes,
+  nodes,
   policy,
 }: {
   canManage: boolean;
+  canReadNodes: boolean;
+  nodes: RecorderNode[];
   policy: WatchdogPolicy;
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(policy);
+  const [calibrationNodeId, setCalibrationNodeId] = useState(nodes[0]?.id ?? "");
+  const [signalMarginDb, setSignalMarginDb] = useState(8);
+  const calibrationAction = watchdogCalibrationActionState({
+    canManageSettings: canManage,
+    canReadNodes,
+    nodeCount: nodes.length,
+  });
   const mutation = useMutation({
     mutationFn: () => api.updateWatchdogPolicy(policy.id, watchdogPolicyUpdate(draft)),
     onSuccess: ({ data }) => {
@@ -27,10 +39,32 @@ export function WatchdogPolicyCard({
       void queryClient.invalidateQueries({ queryKey: ["status"] });
     },
   });
+  const calibrationMutation = useMutation({
+    mutationFn: () =>
+      api.calibrateWatchdogPolicy(policy.id, {
+        apply: true,
+        nodeId: calibrationNodeId,
+        signalMarginDb,
+      }),
+    onSuccess: ({ data }) => {
+      if (data.policy) {
+        setDraft(data.policy);
+      }
+
+      void queryClient.invalidateQueries({ queryKey: ["watchdog-policies"] });
+      void queryClient.invalidateQueries({ queryKey: ["status"] });
+    },
+  });
 
   useEffect(() => {
     setDraft(policy);
   }, [policy]);
+
+  useEffect(() => {
+    if (!calibrationNodeId && nodes[0]) {
+      setCalibrationNodeId(nodes[0].id);
+    }
+  }, [calibrationNodeId, nodes]);
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
@@ -222,7 +256,45 @@ export function WatchdogPolicyCard({
         </Field>
       </div>
 
-      {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}
+      <div className="mt-4 grid gap-3 rounded-md border border-border bg-muted/20 p-3 md:grid-cols-[1fr_140px_auto] md:items-end">
+        <Field label="Calibration Node">
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={calibrationAction.disabled}
+            onChange={(event) => setCalibrationNodeId(event.target.value)}
+            value={calibrationNodeId}
+          >
+            {nodes.map((node) => (
+              <option key={node.id} value={node.id}>
+                {node.alias} / {node.location.room}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <NumberField
+          disabled={calibrationAction.disabled}
+          label="Margin dB"
+          min={0}
+          onChange={setSignalMarginDb}
+          value={signalMarginDb}
+        />
+        <Button
+          disabled={
+            calibrationAction.disabled || calibrationMutation.isPending || !calibrationNodeId
+          }
+          onClick={() => calibrationMutation.mutate()}
+          title={calibrationAction.title}
+          type="button"
+          variant="outline"
+        >
+          <Gauge className="size-4" />
+          Calibrate
+        </Button>
+      </div>
+
+      {mutation.isError || calibrationMutation.isError ? (
+        <p className="mt-3 text-sm text-destructive">Save failed.</p>
+      ) : null}
     </Card>
   );
 }

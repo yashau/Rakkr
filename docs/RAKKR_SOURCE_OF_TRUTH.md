@@ -274,6 +274,7 @@ Current partial implementation:
 - Node health summaries, recent events, trends, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, and clipping evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
+- Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 - `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
 
@@ -760,6 +761,7 @@ Current implementation baseline:
 171. ✅ Add scoped monitor-chunk freshness Prometheus metrics.
 172. ✅ Add RBAC/audited live-listen session stop lifecycle.
 173. ✅ Add RBAC/audited watchdog field calibration from meter history.
+174. ✅ Add Settings UI watchdog calibration controls.
 
 ## Open Questions
 

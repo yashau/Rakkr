@@ -135,7 +135,13 @@ export function SettingsPage() {
 
       <div className="grid gap-4">
         {(watchdogPoliciesQuery.data?.data ?? []).map((policy) => (
-          <WatchdogPolicyCard canManage={canManageSettings} key={policy.id} policy={policy} />
+          <WatchdogPolicyCard
+            canManage={canManageSettings}
+            canReadNodes={canReadNodes}
+            key={policy.id}
+            nodes={nodesQuery.data?.data ?? []}
+            policy={policy}
+          />
         ))}
       </div>
 

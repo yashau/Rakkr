@@ -14,6 +14,7 @@ Status: Partial baseline checked.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
 - Synthetic PCM calibration fixtures assert voice, silence, hum/static likelihood, and independent-channel behavior for local quality scoring.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
+- Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, filterable, and audited.
 - UI exposes live meter speech/noise/hum/static/clipping/channel correlation cues plus recording and schedule quality timelines with event-specific evidence.
 - Prometheus export covers health totals, active watchdog alerts, node-offline alerts, xrun totals, clipping, speech score, noise score, hum score, static score, and channel correlation score.
@@ -28,6 +29,7 @@ Status: Partial baseline checked.
 | Health event type filtering | `apps/api/test/health-store.test.ts` |
 | Health/watchdog/xrun Prometheus metrics | `apps/api/test/metrics.test.ts` |
 | Watchdog field calibration route | `apps/api/test/watchdog-calibration-routes.test.ts` |
+| Watchdog calibration UI gating | `apps/web/src/lib/settings-page-helpers.test.ts` |
 | Meter speech/noise/hum/static/clipping UI helpers | `apps/web/src/lib/meter-helpers.test.ts` |
 | Recording and schedule quality timelines | `apps/web/src/components/quality-timeline.tsx`, `apps/web/src/lib/quality-timeline-helpers.test.ts` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |

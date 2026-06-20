@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CurrentUser, Permission } from "@rakkr/shared";
 
-import { settingsPagePermissions } from "./settings-page-helpers";
+import { settingsPagePermissions, watchdogCalibrationActionState } from "./settings-page-helpers";
 
 test("settings page permissions are closed by default", () => {
   assert.deepEqual(settingsPagePermissions(undefined), {
@@ -29,6 +29,53 @@ test("settings page separates settings read manage and node lookup permissions",
       canManageSettings: true,
       canReadNodes: true,
       canReadSettings: true,
+    },
+  );
+});
+
+test("watchdog calibration action requires settings manage node read and nodes", () => {
+  assert.deepEqual(
+    watchdogCalibrationActionState({
+      canManageSettings: false,
+      canReadNodes: true,
+      nodeCount: 1,
+    }),
+    {
+      disabled: true,
+      title: "Requires settings manage",
+    },
+  );
+  assert.deepEqual(
+    watchdogCalibrationActionState({
+      canManageSettings: true,
+      canReadNodes: false,
+      nodeCount: 1,
+    }),
+    {
+      disabled: true,
+      title: "Requires node read",
+    },
+  );
+  assert.deepEqual(
+    watchdogCalibrationActionState({
+      canManageSettings: true,
+      canReadNodes: true,
+      nodeCount: 0,
+    }),
+    {
+      disabled: true,
+      title: "No nodes available",
+    },
+  );
+  assert.deepEqual(
+    watchdogCalibrationActionState({
+      canManageSettings: true,
+      canReadNodes: true,
+      nodeCount: 1,
+    }),
+    {
+      disabled: false,
+      title: "Calibrate watchdog from room meter history",
     },
   );
 });
