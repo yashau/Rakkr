@@ -89,6 +89,10 @@ test("settings write routes deny users without settings manage", async () => {
       targetType: "node",
       templateId: "template_blocked",
     }),
+    requestJson(app, "/api/v1/settings/channel-map-assignments/bulk", "PUT", {
+      targets: [{ targetId: "node_blocked", targetType: "node" }],
+      templateId: "template_blocked",
+    }),
     requestJson(app, "/api/v1/settings/channel-map-assignments/rollback", "POST", {
       targetId: "node_blocked",
       targetType: "node",
@@ -98,9 +102,10 @@ test("settings write routes deny users without settings manage", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignments.bulk_update",
     "settings.channel_map_assignments.rollback",
     "settings.channel_map_assignments.update",
     "settings.channel_map_templates.create",
@@ -267,6 +272,19 @@ test("settings manage routes update operational templates and audit snapshots", 
       templateId: rollbackTemplateId,
     },
   );
+  const bulkAssignmentResponse = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-assignments/bulk",
+    "PUT",
+    {
+      targets: [
+        { targetId: "node_ops_bulk", targetType: "node" },
+        { targetId: "interface_ops_1", targetType: "interface" },
+        { targetId: "interface_ops_1", targetType: "interface" },
+      ],
+      templateId: rollbackTemplateId,
+    },
+  );
   const rollbackResponse = await requestJson(
     app,
     "/api/v1/settings/channel-map-assignments/rollback",
@@ -287,19 +305,31 @@ test("settings manage routes update operational templates and audit snapshots", 
   assert.equal(templateUpdateResponse.status, 200);
   assert.equal(assignmentResponse.status, 200);
   assert.equal(reassignmentResponse.status, 200);
+  assert.equal(bulkAssignmentResponse.status, 200);
   assert.equal(rollbackResponse.status, 200);
 
   const updatedTemplate = (await templateUpdateResponse.json()) as { data: { revision: number } };
   const reassignment = (await reassignmentResponse.json()) as {
     data: { history: Array<{ previousTemplateId?: string }>; templateId: string };
   };
+  const bulkAssignment = (await bulkAssignmentResponse.json()) as {
+    data: Array<{ targetId: string; targetType: string; templateId: string }>;
+  };
   const rollback = (await rollbackResponse.json()) as { data: { templateId: string } };
 
   assert.equal(updatedTemplate.data.revision, 2);
   assert.equal(reassignment.data.templateId, rollbackTemplateId);
   assert.equal(reassignment.data.history.at(-1)?.previousTemplateId, primaryTemplateId);
+  assert.deepEqual(
+    bulkAssignment.data.map((assignment) => `${assignment.targetType}:${assignment.targetId}`),
+    ["node:node_ops_bulk", "interface:interface_ops_1"],
+  );
+  assert.ok(
+    bulkAssignment.data.every((assignment) => assignment.templateId === rollbackTemplateId),
+  );
   assert.equal(rollback.data.templateId, primaryTemplateId);
   assert.deepEqual(audits.map((event) => event.action).sort(), [
+    "settings.channel_map_assignments.bulk_update.succeeded",
     "settings.channel_map_assignments.rollback.succeeded",
     "settings.channel_map_assignments.update.succeeded",
     "settings.channel_map_assignments.update.succeeded",
@@ -330,6 +360,12 @@ test("settings manage routes update operational templates and audit snapshots", 
   assert.equal(watchdogAudit?.after?.clippingMode, "alert_on_clipping");
   assert.equal(watchdogAudit?.after?.minCumulativeChannelCorrelationSeconds, 15);
   assert.equal(watchdogAudit?.after?.minCumulativeClippingSeconds, 2);
+  const bulkAudit = audits.find(
+    (event) => event.action === "settings.channel_map_assignments.bulk_update.succeeded",
+  );
+
+  assert.equal(bulkAudit?.after?.targetCount, 2);
+  assert.equal(bulkAudit?.target.type, "channel_map_assignment_collection");
 });
 
 function requestJson(

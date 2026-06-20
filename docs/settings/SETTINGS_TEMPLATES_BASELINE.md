@@ -7,6 +7,8 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 - Recording profiles can be read and updated through RBAC-gated settings routes.
 - Watchdog policies can be read and updated through RBAC-gated settings routes.
 - Channel-map templates can be created, updated, versioned, assigned to targets, and rolled back.
+- Channel-map templates can be bulk-assigned to many node/interface targets in one audited operation.
+- Bulk deployment is available for channel-map assignments.
 - Upload providers and upload policies share the same settings read/manage permission boundary.
 - Settings writes audit before/after snapshots when the route has an existing resource.
 - Missing `settings:read` and `settings:manage` permissions are denied and audited.
@@ -15,7 +17,6 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 
 ## Remaining Gaps
 
-- Bulk deployment to many targets in one operation.
 - Staged rollout/approval workflow beyond channel-map revision and rollback history.
 - Full settings families for every future recorder/device retention policy.
 

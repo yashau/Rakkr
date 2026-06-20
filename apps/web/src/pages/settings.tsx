@@ -326,6 +326,9 @@ function ChannelMapTemplateCard({
   const [draft, setDraft] = useState(template);
   const targetOptions = channelMapTargets(nodes);
   const [selectedTarget, setSelectedTarget] = useState(targetOptions[0]?.value ?? "");
+  const [selectedTargets, setSelectedTargets] = useState<string[]>(
+    targetOptions.slice(0, 3).map((target) => target.value),
+  );
   const assignedTargets = assignments.filter((assignment) => assignment.templateId === template.id);
   const draftChanged = channelMapDraftChanged(template, draft);
   const nextRevision = template.revision + 1;
@@ -350,6 +353,23 @@ function ChannelMapTemplateCard({
       void queryClient.invalidateQueries({ queryKey: ["channel-map-assignments"] });
     },
   });
+  const bulkAssignMutation = useMutation({
+    mutationFn: () =>
+      api.bulkAssignChannelMapTemplate({
+        targets: selectedTargets.map((value) => {
+          const target = parseTargetValue(value);
+
+          return {
+            targetId: target.id,
+            targetType: target.type,
+          };
+        }),
+        templateId: template.id,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["channel-map-assignments"] });
+    },
+  });
   const rollbackMutation = useMutation({
     mutationFn: (assignment: ChannelMapTemplateAssignment) =>
       api.rollbackChannelMapAssignment({
@@ -370,6 +390,12 @@ function ChannelMapTemplateCard({
       setSelectedTarget(targetOptions[0].value);
     }
   }, [selectedTarget, targetOptions]);
+
+  useEffect(() => {
+    if (selectedTargets.length === 0 && targetOptions[0]) {
+      setSelectedTargets([targetOptions[0].value]);
+    }
+  }, [selectedTargets.length, targetOptions]);
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
@@ -577,6 +603,38 @@ function ChannelMapTemplateCard({
         </Button>
       </div>
 
+      <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-end">
+        <Field label="Bulk Targets">
+          <select
+            className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            disabled={!canManage || !canReadNodes}
+            multiple
+            onChange={(event) => setSelectedTargets(selectedOptionValues(event.currentTarget))}
+            value={selectedTargets}
+          >
+            {targetOptions.map((target) => (
+              <option key={target.value} value={target.value}>
+                {target.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Button
+          disabled={
+            selectedTargets.length === 0 ||
+            bulkAssignMutation.isPending ||
+            !canManage ||
+            !canReadNodes
+          }
+          onClick={() => bulkAssignMutation.mutate()}
+          title={assignTargetTitle(canManage, canReadNodes)}
+          variant="outline"
+        >
+          <Cable className="size-4" />
+          Assign Selected
+        </Button>
+      </div>
+
       {assignedTargets.length > 0 ? (
         <div className="mt-4 grid gap-2">
           {assignedTargets.map((assignment) => {
@@ -623,7 +681,10 @@ function ChannelMapTemplateCard({
         </div>
       ) : null}
 
-      {updateMutation.isError || assignMutation.isError || rollbackMutation.isError ? (
+      {updateMutation.isError ||
+      assignMutation.isError ||
+      bulkAssignMutation.isError ||
+      rollbackMutation.isError ? (
         <p className="mt-3 text-sm text-destructive">Save failed.</p>
       ) : null}
     </Card>
@@ -636,6 +697,10 @@ function assignTargetTitle(canManage: boolean, canReadNodes: boolean) {
   }
 
   return canReadNodes ? "Assign channel map" : "Requires node read";
+}
+
+function selectedOptionValues(select: HTMLSelectElement) {
+  return Array.from(select.selectedOptions, (option) => option.value);
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {

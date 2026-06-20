@@ -159,6 +159,7 @@ Current checked partial baseline:
 - Drizzle/Postgres plus JSON fallback stores.
 - Profile, watchdog, channel map, and assignment APIs.
 - Channel map revisions, promotion metadata, assignment history, rollback.
+- Channel map templates can be bulk-assigned to many node/interface targets in one audited operation.
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
@@ -730,6 +731,7 @@ Current implementation baseline:
 156. ✅ Add quality timeline event-specific watchdog evidence display.
 157. ✅ Add checked browser-timezone and ISO date/time baseline.
 158. ✅ Add checked settings/templates partial baseline.
+159. ✅ Add audited bulk channel-map template assignment.
 
 ## Open Questions
 

@@ -362,6 +362,18 @@ export const channelMapTemplateAssignmentInputSchema = z.object({
   targetType: templateAssignmentTargetSchema,
   templateId: z.string().trim().min(1).max(160),
 });
+export const channelMapTemplateAssignmentBulkInputSchema = z.object({
+  targets: z
+    .array(
+      z.object({
+        targetId: z.string().trim().min(1).max(160),
+        targetType: templateAssignmentTargetSchema,
+      }),
+    )
+    .min(1)
+    .max(128),
+  templateId: z.string().trim().min(1).max(160),
+});
 export const channelMapTemplateAssignmentRollbackInputSchema = z.object({
   targetId: z.string().trim().min(1).max(160),
   targetType: templateAssignmentTargetSchema,
@@ -779,6 +791,9 @@ export type ChannelMapTemplate = z.infer<typeof channelMapTemplateSchema>;
 export type ChannelMapTemplateAssignment = z.infer<typeof channelMapTemplateAssignmentSchema>;
 export type ChannelMapTemplateAssignmentInput = z.infer<
   typeof channelMapTemplateAssignmentInputSchema
+>;
+export type ChannelMapTemplateAssignmentBulkInput = z.infer<
+  typeof channelMapTemplateAssignmentBulkInputSchema
 >;
 export type ChannelMapTemplateAssignmentRollbackInput = z.infer<
   typeof channelMapTemplateAssignmentRollbackInputSchema

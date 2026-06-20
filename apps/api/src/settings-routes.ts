@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import {
+  channelMapTemplateAssignmentBulkInputSchema,
   channelMapTemplateAssignmentInputSchema,
   channelMapTemplateAssignmentRollbackInputSchema,
   channelMapTemplateInputSchema,
@@ -483,6 +484,76 @@ export function registerSettingsRoutes({
     },
   );
 
+  app.put(
+    "/api/v1/settings/channel-map-assignments/bulk",
+    requirePermission("settings:manage", "settings.channel_map_assignments.bulk_update", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = channelMapTemplateAssignmentBulkInputSchema.safeParse(
+        await c.req.json().catch(() => ({})),
+      );
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignments.bulk_update.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid channel map assignments", issues: body.error.issues }, 400);
+      }
+
+      const template = await settingsStore.findChannelMapTemplate(body.data.templateId);
+
+      if (!template) {
+        await recordSettingsFailure(
+          c,
+          "settings.channel_map_assignments.bulk_update.failed",
+          "template_not_found",
+          {
+            id: body.data.templateId,
+            type: "channel_map_template",
+          },
+        );
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const assignments: ChannelMapTemplateAssignment[] = [];
+
+      for (const target of uniqueAssignmentTargets(body.data.targets)) {
+        assignments.push(
+          await settingsStore.assignChannelMapTemplate(
+            {
+              targetId: target.targetId,
+              targetType: target.targetType,
+              templateId: body.data.templateId,
+            },
+            currentAuth(c).user?.id,
+          ),
+        );
+      }
+
+      await recordAuditEvent(c, {
+        action: "settings.channel_map_assignments.bulk_update.succeeded",
+        after: {
+          assignments: assignments.map(assignmentSnapshot),
+          targetCount: assignments.length,
+          templateId: body.data.templateId,
+        },
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: {
+          id: template.id,
+          name: template.name,
+          type: "channel_map_assignment_collection",
+        },
+      });
+
+      return c.json({ data: assignments });
+    },
+  );
+
   app.post(
     "/api/v1/settings/channel-map-assignments/rollback",
     requirePermission("settings:manage", "settings.channel_map_assignments.rollback", () => ({
@@ -600,6 +671,26 @@ function assignmentSnapshot(assignment: ChannelMapTemplateAssignment) {
     targetType: assignment.targetType,
     templateId: assignment.templateId,
   };
+}
+
+function uniqueAssignmentTargets(
+  targets: Array<{
+    targetId: string;
+    targetType: ChannelMapTemplateAssignment["targetType"];
+  }>,
+) {
+  const seen = new Set<string>();
+
+  return targets.filter((target) => {
+    const key = `${target.targetType}:${target.targetId}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
 
 function profileSnapshot(profile: RecordingProfile) {

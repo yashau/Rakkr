@@ -3,6 +3,7 @@ import type {
   AuditOutcome,
   ChannelMapTemplate,
   ChannelMapTemplateAssignment,
+  ChannelMapTemplateAssignmentBulkInput,
   ChannelMapTemplateAssignmentInput,
   ChannelMapTemplateAssignmentRollbackInput,
   ChannelMapTemplateInput,
@@ -519,6 +520,17 @@ export const api = {
       },
       method: "PUT",
     }),
+  bulkAssignChannelMapTemplate: (input: ChannelMapTemplateAssignmentBulkInput) =>
+    fetchJson<{ data: ChannelMapTemplateAssignment[] }>(
+      "/api/v1/settings/channel-map-assignments/bulk",
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "PUT",
+      },
+    ),
   rollbackChannelMapAssignment: (input: ChannelMapTemplateAssignmentRollbackInput) =>
     fetchJson<{ data: ChannelMapTemplateAssignment }>(
       "/api/v1/settings/channel-map-assignments/rollback",
