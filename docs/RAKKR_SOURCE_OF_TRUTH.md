@@ -483,7 +483,7 @@ Current implementation baseline:
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
 - `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, controller capacity override, bounded concurrent jobs, concurrent-safe local health log output, rendered MP3/VBR, recorder-cache delete-after-upload, recorder-cache max-bytes idle sweep, cache-upload failure handling, and controller stop requests without audio hardware.
 - `mise run check` includes fake-controller agent smoke coverage for recorder-cache min-free-disk idle sweep using deterministic disk-pressure input.
-- `mise run check` includes fake-controller agent smoke coverage for agent monitor chunk sync without audio hardware.
+- `mise run check` includes fake-controller agent smoke coverage for agent monitor chunk sync, failure, and recovery without audio hardware.
 - Agent job claim-next, controller-polled capacity, bounded concurrency, capture, heartbeat, stop handling, cache upload, and leasing.
 - Profile-driven jobs carry MP3/FLAC/WAV encoder targets; agent captures raw WAV then renders final cache output.
 - Cache attach computes SHA-256 and WAV PCM waveform preview peaks.
@@ -787,7 +787,8 @@ Current implementation baseline:
 188. ✅ Add fake-controller smoke coverage for meter xrun health sync.
 189. ✅ Add fake-controller smoke coverage for meter device-unavailable health sync.
 190. ✅ Add fake-controller smoke coverage for meter recovery health sync.
-191. ✅ Add upload runner terminal-failure health event coverage.
+191. ✅ Add fake-controller smoke coverage for listen-monitor chunk sync recovery.
+192. ✅ Add upload runner terminal-failure health event coverage.
 
 ## Open Questions
 

@@ -16,6 +16,7 @@ Status: Partial baseline checked.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
+- Fake-controller smoke coverage exercises controller-synced listen-monitor chunk failure and recovery without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, hum/static likelihood, and independent-channel behavior for local quality scoring.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.

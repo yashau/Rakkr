@@ -25,6 +25,7 @@ import {
   runMeterDeviceUnavailableScenario,
   runMeterRecoveryScenario,
   runMeterXrunScenario,
+  runMonitorChunkRecoveryScenario,
   runSystemHealthScenario,
 } from "./agent-fake-controller-smoke-health.mjs";
 import {
@@ -150,6 +151,9 @@ try {
   );
   await runMeterRecoveryScenario(
     healthScenarioDeps({ address, recoveringMeterCommand, renderCommand }),
+  );
+  await runMonitorChunkRecoveryScenario(
+    healthScenarioDeps({ address, captureCommand, renderCommand }),
   );
   console.log("Agent fake-controller smoke passed.");
 } finally {
@@ -676,6 +680,7 @@ function createObserved() {
     jobStatusReads: 0,
     maxRunningJobs: 0,
     meterFrames: 0,
+    monitorChunkFailures: 0,
     monitorChunks: [],
     nextReads: 0,
     nodeHeartbeats: 0,
@@ -756,6 +761,12 @@ async function handleControllerRequest(request, response) {
 
   if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/listen/chunk`) {
     const body = await readBody(request);
+    if (scenario.monitorChunkFailuresRemaining > 0) {
+      scenario.monitorChunkFailuresRemaining -= 1;
+      observed.monitorChunkFailures += 1;
+      return json(response, 503, { error: "simulated monitor chunk failure" });
+    }
+
     observed.monitorChunks.push({
       capturedAt: request.headers["x-rakkr-captured-at"],
       contentType: request.headers["content-type"],

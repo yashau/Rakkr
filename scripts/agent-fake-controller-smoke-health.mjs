@@ -232,6 +232,80 @@ export async function runMeterRecoveryScenario({
   setActiveScenario(undefined);
 }
 
+export async function runMonitorChunkRecoveryScenario({
+  address,
+  captureCommand,
+  createObserved,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "monitor-chunk-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "monitor-chunk-recovery-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: {
+      expectSuccess: true,
+      monitorChunkFailuresRemaining: 1,
+      name: "monitor-chunk-recovery",
+    },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some(
+          (event) => event.type === "agent.listen_monitor.chunk_sync_failed",
+        ) &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.listen_monitor.chunk_sync_recovered",
+        ) &&
+        observed.monitorChunkFailures === 1 &&
+        observed.monitorChunks.length >= 1,
+      20_000,
+      () =>
+        `monitorFailures=${observed.monitorChunkFailures} monitor=${observed.monitorChunks.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const failedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.listen_monitor.chunk_sync_failed",
+  );
+  const recoveredEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.listen_monitor.chunk_sync_recovered",
+  );
+
+  invariant(failedEvent?.severity === "warning", "monitor chunk failure was not warning");
+  invariant(
+    String(failedEvent?.details?.error).includes("controller rejected monitor chunk with 503"),
+    "monitor chunk failure did not preserve controller rejection",
+  );
+  invariant(recoveredEvent?.severity === "info", "monitor chunk recovery was not info");
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.listen_monitor.chunk_sync_failed"),
+    "monitor chunk failure event was not written locally",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.listen_monitor.chunk_sync_recovered"),
+    "monitor chunk recovery event was not written locally",
+  );
+  setActiveScenario(undefined);
+}
+
 function fakeDfCommandPath(fakeDfPath) {
   return path.join(fakeDfPath, process.platform === "win32" ? "df.cmd" : "df");
 }
