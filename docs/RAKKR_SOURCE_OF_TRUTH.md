@@ -154,7 +154,7 @@ Central settings must cover:
 - staged rollout and rollback;
 - bulk deployment to similar recorders.
 
-Current partial implementation:
+Current checked partial baseline:
 
 - Drizzle/Postgres plus JSON fallback stores.
 - Profile, watchdog, channel map, and assignment APIs.
@@ -162,6 +162,7 @@ Current partial implementation:
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
+- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked partial settings/templates baseline and remaining rollout gaps.
 
 ## Node Inventory
 
@@ -728,6 +729,7 @@ Current implementation baseline:
 155. ✅ Tighten health watchdog baseline verifier for clipping lifecycle evidence.
 156. ✅ Add quality timeline event-specific watchdog evidence display.
 157. ✅ Add checked browser-timezone and ISO date/time baseline.
+158. ✅ Add checked settings/templates partial baseline.
 
 ## Open Questions
 
