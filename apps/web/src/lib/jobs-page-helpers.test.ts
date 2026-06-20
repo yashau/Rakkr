@@ -12,6 +12,8 @@ import {
   emptyJobsPageFilters,
   filterRecordingJobs,
   jobsPagePermissions,
+  recordingJobBulkRetryTargets,
+  recordingJobBulkStopTargets,
   recordingJobCaptureDetails,
   recordingJobRelationshipLabel,
   recordingJobRetryActionState,
@@ -198,6 +200,27 @@ test("recording job retry action state mirrors permission and lifecycle", () => 
     canRetry: false,
     title: "Job completed",
   });
+});
+
+test("recording job bulk targets include only eligible selected jobs", () => {
+  const jobs = [
+    job({ id: "job_queued", recordingId: "rec_queued", status: "queued" }),
+    job({ id: "job_running", recordingId: "rec_running", status: "running" }),
+    job({ id: "job_failed", recordingId: "rec_failed", status: "failed" }),
+    job({ id: "job_cancelled", recordingId: "rec_cancelled", status: "cancelled" }),
+    job({ id: "job_done", recordingId: "rec_done", status: "completed" }),
+    job({ id: "job_retry_active", recordingId: "rec_failed", status: "queued" }),
+  ];
+  const selected = jobs.map((recordingJob) => recordingJob.id);
+
+  assert.deepEqual(recordingJobBulkStopTargets(jobs, selected, true), [
+    "job_queued",
+    "job_running",
+    "job_retry_active",
+  ]);
+  assert.deepEqual(recordingJobBulkRetryTargets(jobs, selected, true), ["job_cancelled"]);
+  assert.deepEqual(recordingJobBulkStopTargets(jobs, selected, false), []);
+  assert.deepEqual(recordingJobBulkRetryTargets(jobs, selected, false), []);
 });
 
 function user(permissions: Permission[]): CurrentUser {

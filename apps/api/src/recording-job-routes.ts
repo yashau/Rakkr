@@ -9,7 +9,12 @@ import {
   recordingJobsCsv,
   recordingJobsExportFileName,
 } from "./recording-job-export.js";
-import { listRecordingJobs, recordingJob, retryRecordingJob } from "./recording-jobs.js";
+import {
+  listRecordingJobs,
+  recordingJob,
+  retryRecordingJob,
+  stopRecordingJobById,
+} from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 
 interface RecordingJobRouteDependencies {
@@ -32,6 +37,13 @@ const recordingJobsQuerySchema = z.object({
     recordingJobStatusSchema.optional(),
   ),
 });
+const recordingJobBulkActionSchema = z
+  .object({
+    jobIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
+  })
+  .strict();
+const retryableJobStatuses = new Set(["cancelled", "failed"]);
+const stoppableJobStatuses = new Set(["queued", "running"]);
 
 export function registerRecordingJobRoutes({
   app,
@@ -89,6 +101,293 @@ export function registerRecordingJobRoutes({
         "Content-Disposition": `attachment; filename="${recordingJobsExportFileName()}"`,
         "Content-Type": "text/csv; charset=utf-8",
       });
+    },
+  );
+
+  app.post(
+    "/api/v1/recording-jobs/bulk-retry",
+    requirePermission("recording:control", "recording_jobs.bulk_retry", () => ({
+      id: "recording_job_collection",
+      type: "recording_collection",
+    })),
+    async (c) => {
+      const body = recordingJobBulkActionSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordBulkJobFailure(c, "recording_jobs.bulk_retry.failed", "invalid_request");
+        return c.json(
+          { error: "Invalid recording job retry request", issues: body.error.issues },
+          400,
+        );
+      }
+
+      const jobIds = uniqueJobIds(body.data.jobIds);
+      const visibleJobs = await scopedRecordingJobs(currentUser(c));
+      const visibleJobMap = new Map(visibleJobs.map((job) => [job.id, job]));
+      const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
+
+      if (hiddenIds.length > 0) {
+        await recordBulkJobFailure(
+          c,
+          "recording_jobs.bulk_retry.failed",
+          "recording_job_not_visible",
+          {
+            hiddenIds,
+            jobIds,
+          },
+        );
+        return c.json({ error: "One or more recording jobs are not visible" }, 404);
+      }
+
+      const sourceJobs = jobIds.map((jobId) => visibleJobMap.get(jobId)!);
+      const ineligibleIds = sourceJobs
+        .filter((job) => !retryableJobStatuses.has(job.status))
+        .map((job) => job.id);
+
+      if (ineligibleIds.length > 0) {
+        await recordBulkJobFailure(
+          c,
+          "recording_jobs.bulk_retry.failed",
+          "recording_job_not_retryable",
+          {
+            ineligibleIds,
+            jobIds,
+          },
+        );
+        return c.json({ error: "One or more recording jobs cannot be retried" }, 409);
+      }
+
+      const duplicateRecordingIds = duplicateValues(sourceJobs.map((job) => job.recordingId));
+
+      if (duplicateRecordingIds.length > 0) {
+        await recordBulkJobFailure(
+          c,
+          "recording_jobs.bulk_retry.failed",
+          "duplicate_recording_selection",
+          {
+            duplicateRecordingIds,
+            jobIds,
+          },
+        );
+        return c.json({ error: "Only one retry job per recording can be created at once" }, 409);
+      }
+
+      const recordings = new Map<string, RecordingSummary>();
+
+      for (const job of sourceJobs) {
+        const recording = await recordingStore.find(job.recordingId);
+
+        if (!recording) {
+          await recordBulkJobFailure(c, "recording_jobs.bulk_retry.failed", "recording_not_found", {
+            jobIds,
+            recordingId: job.recordingId,
+          });
+          return c.json({ error: "One or more recordings were not found" }, 404);
+        }
+
+        recordings.set(recording.id, recording);
+      }
+
+      const selectedJobIds = new Set(jobIds);
+      const activeConflicts = (await listRecordingJobs()).filter(
+        (job) =>
+          !selectedJobIds.has(job.id) &&
+          sourceJobs.some((sourceJob) => sourceJob.recordingId === job.recordingId) &&
+          (job.status === "queued" || job.status === "running" || job.status === "stop_requested"),
+      );
+
+      if (activeConflicts.length > 0) {
+        await recordBulkJobFailure(c, "recording_jobs.bulk_retry.failed", "active_job_exists", {
+          activeJobIds: activeConflicts.map((job) => job.id),
+          jobIds,
+        });
+        return c.json({ error: "One or more recordings already have active jobs" }, 409);
+      }
+
+      const retriedJobs = [];
+      const before = [];
+      const after = [];
+
+      for (const sourceJob of sourceJobs) {
+        const result = await retryRecordingJob(sourceJob.id);
+
+        if (!result.ok) {
+          await recordBulkJobFailure(c, "recording_jobs.bulk_retry.failed", result.reason, {
+            jobIds,
+            sourceJobId: sourceJob.id,
+          });
+          return c.json(
+            { error: "Recording jobs could not all be retried", reason: result.reason },
+            409,
+          );
+        }
+
+        const recording = recordings.get(sourceJob.recordingId)!;
+        const updated = recordingForRetriedJob(recording, result.job.createdAt);
+
+        await recordingStore.save(updated);
+        retriedJobs.push(result.job);
+        before.push({ jobId: sourceJob.id, recordingId: recording.id, status: sourceJob.status });
+        after.push({ jobId: result.job.id, recordingId: updated.id, status: result.job.status });
+      }
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.bulk_retry.succeeded",
+        after: { jobs: after },
+        auth: currentAuth(c),
+        before: { jobs: before },
+        correlationIds: Object.fromEntries(
+          retriedJobs.map((job, index) => [`retryJobId${index + 1}`, job.id]),
+        ),
+        details: {
+          requestedCount: body.data.jobIds.length,
+          retriedCount: retriedJobs.length,
+          sourceJobIds: jobIds,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: {
+          id: "recording_job_collection",
+          type: "recording_collection",
+        },
+      });
+
+      return c.json({ data: retriedJobs, meta: { retriedCount: retriedJobs.length } }, 201);
+    },
+  );
+
+  app.post(
+    "/api/v1/recording-jobs/bulk-stop",
+    requirePermission("recording:control", "recording_jobs.bulk_stop", () => ({
+      id: "recording_job_collection",
+      type: "recording_collection",
+    })),
+    async (c) => {
+      const body = recordingJobBulkActionSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordBulkJobFailure(c, "recording_jobs.bulk_stop.failed", "invalid_request");
+        return c.json(
+          { error: "Invalid recording job stop request", issues: body.error.issues },
+          400,
+        );
+      }
+
+      const jobIds = uniqueJobIds(body.data.jobIds);
+      const visibleJobs = await scopedRecordingJobs(currentUser(c));
+      const visibleJobMap = new Map(visibleJobs.map((job) => [job.id, job]));
+      const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
+
+      if (hiddenIds.length > 0) {
+        await recordBulkJobFailure(
+          c,
+          "recording_jobs.bulk_stop.failed",
+          "recording_job_not_visible",
+          {
+            hiddenIds,
+            jobIds,
+          },
+        );
+        return c.json({ error: "One or more recording jobs are not visible" }, 404);
+      }
+
+      const sourceJobs = jobIds.map((jobId) => visibleJobMap.get(jobId)!);
+      const ineligibleIds = sourceJobs
+        .filter((job) => !stoppableJobStatuses.has(job.status))
+        .map((job) => job.id);
+
+      if (ineligibleIds.length > 0) {
+        await recordBulkJobFailure(
+          c,
+          "recording_jobs.bulk_stop.failed",
+          "recording_job_not_stoppable",
+          {
+            ineligibleIds,
+            jobIds,
+          },
+        );
+        return c.json({ error: "One or more recording jobs cannot be stopped" }, 409);
+      }
+
+      const recordings = new Map<string, RecordingSummary>();
+
+      for (const job of sourceJobs) {
+        const recording = await recordingStore.find(job.recordingId);
+
+        if (!recording) {
+          await recordBulkJobFailure(c, "recording_jobs.bulk_stop.failed", "recording_not_found", {
+            jobIds,
+            recordingId: job.recordingId,
+          });
+          return c.json({ error: "One or more recordings were not found" }, 404);
+        }
+
+        recordings.set(recording.id, recording);
+      }
+
+      const stoppedJobs = [];
+      const before = [];
+      const after = [];
+
+      for (const sourceJob of sourceJobs) {
+        const stopped = await stopRecordingJobById(sourceJob.id);
+
+        if (!stopped) {
+          await recordBulkJobFailure(
+            c,
+            "recording_jobs.bulk_stop.failed",
+            "recording_job_not_stoppable",
+            {
+              jobIds,
+              sourceJobId: sourceJob.id,
+            },
+          );
+          return c.json({ error: "Recording jobs could not all be stopped" }, 409);
+        }
+
+        const recording = recordings.get(sourceJob.recordingId)!;
+        const beforeRecordingStatus = recording.status;
+
+        recording.durationSeconds = Math.max(recording.durationSeconds, 1);
+        recording.status = "completed";
+        await recordingStore.save(recording);
+
+        stoppedJobs.push(stopped);
+        before.push({
+          jobId: sourceJob.id,
+          recordingId: recording.id,
+          recordingStatus: beforeRecordingStatus,
+          status: sourceJob.status,
+        });
+        after.push({
+          jobId: stopped.id,
+          recordingId: recording.id,
+          recordingStatus: recording.status,
+          status: stopped.status,
+        });
+      }
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.bulk_stop.succeeded",
+        after: { jobs: after },
+        auth: currentAuth(c),
+        before: { jobs: before },
+        correlationIds: Object.fromEntries(
+          stoppedJobs.map((job, index) => [`jobId${index + 1}`, job.id]),
+        ),
+        details: {
+          requestedCount: body.data.jobIds.length,
+          stoppedCount: stoppedJobs.length,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: {
+          id: "recording_job_collection",
+          type: "recording_collection",
+        },
+      });
+
+      return c.json({ data: stoppedJobs, meta: { stoppedCount: stoppedJobs.length } });
     },
   );
 
@@ -219,6 +518,26 @@ export function registerRecordingJobRoutes({
 
     return jobs.filter((job) => visibleRecordingIds.has(job.recordingId));
   }
+
+  async function recordBulkJobFailure(
+    c: Context<AppBindings>,
+    action: string,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      details,
+      outcome: reason === "recording_job_not_visible" ? "denied" : "failed",
+      permission: "recording:control",
+      reason,
+      target: {
+        id: "recording_job_collection",
+        type: "recording_collection",
+      },
+    });
+  }
 }
 
 function recordingForRetriedJob(recording: RecordingSummary, retriedAt: string) {
@@ -233,4 +552,23 @@ function recordingForRetriedJob(recording: RecordingSummary, retriedAt: string) 
     status: "recording" as const,
     waveformPreview: undefined,
   };
+}
+
+function uniqueJobIds(jobIds: string[]) {
+  return Array.from(new Set(jobIds));
+}
+
+function duplicateValues(values: string[]) {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      duplicates.add(value);
+    } else {
+      seen.add(value);
+    }
+  }
+
+  return Array.from(duplicates);
 }

@@ -77,6 +77,44 @@ export function recordingJobRetryActionState(job: RecordingJob, canControl: bool
   };
 }
 
+export function recordingJobBulkStopTargets(
+  jobs: RecordingJob[],
+  selectedJobIds: string[],
+  canControl: boolean,
+) {
+  if (!canControl) {
+    return [];
+  }
+
+  const selected = new Set(selectedJobIds);
+
+  return jobs
+    .filter((job) => selected.has(job.id) && stoppableJobStatuses.includes(job.status))
+    .map((job) => job.id);
+}
+
+export function recordingJobBulkRetryTargets(
+  jobs: RecordingJob[],
+  selectedJobIds: string[],
+  canControl: boolean,
+) {
+  if (!canControl) {
+    return [];
+  }
+
+  const selected = new Set(selectedJobIds);
+  const retryableJobs = jobs.filter(
+    (job) => selected.has(job.id) && retryableJobStatuses.includes(job.status),
+  );
+  const activeRecordingIds = new Set(
+    jobs.filter((job) => activeJobStatuses.includes(job.status)).map((job) => job.recordingId),
+  );
+
+  return retryableJobs
+    .filter((job) => !activeRecordingIds.has(job.recordingId))
+    .map((job) => job.id);
+}
+
 export function recordingJobSummary(jobs: RecordingJob[]) {
   return {
     active: jobs.filter((job) => activeJobStatuses.includes(job.status)).length,

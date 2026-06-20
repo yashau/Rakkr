@@ -227,6 +227,10 @@ export interface RecordingJobFilters {
   status?: RecordingJob["status"];
 }
 
+export interface RecordingJobBulkActionInput {
+  jobIds: string[];
+}
+
 export interface RecordingListMeta {
   hasNextPage: boolean;
   hasPreviousPage: boolean;
@@ -550,6 +554,28 @@ export const api = {
     fetchJson<{ data: RecordingJob }>(`/api/v1/recording-jobs/${jobId}/retry`, {
       method: "POST",
     }),
+  retryRecordingJobs: (input: RecordingJobBulkActionInput) =>
+    fetchJson<{ data: RecordingJob[]; meta: { retriedCount: number } }>(
+      "/api/v1/recording-jobs/bulk-retry",
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    ),
+  stopRecordingJobs: (input: RecordingJobBulkActionInput) =>
+    fetchJson<{ data: RecordingJob[]; meta: { stoppedCount: number } }>(
+      "/api/v1/recording-jobs/bulk-stop",
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    ),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
   uploadProviders: () =>

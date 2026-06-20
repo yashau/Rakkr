@@ -23,6 +23,8 @@ import {
   emptyJobsPageFilters,
   filterRecordingJobs,
   jobsPagePermissions,
+  recordingJobBulkRetryTargets,
+  recordingJobBulkStopTargets,
   recordingJobCaptureDetails,
   recordingJobRelationshipLabel,
   recordingJobRetryActionState,
@@ -48,6 +50,7 @@ const selectClassName =
 export function JobsPage() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<JobsPageFilters>(emptyJobsPageFilters);
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -86,6 +89,24 @@ export function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
   });
+  const bulkStopJobMutation = useMutation({
+    mutationFn: api.stopRecordingJobs,
+    onSuccess: () => {
+      setSelectedJobIds([]);
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+    },
+  });
+  const bulkRetryJobMutation = useMutation({
+    mutationFn: api.retryRecordingJobs,
+    onSuccess: () => {
+      setSelectedJobIds([]);
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+    },
+  });
   const exportMutation = useMutation({
     mutationFn: () =>
       api.recordingJobsExport({
@@ -114,6 +135,20 @@ export function JobsPage() {
   const jobs = jobsQuery.data?.data ?? [];
   const visibleJobs = filterRecordingJobs(jobs, filters);
   const summary = recordingJobSummary(visibleJobs);
+  const visibleJobIds = visibleJobs.map((job) => job.id);
+  const selectedVisibleJobIds = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId));
+  const allVisibleSelected =
+    visibleJobIds.length > 0 && visibleJobIds.every((jobId) => selectedJobIds.includes(jobId));
+  const bulkRetryTargets = recordingJobBulkRetryTargets(
+    visibleJobs,
+    selectedVisibleJobIds,
+    permissions.canControlJobs,
+  );
+  const bulkStopTargets = recordingJobBulkStopTargets(
+    visibleJobs,
+    selectedVisibleJobIds,
+    permissions.canControlJobs,
+  );
 
   return (
     <div className="grid gap-4">
@@ -196,6 +231,56 @@ export function JobsPage() {
             />
           </Field>
         </div>
+
+        <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              checked={allVisibleSelected}
+              className="size-4"
+              onChange={(event) => setSelectedJobIds(event.target.checked ? visibleJobIds : [])}
+              type="checkbox"
+            />
+            <span>{selectedVisibleJobIds.length} selected</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={bulkRetryTargets.length === 0 || bulkRetryJobMutation.isPending}
+              onClick={() => bulkRetryJobMutation.mutate({ jobIds: bulkRetryTargets })}
+              title={
+                bulkRetryTargets.length > 0
+                  ? "Retry selected failed or cancelled jobs"
+                  : "Select failed or cancelled jobs without active retries"
+              }
+              type="button"
+              variant="outline"
+            >
+              <RotateCcw className="size-4" />
+              Retry selected
+            </Button>
+            <Button
+              disabled={bulkStopTargets.length === 0 || bulkStopJobMutation.isPending}
+              onClick={() => bulkStopJobMutation.mutate({ jobIds: bulkStopTargets })}
+              title={
+                bulkStopTargets.length > 0
+                  ? "Request stop for selected active jobs"
+                  : "Select queued or running jobs"
+              }
+              type="button"
+              variant="outline"
+            >
+              <Square className="size-4" />
+              Stop selected
+            </Button>
+            <Button
+              disabled={selectedVisibleJobIds.length === 0}
+              onClick={() => setSelectedJobIds([])}
+              type="button"
+              variant="outline"
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-3">
@@ -210,7 +295,9 @@ export function JobsPage() {
             }}
             onStop={(recordingId) => stopJobMutation.mutate(recordingId)}
             onRetry={(jobId) => retryJobMutation.mutate(jobId)}
+            onSelectedChange={(selected) => setJobSelected(setSelectedJobIds, job.id, selected)}
             retryPending={retryJobMutation.isPending}
+            selected={selectedVisibleJobIds.includes(job.id)}
             stopPending={stopJobMutation.isPending}
           />
         ))}
@@ -261,7 +348,9 @@ function JobRow({
   lookups,
   onStop,
   onRetry,
+  onSelectedChange,
   retryPending,
+  selected,
   stopPending,
 }: {
   canControl: boolean;
@@ -269,7 +358,9 @@ function JobRow({
   lookups: Parameters<typeof recordingJobRelationshipLabel>[1];
   onStop: (recordingId: string) => void;
   onRetry: (jobId: string) => void;
+  onSelectedChange: (selected: boolean) => void;
   retryPending: boolean;
+  selected: boolean;
   stopPending: boolean;
 }) {
   const details = recordingJobCaptureDetails(job);
@@ -281,6 +372,13 @@ function JobRow({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              checked={selected}
+              className="size-4"
+              onChange={(event) => onSelectedChange(event.target.checked)}
+              title="Select job"
+              type="checkbox"
+            />
             <Badge className={recordingJobStatusClass(job.status)} variant="outline">
               {job.status}
             </Badge>
@@ -347,6 +445,20 @@ function JobRow({
         </div>
       </div>
     </Card>
+  );
+}
+
+function setJobSelected(
+  setSelectedJobIds: (value: (current: string[]) => string[]) => void,
+  jobId: string,
+  selected: boolean,
+) {
+  setSelectedJobIds((current) =>
+    selected
+      ? current.includes(jobId)
+        ? current
+        : [...current, jobId]
+      : current.filter((candidate) => candidate !== jobId),
   );
 }
 

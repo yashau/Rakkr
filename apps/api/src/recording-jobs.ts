@@ -166,6 +166,24 @@ export async function stopRecordingJob(recordingId: string) {
   return job;
 }
 
+export async function stopRecordingJobById(jobId: string) {
+  const jobs = await expireRecordingJobLeases();
+  const job = jobs.find(
+    (candidate) =>
+      candidate.id === jobId && (candidate.status === "queued" || candidate.status === "running"),
+  );
+
+  if (!job) {
+    return undefined;
+  }
+
+  job.status = "stop_requested";
+  job.stopRequestedAt = new Date().toISOString();
+  await recordingJobStore.save(job);
+
+  return job;
+}
+
 export async function retryRecordingJob(jobId: string) {
   const jobs = await expireRecordingJobLeases();
   const job = jobs.find((candidate) => candidate.id === jobId);
