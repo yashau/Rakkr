@@ -15,6 +15,7 @@ import {
 import { formatDateTime, isoFromLocalDateTime, localDateTimeInput } from "./dates";
 
 export interface ScheduleDraft {
+  captureBackend: "" | NonNullable<ScheduleSummary["captureBackend"]>;
   dayOfMonth: number;
   daysOfWeek: ScheduleDayOfWeek[];
   enabled: boolean;
@@ -57,6 +58,7 @@ const weekdayDays: ScheduleDayOfWeek[] = ["monday", "tuesday", "wednesday", "thu
 
 export function defaultDraft(node?: RecorderNode): ScheduleDraft {
   return {
+    captureBackend: "",
     dayOfMonth: 1,
     daysOfWeek: ["monday"],
     enabled: true,
@@ -89,6 +91,7 @@ export function defaultDraft(node?: RecorderNode): ScheduleDraft {
 export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
   const draft: ScheduleDraft = {
     ...defaultDraft(),
+    captureBackend: schedule.captureBackend ?? "",
     enabled: schedule.enabled,
     folderTemplate: schedule.folderTemplate,
     name: schedule.name,
@@ -111,6 +114,7 @@ export function draftToInput(draft: ScheduleDraft): ScheduleInput {
   const recurrence = recurrenceFromDraft(draft);
 
   return {
+    captureBackend: draft.captureBackend || null,
     enabled: draft.enabled,
     folderTemplate: draft.folderTemplate,
     name: draft.name,

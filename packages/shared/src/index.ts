@@ -3,6 +3,7 @@ import { z } from "zod";
 export const isoDateTimeSchema = z.string().min(1);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const dbfsSchema = z.number().min(-160).max(24);
+const audioCaptureBackendSchema = z.enum(["alsa", "jack", "pipewire"]);
 const timeOfDaySchema = z.string().regex(/^\d{2}:\d{2}$/);
 
 export const nodeStatusSchema = z.enum(["online", "offline", "degraded", "recording", "alerting"]);
@@ -235,7 +236,7 @@ export const nodeRecordingCapacitySchema = z.object({
 });
 export const nodeAudioCommandDefaultsSchema = z.object({
   captureArgsTemplate: z.string().trim().min(1).max(1000).optional(),
-  captureBackend: z.enum(["alsa", "jack", "pipewire"]).optional(),
+  captureBackend: audioCaptureBackendSchema.optional(),
   captureChannels: z.number().int().positive().max(256).optional(),
   captureCommand: z.string().trim().min(1).max(255).optional(),
   captureDevice: z.string().trim().min(1).max(255).optional(),
@@ -533,6 +534,7 @@ export const watchdogPolicyUpdateSchema = z
   .refine((value) => Object.keys(value).length > 0, "At least one watchdog field is required");
 
 export const scheduleSummarySchema = z.object({
+  captureBackend: audioCaptureBackendSchema.optional(),
   enabled: z.boolean(),
   folderTemplate: z.string().min(1),
   id: z.string().min(1),
@@ -550,6 +552,7 @@ export const scheduleSummarySchema = z.object({
   watchdogPolicyId: z.string().min(1),
 });
 export const scheduleInputSchema = z.object({
+  captureBackend: audioCaptureBackendSchema.nullable().optional(),
   enabled: z.boolean().default(true),
   folderTemplate: z.string().trim().min(1).max(500),
   id: z.string().trim().min(1).max(160).optional(),
@@ -568,6 +571,7 @@ export const scheduleInputSchema = z.object({
 });
 export const scheduleUpdateSchema = z
   .object({
+    captureBackend: audioCaptureBackendSchema.nullable().optional(),
     enabled: z.boolean().optional(),
     folderTemplate: z.string().trim().min(1).max(500).optional(),
     name: z.string().trim().min(1).max(160).optional(),
@@ -638,7 +642,7 @@ export const recordingJobChannelMapSchema = z.object({
 export const recordingJobSchema = z.object({
   claimedBy: z.string().min(1).optional(),
   command: z.object({
-    captureBackend: z.enum(["alsa", "jack", "pipewire"]).optional(),
+    captureBackend: audioCaptureBackendSchema.optional(),
     captureChannels: z.number().int().positive(),
     captureDevice: z.string().min(1),
     captureFormat: z.string().min(1),

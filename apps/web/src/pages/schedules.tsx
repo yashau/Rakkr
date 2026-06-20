@@ -44,6 +44,7 @@ import {
 } from "@/lib/schedule-draft";
 const selectClass =
   "h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const captureBackends: ScheduleDraft["captureBackend"][] = ["", "alsa", "jack", "pipewire"];
 
 export function SchedulesPage() {
   const queryClient = useQueryClient();
@@ -546,7 +547,7 @@ export function SchedulesPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-6">
               <div className="grid gap-2">
                 <Label htmlFor="schedule-profile">Recording Profile</Label>
                 <Input
@@ -555,6 +556,26 @@ export function SchedulesPage() {
                   required
                   value={draft.recordingProfileId}
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-capture-backend">Backend</Label>
+                <select
+                  className={selectClass}
+                  id="schedule-capture-backend"
+                  onChange={(event) =>
+                    updateDraft(
+                      "captureBackend",
+                      event.target.value as ScheduleDraft["captureBackend"],
+                    )
+                  }
+                  value={draft.captureBackend}
+                >
+                  {captureBackends.map((backend) => (
+                    <option key={backend || "default"} value={backend}>
+                      {backend || "Node default"}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
@@ -636,6 +657,10 @@ export function SchedulesPage() {
                   <div>
                     <dt className="font-medium text-foreground">Profile</dt>
                     <dd>{schedule.recordingProfileId}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Backend</dt>
+                    <dd>{schedule.captureBackend ?? "Node default"}</dd>
                   </div>
                   <div>
                     <dt className="font-medium text-foreground">Watchdog</dt>

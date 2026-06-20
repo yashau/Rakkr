@@ -261,6 +261,7 @@ export function registerScheduleRoutes({
           scheduleId: schedule.id,
         },
         details: {
+          captureBackend: schedule.captureBackend,
           folderTemplate: schedule.folderTemplate,
           recordingProfileId: schedule.recordingProfileId,
           segmentCount: queued.length,
@@ -428,6 +429,7 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
   const recurrence = input.recurrence ?? recurrenceFromNextRun(input.nextRunAt);
 
   return {
+    captureBackend: input.captureBackend ?? undefined,
     enabled: input.enabled,
     folderTemplate: input.folderTemplate,
     id: input.id ?? `sched_${randomUUID()}`,
@@ -450,7 +452,12 @@ function sanitizeScheduleUpdate(
   input: ScheduleUpdate,
   before: ScheduleSummary,
 ): Partial<Omit<ScheduleSummary, "id">> {
-  const updates: Partial<Omit<ScheduleSummary, "id">> = { ...input };
+  const { captureBackend, ...rest } = input;
+  const updates: Partial<Omit<ScheduleSummary, "id">> = { ...rest };
+
+  if ("captureBackend" in input) {
+    updates.captureBackend = captureBackend ?? undefined;
+  }
 
   if (input.recurrence || input.timezone) {
     updates.nextRunAt = nextRunAtForRecurrence(

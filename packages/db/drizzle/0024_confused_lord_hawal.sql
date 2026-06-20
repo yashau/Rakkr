@@ -1,0 +1,1 @@
+ALTER TABLE "schedules" ADD COLUMN "capture_backend" varchar(32);

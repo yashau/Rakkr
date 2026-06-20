@@ -40,7 +40,7 @@ test.after(async () => {
 
 test("due schedule creates ordered track jobs when profile has max track length", async () => {
   const recordingStore = memoryRecordingStore();
-  const scheduleStore = memoryScheduleStore([schedule()]);
+  const scheduleStore = memoryScheduleStore([schedule({ captureBackend: "jack" })]);
   const result = await runDueSchedules(
     {
       auditStore: createAuditStore(""),
@@ -89,15 +89,34 @@ test("due schedule creates ordered track jobs when profile has max track length"
       .map((job) => job.command)
       .sort((left, right) => (left.trackIndex ?? 0) - (right.trackIndex ?? 0))
       .map((command) => ({
+        captureBackend: command.captureBackend,
         durationSeconds: command.durationSeconds,
         outputCodec: command.outputCodec,
         trackIndex: command.trackIndex,
         trackTotal: command.trackTotal,
       })),
     [
-      { durationSeconds: 2_700, outputCodec: "mp3", trackIndex: 1, trackTotal: 3 },
-      { durationSeconds: 2_700, outputCodec: "mp3", trackIndex: 2, trackTotal: 3 },
-      { durationSeconds: 1_800, outputCodec: "mp3", trackIndex: 3, trackTotal: 3 },
+      {
+        captureBackend: "jack",
+        durationSeconds: 2_700,
+        outputCodec: "mp3",
+        trackIndex: 1,
+        trackTotal: 3,
+      },
+      {
+        captureBackend: "jack",
+        durationSeconds: 2_700,
+        outputCodec: "mp3",
+        trackIndex: 2,
+        trackTotal: 3,
+      },
+      {
+        captureBackend: "jack",
+        durationSeconds: 1_800,
+        outputCodec: "mp3",
+        trackIndex: 3,
+        trackTotal: 3,
+      },
     ],
   );
   assert.equal(new Set(recordings.map((recording) => recording.trackGroupId)).size, 1);
@@ -509,6 +528,9 @@ function node(input: Partial<RecorderNode> = {}): RecorderNode {
   return {
     agentVersion: "0.1.0",
     alias: "Split Runner Node",
+    audioDefaults: {
+      captureBackend: "pipewire",
+    },
     hostname: "split-runner-node",
     id: "node_split",
     interfaces: [

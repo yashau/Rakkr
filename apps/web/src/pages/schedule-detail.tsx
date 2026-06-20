@@ -263,6 +263,9 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
           <p className="mt-1 text-sm text-muted-foreground">
             {schedule.room} / {schedule.timezone} / {node?.alias ?? schedule.nodeId}
           </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Backend: {schedule.captureBackend ?? "Node default"}
+          </p>
           <p className="mt-2 text-sm">{recurrenceSummary(schedule.recurrence)}</p>
         </div>
         <div className="grid gap-1 text-sm text-muted-foreground md:text-right">

@@ -275,6 +275,7 @@ class PostgresScheduleStore implements ScheduleStore {
       .values(row)
       .onConflictDoUpdate({
         set: {
+          captureBackend: row.captureBackend,
           enabled: row.enabled,
           folderTemplate: row.folderTemplate,
           name: row.name,
@@ -315,6 +316,7 @@ function loadSchedules(seedSchedules: ScheduleSummary[]) {
 
 function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
   return {
+    captureBackend: schedule.captureBackend ?? null,
     enabled: schedule.enabled,
     folderTemplate: schedule.folderTemplate,
     id: schedule.id,
@@ -337,6 +339,7 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
   const recurrence = recurrenceFromValue(row.recurrence);
 
   return {
+    captureBackend: captureBackendFromValue(row.captureBackend),
     enabled: row.enabled,
     folderTemplate: row.folderTemplate,
     id: row.id,
@@ -421,6 +424,10 @@ function stringArray(value: unknown) {
 
 function stringOrUndefined(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function captureBackendFromValue(value: unknown): ScheduleSummary["captureBackend"] {
+  return value === "alsa" || value === "jack" || value === "pipewire" ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,6 +1,7 @@
 import type {
   ChannelMapTemplate,
   ChannelMapTemplateAssignment,
+  NodeAudioCommandDefaults,
   RecorderNode,
   RecordingJobChannelMap,
   RecordingProfile,
@@ -9,6 +10,7 @@ import type {
 import type { SettingsStore } from "./settings-store.js";
 
 interface RecordingJobTargetInput {
+  captureBackend?: NodeAudioCommandDefaults["captureBackend"];
   durationSeconds?: number;
   node?: RecorderNode;
   profile?: RecordingProfile;
@@ -17,6 +19,7 @@ interface RecordingJobTargetInput {
 }
 
 export async function recordingJobTargetOptions({
+  captureBackend,
   durationSeconds,
   node,
   profile: providedProfile,
@@ -37,7 +40,7 @@ export async function recordingJobTargetOptions({
     : undefined;
 
   return {
-    captureBackend: node?.audioDefaults?.captureBackend,
+    captureBackend: captureBackend ?? node?.audioDefaults?.captureBackend,
     captureChannels: node?.audioDefaults?.captureChannels,
     captureDevice: node?.audioDefaults?.captureDevice,
     captureFormat: node?.audioDefaults?.captureFormat,

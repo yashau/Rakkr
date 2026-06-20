@@ -41,6 +41,7 @@ export async function queueScheduledRecordings({
       job: await createRecordingJob(
         recording,
         await recordingJobTargetOptions({
+          captureBackend: schedule.captureBackend,
           durationSeconds: track.durationSeconds,
           node,
           profile,

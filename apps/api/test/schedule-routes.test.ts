@@ -107,6 +107,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
   });
 
   const created = await requestJson(app, "/api/v1/schedules", "POST", {
+    captureBackend: "jack",
     enabled: true,
     folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
     id: scheduleId,
@@ -139,7 +140,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
   const runNow = await app.request(`/api/v1/schedules/${scheduleId}/run-now`, { method: "POST" });
   const runNowBody = (await runNow.json()) as {
     data: RecordingSummary;
-    job: { recordingId: string };
+    job: { command: { captureBackend?: string }; recordingId: string };
     segments: Array<{ recordingId: string }>;
   };
   const beforeSkip = await store.find(scheduleId);
@@ -161,11 +162,13 @@ test("schedule routes create update run-now and skip-next with audit events", as
   assert.equal(runNow.status, 202);
   assert.equal(skipped.status, 200);
   assert.equal(createdBody.data.id, scheduleId);
+  assert.equal(createdBody.data.captureBackend, "jack");
   assert.deepEqual(createdBody.data.tags, ["voice", "route"]);
   assert.equal(updatedBody.data.name, "Council Route Test Updated");
   assert.deepEqual(updatedBody.data.tags, ["updated", "voice"]);
   assert.equal(runNowBody.data.scheduleId, scheduleId);
   assert.equal(runNowBody.data.retentionPolicyId, "retention-keep-controller-cache");
+  assert.equal(runNowBody.job.command.captureBackend, "jack");
   assert.equal(runNowBody.job.recordingId, runNowBody.data.id);
   assert.deepEqual(
     runNowBody.segments.map((segment) => segment.recordingId),
@@ -183,6 +186,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
     "schedules.update.succeeded",
   ]);
   assert.equal(runNowAudit?.correlationIds?.scheduleId, scheduleId);
+  assert.equal(runNowAudit?.details.captureBackend, "jack");
   assert.equal(runNowAudit?.after?.recordingId, runNowBody.data.id);
 });
 

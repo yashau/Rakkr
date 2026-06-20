@@ -10,7 +10,7 @@ Status: MVP baseline checked.
 - Each schedule stores an explicit timezone.
 - Start-early and stop-late buffers are part of recurrence data.
 - Skip-next and pause ranges are structured exceptions.
-- Scheduled recordings own filename, folder, tags, profile, node target, watchdog policy, upload policy, and retention policy.
+- Scheduled recordings own filename, folder, tags, profile, node target, optional capture backend, watchdog policy, upload policy, and retention policy.
 - Long scheduled windows split into ordered track jobs when the recording profile has a maximum track length.
 - Due schedule execution runs as `system:scheduler` and writes audit events.
 - Schedule read/manage APIs are RBAC-gated and successful create, update, run-now, and skip-next actions are audited.
@@ -29,7 +29,7 @@ Status: MVP baseline checked.
 | Check | Evidence |
 | ----- | -------- |
 | Recurrence engine | `apps/api/test/schedule-engine.test.ts` |
-| Due-run and schedule-owned recordings | `apps/api/test/schedule-runner.test.ts` |
+| Due-run, backend selection, and schedule-owned recordings | `apps/api/test/schedule-runner.test.ts`, `apps/api/test/schedule-routes.test.ts` |
 | Retention assignment | `packages/db/drizzle/0021_true_midnight.sql`, `apps/api/src/schedule-store.ts`, `apps/web/src/lib/schedule-draft.ts` |
 | Route RBAC and operator controls | `apps/api/test/schedule-routes.test.ts` |
 | UI permissions | `apps/web/src/lib/schedule-page-helpers.test.ts` |

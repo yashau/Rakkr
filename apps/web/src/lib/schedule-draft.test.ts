@@ -6,6 +6,7 @@ import {
   applyNaturalLanguageSchedule,
   defaultDraft,
   draftToInput,
+  scheduleToDraft,
 } from "./schedule-draft";
 
 test("schedule quick phrases produce structured weekly recurrence", () => {
@@ -63,4 +64,33 @@ test("schedule pause ranges normalize reversed dates", () => {
       startDate: "2026-06-10",
     },
   ]);
+});
+
+test("schedule backend draft round trips pinned and default values", () => {
+  const pinnedInput = draftToInput({
+    ...defaultDraft(),
+    captureBackend: "jack",
+    name: "Council JACK Capture",
+    nodeId: "node_schedule_backend_test",
+    room: "Council Chamber",
+  });
+  const defaultInput = draftToInput({
+    ...defaultDraft(),
+    captureBackend: "",
+    name: "Council Default Capture",
+    nodeId: "node_schedule_backend_test",
+    room: "Council Chamber",
+  });
+  const draft = scheduleToDraft({
+    ...pinnedInput,
+    captureBackend: "pipewire",
+    id: "sched_backend_test",
+    nextRunAt: "2026-06-18T09:00:00.000Z",
+    recurrence: { mode: "manual" },
+    tags: [],
+  });
+
+  assert.equal(pinnedInput.captureBackend, "jack");
+  assert.equal(defaultInput.captureBackend, null);
+  assert.equal(draft.captureBackend, "pipewire");
 });

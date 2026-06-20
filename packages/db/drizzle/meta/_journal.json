@@ -169,6 +169,13 @@
       "when": 1781951485850,
       "tag": "0023_smiling_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1781993242076,
+      "tag": "0024_confused_lord_hawal",
+      "breakpoints": true
     }
   ]
 }
