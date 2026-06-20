@@ -11,6 +11,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 - Bulk deployment is available for channel-map assignments.
 - Staged rollout is available for channel-map assignments through a pending plan and explicit apply step.
 - Upload providers and upload policies share the same settings read/manage permission boundary.
+- Upload policies include cache-retention behavior through `deleteCacheAfterUpload`.
 - Settings writes audit before/after snapshots when the route has an existing resource.
 - Missing `settings:read` and `settings:manage` permissions are denied and audited.
 - Settings data persists through Postgres stores with JSON fallback stores for MVP development.
@@ -18,7 +19,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 
 ## Remaining Gaps
 
-- Full settings families for every future recorder/device retention policy.
+- Standalone recorder/device retention policy templates beyond upload-policy cache retention.
 
 ## Evidence
 
@@ -31,6 +32,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 | Rollout plans | `apps/api/src/channel-map-assignment-plans.ts` |
 | API coverage | `apps/api/test/settings-routes.test.ts` |
 | UI permissions | `apps/web/src/lib/settings-page-helpers.ts`, `apps/web/src/lib/settings-page-helpers.test.ts` |
+| Upload retention | `apps/api/src/upload-policies.ts`, `apps/api/src/upload-runner.ts`, `apps/api/test/upload-policies.test.ts`, `apps/api/test/upload-runner.test.ts`, `apps/web/src/components/upload-policy-panel.tsx` |
 | UI workflow | `apps/web/src/pages/settings.tsx`, `apps/web/src/components/recording-profile-settings-card.tsx`, `apps/web/src/components/watchdog-policy-card.tsx` |
 | Agent pinning | `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/src/agent-routes.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/channel_map.rs` |
 
