@@ -30,6 +30,7 @@ const sourceFiles = [
   "apps/web/src/lib/recording-page-helpers.test.ts",
   "apps/web/src/lib/schedule-detail-page-helpers.test.ts",
   "scripts/agent-fake-controller-smoke-assertions.mjs",
+  "scripts/agent-fake-controller-smoke-agent.mjs",
   "scripts/agent-fake-controller-smoke.mjs",
 ];
 const baselinePhrases = [

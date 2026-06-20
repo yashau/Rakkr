@@ -70,6 +70,28 @@ await new Promise((resolve) => setTimeout(resolve, 10000));
   return captureScript;
 }
 
+export async function writeFakeXrunMeterCommand(directory) {
+  const meterScript = path.join(directory, "fake-xrun-meter.mjs");
+  await writeFile(
+    meterScript,
+    `#!/usr/bin/env node
+console.error("overrun!!!");
+process.exit(1);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-xrun-meter.cmd");
+    await writeFile(commandPath, commandShim(meterScript));
+
+    return commandPath;
+  }
+
+  await chmod(meterScript, 0o755);
+
+  return meterScript;
+}
+
 async function writeFakeCaptureCommandScript(directory, commandName, requireTemplateOutputFlag) {
   const captureScript = path.join(directory, `${commandName}.mjs`);
   await writeFile(
@@ -157,6 +179,28 @@ writeFileSync(outputPath, payload);
 
   if (process.platform === "win32") {
     const commandPath = path.join(directory, "fake-render.cmd");
+    await writeFile(commandPath, commandShim(renderScript));
+
+    return commandPath;
+  }
+
+  await chmod(renderScript, 0o755);
+
+  return renderScript;
+}
+
+export async function writeFakeFailingRenderCommand(directory) {
+  const renderScript = path.join(directory, "fake-render-failure.mjs");
+  await writeFile(
+    renderScript,
+    `#!/usr/bin/env node
+console.error("simulated render failure");
+process.exit(42);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-render-failure.cmd");
     await writeFile(commandPath, commandShim(renderScript));
 
     return commandPath;

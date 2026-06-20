@@ -26,6 +26,40 @@ export function assertStalledCaptureScenario({ healthLogEvents, job, observed, s
   );
 }
 
+export function assertRenderFailureScenario({ healthLogEvents, job, observed, scenario, state }) {
+  const renderLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.output_render_failed",
+  );
+
+  invariant(job.status === "failed", "fake controller did not mark render failure job failed");
+  invariant(observed.failures === 1, "agent did not mark render failure job failed");
+  invariant(!observed.cacheUpload, "agent uploaded cache after render failure");
+  invariant(state.status === "failed", "render failure state file did not end failed");
+  invariant(state.jobId === scenario.jobId, "render failure state recorded the wrong job id");
+  invariant(
+    state.outputPath?.endsWith(".raw.wav"),
+    "render failure state did not retain raw capture output",
+  );
+  invariant(
+    String(state.reason).includes("render command"),
+    "render failure state did not retain the render reason",
+  );
+  invariant(
+    String(observed.failureReason).includes("render command"),
+    "render failure failed-job reason did not include render command",
+  );
+  invariant(renderLocalEvent, "agent local health log did not include render failure");
+  invariant(renderLocalEvent.severity === "critical", "render failure was not critical");
+  invariant(
+    renderLocalEvent.details?.outputCodec === "mp3",
+    "render failure did not retain target output codec",
+  );
+  invariant(
+    observed.healthEvents.some((event) => event.type === renderLocalEvent.type),
+    "agent did not sync render failure health event",
+  );
+}
+
 export function assertCacheUploadFailureScenario({
   healthLogEvents,
   job,

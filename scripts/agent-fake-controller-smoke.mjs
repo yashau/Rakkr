@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,14 +7,22 @@ import { fileURLToPath } from "node:url";
 import {
   writeFakeCaptureCommand,
   writeFakeDfCommand,
+  writeFakeFailingRenderCommand,
   writeFakeRenderCommand,
   writeFakeStalledCaptureCommand,
   writeFakeTemplateCaptureCommand,
+  writeFakeXrunMeterCommand,
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
   assertCacheUploadFailureScenario,
+  assertRenderFailureScenario,
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
+import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
+import {
+  runMeterXrunScenario,
+  runSystemHealthScenario,
+} from "./agent-fake-controller-smoke-health.mjs";
 import {
   empty,
   fileExists,
@@ -34,6 +41,7 @@ const repoRoot = path.resolve(scriptDir, "..");
 const smokeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-agent-fake-controller-"));
 const nodeId = "node_fake_controller_smoke";
 const token = "node-token";
+const agentContext = { nodeId, repoRoot, smokeRoot, token };
 const scenarios = [
   {
     cacheUploadFails: false,
@@ -76,7 +84,9 @@ try {
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
   const stalledCaptureCommand = await writeFakeStalledCaptureCommand(smokeRoot);
   const templateCaptureCommand = await writeFakeTemplateCaptureCommand(smokeRoot);
+  const xrunMeterCommand = await writeFakeXrunMeterCommand(smokeRoot);
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
+  const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
   for (const scenario of scenarios) {
     await runScenario({ address, captureCommand, renderCommand, scenario });
@@ -109,10 +119,26 @@ try {
       recordingId: "rec_fake_controller_stalled_capture",
     },
   });
+  await runScenario({
+    address,
+    captureCommand,
+    renderCommand: failingRenderCommand,
+    scenario: {
+      expectRenderFailure: true,
+      expectSuccess: false,
+      jobId: "job_fake_controller_render_failure",
+      name: "render-failure",
+      outputFileName: "rec_fake_controller_render_failure.mp3",
+      recordingId: "rec_fake_controller_render_failure",
+    },
+  });
   await runConcurrentScenario({ address, captureCommand, renderCommand });
   await runDeferredSweepScenario({ address, captureCommand, renderCommand });
   await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
-  await runSystemHealthScenario({ address, captureCommand, fakeDfPath, renderCommand });
+  await runSystemHealthScenario(
+    healthScenarioDeps({ address, captureCommand, fakeDfPath, renderCommand }),
+  );
+  await runMeterXrunScenario(healthScenarioDeps({ address, renderCommand, xrunMeterCommand }));
   console.log("Agent fake-controller smoke passed.");
 } finally {
   server.close();
@@ -192,7 +218,9 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
   invariant(observed.channelMapReads === 1, "agent did not fetch channel-map assignments");
 
-  if (scenario.expectStalledCapture) {
+  if (scenario.expectRenderFailure) {
+    assertRenderFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectStalledCapture) {
     assertStalledCaptureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.controllerStopRequested) {
     assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state });
@@ -237,7 +265,14 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
       name: "concurrent",
     },
   };
-  const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile);
+  const child = spawnDaemonAgent(
+    agentContext,
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  );
 
   try {
     await waitFor(
@@ -300,7 +335,14 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
       name: "deferred-sweep",
     },
   };
-  const child = spawnDaemonAgent(address, captureCommand, healthLogFile, renderCommand, stateFile);
+  const child = spawnDaemonAgent(
+    agentContext,
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  );
 
   try {
     await waitFor(
@@ -361,6 +403,7 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
     },
   };
   const child = spawnDaemonAgent(
+    agentContext,
     address,
     captureCommand,
     healthLogFile,
@@ -402,59 +445,6 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
   );
 
   await assertAnyLocalRecorderCacheDeleted(jobs.map((job) => job.command.outputFileName));
-  activeScenario = undefined;
-}
-
-async function runSystemHealthScenario({ address, captureCommand, fakeDfPath, renderCommand }) {
-  const stateFile = path.join(smokeRoot, "system-health-agent-state.json");
-  const healthLogFile = path.join(smokeRoot, "system-health-events.jsonl");
-  const observed = createObserved();
-  activeScenario = {
-    jobs: [],
-    observed,
-    scenario: {
-      expectSuccess: true,
-      name: "system-health",
-    },
-  };
-  const child = spawnDaemonAgent(
-    address,
-    captureCommand,
-    healthLogFile,
-    renderCommand,
-    stateFile,
-    {
-      PATH: `${fakeDfPath}${path.delimiter}${process.env.PATH ?? ""}`,
-    },
-    ["--system-health-df-command", fakeDfCommandPath(fakeDfPath)],
-  );
-
-  try {
-    await waitFor(
-      () =>
-        observed.healthEvents.some((event) => event.type === "agent.system.disk_pressure") &&
-        observed.nodeHeartbeats >= 1 &&
-        observed.meterFrames >= 1,
-      20_000,
-      () =>
-        `heartbeats=${observed.nodeHeartbeats} meters=${observed.meterFrames} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
-    );
-  } finally {
-    child.kill();
-    await child.closed;
-  }
-  const healthLogEvents = await readJsonLines(healthLogFile);
-  const syncedEvent = observed.healthEvents.find(
-    (event) => event.type === "agent.system.disk_pressure",
-  );
-  const localEvent = healthLogEvents.find((event) => event.type === "agent.system.disk_pressure");
-
-  invariant(syncedEvent?.severity === "warning", "system health disk event was not warning");
-  invariant(
-    syncedEvent?.details?.usedPercent === 90,
-    "system health disk event did not use fake df pressure",
-  );
-  invariant(localEvent, "system health disk pressure event was not written locally");
   activeScenario = undefined;
 }
 
@@ -624,6 +614,37 @@ async function assertAnyLocalRecorderCacheDeleted(outputFileNames) {
 
 function fakeDfCommandPath(fakeDfPath) {
   return path.join(fakeDfPath, process.platform === "win32" ? "df.cmd" : "df");
+}
+
+function healthScenarioDeps(overrides) {
+  return {
+    ...overrides,
+    createObserved,
+    setActiveScenario: (scenario) => {
+      activeScenario = scenario;
+    },
+    smokeRoot,
+    spawnDaemonAgent: ({
+      address,
+      captureCommand,
+      extraAgentArgs = [],
+      extraEnv = {},
+      healthLogFile,
+      meterBackend,
+      renderCommand,
+      stateFile,
+    }) =>
+      spawnDaemonAgent(
+        agentContext,
+        address,
+        captureCommand,
+        healthLogFile,
+        renderCommand,
+        stateFile,
+        extraEnv,
+        meterBackend ? ["--meter-backend", meterBackend, ...extraAgentArgs] : extraAgentArgs,
+      ),
+  };
 }
 
 function createObserved() {
@@ -871,88 +892,5 @@ function rememberRunningJobs(observed, jobs) {
   observed.maxRunningJobs = Math.max(
     observed.maxRunningJobs,
     jobs.filter((job) => job.status === "running").length,
-  );
-}
-
-function spawnAgent(agentArgs, extraEnv = {}) {
-  const child = spawn(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "--manifest-path",
-      path.join(repoRoot, "Cargo.toml"),
-      "-p",
-      "rakkr-recorder-agent",
-      "--",
-      ...agentArgs,
-    ],
-    {
-      cwd: smokeRoot,
-      env: { ...process.env, ...extraEnv, CARGO_TERM_COLOR: "never" },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    },
-  );
-  let stderr = "";
-  let stdout = "";
-  const closed = new Promise((resolve, reject) => {
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? -1, stderr, stdout }));
-  });
-
-  return {
-    closed,
-    kill: () => child.kill(),
-  };
-}
-
-function spawnDaemonAgent(
-  address,
-  captureCommand,
-  healthLogFile,
-  renderCommand,
-  stateFile,
-  extraEnv = {},
-  extraAgentArgs = [],
-) {
-  return spawnAgent(
-    [
-      "--allow-insecure-controller",
-      "--agent-health-log-file",
-      healthLogFile,
-      "--agent-state-file",
-      stateFile,
-      "--capture-command",
-      captureCommand,
-      "--capture-growth-grace-seconds",
-      "0",
-      "--capture-min-output-bytes",
-      "44",
-      "--controller-token",
-      token,
-      "--controller-url",
-      `http://127.0.0.1:${address.port}`,
-      "--channel-render-command",
-      renderCommand,
-      "--heartbeat-seconds",
-      "1",
-      "--job-poll-seconds",
-      "1",
-      "--max-concurrent-recordings",
-      "1",
-      "--meter-backend",
-      "synthetic",
-      "--node-id",
-      nodeId,
-      ...extraAgentArgs,
-    ],
-    extraEnv,
   );
 }
