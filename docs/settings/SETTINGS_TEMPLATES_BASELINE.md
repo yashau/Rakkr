@@ -14,6 +14,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 - Upload policies include cache-retention behavior through `deleteCacheAfterUpload`.
 - Upload-policy cache retention remains the currently executed cache-retention path.
 - Retention policy templates can be created and updated through RBAC-gated settings routes.
+- The retention runner executes controller-cache max-age and max-bytes cleanup policies with audit events.
 - Settings writes audit before/after snapshots when the route has an existing resource.
 - Missing `settings:read` and `settings:manage` permissions are denied and audited.
 - Settings data persists through Postgres stores with JSON fallback stores for MVP development.
@@ -21,7 +22,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 
 ## Remaining Gaps
 
-- Retention policy assignment and cleanup-worker execution remain pending.
+- Retention policy assignment and recorder-cache execution remain pending.
 
 ## Evidence
 
@@ -36,6 +37,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 | UI permissions | `apps/web/src/lib/settings-page-helpers.ts`, `apps/web/src/lib/settings-page-helpers.test.ts` |
 | Upload retention | `apps/api/src/upload-policies.ts`, `apps/api/src/upload-runner.ts`, `apps/api/test/upload-policies.test.ts`, `apps/api/test/upload-runner.test.ts`, `apps/web/src/components/upload-policy-panel.tsx` |
 | Retention templates | `apps/api/src/retention-policies.ts`, `apps/api/src/retention-policy-routes.ts`, `apps/api/test/retention-policy-routes.test.ts`, `apps/web/src/components/retention-policy-panel.tsx` |
+| Retention execution | `apps/api/src/retention-runner.ts`, `apps/api/src/api-runners.ts`, `apps/api/test/retention-runner.test.ts` |
 | UI workflow | `apps/web/src/pages/settings.tsx`, `apps/web/src/components/recording-profile-settings-card.tsx`, `apps/web/src/components/watchdog-policy-card.tsx` |
 | Agent pinning | `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/src/agent-routes.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/channel_map.rs` |
 

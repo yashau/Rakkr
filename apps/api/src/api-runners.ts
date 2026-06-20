@@ -4,6 +4,7 @@ import type { HealthEventStore } from "./health-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import type { NodeStore } from "./node-store.js";
 import type { RecordingStore } from "./recording-store.js";
+import { createRetentionRunner } from "./retention-runner.js";
 import { createScheduleRunner } from "./schedule-runner.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -40,6 +41,10 @@ export function createApiRunners({
       scheduleStore,
       settingsStore,
     }),
+    retentionRunner: createRetentionRunner({
+      auditStore,
+      recordingStore,
+    }),
     uploadRunner: createUploadRunner({
       auditStore,
       providerStore: uploadProviderStore,
@@ -56,6 +61,7 @@ export function createApiRunners({
 }
 
 export function startApiRunners({
+  retentionRunner,
   scheduleRunner,
   uploadRunner,
   watchdogRunner,
@@ -66,6 +72,10 @@ export function startApiRunners({
 
   if (process.env.RAKKR_UPLOAD_RUNNER_ENABLED !== "0") {
     uploadRunner.start();
+  }
+
+  if (process.env.RAKKR_RETENTION_RUNNER_ENABLED !== "0") {
+    retentionRunner.start();
   }
 
   if (process.env.RAKKR_WATCHDOG_RUNNER_ENABLED !== "0") {

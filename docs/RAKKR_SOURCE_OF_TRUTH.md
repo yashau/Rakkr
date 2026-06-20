@@ -65,7 +65,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory plus Linux loopback tasks; Linux/hardware validation remains |
-| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, upload retention, retention templates, bulk assignment, staged apply; execution hooks remain |
+| Settings/templates | 🟨 | Profiles, watchdog policies, channel maps, upload retention, controller retention execution, bulk assignment, staged apply; recorder assignment/execution remains |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, offline, local-log, metrics, and timeline baseline; real-room field calibration remains |
@@ -163,11 +163,13 @@ Current checked partial baseline:
 - Channel map templates can be bulk-assigned to many node/interface targets in one audited operation.
 - Channel map staged rollout plans require an explicit apply step before assignments change.
 - Upload policies cover provider selection, retry budget, trigger, and confirmed-upload cache retention.
-- Retention policy templates cover controller and recorder cache cleanup intent; cleanup-worker execution remains pending.
+- Retention policy templates cover controller and recorder cache cleanup intent.
+- Retention runner executes controller-cache max-age and max-bytes cleanup with audit events.
+- Retention policy assignment and recorder-cache execution remain pending.
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
-- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked partial settings/templates baseline and remaining future settings-family gaps.
+- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked partial settings/templates baseline and remaining retention assignment/execution gaps.
 
 ## Node Inventory
 
@@ -739,6 +741,7 @@ Current implementation baseline:
 160. ✅ Add staged channel-map rollout plans with explicit apply.
 161. ✅ Tie settings/templates baseline to upload-policy cache retention.
 162. ✅ Add audited retention policy templates to settings.
+163. ✅ Add audited controller-cache retention runner.
 
 ## Open Questions
 
