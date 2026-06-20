@@ -19,7 +19,7 @@ import type {
   RecordAuditEvent,
   RequirePermission,
 } from "./http-types.js";
-import type { ListenMonitorStore } from "./listen-monitor-store.js";
+import type { ListenMonitorStore, StoredListenMonitorChunk } from "./listen-monitor-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
@@ -128,6 +128,7 @@ const nodeListFilterSchema = z
   })
   .strict();
 const monitorChunkDurationMs = 1500;
+const monitorChunkMaxAgeMs = 5000;
 const monitorChunkSampleRate = 16_000;
 
 export function registerNodeRoutes({
@@ -455,7 +456,7 @@ export function registerNodeRoutes({
       }
 
       const sessionId = `listen_${randomUUID()}`;
-      const monitorChunk = await listenMonitorStore.latest(node.id);
+      const monitorChunk = freshMonitorChunk(await listenMonitorStore.latest(node.id));
       const mode = monitorChunk ? "agent_audio_chunk" : "controller_meter_preview";
       const streamUrl = listenStreamUrl(node.id, sessionId);
       const targetLatencyMs = monitorChunk?.durationMs ?? monitorChunkDurationMs;
@@ -514,7 +515,7 @@ export function registerNodeRoutes({
         return c.json({ error: "Node not found" }, 404);
       }
 
-      const monitorChunk = await listenMonitorStore.latest(node.id);
+      const monitorChunk = freshMonitorChunk(await listenMonitorStore.latest(node.id));
       const frame = monitorChunk ? undefined : await monitorMeterFrame(node.id);
 
       if (!monitorChunk && !frame) {
@@ -629,6 +630,20 @@ export function registerNodeRoutes({
 
 function listenStreamUrl(nodeId: string, sessionId: string) {
   return `/api/v1/nodes/${encodeURIComponent(nodeId)}/listen/stream?sessionId=${encodeURIComponent(sessionId)}`;
+}
+
+function freshMonitorChunk(chunk: StoredListenMonitorChunk | undefined, now = Date.now()) {
+  if (!chunk) {
+    return undefined;
+  }
+
+  const capturedAt = Date.parse(chunk.capturedAt);
+
+  if (!Number.isFinite(capturedAt)) {
+    return undefined;
+  }
+
+  return Math.abs(now - capturedAt) <= monitorChunkMaxAgeMs ? chunk : undefined;
 }
 
 function hasNodeUpdate(value: Record<string, unknown>) {

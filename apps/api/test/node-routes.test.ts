@@ -210,9 +210,11 @@ test("listen stream prefers agent audio chunks when available", async () => {
     permissionCalls: [],
   });
 
+  const capturedAt = new Date().toISOString();
+
   await listenMonitorStore.save({
     audio,
-    capturedAt: "2026-06-20T08:00:00.000Z",
+    capturedAt,
     contentType: "audio/wav",
     durationMs: 900,
     nodeId: node().id,
@@ -237,7 +239,47 @@ test("listen stream prefers agent audio chunks when available", async () => {
   assert.deepEqual(bytes, Buffer.from(audio));
   assert.equal(event?.details.mode, "agent_audio_chunk");
   assert.equal(event?.details.durationMs, 900);
-  assert.equal(event?.details.sourceCapturedAt, "2026-06-20T08:00:00.000Z");
+  assert.equal(event?.details.sourceCapturedAt, capturedAt);
+});
+
+test("listen stream ignores stale agent audio chunks", async () => {
+  const auditStore = createAuditStore("");
+  const listenMonitorStore = createListenMonitorStore();
+  const staleAudio = wavChunk();
+  const app = nodeApp({
+    auditStore,
+    frames: [meterFrame()],
+    listenMonitorStore,
+    nodes: [node()],
+    permissionCalls: [],
+  });
+
+  await listenMonitorStore.save({
+    audio: staleAudio,
+    capturedAt: "2026-06-20T08:00:00.000Z",
+    contentType: "audio/wav",
+    durationMs: 900,
+    nodeId: node().id,
+  });
+
+  const startResponse = await app.request(`/api/v1/nodes/${node().id}/listen`, {
+    method: "POST",
+  });
+  const startBody = (await startResponse.json()) as {
+    data: { mode: string; targetLatencyMs: number };
+  };
+  const streamResponse = await app.request(
+    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_stale_chunk`,
+  );
+  const bytes = Buffer.from(await streamResponse.arrayBuffer());
+  const [event] = await auditStore.list({ action: "listen.monitor.stream.succeeded" });
+
+  assert.equal(startResponse.status, 202);
+  assert.equal(startBody.data.mode, "controller_meter_preview");
+  assert.equal(startBody.data.targetLatencyMs, 1500);
+  assert.equal(streamResponse.status, 200);
+  assert.notDeepEqual(bytes, Buffer.from(staleAudio));
+  assert.equal(event?.details.mode, "controller_meter_preview");
 });
 
 test("listen stream reports unavailable monitor data", async () => {
