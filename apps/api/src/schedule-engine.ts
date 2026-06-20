@@ -149,6 +149,7 @@ export function previewScheduleOccurrences(schedule: ScheduleSummary, limit = 5,
 export function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
   return {
     captureBackend: schedule.captureBackend,
+    captureInterfaceId: schedule.captureInterfaceId,
     folderTemplate: schedule.folderTemplate,
     nextRunAt: schedule.nextRunAt,
     recurrence: schedule.recurrence,

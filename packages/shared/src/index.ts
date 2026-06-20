@@ -535,6 +535,7 @@ export const watchdogPolicyUpdateSchema = z
 
 export const scheduleSummarySchema = z.object({
   captureBackend: audioCaptureBackendSchema.optional(),
+  captureInterfaceId: z.string().min(1).optional(),
   enabled: z.boolean(),
   folderTemplate: z.string().min(1),
   id: z.string().min(1),
@@ -553,6 +554,7 @@ export const scheduleSummarySchema = z.object({
 });
 export const scheduleInputSchema = z.object({
   captureBackend: audioCaptureBackendSchema.nullable().optional(),
+  captureInterfaceId: z.string().trim().min(1).max(160).nullable().optional(),
   enabled: z.boolean().default(true),
   folderTemplate: z.string().trim().min(1).max(500),
   id: z.string().trim().min(1).max(160).optional(),
@@ -572,6 +574,7 @@ export const scheduleInputSchema = z.object({
 export const scheduleUpdateSchema = z
   .object({
     captureBackend: audioCaptureBackendSchema.nullable().optional(),
+    captureInterfaceId: z.string().trim().min(1).max(160).nullable().optional(),
     enabled: z.boolean().optional(),
     folderTemplate: z.string().trim().min(1).max(500).optional(),
     name: z.string().trim().min(1).max(160).optional(),

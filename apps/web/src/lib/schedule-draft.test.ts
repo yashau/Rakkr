@@ -70,6 +70,7 @@ test("schedule backend draft round trips pinned and default values", () => {
   const pinnedInput = draftToInput({
     ...defaultDraft(),
     captureBackend: "jack",
+    captureInterfaceId: "iface_jack",
     name: "Council JACK Capture",
     nodeId: "node_schedule_backend_test",
     room: "Council Chamber",
@@ -77,6 +78,7 @@ test("schedule backend draft round trips pinned and default values", () => {
   const defaultInput = draftToInput({
     ...defaultDraft(),
     captureBackend: "",
+    captureInterfaceId: "",
     name: "Council Default Capture",
     nodeId: "node_schedule_backend_test",
     room: "Council Chamber",
@@ -84,6 +86,7 @@ test("schedule backend draft round trips pinned and default values", () => {
   const draft = scheduleToDraft({
     ...pinnedInput,
     captureBackend: "pipewire",
+    captureInterfaceId: "iface_pipewire",
     id: "sched_backend_test",
     nextRunAt: "2026-06-18T09:00:00.000Z",
     recurrence: { mode: "manual" },
@@ -91,6 +94,9 @@ test("schedule backend draft round trips pinned and default values", () => {
   });
 
   assert.equal(pinnedInput.captureBackend, "jack");
+  assert.equal(pinnedInput.captureInterfaceId, "iface_jack");
   assert.equal(defaultInput.captureBackend, null);
+  assert.equal(defaultInput.captureInterfaceId, null);
   assert.equal(draft.captureBackend, "pipewire");
+  assert.equal(draft.captureInterfaceId, "iface_pipewire");
 });

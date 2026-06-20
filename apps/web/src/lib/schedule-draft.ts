@@ -16,6 +16,7 @@ import { formatDateTime, isoFromLocalDateTime, localDateTimeInput } from "./date
 
 export interface ScheduleDraft {
   captureBackend: "" | NonNullable<ScheduleSummary["captureBackend"]>;
+  captureInterfaceId: string;
   dayOfMonth: number;
   daysOfWeek: ScheduleDayOfWeek[];
   enabled: boolean;
@@ -59,6 +60,7 @@ const weekdayDays: ScheduleDayOfWeek[] = ["monday", "tuesday", "wednesday", "thu
 export function defaultDraft(node?: RecorderNode): ScheduleDraft {
   return {
     captureBackend: "",
+    captureInterfaceId: "",
     dayOfMonth: 1,
     daysOfWeek: ["monday"],
     enabled: true,
@@ -92,6 +94,7 @@ export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
   const draft: ScheduleDraft = {
     ...defaultDraft(),
     captureBackend: schedule.captureBackend ?? "",
+    captureInterfaceId: schedule.captureInterfaceId ?? "",
     enabled: schedule.enabled,
     folderTemplate: schedule.folderTemplate,
     name: schedule.name,
@@ -115,6 +118,7 @@ export function draftToInput(draft: ScheduleDraft): ScheduleInput {
 
   return {
     captureBackend: draft.captureBackend || null,
+    captureInterfaceId: draft.captureInterfaceId || null,
     enabled: draft.enabled,
     folderTemplate: draft.folderTemplate,
     name: draft.name,

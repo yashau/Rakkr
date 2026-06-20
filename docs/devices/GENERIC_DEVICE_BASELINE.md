@@ -13,6 +13,7 @@ Status: Partial baseline checked.
 - JACK capture and meter presets use `jack_capture` duration-bounded file capture and raw stdout metering, with optional JACK port targeting while preserving template overrides.
 - Capture and meter template CLI flags accept hyphen-leading template values.
 - Controller-managed node audio defaults can set capture backend, capture command, capture device, format, sample rate, channel count, and capture/meter argument templates; ad-hoc and scheduled jobs inherit the node defaults.
+- Schedules can pin a target audio interface; scheduled jobs use that interface ID, system device name, and known backend before falling back to node defaults.
 - Fake-controller smoke coverage exercises template-driven capture arguments through agent job claim, capture, render, cache attach, and cleanup.
 - Fake-controller smoke coverage exercises template-driven meter arguments through daemon meter frames and monitor chunks.
 - Inventory discovers ALSA capture devices from `arecord -l` and `/proc/asound/pcm`, then adds channel count, sample rates, sysfs hardware paths, and serials when available.
@@ -28,7 +29,7 @@ Status: Partial baseline checked.
 | Check | Evidence |
 | ----- | -------- |
 | Configurable capture and meter command/argument template/device/format/rate/channels | `crates/recorder-agent/src/config.rs`, `crates/recorder-agent/src/capture.rs`, `crates/recorder-agent/src/meter_command.rs`, `crates/recorder-agent/src/command_template.rs` |
-| Controller-managed node audio defaults and managed backend selection | `packages/shared/src/index.ts`, `apps/api/src/node-store.ts`, `apps/api/src/node-routes.ts`, `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/api/test/node-routes.test.ts`, `apps/api/test/agent-routes.test.ts`, `apps/web/src/components/node-inventory-editors.tsx`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/main.rs` |
+| Controller-managed node audio defaults, schedule interface selection, and managed backend selection | `packages/shared/src/index.ts`, `apps/api/src/node-store.ts`, `apps/api/src/node-routes.ts`, `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/src/scheduled-recordings.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/api/test/schedule-runner.test.ts`, `apps/api/test/node-routes.test.ts`, `apps/api/test/agent-routes.test.ts`, `apps/web/src/components/node-inventory-editors.tsx`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/main.rs` |
 | Generic capture and meter command arguments | `crates/recorder-agent/src/capture.rs`, `crates/recorder-agent/src/meter_command.rs`, `crates/recorder-agent/src/command_template.rs` |
 | PipeWire and JACK capture and meter command presets | `crates/recorder-agent/src/config.rs`, `crates/recorder-agent/src/capture.rs`, `crates/recorder-agent/src/meter_command.rs`, `crates/recorder-agent/src/channel_map.rs`, `crates/recorder-agent/src/node_config.rs` |
 | ALSA inventory parsing, `/proc/asound/pcm`, stream/hw-params metadata, sysfs serials | `crates/recorder-agent/src/inventory.rs` |

@@ -87,7 +87,25 @@ test("schedule routes create update run-now and skip-next with audit events", as
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
   const currentUser = user(["recording:read", "schedule:read", "schedule:manage"]);
-  const routeNode = node({ id: `node_schedule_ops_${randomUUID()}` });
+  const routeInterfaceId = "iface_route_jack";
+  const routeNode = node({
+    id: `node_schedule_ops_${randomUUID()}`,
+    interfaces: [
+      {
+        alias: "JACK Route",
+        backend: "jack",
+        channelCount: 2,
+        channels: [
+          { alias: "Left", index: 1 },
+          { alias: "Right", index: 2 },
+        ],
+        id: routeInterfaceId,
+        sampleRates: [48_000],
+        systemName: "jack:route",
+        systemRef: "jack:route",
+      },
+    ],
+  });
   const schedules: ScheduleSummary[] = [];
   const store = scheduleStore(schedules);
   const recordings = recordingStore();
@@ -106,8 +124,21 @@ test("schedule routes create update run-now and skip-next with audit events", as
     settingsStore: createSettingsStore(),
   });
 
+  const invalidInterface = await requestJson(app, "/api/v1/schedules", "POST", {
+    enabled: true,
+    captureInterfaceId: "missing_interface",
+    folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
+    name: "Invalid Interface",
+    nodeId: routeNode.id,
+    recordingProfileId: "voice-mp3-vbr",
+    room: "Council Room",
+    timezone: "UTC",
+    titleTemplate: "{{date}}_{{time}}_{{schedule.name}}",
+    watchdogPolicyId: "scheduled-voice-watchdog",
+  });
   const created = await requestJson(app, "/api/v1/schedules", "POST", {
     captureBackend: "jack",
+    captureInterfaceId: routeInterfaceId,
     enabled: true,
     folderTemplate: "Meetings/{{date}}/{{schedule.name}}",
     id: scheduleId,
@@ -140,7 +171,10 @@ test("schedule routes create update run-now and skip-next with audit events", as
   const runNow = await app.request(`/api/v1/schedules/${scheduleId}/run-now`, { method: "POST" });
   const runNowBody = (await runNow.json()) as {
     data: RecordingSummary;
-    job: { command: { captureBackend?: string }; recordingId: string };
+    job: {
+      command: { captureBackend?: string; captureDevice: string; captureInterfaceId?: string };
+      recordingId: string;
+    };
     segments: Array<{ recordingId: string }>;
   };
   const beforeSkip = await store.find(scheduleId);
@@ -156,6 +190,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
     (event) => event.action === "schedules.run_now.succeeded",
   );
 
+  assert.equal(invalidInterface.status, 409);
   assert.equal(created.status, 201);
   assert.equal(updated.status, 200);
   assert.equal(occurrences.status, 200);
@@ -163,12 +198,15 @@ test("schedule routes create update run-now and skip-next with audit events", as
   assert.equal(skipped.status, 200);
   assert.equal(createdBody.data.id, scheduleId);
   assert.equal(createdBody.data.captureBackend, "jack");
+  assert.equal(createdBody.data.captureInterfaceId, routeInterfaceId);
   assert.deepEqual(createdBody.data.tags, ["voice", "route"]);
   assert.equal(updatedBody.data.name, "Council Route Test Updated");
   assert.deepEqual(updatedBody.data.tags, ["updated", "voice"]);
   assert.equal(runNowBody.data.scheduleId, scheduleId);
   assert.equal(runNowBody.data.retentionPolicyId, "retention-keep-controller-cache");
   assert.equal(runNowBody.job.command.captureBackend, "jack");
+  assert.equal(runNowBody.job.command.captureDevice, "jack:route");
+  assert.equal(runNowBody.job.command.captureInterfaceId, routeInterfaceId);
   assert.equal(runNowBody.job.recordingId, runNowBody.data.id);
   assert.deepEqual(
     runNowBody.segments.map((segment) => segment.recordingId),
@@ -187,6 +225,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
   ]);
   assert.equal(runNowAudit?.correlationIds?.scheduleId, scheduleId);
   assert.equal(runNowAudit?.details.captureBackend, "jack");
+  assert.equal(runNowAudit?.details.captureInterfaceId, routeInterfaceId);
   assert.equal(runNowAudit?.after?.recordingId, runNowBody.data.id);
 });
 

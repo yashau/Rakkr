@@ -276,6 +276,7 @@ class PostgresScheduleStore implements ScheduleStore {
       .onConflictDoUpdate({
         set: {
           captureBackend: row.captureBackend,
+          captureInterfaceId: row.captureInterfaceId,
           enabled: row.enabled,
           folderTemplate: row.folderTemplate,
           name: row.name,
@@ -317,6 +318,7 @@ function loadSchedules(seedSchedules: ScheduleSummary[]) {
 function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
   return {
     captureBackend: schedule.captureBackend ?? null,
+    captureInterfaceId: schedule.captureInterfaceId ?? null,
     enabled: schedule.enabled,
     folderTemplate: schedule.folderTemplate,
     id: schedule.id,
@@ -340,6 +342,7 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
 
   return {
     captureBackend: captureBackendFromValue(row.captureBackend),
+    captureInterfaceId: stringOrUndefined(row.captureInterfaceId),
     enabled: row.enabled,
     folderTemplate: row.folderTemplate,
     id: row.id,

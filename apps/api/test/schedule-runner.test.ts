@@ -40,7 +40,7 @@ test.after(async () => {
 
 test("due schedule creates ordered track jobs when profile has max track length", async () => {
   const recordingStore = memoryRecordingStore();
-  const scheduleStore = memoryScheduleStore([schedule({ captureBackend: "jack" })]);
+  const scheduleStore = memoryScheduleStore([schedule({ captureInterfaceId: "iface_jack_split" })]);
   const result = await runDueSchedules(
     {
       auditStore: createAuditStore(""),
@@ -90,6 +90,8 @@ test("due schedule creates ordered track jobs when profile has max track length"
       .sort((left, right) => (left.trackIndex ?? 0) - (right.trackIndex ?? 0))
       .map((command) => ({
         captureBackend: command.captureBackend,
+        captureDevice: command.captureDevice,
+        captureInterfaceId: command.captureInterfaceId,
         durationSeconds: command.durationSeconds,
         outputCodec: command.outputCodec,
         trackIndex: command.trackIndex,
@@ -98,6 +100,8 @@ test("due schedule creates ordered track jobs when profile has max track length"
     [
       {
         captureBackend: "jack",
+        captureDevice: "jack:council",
+        captureInterfaceId: "iface_jack_split",
         durationSeconds: 2_700,
         outputCodec: "mp3",
         trackIndex: 1,
@@ -105,6 +109,8 @@ test("due schedule creates ordered track jobs when profile has max track length"
       },
       {
         captureBackend: "jack",
+        captureDevice: "jack:council",
+        captureInterfaceId: "iface_jack_split",
         durationSeconds: 2_700,
         outputCodec: "mp3",
         trackIndex: 2,
@@ -112,6 +118,8 @@ test("due schedule creates ordered track jobs when profile has max track length"
       },
       {
         captureBackend: "jack",
+        captureDevice: "jack:council",
+        captureInterfaceId: "iface_jack_split",
         durationSeconds: 1_800,
         outputCodec: "mp3",
         trackIndex: 3,
@@ -546,6 +554,19 @@ function node(input: Partial<RecorderNode> = {}): RecorderNode {
         sampleRates: [48_000],
         systemName: "hw:1,0",
         systemRef: "usb-split",
+      },
+      {
+        alias: "JACK Council",
+        backend: "jack",
+        channelCount: 2,
+        channels: [
+          { alias: "Left", index: 1 },
+          { alias: "Right", index: 2 },
+        ],
+        id: "iface_jack_split",
+        sampleRates: [48_000],
+        systemName: "jack:council",
+        systemRef: "jack:council",
       },
     ],
     ipAddresses: ["127.0.0.1"],

@@ -15,7 +15,13 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { type ScheduleDayOfWeek, type ScheduleInput, type ScheduleSummary } from "@rakkr/shared";
+import {
+  type AudioInterface,
+  type RecorderNode,
+  type ScheduleDayOfWeek,
+  type ScheduleInput,
+  type ScheduleSummary,
+} from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,6 +104,7 @@ export function SchedulesPage() {
   });
   const nodes = useMemo(() => nodesQuery.data?.data ?? [], [nodesQuery.data?.data]);
   const firstNode = nodes[0];
+  const selectedNode = nodes.find((node) => node.id === draft.nodeId);
   const saveScheduleMutation = useMutation({
     mutationFn: ({ input, scheduleId }: { input: ScheduleInput; scheduleId?: string }) =>
       scheduleId ? api.updateSchedule(scheduleId, input) : api.createSchedule(input),
@@ -169,6 +176,11 @@ export function SchedulesPage() {
 
     setDraft((current) => ({
       ...current,
+      captureInterfaceId: node?.interfaces.some(
+        (candidate) => candidate.id === current.captureInterfaceId,
+      )
+        ? current.captureInterfaceId
+        : "",
       nodeId,
       room: node?.location.room ?? current.room,
     }));
@@ -578,6 +590,22 @@ export function SchedulesPage() {
                 </select>
               </div>
               <div className="grid gap-2">
+                <Label htmlFor="schedule-capture-interface">Interface</Label>
+                <select
+                  className={selectClass}
+                  id="schedule-capture-interface"
+                  onChange={(event) => updateDraft("captureInterfaceId", event.target.value)}
+                  value={draft.captureInterfaceId}
+                >
+                  <option value="">Node default</option>
+                  {selectedNode?.interfaces.map((audioInterface) => (
+                    <option key={audioInterface.id} value={audioInterface.id}>
+                      {audioInterfaceLabel(audioInterface)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
                 <Input
                   id="schedule-watchdog"
@@ -661,6 +689,10 @@ export function SchedulesPage() {
                   <div>
                     <dt className="font-medium text-foreground">Backend</dt>
                     <dd>{schedule.captureBackend ?? "Node default"}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">Interface</dt>
+                    <dd>{scheduleInterfaceLabel(schedule, nodes)}</dd>
                   </div>
                   <div>
                     <dt className="font-medium text-foreground">Watchdog</dt>
@@ -800,4 +832,20 @@ export function SchedulesPage() {
       ) : null}
     </div>
   );
+}
+
+function audioInterfaceLabel(audioInterface: AudioInterface) {
+  return `${audioInterface.alias} / ${audioInterface.systemName} / ${audioInterface.backend}`;
+}
+
+function scheduleInterfaceLabel(schedule: ScheduleSummary, nodes: RecorderNode[]) {
+  if (!schedule.captureInterfaceId) {
+    return "Node default";
+  }
+
+  const audioInterface = nodes
+    .find((node) => node.id === schedule.nodeId)
+    ?.interfaces.find((candidate) => candidate.id === schedule.captureInterfaceId);
+
+  return audioInterface ? audioInterfaceLabel(audioInterface) : schedule.captureInterfaceId;
 }

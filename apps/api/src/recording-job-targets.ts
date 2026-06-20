@@ -1,4 +1,5 @@
 import type {
+  AudioInterface,
   ChannelMapTemplate,
   ChannelMapTemplateAssignment,
   NodeAudioCommandDefaults,
@@ -11,6 +12,7 @@ import type { SettingsStore } from "./settings-store.js";
 
 interface RecordingJobTargetInput {
   captureBackend?: NodeAudioCommandDefaults["captureBackend"];
+  captureInterfaceId?: string;
   durationSeconds?: number;
   node?: RecorderNode;
   profile?: RecordingProfile;
@@ -20,6 +22,7 @@ interface RecordingJobTargetInput {
 
 export async function recordingJobTargetOptions({
   captureBackend,
+  captureInterfaceId: requestedCaptureInterfaceId,
   durationSeconds,
   node,
   profile: providedProfile,
@@ -27,7 +30,12 @@ export async function recordingJobTargetOptions({
   settingsStore,
 }: RecordingJobTargetInput) {
   const captureInterfaceId =
-    process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ?? node?.interfaces[0]?.id;
+    requestedCaptureInterfaceId ??
+    process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
+    node?.interfaces[0]?.id;
+  const captureInterface = node?.interfaces.find(
+    (candidate) => candidate.id === captureInterfaceId,
+  );
   const profile =
     providedProfile ??
     (recordingProfileId ? await settingsStore.findRecordingProfile(recordingProfileId) : undefined);
@@ -40,9 +48,12 @@ export async function recordingJobTargetOptions({
     : undefined;
 
   return {
-    captureBackend: captureBackend ?? node?.audioDefaults?.captureBackend,
+    captureBackend:
+      captureBackend ??
+      knownCaptureBackend(captureInterface) ??
+      node?.audioDefaults?.captureBackend,
     captureChannels: node?.audioDefaults?.captureChannels,
-    captureDevice: node?.audioDefaults?.captureDevice,
+    captureDevice: captureInterface?.systemName ?? node?.audioDefaults?.captureDevice,
     captureFormat: node?.audioDefaults?.captureFormat,
     captureInterfaceId,
     captureSampleRate: node?.audioDefaults?.captureSampleRate,
@@ -50,6 +61,16 @@ export async function recordingJobTargetOptions({
     durationSeconds,
     profile,
   };
+}
+
+function knownCaptureBackend(
+  captureInterface: AudioInterface | undefined,
+): NodeAudioCommandDefaults["captureBackend"] {
+  return captureInterface?.backend === "alsa" ||
+    captureInterface?.backend === "jack" ||
+    captureInterface?.backend === "pipewire"
+    ? captureInterface.backend
+    : undefined;
 }
 
 async function activeChannelMapSelection({

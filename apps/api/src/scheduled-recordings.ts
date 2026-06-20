@@ -42,6 +42,7 @@ export async function queueScheduledRecordings({
         recording,
         await recordingJobTargetOptions({
           captureBackend: schedule.captureBackend,
+          captureInterfaceId: schedule.captureInterfaceId,
           durationSeconds: track.durationSeconds,
           node,
           profile,
@@ -59,6 +60,7 @@ export async function queueScheduledRecordings({
 
 export function scheduledRecordingSegmentSnapshot(queued: QueuedScheduledRecording) {
   return {
+    captureInterfaceId: queued.job.command.captureInterfaceId,
     durationSeconds: queued.track.durationSeconds,
     jobId: queued.job.id,
     offsetSeconds: queued.track.offsetSeconds,

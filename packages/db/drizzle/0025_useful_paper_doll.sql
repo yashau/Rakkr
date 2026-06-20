@@ -1,0 +1,1 @@
+ALTER TABLE "schedules" ADD COLUMN "capture_interface_id" varchar(160);

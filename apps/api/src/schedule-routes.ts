@@ -3,6 +3,7 @@ import type { Context, Hono } from "hono";
 import {
   scheduleInputSchema,
   scheduleUpdateSchema,
+  type RecorderNode,
   type ScheduleRecurrence,
   type ScheduleInput,
   type ScheduleSummary,
@@ -99,6 +100,15 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule node not found" }, 409);
       }
 
+      if (!scheduleInterfaceIsValid(node, body.data.captureInterfaceId)) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.create.failed",
+          "schedule_interface_not_found",
+        );
+        return c.json({ error: "Schedule interface not found" }, 409);
+      }
+
       const schedule = buildSchedule(body.data);
 
       try {
@@ -164,7 +174,10 @@ export function registerScheduleRoutes({
         return c.json({ error: "Invalid next run date" }, 400);
       }
 
-      if (body.data.nodeId && !(await nodeStore.find(body.data.nodeId))) {
+      const targetNodeId = body.data.nodeId ?? before.nodeId;
+      const targetNode = await nodeStore.find(targetNodeId);
+
+      if (!targetNode) {
         await recordScheduleWriteFailure(
           c,
           "schedules.update.failed",
@@ -172,6 +185,21 @@ export function registerScheduleRoutes({
           before,
         );
         return c.json({ error: "Schedule node not found" }, 409);
+      }
+
+      const targetInterfaceId =
+        "captureInterfaceId" in body.data
+          ? body.data.captureInterfaceId
+          : before.captureInterfaceId;
+
+      if (!scheduleInterfaceIsValid(targetNode, targetInterfaceId)) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.update.failed",
+          "schedule_interface_not_found",
+          before,
+        );
+        return c.json({ error: "Schedule interface not found" }, 409);
       }
 
       const updated = await scheduleStore.update(
@@ -262,6 +290,7 @@ export function registerScheduleRoutes({
         },
         details: {
           captureBackend: schedule.captureBackend,
+          captureInterfaceId: schedule.captureInterfaceId,
           folderTemplate: schedule.folderTemplate,
           recordingProfileId: schedule.recordingProfileId,
           segmentCount: queued.length,
@@ -430,6 +459,7 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
 
   return {
     captureBackend: input.captureBackend ?? undefined,
+    captureInterfaceId: input.captureInterfaceId ?? undefined,
     enabled: input.enabled,
     folderTemplate: input.folderTemplate,
     id: input.id ?? `sched_${randomUUID()}`,
@@ -452,11 +482,15 @@ function sanitizeScheduleUpdate(
   input: ScheduleUpdate,
   before: ScheduleSummary,
 ): Partial<Omit<ScheduleSummary, "id">> {
-  const { captureBackend, ...rest } = input;
+  const { captureBackend, captureInterfaceId, ...rest } = input;
   const updates: Partial<Omit<ScheduleSummary, "id">> = { ...rest };
 
   if ("captureBackend" in input) {
     updates.captureBackend = captureBackend ?? undefined;
+  }
+
+  if ("captureInterfaceId" in input) {
+    updates.captureInterfaceId = captureInterfaceId ?? undefined;
   }
 
   if (input.recurrence || input.timezone) {
@@ -488,6 +522,15 @@ function isValidOptionalDate(value: string | undefined) {
 
 function validIsoOrUndefined(value: string | undefined) {
   return value ? new Date(value).toISOString() : undefined;
+}
+
+function scheduleInterfaceIsValid(
+  node: RecorderNode,
+  captureInterfaceId: string | null | undefined,
+) {
+  return (
+    !captureInterfaceId || node.interfaces.some((candidate) => candidate.id === captureInterfaceId)
+  );
 }
 
 function occurrenceLimit(value: string | undefined) {

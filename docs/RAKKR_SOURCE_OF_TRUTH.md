@@ -60,13 +60,13 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, jobs, lifecycle coverage, schedules with backend selection, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, jobs, schedules with backend selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, jobs, lifecycle coverage, schedules with backend/interface selection, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, schedule-level backend selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
-| Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend selection, checked baseline |
+| Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
@@ -239,7 +239,7 @@ Current implementation baseline:
 - Recurrence tests for buffers, pauses, monthly clamping, overnight duration, and skip-next.
 - Runner creates jobs under `system:scheduler` and audits outcomes.
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
-- Schedules can pin ALSA, JACK, or PipeWire capture backend selection for run-now and due-run jobs, or inherit node defaults.
+- Schedules can pin ALSA, JACK, or PipeWire capture backend selection and target audio interfaces for run-now and due-run jobs, or inherit node defaults.
 - Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
 - Schedules UI mirrors RBAC for create, edit, run-now, skip-next, and delete actions.
 - Schedules page reads, occurrences, audit timeline, and node lookup mirror granular RBAC.
@@ -823,6 +823,7 @@ Current implementation baseline:
 214. ✅ Add JACK capture and meter backend presets.
 215. ✅ Add server-backed recording-job backend filters.
 216. ✅ Add schedule-level capture backend selection.
+217. ✅ Add schedule-level capture interface selection.
 
 ## Open Questions
 

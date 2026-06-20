@@ -17,7 +17,13 @@ import {
   ShieldOff,
   X,
 } from "lucide-react";
-import type { AuditEvent, HealthEvent, RecordingJob, RecordingSummary } from "@rakkr/shared";
+import type {
+  AuditEvent,
+  AudioInterface,
+  HealthEvent,
+  RecordingJob,
+  RecordingSummary,
+} from "@rakkr/shared";
 
 import { QualityTimeline } from "@/components/quality-timeline";
 import { Badge } from "@/components/ui/badge";
@@ -266,6 +272,9 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
           <p className="mt-1 text-sm text-muted-foreground">
             Backend: {schedule.captureBackend ?? "Node default"}
           </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Interface: {scheduleInterfaceLabel(schedule.captureInterfaceId, node?.interfaces)}
+          </p>
           <p className="mt-2 text-sm">{recurrenceSummary(schedule.recurrence)}</p>
         </div>
         <div className="grid gap-1 text-sm text-muted-foreground md:text-right">
@@ -466,6 +475,21 @@ function SectionTitle({ icon: Icon, title }: { icon: typeof Activity; title: str
       <h3 className="text-base font-semibold">{title}</h3>
     </div>
   );
+}
+
+function scheduleInterfaceLabel(
+  captureInterfaceId: string | undefined,
+  interfaces: AudioInterface[] | undefined,
+) {
+  if (!captureInterfaceId) {
+    return "Node default";
+  }
+
+  const audioInterface = interfaces?.find((candidate) => candidate.id === captureInterfaceId);
+
+  return audioInterface
+    ? `${audioInterface.alias} / ${audioInterface.systemName} / ${audioInterface.backend}`
+    : captureInterfaceId;
 }
 
 function RecordingExecutionRow({

@@ -442,6 +442,7 @@ export const schedules = pgTable(
   "schedules",
   {
     captureBackend: varchar("capture_backend", { length: 32 }),
+    captureInterfaceId: varchar("capture_interface_id", { length: 160 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     enabled: boolean("enabled").notNull().default(true),
     folderTemplate: text("folder_template").notNull(),
