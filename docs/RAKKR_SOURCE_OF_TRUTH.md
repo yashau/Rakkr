@@ -60,8 +60,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes with backend filters, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes with backend filters, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes with backend filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes with backend filters/exports, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
@@ -203,6 +203,7 @@ Current partial implementation:
 - Node API and inventory UI can filter visible nodes by status.
 - Node API and inventory UI can filter visible nodes by audio backend.
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
+- Node API and inventory UI can export visible filtered inventory as audited CSV.
 - Nodes page direct access mirrors `node:read`; node health panels mirror `health:read` and expose lifecycle actions only with `health:acknowledge`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
@@ -830,6 +831,7 @@ Current implementation baseline:
 219. ✅ Add server-backed recording-job interface filters.
 220. ✅ Add policy-tuned broadband-noise quality anomaly alerts.
 221. ✅ Add server-backed node inventory backend filters.
+222. ✅ Add filtered node inventory CSV export.
 
 ## Open Questions
 

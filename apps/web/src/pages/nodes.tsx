@@ -5,6 +5,7 @@ import {
   Activity,
   AudioLines,
   Cpu,
+  Download,
   HardDrive,
   Headphones,
   KeyRound,
@@ -29,7 +30,12 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api, type NodeEnrollmentInput, type NodeEnrollmentResult } from "@/lib/api";
+import {
+  api,
+  type NodeEnrollmentInput,
+  type NodeEnrollmentResult,
+  type NodeFilters,
+} from "@/lib/api";
 import { formatDateTime, localIsoDate, startOfLocalDay } from "@/lib/dates";
 import {
   nodeHealthLifecycleInput,
@@ -38,6 +44,7 @@ import {
   type NodeHealthLifecycleAction,
 } from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
+import { downloadBlob } from "@/lib/recording-page-helpers";
 
 interface EnrollmentDraft {
   agentVersion: string;
@@ -101,14 +108,14 @@ export function NodesPage() {
   const actionPermissions = nodePageActionPermissions(
     currentUserQuery.data?.data.permissions ?? [],
   );
+  const nodeFilters = {
+    q: nodeSearch.trim() || undefined,
+    status: nodeStatusFilter || undefined,
+    backend: nodeBackendFilter || undefined,
+  } satisfies NodeFilters;
   const nodesQuery = useQuery({
     enabled: actionPermissions.canRead,
-    queryFn: () =>
-      api.nodes({
-        q: nodeSearch.trim() || undefined,
-        status: nodeStatusFilter || undefined,
-        backend: nodeBackendFilter || undefined,
-      }),
+    queryFn: () => api.nodes(nodeFilters),
     queryKey: ["nodes", nodeBackendFilter, nodeStatusFilter, nodeSearch],
     refetchInterval: 5000,
   });
@@ -162,6 +169,10 @@ export function NodesPage() {
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
       void queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
+  });
+  const exportMutation = useMutation({
+    mutationFn: () => api.nodesExport(nodeFilters),
+    onSuccess: downloadBlob,
   });
 
   const nodes = nodesQuery.data?.data ?? [];
@@ -358,6 +369,16 @@ export function NodesPage() {
           <div>
             <h2 className="text-sm font-semibold">Recorder Nodes</h2>
             <p className="text-xs text-muted-foreground">{nodes.length} shown</p>
+            <Button
+              className="mt-3"
+              disabled={exportMutation.isPending}
+              onClick={() => exportMutation.mutate()}
+              title="Export filtered node inventory"
+              variant="outline"
+            >
+              <Download className="size-4" />
+              Export
+            </Button>
           </div>
           <div className="grid w-full gap-3 md:max-w-3xl md:grid-cols-[minmax(0,1fr)_12rem_12rem]">
             <Field label="Search">

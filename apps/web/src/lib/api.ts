@@ -552,6 +552,7 @@ export const api = {
     }),
   nodes: (filters: NodeFilters = {}) =>
     fetchJson<{ data: RecorderNode[] }>(withQuery("/api/v1/nodes", filters)),
+  nodesExport: (filters: NodeFilters = {}) => fetchBlob(withQuery("/api/v1/nodes/export", filters)),
   prepareRecordingDownload: (recordingId: string) =>
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
       method: "POST",

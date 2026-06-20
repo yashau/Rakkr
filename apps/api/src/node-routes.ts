@@ -23,6 +23,7 @@ import type {
 import type { ListenMonitorStore, StoredListenMonitorChunk } from "./listen-monitor-store.js";
 import type { ListenSessionStore } from "./listen-session-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
+import { nodeExportFileName, nodeInventoryCsv } from "./node-inventory-export.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
 
@@ -158,16 +159,40 @@ export function registerNodeRoutes({
       return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
     }
 
-    const nodes = await scopedNodes(currentUser(c));
-    const query = normalizeSearchTerm(filters.data.q);
-    const filteredNodes = nodes.filter(
-      (node) =>
-        (!filters.data.status || node.status === filters.data.status) &&
-        (!filters.data.backend || nodeMatchesBackend(node, filters.data.backend)) &&
-        (!query || nodeSearchText(node).includes(query)),
-    );
+    const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
 
     return c.json({ data: filteredNodes });
+  });
+
+  app.get("/api/v1/nodes/export", requirePermission("node:read", "nodes.export"), async (c) => {
+    const filters = nodeListFilterSchema.safeParse(c.req.query());
+
+    if (!filters.success) {
+      return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
+    }
+
+    const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
+
+    await recordAuditEvent(c, {
+      action: "nodes.export.succeeded",
+      auth: currentAuth(c),
+      details: {
+        exportedCount: filteredNodes.length,
+        filters: filters.data,
+      },
+      outcome: "succeeded",
+      permission: "node:read",
+      target: {
+        id: "node_collection",
+        type: "node_collection",
+      },
+    });
+
+    return c.body(nodeInventoryCsv(filteredNodes), 200, {
+      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="${nodeExportFileName()}"`,
+      "Content-Type": "text/csv; charset=utf-8",
+    });
   });
 
   app.post(
@@ -752,6 +777,17 @@ function hasNodeUpdate(value: Record<string, unknown>) {
 
 function normalizeSearchTerm(value: string | undefined) {
   return value?.trim().toLowerCase();
+}
+
+function filterNodes(nodes: RecorderNode[], filters: z.infer<typeof nodeListFilterSchema>) {
+  const query = normalizeSearchTerm(filters.q);
+
+  return nodes.filter(
+    (node) =>
+      (!filters.status || node.status === filters.status) &&
+      (!filters.backend || nodeMatchesBackend(node, filters.backend)) &&
+      (!query || nodeSearchText(node).includes(query)),
+  );
 }
 
 function nodeSearchText(node: RecorderNode) {

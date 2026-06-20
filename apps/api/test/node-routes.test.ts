@@ -135,6 +135,84 @@ test("node list searches inventory identity fields", async () => {
   );
 });
 
+test("node export returns filtered inventory CSV and audits access", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes: [
+      nodeWithInterface({
+        id: "node_alsa",
+        interfaces: [
+          {
+            ...nodeWithInterface().interfaces[0]!,
+            backend: "alsa",
+          },
+        ],
+        runtime: { audioBackends: ["alsa"] },
+      }),
+      nodeWithInterface({
+        alias: "Jack Recorder",
+        id: "node_jack_recording",
+        interfaces: [
+          {
+            ...nodeWithInterface().interfaces[0]!,
+            backend: "jack",
+            id: "iface_jack",
+            sampleRates: [48_000, 96_000],
+            serialNumber: "JACK-USB-1",
+            systemName: "system:capture_1",
+          },
+        ],
+        notes: "Rack shelf B",
+        runtime: {
+          architecture: "x64",
+          audioBackends: ["jack", "pipewire"],
+          kernelRelease: "6.8.0",
+          osName: "Debian",
+        },
+        status: "recording",
+      }),
+      node({
+        id: "node_pipewire_available",
+        runtime: { audioBackends: ["pipewire"] },
+        status: "offline",
+      }),
+    ],
+    permissionCalls,
+  });
+
+  const response = await app.request("/api/v1/nodes/export?backend=jack&status=recording");
+  const csv = await response.text();
+  const [event] = await auditStore.list({ action: "nodes.export.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+  assert.match(
+    response.headers.get("content-disposition") ?? "",
+    /^attachment; filename="rakkr-nodes-\d{4}-\d{2}-\d{2}T/u,
+  );
+  assert.match(csv, /^id,alias,status,site,building,floor,room,hostname,/u);
+  assert.match(csv, /node_jack_recording/u);
+  assert.match(csv, /system:capture_1/u);
+  assert.match(csv, /rates=48000\/96000/u);
+  assert.match(csv, /Rack shelf B/u);
+  assert.doesNotMatch(csv, /node_alsa/u);
+  assert.doesNotMatch(csv, /node_pipewire_available/u);
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "nodes.export",
+    permission: "node:read",
+    target: undefined,
+  });
+  assert.equal(event?.permission, "node:read");
+  assert.equal(event?.details.exportedCount, 1);
+  assert.equal(event?.details.filters.backend, "jack");
+  assert.equal(event?.details.filters.status, "recording");
+  assert.equal(event?.target.id, "node_collection");
+  assert.equal(event?.target.type, "node_collection");
+});
+
 test("node routes deny users without required permissions", async () => {
   const auditStore = createAuditStore("");
   const deniedUser = user([]);
@@ -149,6 +227,7 @@ test("node routes deny users without required permissions", async () => {
 
   const responses = await Promise.all([
     app.request("/api/v1/nodes"),
+    app.request("/api/v1/nodes/export"),
     app.request(`/api/v1/nodes/${node().id}/meters`),
     app.request("/api/v1/meter-events"),
     app.request(`/api/v1/nodes/${node().id}/listen`, { method: "POST" }),
@@ -182,7 +261,7 @@ test("node routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
     "listen.monitor.start",
@@ -192,6 +271,7 @@ test("node routes deny users without required permissions", async () => {
     "meters.stream",
     "nodes.credentials.rotate",
     "nodes.enroll",
+    "nodes.export",
     "nodes.interfaces.update",
     "nodes.read",
     "nodes.update",
