@@ -11,9 +11,11 @@ import type {
 
 import {
   emptyHealthPageFilters,
+  healthEventBulkActionTargets,
   healthEventFiltersFromDraft,
   healthEventSummary,
   healthEventTargetLabel,
+  healthLifecycleActions,
   healthPagePermissions,
   readableHealthEventType,
 } from "./health-page-helpers";
@@ -93,6 +95,41 @@ test("health event summary counts active and terminal states", () => {
       suppressed: 1,
       total: 4,
     },
+  );
+});
+
+test("health lifecycle actions match event status", () => {
+  assert.deepEqual(healthLifecycleActions("open"), ["acknowledge", "suppress", "resolve"]);
+  assert.deepEqual(healthLifecycleActions("acknowledged"), ["suppress", "resolve"]);
+  assert.deepEqual(healthLifecycleActions("suppressed"), ["resolve"]);
+  assert.deepEqual(healthLifecycleActions("resolved"), ["reopen"]);
+});
+
+test("health bulk action targets include only selected eligible events", () => {
+  const events = [
+    event({ id: "health_open", status: "open" }),
+    event({ id: "health_ack", status: "acknowledged" }),
+    event({ id: "health_suppressed", status: "suppressed" }),
+    event({ id: "health_resolved", status: "resolved" }),
+  ];
+
+  assert.deepEqual(
+    healthEventBulkActionTargets(events, ["health_open", "health_resolved"], "resolve").map(
+      (healthEvent) => healthEvent.id,
+    ),
+    ["health_open"],
+  );
+  assert.deepEqual(
+    healthEventBulkActionTargets(events, ["health_ack", "health_suppressed"], "suppress").map(
+      (healthEvent) => healthEvent.id,
+    ),
+    ["health_ack"],
+  );
+  assert.deepEqual(
+    healthEventBulkActionTargets(events, ["health_open", "health_resolved"], "reopen").map(
+      (healthEvent) => healthEvent.id,
+    ),
+    ["health_resolved"],
   );
 });
 

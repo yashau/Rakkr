@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, CurrentUser, Permission, RecordingSummary } from "@rakkr/shared";
+import type {
+  AuditEvent,
+  CurrentUser,
+  HealthEvent,
+  Permission,
+  RecordingSummary,
+} from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 import type { RecordingStore } from "../src/recording-store.js";
 
@@ -46,15 +52,21 @@ test("health routes deny users without required permissions", async () => {
     requestJson(app, "/api/v1/health-events/health_denied/reopen", "POST", {
       note: "blocked",
     }),
+    requestJson(app, "/api/v1/health-events/bulk-lifecycle", "POST", {
+      action: "acknowledge",
+      eventIds: ["health_denied"],
+      note: "blocked",
+    }),
   ]);
   const deniedEvents = await auditStore.list({ outcome: "denied" });
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "health:acknowledge:health.events.acknowledge",
+    "health:acknowledge:health.events.bulk_lifecycle",
     "health:acknowledge:health.events.create",
     "health:acknowledge:health.events.reopen",
     "health:acknowledge:health.events.resolve",
@@ -63,6 +75,52 @@ test("health routes deny users without required permissions", async () => {
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
   assert.ok(deniedEvents.every((event) => event.actor.id === currentUser.id));
+});
+
+test("health bulk lifecycle updates visible events and audits each event", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:acknowledge", "health:read"]);
+  const healthEventStore = createHealthEventStore("", [
+    event({ id: "health_bulk_open", nodeId: "node_1", status: "open" }),
+    event({ id: "health_bulk_ack", nodeId: "node_1", status: "acknowledged" }),
+  ]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async () => true,
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermission,
+  });
+
+  const response = await requestJson(app, "/api/v1/health-events/bulk-lifecycle", "POST", {
+    action: "resolve",
+    eventIds: ["health_bulk_open", "health_bulk_ack"],
+    note: "incident cleared",
+  });
+  const body = (await response.json()) as { data: HealthEvent[]; meta: { updatedCount: number } };
+  const auditEvents = await auditStore.list({ action: "health.events.resolve.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(body.meta.updatedCount, 2);
+  assert.deepEqual(
+    body.data.map((healthEvent) => healthEvent.status),
+    ["resolved", "resolved"],
+  );
+  assert.deepEqual(
+    body.data.map((healthEvent) => healthEvent.details.resolveNote),
+    ["incident cleared", "incident cleared"],
+  );
+  assert.equal(auditEvents.length, 2);
+  assert.ok(auditEvents.every((auditEvent) => auditEvent.permission === "health:acknowledge"));
+  assert.deepEqual(auditEvents.map((auditEvent) => auditEvent.target.id).sort(), [
+    "health_bulk_ack",
+    "health_bulk_open",
+  ]);
 });
 
 function requestJson(
@@ -102,6 +160,10 @@ function denyMissingPermission(
     return c.json({ error: "Forbidden", permission }, 403);
   };
 }
+
+const allowPermission: RequirePermission = () => async (_c, next) => {
+  await next();
+};
 
 function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
   return async (_c, input) => {
@@ -166,5 +228,21 @@ function user(permissions: Permission[]): CurrentUser {
     provider: "local",
     resourceGrants: [],
     roles: ["viewer"],
+  };
+}
+
+function event(input: Partial<HealthEvent> = {}): HealthEvent {
+  return {
+    acknowledgedAt: null,
+    details: {},
+    id: "health_test",
+    openedAt: "2026-06-20T12:00:00.000Z",
+    resolvedAt: null,
+    severity: "warning",
+    status: "open",
+    suppressedAt: null,
+    suppressedUntil: null,
+    type: "watchdog.node_offline",
+    ...input,
   };
 }

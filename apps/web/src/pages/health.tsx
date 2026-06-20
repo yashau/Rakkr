@@ -19,17 +19,19 @@ import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import {
   emptyHealthPageFilters,
+  healthEventBulkActionTargets,
   healthEventFiltersFromDraft,
   healthEventSummary,
   healthEventTargetLabel,
+  healthLifecycleActions,
   healthPagePermissions,
   readableHealthEventType,
+  type HealthLifecycleAction,
   type HealthPageFilterDraft,
 } from "@/lib/health-page-helpers";
 import {
-  nodeHealthLifecycleActions,
+  defaultNodeHealthSuppressedUntil,
   nodeHealthLifecycleInput,
-  type NodeHealthLifecycleAction,
 } from "@/lib/node-page-helpers";
 
 const statuses: Array<"" | HealthEvent["status"]> = [
@@ -46,6 +48,7 @@ const selectClassName =
 export function HealthPage() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<HealthPageFilterDraft>(emptyHealthPageFilters);
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -80,11 +83,30 @@ export function HealthPage() {
       eventId,
       suppressedUntil,
     }: {
-      action: NodeHealthLifecycleAction;
+      action: HealthLifecycleAction;
       eventId: string;
       suppressedUntil?: string;
     }) => api.updateHealthEventLifecycle(eventId, action, { suppressedUntil }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["node-health-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+    },
+  });
+  const healthBulkLifecycleMutation = useMutation({
+    mutationFn: ({
+      action,
+      eventIds,
+      suppressedUntil,
+    }: {
+      action: HealthLifecycleAction;
+      eventIds: string[];
+      suppressedUntil?: string;
+    }) => api.updateHealthEventsLifecycle({ action, eventIds, suppressedUntil }),
+    onSuccess: () => {
+      setSelectedEventIds([]);
       void queryClient.invalidateQueries({ queryKey: ["health-events"] });
       void queryClient.invalidateQueries({ queryKey: ["node-health-events"] });
       void queryClient.invalidateQueries({ queryKey: ["recordings"] });
@@ -111,6 +133,12 @@ export function HealthPage() {
 
   const events = healthQuery.data?.data ?? [];
   const summary = healthEventSummary(events);
+  const visibleEventIds = events.map((event) => event.id);
+  const selectedVisibleEventIds = selectedEventIds.filter((eventId) =>
+    visibleEventIds.includes(eventId),
+  );
+  const lifecyclePending =
+    healthLifecycleMutation.isPending || healthBulkLifecycleMutation.isPending;
 
   return (
     <div className="grid gap-4">
@@ -215,6 +243,16 @@ export function HealthPage() {
             />
           </Field>
         </div>
+
+        {permissions.canAcknowledgeHealth ? (
+          <BulkHealthActions
+            events={events}
+            onAction={runBulkAction}
+            onToggleAll={(checked) => setSelectedEventIds(checked ? visibleEventIds : [])}
+            pending={lifecyclePending}
+            selectedEventIds={selectedVisibleEventIds}
+          />
+        ) : null}
       </section>
 
       <section className="grid gap-3">
@@ -231,7 +269,9 @@ export function HealthPage() {
             onAction={(action) =>
               healthLifecycleMutation.mutate(nodeHealthLifecycleInput(event.id, action))
             }
+            onSelectionChange={(checked) => toggleSelectedEvent(event.id, checked)}
             pending={healthLifecycleMutation.isPending}
+            selected={selectedVisibleEventIds.includes(event.id)}
           />
         ))}
         {!healthQuery.isPending && events.length === 0 ? (
@@ -248,6 +288,30 @@ export function HealthPage() {
     value: HealthPageFilterDraft[Key],
   ) {
     setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleSelectedEvent(eventId: string, checked: boolean) {
+    setSelectedEventIds((current) => {
+      if (checked) {
+        return current.includes(eventId) ? current : [...current, eventId];
+      }
+
+      return current.filter((candidate) => candidate !== eventId);
+    });
+  }
+
+  function runBulkAction(action: HealthLifecycleAction) {
+    const targets = healthEventBulkActionTargets(events, selectedVisibleEventIds, action);
+
+    if (targets.length === 0) {
+      return;
+    }
+
+    healthBulkLifecycleMutation.mutate({
+      action,
+      eventIds: targets.map((event) => event.id),
+      suppressedUntil: action === "suppress" ? defaultNodeHealthSuppressedUntil() : undefined,
+    });
   }
 }
 
@@ -282,70 +346,142 @@ function SummaryTile({
   );
 }
 
+function BulkHealthActions({
+  events,
+  onAction,
+  onToggleAll,
+  pending,
+  selectedEventIds,
+}: {
+  events: HealthEvent[];
+  onAction: (action: HealthLifecycleAction) => void;
+  onToggleAll: (checked: boolean) => void;
+  pending: boolean;
+  selectedEventIds: string[];
+}) {
+  const allSelected = events.length > 0 && selectedEventIds.length === events.length;
+  const actions: HealthLifecycleAction[] = ["acknowledge", "suppress", "resolve", "reopen"];
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
+      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <input
+          checked={allSelected}
+          className="size-4 rounded border-border"
+          disabled={pending || events.length === 0}
+          onChange={(event) => onToggleAll(event.target.checked)}
+          type="checkbox"
+        />
+        {selectedEventIds.length} selected
+      </label>
+      <div className="flex flex-wrap gap-2">
+        {actions.map((action) => {
+          const targetCount = healthEventBulkActionTargets(events, selectedEventIds, action).length;
+
+          return (
+            <Button
+              disabled={pending || targetCount === 0}
+              key={action}
+              onClick={() => onAction(action)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <HealthActionIcon action={action} />
+              {actionLabel(action)} {targetCount}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function HealthEventRow({
   canManage,
   event,
   lookups,
   onAction,
+  onSelectionChange,
   pending,
+  selected,
 }: {
   canManage: boolean;
   event: HealthEvent;
   lookups: Parameters<typeof healthEventTargetLabel>[1];
-  onAction: (action: NodeHealthLifecycleAction) => void;
+  onAction: (action: HealthLifecycleAction) => void;
+  onSelectionChange: (checked: boolean) => void;
   pending: boolean;
+  selected: boolean;
 }) {
   const target = healthEventTargetLabel(event, lookups);
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge className={severityClass(event.severity)} variant="outline">
-              {event.severity}
-            </Badge>
-            <span className="font-medium">{readableHealthEventType(event.type)}</span>
-            <Badge variant={event.status === "resolved" ? "secondary" : "outline"}>
-              {event.status}
-            </Badge>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span>{formatDateTime(event.openedAt)}</span>
-            {event.acknowledgedAt ? <span>Ack {formatDateTime(event.acknowledgedAt)}</span> : null}
-            {event.suppressedUntil ? (
-              <span>Muted until {formatDateTime(event.suppressedUntil)}</span>
-            ) : null}
-            {event.resolvedAt ? <span>Resolved {formatDateTime(event.resolvedAt)}</span> : null}
-          </div>
-          <div className="mt-2 text-sm wrap-break-word text-muted-foreground">
-            {target || event.id}
-          </div>
-          <div className="mt-2 font-mono text-xs text-muted-foreground">{event.id}</div>
-        </div>
+      <div className="flex gap-3">
         {canManage ? (
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            {nodeHealthLifecycleActions(event.status).map((action) => (
-              <Button
-                disabled={pending}
-                key={action}
-                onClick={() => onAction(action)}
-                size="sm"
-                title={action === "suppress" ? "Suppress this health event for one hour" : action}
-                variant="outline"
-              >
-                <HealthActionIcon action={action} />
-                {actionLabel(action)}
-              </Button>
-            ))}
-          </div>
+          <input
+            checked={selected}
+            className="mt-1 size-4 rounded border-border"
+            disabled={pending}
+            onChange={(input) => onSelectionChange(input.target.checked)}
+            type="checkbox"
+          />
         ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className={severityClass(event.severity)} variant="outline">
+                  {event.severity}
+                </Badge>
+                <span className="font-medium">{readableHealthEventType(event.type)}</span>
+                <Badge variant={event.status === "resolved" ? "secondary" : "outline"}>
+                  {event.status}
+                </Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>{formatDateTime(event.openedAt)}</span>
+                {event.acknowledgedAt ? (
+                  <span>Ack {formatDateTime(event.acknowledgedAt)}</span>
+                ) : null}
+                {event.suppressedUntil ? (
+                  <span>Muted until {formatDateTime(event.suppressedUntil)}</span>
+                ) : null}
+                {event.resolvedAt ? <span>Resolved {formatDateTime(event.resolvedAt)}</span> : null}
+              </div>
+              <div className="mt-2 text-sm wrap-break-word text-muted-foreground">
+                {target || event.id}
+              </div>
+              <div className="mt-2 font-mono text-xs text-muted-foreground">{event.id}</div>
+            </div>
+            {canManage ? (
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                {healthLifecycleActions(event.status).map((action) => (
+                  <Button
+                    disabled={pending}
+                    key={action}
+                    onClick={() => onAction(action)}
+                    size="sm"
+                    title={
+                      action === "suppress" ? "Suppress this health event for one hour" : action
+                    }
+                    variant="outline"
+                  >
+                    <HealthActionIcon action={action} />
+                    {actionLabel(action)}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
     </Card>
   );
 }
 
-function HealthActionIcon({ action }: { action: NodeHealthLifecycleAction }) {
+function HealthActionIcon({ action }: { action: HealthLifecycleAction }) {
   if (action === "reopen") {
     return <RotateCcw className="size-4" />;
   }
@@ -357,7 +493,7 @@ function HealthActionIcon({ action }: { action: NodeHealthLifecycleAction }) {
   return <CheckCircle2 className="size-4" />;
 }
 
-function actionLabel(action: NodeHealthLifecycleAction) {
+function actionLabel(action: HealthLifecycleAction) {
   if (action === "acknowledge") {
     return "Ack";
   }

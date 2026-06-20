@@ -79,6 +79,12 @@ const healthLifecycleSchema = z
     suppressedUntil: optionalIsoDateSchema,
   })
   .strict();
+const healthLifecycleActionSchema = z.enum(["acknowledge", "reopen", "resolve", "suppress"]);
+type HealthLifecycleAction = z.infer<typeof healthLifecycleActionSchema>;
+const healthBulkLifecycleSchema = healthLifecycleSchema.extend({
+  action: healthLifecycleActionSchema,
+  eventIds: z.array(z.string().trim().min(1).max(160)).min(1).max(100),
+});
 
 export function registerHealthRoutes({
   app,
@@ -148,6 +154,89 @@ export function registerHealthRoutes({
   );
 
   app.post(
+    "/api/v1/health-events/bulk-lifecycle",
+    requirePermission("health:acknowledge", "health.events.bulk_lifecycle", () => ({
+      type: "health",
+    })),
+    async (c) => {
+      const body = healthBulkLifecycleSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordHealthFailure(c, "health.events.bulk_lifecycle.failed", "invalid_request");
+        return c.json(
+          { error: "Invalid health bulk lifecycle update", issues: body.error.issues },
+          400,
+        );
+      }
+
+      const eventIds = Array.from(new Set(body.data.eventIds));
+      const events: HealthEvent[] = [];
+
+      for (const eventId of eventIds) {
+        const event = await healthEventStore.find(eventId);
+
+        if (!event) {
+          await recordHealthFailure(
+            c,
+            "health.events.bulk_lifecycle.failed",
+            "health_event_not_found",
+            {
+              id: eventId,
+              type: "health_event",
+            },
+          );
+          return c.json({ error: "Health event not found", eventId }, 404);
+        }
+
+        if (!(await visibleHealthEvent(currentUser(c), event, hasResourceScope))) {
+          await recordHealthFailure(
+            c,
+            "health.events.bulk_lifecycle.failed",
+            "missing_resource_scope",
+            {
+              id: event.id,
+              type: "health_event",
+            },
+          );
+          return c.json({ error: "Forbidden", eventId: event.id }, 403);
+        }
+
+        if (event.status === "resolved" && body.data.action !== "reopen") {
+          await recordHealthFailure(
+            c,
+            "health.events.bulk_lifecycle.failed",
+            "health_event_resolved",
+            {
+              id: event.id,
+              type: "health_event",
+            },
+          );
+          return c.json({ error: "Health event is already resolved", eventId: event.id }, 409);
+        }
+
+        events.push(event);
+      }
+
+      const updatedEvents: HealthEvent[] = [];
+
+      for (const event of events) {
+        const updated = await applyHealthLifecycleUpdate(c, event, body.data.action, body.data);
+
+        if (!updated) {
+          return c.json({ error: "Health event not found", eventId: event.id }, 404);
+        }
+
+        updatedEvents.push(updated);
+      }
+
+      return c.json({
+        data: updatedEvents,
+        meta: { updatedCount: updatedEvents.length },
+      });
+    },
+  );
+
+  app.post(
     "/api/v1/health-events/:eventId/acknowledge",
     requirePermission("health:acknowledge", "health.events.acknowledge", () => ({
       type: "health",
@@ -177,10 +266,7 @@ export function registerHealthRoutes({
     async (c) => updateHealthLifecycle(c, "reopen"),
   );
 
-  async function updateHealthLifecycle(
-    c: Context<AppBindings>,
-    action: "acknowledge" | "reopen" | "resolve" | "suppress",
-  ) {
+  async function updateHealthLifecycle(c: Context<AppBindings>, action: HealthLifecycleAction) {
     const eventId = c.req.param("eventId");
 
     if (!eventId) {
@@ -224,8 +310,7 @@ export function registerHealthRoutes({
       return c.json({ error: "Health event is already resolved" }, 409);
     }
 
-    const update = healthLifecycleUpdate(event, action, currentUser(c).id, body.data);
-    const updated = await healthEventStore.updateLifecycle(event.id, update);
+    const updated = await applyHealthLifecycleUpdate(c, event, action, body.data);
 
     if (!updated) {
       await recordHealthFailure(c, `health.events.${action}.failed`, "health_event_not_found", {
@@ -233,6 +318,26 @@ export function registerHealthRoutes({
         type: "health_event",
       });
       return c.json({ error: "Health event not found" }, 404);
+    }
+
+    return c.json({ data: updated });
+  }
+
+  async function applyHealthLifecycleUpdate(
+    c: Context<AppBindings>,
+    event: HealthEvent,
+    action: HealthLifecycleAction,
+    input: z.infer<typeof healthLifecycleSchema>,
+  ) {
+    const update = healthLifecycleUpdate(event, action, currentUser(c).id, input);
+    const updated = await healthEventStore.updateLifecycle(event.id, update);
+
+    if (!updated) {
+      await recordHealthFailure(c, `health.events.${action}.failed`, "health_event_not_found", {
+        id: event.id,
+        type: "health_event",
+      });
+      return undefined;
     }
 
     await syncRecordingHealth(healthEventStore, recordingStore, updated.recordingId);
@@ -246,7 +351,7 @@ export function registerHealthRoutes({
       target: healthAuditTarget(updated),
     });
 
-    return c.json({ data: updated });
+    return updated;
   }
 
   async function canManageHealthTargets(
@@ -361,7 +466,7 @@ function healthCreateInput(input: z.infer<typeof healthEventCreateSchema>): Heal
 
 function healthLifecycleUpdate(
   event: HealthEvent,
-  action: "acknowledge" | "reopen" | "resolve" | "suppress",
+  action: HealthLifecycleAction,
   actorId: string,
   input: z.infer<typeof healthLifecycleSchema>,
 ): HealthEventLifecycleUpdate {

@@ -274,6 +274,11 @@ export interface HealthEventLifecycleInput {
   suppressedUntil?: string;
 }
 
+export interface HealthEventBulkLifecycleInput extends HealthEventLifecycleInput {
+  action: "acknowledge" | "reopen" | "resolve" | "suppress";
+  eventIds: string[];
+}
+
 export interface UserAccessUpdate {
   groupIds: string[];
   resourceGrants: ResourceGrant[];
@@ -467,6 +472,17 @@ export const api = {
       },
       method: "POST",
     }),
+  updateHealthEventsLifecycle: (input: HealthEventBulkLifecycleInput) =>
+    fetchJson<{ data: HealthEvent[]; meta: { updatedCount: number } }>(
+      "/api/v1/health-events/bulk-lifecycle",
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    ),
   accessUsers: () => fetchJson<{ data: CurrentUser[] }>("/api/v1/auth/users"),
   createLocalUser: (input: LocalUserCreateInput) =>
     fetchJson<{ data: CurrentUser }>("/api/v1/auth/users", {

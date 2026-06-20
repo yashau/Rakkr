@@ -10,6 +10,8 @@ import type {
 
 import type { HealthEventFilters } from "@/lib/api";
 
+export type HealthLifecycleAction = "acknowledge" | "reopen" | "resolve" | "suppress";
+
 export interface HealthPageFilterDraft {
   limit: string;
   nodeId: string;
@@ -66,6 +68,34 @@ export function healthEventSummary(events: HealthEvent[]) {
     suppressed: events.filter((event) => event.status === "suppressed").length,
     total: events.length,
   };
+}
+
+export function healthEventBulkActionTargets(
+  events: HealthEvent[],
+  selectedEventIds: string[],
+  action: HealthLifecycleAction,
+) {
+  const selected = new Set(selectedEventIds);
+
+  return events.filter(
+    (event) => selected.has(event.id) && healthLifecycleActions(event.status).includes(action),
+  );
+}
+
+export function healthLifecycleActions(status: HealthEventStatus): HealthLifecycleAction[] {
+  if (status === "resolved") {
+    return ["reopen"];
+  }
+
+  if (status === "open") {
+    return ["acknowledge", "suppress", "resolve"];
+  }
+
+  if (status === "acknowledged") {
+    return ["suppress", "resolve"];
+  }
+
+  return ["resolve"];
 }
 
 export function healthEventTargetLabel(

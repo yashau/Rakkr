@@ -60,8 +60,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, jobs, lifecycle coverage, schedules, settings, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, schedules, settings, central health workbench, health lifecycle controls, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, jobs, lifecycle coverage, schedules, settings, health bulk lifecycle controls, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, schedules, settings, central health workbench, bulk health lifecycle controls, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, template-driven capture/meter args, ALSA device matching, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
@@ -278,7 +278,7 @@ Current partial implementation:
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
-- Node health summaries, central health workbench, recent events, trends, RBAC-mirrored lifecycle actions, and recording/schedule quality timelines.
+- Node health summaries, central health workbench, recent events, trends, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, clipping, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
@@ -795,6 +795,7 @@ Current implementation baseline:
 195. ✅ Add controller-managed per-node audio command defaults.
 196. ✅ Add node health lifecycle controls.
 197. ✅ Add central health events workbench.
+198. ✅ Add bulk health event lifecycle controls.
 
 ## Open Questions
 
