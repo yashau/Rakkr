@@ -14,11 +14,13 @@ import {
   jobsPagePermissions,
   recordingJobCaptureDetails,
   recordingJobRelationshipLabel,
+  recordingJobStopActionState,
   recordingJobSummary,
 } from "./jobs-page-helpers";
 
 test("jobs page permissions are closed by default", () => {
   assert.deepEqual(jobsPagePermissions(undefined), {
+    canControlJobs: false,
     canReadJobs: false,
     canReadNodes: false,
     canReadRecordings: false,
@@ -27,13 +29,21 @@ test("jobs page permissions are closed by default", () => {
 
 test("jobs page reads require recording read and optional node lookups", () => {
   assert.deepEqual(jobsPagePermissions(user(["recording:read"])), {
+    canControlJobs: false,
     canReadJobs: true,
     canReadNodes: false,
     canReadRecordings: true,
   });
   assert.deepEqual(jobsPagePermissions(user(["node:read", "recording:read"])), {
+    canControlJobs: false,
     canReadJobs: true,
     canReadNodes: true,
+    canReadRecordings: true,
+  });
+  assert.deepEqual(jobsPagePermissions(user(["recording:control", "recording:read"])), {
+    canControlJobs: true,
+    canReadJobs: true,
+    canReadNodes: false,
     canReadRecordings: true,
   });
 });
@@ -136,6 +146,29 @@ test("recording job capture details expose capture output and channel-map contex
       { label: "mapped", value: "1,2" },
     ],
   );
+});
+
+test("recording job stop action state mirrors permission and lifecycle", () => {
+  assert.deepEqual(recordingJobStopActionState(job({ status: "queued" }), false), {
+    canStop: false,
+    title: "Requires recording control permission",
+  });
+  assert.deepEqual(recordingJobStopActionState(job({ status: "queued" }), true), {
+    canStop: true,
+    title: "Request stop",
+  });
+  assert.deepEqual(recordingJobStopActionState(job({ status: "running" }), true), {
+    canStop: true,
+    title: "Request stop",
+  });
+  assert.deepEqual(recordingJobStopActionState(job({ status: "stop_requested" }), true), {
+    canStop: false,
+    title: "Stop already requested",
+  });
+  assert.deepEqual(recordingJobStopActionState(job({ status: "completed" }), true), {
+    canStop: false,
+    title: "Job is terminal",
+  });
 });
 
 function user(permissions: Permission[]): CurrentUser {

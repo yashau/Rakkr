@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RecordingJob } from "@rakkr/shared";
-import { AlertTriangle, CheckCircle2, Clock3, ListChecks, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, ListChecks, RefreshCw, Square } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   jobsPagePermissions,
   recordingJobCaptureDetails,
   recordingJobRelationshipLabel,
+  recordingJobStopActionState,
   recordingJobStatusClass,
   recordingJobSummary,
   type JobsPageFilters,
@@ -34,6 +35,7 @@ const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 export function JobsPage() {
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<JobsPageFilters>(emptyJobsPageFilters);
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -56,6 +58,14 @@ export function JobsPage() {
     enabled: permissions.canReadRecordings,
     queryFn: () => api.recordings({ limit: 500 }),
     queryKey: ["recordings", "jobs-workbench"],
+  });
+  const stopJobMutation = useMutation({
+    mutationFn: api.stopRecording,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+    },
   });
 
   if (currentUserQuery.isPending) {
@@ -155,12 +165,15 @@ export function JobsPage() {
       <section className="grid gap-3">
         {visibleJobs.map((job) => (
           <JobRow
+            canControl={permissions.canControlJobs}
             job={job}
             key={job.id}
             lookups={{
               nodes: nodesQuery.data?.data,
               recordings: recordingsQuery.data?.data,
             }}
+            onStop={(recordingId) => stopJobMutation.mutate(recordingId)}
+            stopPending={stopJobMutation.isPending}
           />
         ))}
         {!jobsQuery.isPending && visibleJobs.length === 0 ? (
@@ -205,13 +218,20 @@ function SummaryTile({
 }
 
 function JobRow({
+  canControl,
   job,
   lookups,
+  onStop,
+  stopPending,
 }: {
+  canControl: boolean;
   job: RecordingJob;
   lookups: Parameters<typeof recordingJobRelationshipLabel>[1];
+  onStop: (recordingId: string) => void;
+  stopPending: boolean;
 }) {
   const details = recordingJobCaptureDetails(job);
+  const stopAction = recordingJobStopActionState(job, canControl);
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
@@ -241,6 +261,18 @@ function JobRow({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2 lg:max-w-xl lg:justify-end">
+          {canControl ? (
+            <Button
+              disabled={!stopAction.canStop || stopPending}
+              onClick={() => onStop(job.recordingId)}
+              title={stopAction.title}
+              type="button"
+              variant="outline"
+            >
+              <Square className="size-4" />
+              Stop
+            </Button>
+          ) : null}
           {job.claimedBy ? (
             <Badge className="max-w-full gap-1 overflow-hidden bg-background" variant="outline">
               <span className="text-muted-foreground">claimed</span>

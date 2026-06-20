@@ -14,9 +14,38 @@ export function jobsPagePermissions(user: CurrentUser | undefined) {
   const permissions = user?.permissions ?? [];
 
   return {
+    canControlJobs: permissions.includes("recording:control"),
     canReadJobs: permissions.includes("recording:read"),
     canReadNodes: permissions.includes("node:read"),
     canReadRecordings: permissions.includes("recording:read"),
+  };
+}
+
+export function recordingJobStopActionState(job: RecordingJob, canControl: boolean) {
+  if (!canControl) {
+    return {
+      canStop: false,
+      title: "Requires recording control permission",
+    };
+  }
+
+  if (stoppableJobStatuses.includes(job.status)) {
+    return {
+      canStop: true,
+      title: "Request stop",
+    };
+  }
+
+  if (job.status === "stop_requested") {
+    return {
+      canStop: false,
+      title: "Stop already requested",
+    };
+  }
+
+  return {
+    canStop: false,
+    title: "Job is terminal",
   };
 }
 
@@ -147,3 +176,4 @@ function recordingJobSearchText(job: RecordingJob) {
 }
 
 const activeJobStatuses: Array<RecordingJob["status"]> = ["queued", "running", "stop_requested"];
+const stoppableJobStatuses: Array<RecordingJob["status"]> = ["queued", "running"];
