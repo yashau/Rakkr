@@ -6,6 +6,8 @@ const sourceFiles = [
   "apps/api/src/watchdog-clipping.ts",
   "apps/api/src/watchdog-runner.ts",
   "apps/api/src/watchdog-signal.ts",
+  "apps/api/src/watchdog-calibration.ts",
+  "apps/api/src/watchdog-calibration-routes.ts",
   "apps/api/src/watchdog-node-liveness.ts",
   "apps/api/src/health-store.ts",
   "apps/api/src/health-routes.ts",
@@ -23,6 +25,7 @@ const sourceFiles = [
   "crates/recorder-agent/src/controller.rs",
   "scripts/agent-fake-controller-smoke.mjs",
   "apps/api/test/watchdog-runner.test.ts",
+  "apps/api/test/watchdog-calibration-routes.test.ts",
   "apps/api/test/health-routes.test.ts",
   "apps/api/test/health-store.test.ts",
   "apps/api/test/metrics.test.ts",
@@ -52,8 +55,9 @@ const baselinePhrases = [
   "event-specific evidence",
   "Prometheus export",
   "synthetic PCM calibration fixtures",
+  "field calibration",
   "hum/static likelihood",
-  "real-room field calibration",
+  "long-duration real-room validation",
   "mise run health:check-watchdog",
 ];
 const sourceSnippets = [
@@ -71,6 +75,9 @@ const sourceSnippets = [
   "health.watchdog.clipping.created",
   "health.watchdog.clipping.repeated",
   "health.watchdog.clipping.resolved",
+  "settings.watchdog_policies.calibrate.succeeded",
+  "calibrateWatchdogPolicy",
+  "insufficient_meter_history",
   "signalBelowThreshold",
   "speechBelowThreshold",
   "channelCorrelationAboveThreshold",
@@ -127,6 +134,8 @@ const testSnippets = [
   "alerts when scheduled audio is loud but not speech-like",
   "creates and resolves scheduled channel correlation alerts from policy",
   "creates and resolves scheduled clipping alerts from policy",
+  "watchdog calibration applies recommended field threshold",
+  "watchdog calibration audits insufficient meter history",
   "repeats unresolved scheduled low-signal alerts after policy interval",
   "resolves scheduled low-signal alerts when signal recovers",
   "creates and resolves stale node heartbeat health events",
@@ -187,7 +196,7 @@ for (const snippet of testSnippets) {
 }
 
 if (/Status:\s*MVP baseline checked/iu.test(baseline)) {
-  errors.push(`${baselineFile} must remain partial until real-room field calibration closes`);
+  errors.push(`${baselineFile} must remain partial until long-duration real-room validation closes`);
 }
 
 if (errors.length > 0) {

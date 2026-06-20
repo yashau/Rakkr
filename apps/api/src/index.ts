@@ -48,6 +48,7 @@ import { registerStatusRoutes } from "./status-routes.js";
 import { apiListenConfig } from "./transport-security.js";
 import { createUploadProviderStore } from "./upload-providers.js";
 import { registerUploadRunnerRoutes } from "./upload-runner-routes.js";
+import { registerWatchdogCalibrationRoutes } from "./watchdog-calibration-routes.js";
 
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
@@ -530,6 +531,14 @@ registerSettingsRoutes({
   requirePermission,
   settingsStore,
   uploadProviderStore,
+});
+registerWatchdogCalibrationRoutes({
+  app,
+  currentAuth,
+  meterFrameStore,
+  recordAuditEvent,
+  requirePermission,
+  settingsStore,
 });
 
 registerRetentionPolicyRoutes({

@@ -586,6 +586,9 @@ function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): Reco
 
 function memoryMeterFrameStore(frames: MeterFrame[]): MeterFrameStore {
   return {
+    async history(nodeId, limit = frames.length) {
+      return frames.filter((frame) => frame.nodeId === nodeId).slice(0, limit);
+    },
     async latest(nodeId) {
       return frames.find((frame) => frame.nodeId === nodeId);
     },

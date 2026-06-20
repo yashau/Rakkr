@@ -9,6 +9,7 @@ import { defaultVoiceRecordingProfile } from "@rakkr/shared";
 import type {
   AuditEvent,
   CurrentUser,
+  MeterFrame,
   Permission,
   RecorderNode,
   RecordingJob,
@@ -759,11 +760,18 @@ function requirePermission(): RequirePermission {
 }
 
 function memoryMeterFrameStore(): MeterFrameStore {
+  const frames: MeterFrame[] = [];
+
   return {
+    async history(nodeId, limit = frames.length) {
+      return frames.filter((frame) => frame.nodeId === nodeId).slice(0, limit);
+    },
     async latest() {
-      return undefined;
+      return frames[0];
     },
     async save(frame) {
+      frames.unshift(frame);
+
       return {
         frame,
         receivedAt: new Date().toISOString(),

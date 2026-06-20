@@ -392,6 +392,9 @@ function memorySettingsStore(profiles: RecordingProfile[]) {
 
 function memoryMeterFrameStore(): MeterFrameStore {
   return {
+    async history() {
+      return [];
+    },
     async latest() {
       return undefined;
     },
