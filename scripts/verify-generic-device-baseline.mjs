@@ -3,6 +3,7 @@ import { access, readFile } from "node:fs/promises";
 const baselineFile = "docs/devices/GENERIC_DEVICE_BASELINE.md";
 const sourceFiles = [
   ".mise.toml",
+  "crates/recorder-agent/src/alsa_device.rs",
   "crates/recorder-agent/src/config.rs",
   "crates/recorder-agent/src/capture.rs",
   "crates/recorder-agent/src/inventory.rs",
@@ -22,6 +23,7 @@ const baselinePhrases = [
   "arecord",
   "/proc/asound/pcm",
   "arecord --dump-hw-params",
+  "hw:Loopback,1,0",
   "sysfs hardware paths",
   "Synthetic meters",
   "fake-controller",
@@ -44,6 +46,8 @@ const sourceSnippets = [
   "parse_alsa_stream_metadata",
   "parse_alsa_hw_params_metadata",
   "dump-hw-params",
+  "maps_named_alsa_capture_device_to_inventory_id",
+  "normalize_alsa_token",
   "parses_serial_from_sysfs_uevent",
   "alsa_meter_frame",
   "synthetic_meter_frame",
