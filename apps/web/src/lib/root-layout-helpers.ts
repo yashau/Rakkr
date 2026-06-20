@@ -8,6 +8,7 @@ export type RootNavItem = {
     | "audit"
     | "dashboard"
     | "health"
+    | "jobs"
     | "nodes"
     | "recordings"
     | "schedules"
@@ -18,6 +19,7 @@ export type RootNavItem = {
     | "/access"
     | "/audit"
     | "/health"
+    | "/jobs"
     | "/nodes"
     | "/recordings"
     | "/schedules"
@@ -33,6 +35,7 @@ export function rootLayoutPermissions(user: CurrentUser | undefined) {
     canReadAudit: permissions.includes("audit:read"),
     canReadDashboard: permissions.includes("node:read"),
     canReadHealth: permissions.includes("health:read"),
+    canReadJobs: permissions.includes("recording:read"),
     canReadNodes: permissions.includes("node:read"),
     canReadRecordings: permissions.includes("recording:read"),
     canReadSchedules: permissions.includes("schedule:read"),
@@ -47,6 +50,7 @@ export function rootLayoutNavItems(permissions: RootLayoutPermissions): RootNavI
     ...(permissions.canReadHealth ? [navItem("health", "Health", "/health")] : []),
     ...(permissions.canReadSchedules ? [navItem("schedules", "Schedules", "/schedules")] : []),
     ...(permissions.canReadRecordings ? [navItem("recordings", "Recordings", "/recordings")] : []),
+    ...(permissions.canReadJobs ? [navItem("jobs", "Jobs", "/jobs")] : []),
     ...(permissions.canReadSettings ? [navItem("settings", "Settings", "/settings")] : []),
     ...(permissions.canReadAudit ? [navItem("audit", "Audit", "/audit")] : []),
     ...(permissions.canManageAccess ? [navItem("access", "Access", "/access")] : []),

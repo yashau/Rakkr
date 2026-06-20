@@ -1,0 +1,149 @@
+import type { CurrentUser, RecorderNode, RecordingJob, RecordingSummary } from "@rakkr/shared";
+
+export interface JobsPageFilters {
+  search: string;
+  status: "" | RecordingJob["status"];
+}
+
+export const emptyJobsPageFilters: JobsPageFilters = {
+  search: "",
+  status: "",
+};
+
+export function jobsPagePermissions(user: CurrentUser | undefined) {
+  const permissions = user?.permissions ?? [];
+
+  return {
+    canReadJobs: permissions.includes("recording:read"),
+    canReadNodes: permissions.includes("node:read"),
+    canReadRecordings: permissions.includes("recording:read"),
+  };
+}
+
+export function recordingJobSummary(jobs: RecordingJob[]) {
+  return {
+    active: jobs.filter((job) => activeJobStatuses.includes(job.status)).length,
+    cancelled: jobs.filter((job) => job.status === "cancelled").length,
+    completed: jobs.filter((job) => job.status === "completed").length,
+    failed: jobs.filter((job) => job.status === "failed").length,
+    queued: jobs.filter((job) => job.status === "queued").length,
+    running: jobs.filter((job) => job.status === "running").length,
+    stopRequested: jobs.filter((job) => job.status === "stop_requested").length,
+    total: jobs.length,
+  };
+}
+
+export function filterRecordingJobs(jobs: RecordingJob[], filters: JobsPageFilters) {
+  const search = filters.search.trim().toLowerCase();
+
+  return jobs.filter((job) => {
+    if (filters.status && job.status !== filters.status) {
+      return false;
+    }
+
+    if (!search) {
+      return true;
+    }
+
+    return recordingJobSearchText(job).includes(search);
+  });
+}
+
+export function recordingJobRelationshipLabel(
+  job: RecordingJob,
+  lookups: {
+    nodes?: RecorderNode[];
+    recordings?: RecordingSummary[];
+  },
+) {
+  const node = lookups.nodes?.find((candidate) => candidate.id === job.nodeId);
+  const recording = lookups.recordings?.find((candidate) => candidate.id === job.recordingId);
+
+  return [
+    node ? `Node ${node.alias}` : job.nodeId,
+    recording ? `Recording ${recording.name}` : job.recordingId,
+  ].join(" / ");
+}
+
+export function recordingJobCaptureDetails(job: RecordingJob) {
+  const details = [
+    { label: "device", value: job.command.captureDevice },
+    { label: "format", value: job.command.captureFormat },
+    { label: "rate", value: `${job.command.captureSampleRate} Hz` },
+    { label: "channels", value: String(job.command.captureChannels) },
+    { label: "duration", value: `${job.command.durationSeconds}s` },
+    { label: "output", value: outputProfileLabel(job) },
+  ];
+
+  if (job.command.captureInterfaceId) {
+    details.push({ label: "interface", value: job.command.captureInterfaceId });
+  }
+
+  if (job.command.channelMap) {
+    const includedChannels = job.command.channelMap.entries
+      .filter((entry) => entry.included)
+      .map((entry) => entry.sourceChannelIndex)
+      .sort((left, right) => left - right);
+
+    details.push({ label: "map", value: job.command.channelMap.templateName });
+    details.push({ label: "mode", value: job.command.channelMap.channelMode });
+    details.push({
+      label: "mapped",
+      value:
+        includedChannels.length > 0
+          ? includedChannels.join(",")
+          : `${job.command.channelMap.sourceChannels}`,
+    });
+  }
+
+  return details;
+}
+
+export function recordingJobStatusClass(status: RecordingJob["status"]) {
+  if (status === "running") {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  if (status === "completed") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "failed" || status === "cancelled") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+
+  if (status === "stop_requested") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function outputProfileLabel(job: RecordingJob) {
+  const codec = job.command.outputCodec ?? "wav";
+  const bitrate = job.command.outputBitrateKbps ? ` ${job.command.outputBitrateKbps}kbps` : "";
+  const vbr = job.command.outputVbr ? " VBR" : "";
+
+  return `${codec}${bitrate}${vbr}`;
+}
+
+function recordingJobSearchText(job: RecordingJob) {
+  return [
+    job.claimedBy,
+    job.command.captureDevice,
+    job.command.captureFormat,
+    job.command.captureInterfaceId,
+    job.command.channelMap?.templateName,
+    job.command.outputFileName,
+    job.failureReason,
+    job.id,
+    job.nodeId,
+    job.recordingId,
+    job.status,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+const activeJobStatuses: Array<RecordingJob["status"]> = ["queued", "running", "stop_requested"];
