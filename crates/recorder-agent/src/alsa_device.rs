@@ -1,7 +1,7 @@
 use crate::inventory::NodeInventory;
 
 pub fn capture_device_interface_id(value: &str, inventory: &NodeInventory) -> Option<String> {
-    let after_prefix = value.strip_prefix("hw:")?;
+    let after_prefix = alsa_device_suffix(value)?;
     let mut parts = after_prefix.split(',');
     let card = parts.next()?;
     let device = parts.next()?.parse::<u16>().ok()?;
@@ -30,11 +30,17 @@ pub fn capture_device_interface_id(value: &str, inventory: &NodeInventory) -> Op
 }
 
 fn alsa_system_ref_device(value: &str) -> Option<u16> {
-    let after_prefix = value.strip_prefix("hw:")?;
+    let after_prefix = alsa_device_suffix(value)?;
     let mut parts = after_prefix.split(',');
     let _card = parts.next()?;
 
     parts.next()?.parse::<u16>().ok()
+}
+
+fn alsa_device_suffix(value: &str) -> Option<&str> {
+    value
+        .strip_prefix("hw:")
+        .or_else(|| value.strip_prefix("plughw:"))
 }
 
 fn normalize_alsa_token(value: &str) -> String {
@@ -61,6 +67,16 @@ mod tests {
     }
 
     #[test]
+    fn maps_numeric_plughw_capture_device_to_inventory_id() {
+        let inventory = inventory_with_interfaces(Vec::new());
+
+        assert_eq!(
+            capture_device_interface_id("plughw:3,0", &inventory).as_deref(),
+            Some("alsa_hw_3_0")
+        );
+    }
+
+    #[test]
     fn maps_named_alsa_capture_device_to_inventory_id() {
         let inventory = inventory_with_interfaces(vec![AudioInterfaceInventory {
             alias: "Loopback PCM".to_string(),
@@ -78,6 +94,27 @@ mod tests {
         assert_eq!(
             capture_device_interface_id("hw:Loopback,1,0", &inventory).as_deref(),
             Some("alsa_hw_2_1")
+        );
+    }
+
+    #[test]
+    fn maps_named_plughw_capture_device_to_inventory_id() {
+        let inventory = inventory_with_interfaces(vec![AudioInterfaceInventory {
+            alias: "USB Audio".to_string(),
+            backend: "alsa".to_string(),
+            channel_count: 8,
+            channels: Vec::new(),
+            hardware_path: None,
+            id: "alsa_hw_4_0".to_string(),
+            sample_rates: vec![48_000],
+            serial_number: None,
+            system_name: "Scarlett 18i20 USB Audio".to_string(),
+            system_ref: Some("hw:4,0".to_string()),
+        }]);
+
+        assert_eq!(
+            capture_device_interface_id("plughw:Scarlett,0", &inventory).as_deref(),
+            Some("alsa_hw_4_0")
         );
     }
 
