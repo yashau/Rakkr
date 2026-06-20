@@ -15,8 +15,7 @@ Status: MVP baseline checked.
 - Upload runner processes due queue items on interval or run-now and writes system audit events.
 - Controller cache deletion happens only after confirmed non-stub upload and matching policy.
 - Settings and runner UI mirror `settings:*` and `recording:*` RBAC decisions.
-- Provider config persistence is Postgres-backed with JSON fallback.
-- Policy and queue stores remain JSON-backed MVP operational stores; Postgres-backed stores remain a hardening item.
+- Provider, policy, and queue persistence is Postgres-backed with JSON fallback.
 
 ## Checked By
 

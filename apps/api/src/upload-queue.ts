@@ -2,6 +2,14 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
+  and,
+  createDatabase,
+  eq,
+  lte,
+  or,
+  uploadQueueItems as uploadQueueItemsTable,
+} from "@rakkr/db";
+import {
   uploadProviderSchema,
   uploadQueueItemSchema,
   type RecordingSummary,
@@ -9,6 +17,8 @@ import {
   type UploadQueueItem,
 } from "@rakkr/shared";
 import { recordingFileName } from "./recording-cache.js";
+
+type UploadQueueItemRow = typeof uploadQueueItemsTable.$inferSelect;
 
 interface EnqueueUploadInput {
   maxAttempts?: number;
@@ -24,7 +34,17 @@ const queuePath = path.resolve(
 const activeStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying", "failed"]);
 const dueStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying"]);
 
-class UploadQueueStore {
+interface UploadQueueStore {
+  due(now?: Date): Promise<UploadQueueItem[]>;
+  enqueue(recording: RecordingSummary, input?: EnqueueUploadInput): Promise<UploadQueueItem>;
+  fail(itemId: string, reason: string): Promise<UploadQueueItem | undefined>;
+  list(): Promise<UploadQueueItem[]>;
+  retry(itemId: string): Promise<UploadQueueItem | undefined>;
+  start(itemId: string): Promise<UploadQueueItem | undefined>;
+  succeed(itemId: string): Promise<UploadQueueItem | undefined>;
+}
+
+class JsonUploadQueueStore implements UploadQueueStore {
   private readonly items: UploadQueueItem[] = loadQueueItems();
 
   async enqueue(recording: RecordingSummary, input: EnqueueUploadInput = {}) {
@@ -175,7 +195,283 @@ class UploadQueueStore {
   }
 }
 
-const uploadQueueStore = new UploadQueueStore();
+class PostgresUploadQueueStore implements UploadQueueStore {
+  private dbAvailable = true;
+  private readonly db;
+
+  constructor(private readonly fallback: UploadQueueStore) {
+    this.db = createDatabase(process.env.DATABASE_URL!);
+  }
+
+  async enqueue(recording: RecordingSummary, input: EnqueueUploadInput = {}) {
+    if (!this.dbAvailable) {
+      return this.fallback.enqueue(recording, input);
+    }
+
+    try {
+      const provider = input.provider ?? "stub";
+      const existingRows = await this.db
+        .select()
+        .from(uploadQueueItemsTable)
+        .where(
+          and(
+            eq(uploadQueueItemsTable.recordingId, recording.id),
+            eq(uploadQueueItemsTable.provider, provider),
+          ),
+        );
+      const existing = existingRows
+        .map(queueItemFromRow)
+        .find((item) => activeStatuses.has(item.status));
+
+      if (existing) {
+        return existing;
+      }
+
+      const now = new Date().toISOString();
+      const item = uploadQueueItemSchema.parse({
+        attemptCount: 0,
+        cachePath: recording.cachePath,
+        checksum: recording.checksum,
+        createdAt: now,
+        fileName: recordingFileName(recording),
+        id: `upload_${randomUUID()}`,
+        lastError: input.reason ?? "provider_not_configured",
+        maxAttempts: input.maxAttempts ?? Number(process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS ?? 5),
+        nextAttemptAt: now,
+        provider,
+        recordingId: recording.id,
+        status: "queued",
+        target: input.target,
+        updatedAt: now,
+        uploadPolicyId: input.policyId,
+      });
+
+      await this.writeItem(item);
+
+      return item;
+    } catch (error) {
+      await this.failover("upload queue enqueue unavailable; using JSON store", error);
+      return this.fallback.enqueue(recording, input);
+    }
+  }
+
+  async list() {
+    if (!this.dbAvailable) {
+      return this.fallback.list();
+    }
+
+    try {
+      const rows = await this.db.select().from(uploadQueueItemsTable);
+
+      return rows
+        .map(queueItemFromRow)
+        .sort((left, right) => left.nextAttemptAt.localeCompare(right.nextAttemptAt));
+    } catch (error) {
+      await this.failover("upload queue query unavailable; using JSON store", error);
+      return this.fallback.list();
+    }
+  }
+
+  async due(now = new Date()) {
+    if (!this.dbAvailable) {
+      return this.fallback.due(now);
+    }
+
+    try {
+      const rows = await this.db
+        .select()
+        .from(uploadQueueItemsTable)
+        .where(
+          and(
+            or(
+              eq(uploadQueueItemsTable.status, "queued"),
+              eq(uploadQueueItemsTable.status, "retrying"),
+            ),
+            lte(uploadQueueItemsTable.nextAttemptAt, now),
+          ),
+        );
+
+      return rows
+        .map(queueItemFromRow)
+        .filter((item) => dueStatuses.has(item.status))
+        .sort((left, right) => left.nextAttemptAt.localeCompare(right.nextAttemptAt));
+    } catch (error) {
+      await this.failover("upload queue due query unavailable; using JSON store", error);
+      return this.fallback.due(now);
+    }
+  }
+
+  async start(itemId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.start(itemId);
+    }
+
+    try {
+      const item = await this.findItem(itemId);
+
+      if (!item || !dueStatuses.has(item.status)) {
+        return undefined;
+      }
+
+      const now = new Date().toISOString();
+      const updated = uploadQueueItemSchema.parse({
+        ...item,
+        attemptCount: item.attemptCount + 1,
+        lastError: undefined,
+        nextAttemptAt: now,
+        status: "retrying",
+        updatedAt: now,
+      });
+
+      await this.writeItem(updated);
+
+      return updated;
+    } catch (error) {
+      await this.failover("upload queue start unavailable; using JSON store", error);
+      return this.fallback.start(itemId);
+    }
+  }
+
+  async succeed(itemId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.succeed(itemId);
+    }
+
+    try {
+      const item = await this.findItem(itemId);
+
+      if (!item) {
+        return undefined;
+      }
+
+      const now = new Date().toISOString();
+      const updated = uploadQueueItemSchema.parse({
+        ...item,
+        lastError: undefined,
+        nextAttemptAt: now,
+        status: "succeeded",
+        updatedAt: now,
+      });
+
+      await this.writeItem(updated);
+
+      return updated;
+    } catch (error) {
+      await this.failover("upload queue success unavailable; using JSON store", error);
+      return this.fallback.succeed(itemId);
+    }
+  }
+
+  async fail(itemId: string, reason: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.fail(itemId, reason);
+    }
+
+    try {
+      const item = await this.findItem(itemId);
+
+      if (!item) {
+        return undefined;
+      }
+
+      const now = new Date().toISOString();
+      const failed = item.attemptCount >= item.maxAttempts;
+      const updated = uploadQueueItemSchema.parse({
+        ...item,
+        lastError: reason,
+        nextAttemptAt: failed ? now : retryAt(item.attemptCount),
+        status: failed ? "failed" : "retrying",
+        updatedAt: now,
+      });
+
+      await this.writeItem(updated);
+
+      return updated;
+    } catch (error) {
+      await this.failover("upload queue failure unavailable; using JSON store", error);
+      return this.fallback.fail(itemId, reason);
+    }
+  }
+
+  async retry(itemId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.retry(itemId);
+    }
+
+    try {
+      const item = await this.findItem(itemId);
+
+      if (!item) {
+        return undefined;
+      }
+
+      const nextAttempt = item.attemptCount + 1;
+      const now = new Date().toISOString();
+      const updated = uploadQueueItemSchema.parse({
+        ...item,
+        attemptCount: nextAttempt,
+        lastError: "provider_not_configured",
+        nextAttemptAt: retryAt(nextAttempt),
+        status: nextAttempt >= item.maxAttempts ? "failed" : "retrying",
+        updatedAt: now,
+      });
+
+      await this.writeItem(updated);
+
+      return updated;
+    } catch (error) {
+      await this.failover("upload queue retry unavailable; using JSON store", error);
+      return this.fallback.retry(itemId);
+    }
+  }
+
+  private async findItem(itemId: string) {
+    const [row] = await this.db
+      .select()
+      .from(uploadQueueItemsTable)
+      .where(eq(uploadQueueItemsTable.id, itemId))
+      .limit(1);
+
+    return row ? queueItemFromRow(row) : undefined;
+  }
+
+  private async writeItem(item: UploadQueueItem) {
+    await this.db
+      .insert(uploadQueueItemsTable)
+      .values(queueItemToRow(item))
+      .onConflictDoUpdate({
+        set: {
+          attemptCount: item.attemptCount,
+          cachePath: item.cachePath ?? null,
+          checksum: item.checksum ?? null,
+          fileName: item.fileName,
+          lastError: item.lastError ?? null,
+          maxAttempts: item.maxAttempts,
+          nextAttemptAt: new Date(item.nextAttemptAt),
+          provider: item.provider,
+          recordingId: item.recordingId,
+          status: item.status,
+          target: item.target ?? null,
+          updatedAt: new Date(item.updatedAt),
+          uploadPolicyId: item.uploadPolicyId ?? null,
+        },
+        target: uploadQueueItemsTable.id,
+      });
+  }
+
+  private async failover(message: string, error: unknown) {
+    this.dbAvailable = false;
+    console.warn(message, error);
+  }
+}
+
+function createUploadQueueStore() {
+  const fallback = new JsonUploadQueueStore();
+
+  return process.env.DATABASE_URL ? new PostgresUploadQueueStore(fallback) : fallback;
+}
+
+const uploadQueueStore = createUploadQueueStore();
 
 export function enqueueRecordingUpload(recording: RecordingSummary, input?: EnqueueUploadInput) {
   return uploadQueueStore.enqueue(recording, input);
@@ -233,4 +529,44 @@ function isQueueStore(value: unknown): value is { items: unknown[] } {
 
 export function uploadProviderFromValue(value: unknown) {
   return uploadProviderSchema.catch("stub").parse(value);
+}
+
+function queueItemFromRow(row: UploadQueueItemRow): UploadQueueItem {
+  return uploadQueueItemSchema.parse({
+    attemptCount: row.attemptCount,
+    cachePath: row.cachePath ?? undefined,
+    checksum: row.checksum ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    fileName: row.fileName,
+    id: row.id,
+    lastError: row.lastError ?? undefined,
+    maxAttempts: row.maxAttempts,
+    nextAttemptAt: row.nextAttemptAt.toISOString(),
+    provider: row.provider,
+    recordingId: row.recordingId,
+    status: row.status,
+    target: row.target ?? undefined,
+    updatedAt: row.updatedAt.toISOString(),
+    uploadPolicyId: row.uploadPolicyId ?? undefined,
+  });
+}
+
+function queueItemToRow(item: UploadQueueItem) {
+  return {
+    attemptCount: item.attemptCount,
+    cachePath: item.cachePath ?? null,
+    checksum: item.checksum ?? null,
+    createdAt: new Date(item.createdAt),
+    fileName: item.fileName ?? path.basename(item.cachePath ?? `${item.recordingId}.mp3`),
+    id: item.id,
+    lastError: item.lastError ?? null,
+    maxAttempts: item.maxAttempts,
+    nextAttemptAt: new Date(item.nextAttemptAt),
+    provider: item.provider,
+    recordingId: item.recordingId,
+    status: item.status,
+    target: item.target ?? null,
+    updatedAt: new Date(item.updatedAt),
+    uploadPolicyId: item.uploadPolicyId ?? null,
+  };
 }

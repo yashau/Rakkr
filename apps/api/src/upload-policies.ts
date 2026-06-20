@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createDatabase, eq, uploadPolicies as uploadPoliciesTable } from "@rakkr/db";
 import {
   defaultStubUploadPolicy,
   uploadPolicyInputSchema,
@@ -12,11 +13,20 @@ import {
   type UploadPolicyUpdate,
 } from "@rakkr/shared";
 
+type UploadPolicyRow = typeof uploadPoliciesTable.$inferSelect;
+
 const policyStorePath = path.resolve(
   process.env.RAKKR_UPLOAD_POLICY_STORE_PATH ?? "data/upload-policies.json",
 );
 
-class UploadPolicyStore {
+interface UploadPolicyStore {
+  create(input: UploadPolicyInput): Promise<UploadPolicy>;
+  find(policyId: string | undefined): Promise<UploadPolicy | undefined>;
+  list(): Promise<UploadPolicy[]>;
+  update(policyId: string, input: UploadPolicyUpdate): Promise<UploadPolicy | undefined>;
+}
+
+class JsonUploadPolicyStore implements UploadPolicyStore {
   private readonly policies = loadUploadPolicies();
 
   async list() {
@@ -81,7 +91,149 @@ class UploadPolicyStore {
   }
 }
 
-const uploadPolicyStore = new UploadPolicyStore();
+class PostgresUploadPolicyStore implements UploadPolicyStore {
+  private dbAvailable = true;
+  private readonly db;
+
+  constructor(private readonly fallback: UploadPolicyStore) {
+    this.db = createDatabase(process.env.DATABASE_URL!);
+  }
+
+  async list() {
+    if (!this.dbAvailable) {
+      return this.fallback.list();
+    }
+
+    try {
+      const rows = await this.db.select().from(uploadPoliciesTable);
+      const byId = new Map<string, UploadPolicy>([
+        [defaultStubUploadPolicy.id, defaultStubUploadPolicy],
+      ]);
+
+      for (const row of rows) {
+        byId.set(row.id, policyFromRow(row));
+      }
+
+      return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
+    } catch (error) {
+      await this.failover("upload policy query unavailable; using JSON store", error);
+      return this.fallback.list();
+    }
+  }
+
+  async find(policyId: string | undefined) {
+    if (!policyId) {
+      return undefined;
+    }
+
+    if (!this.dbAvailable) {
+      return this.fallback.find(policyId);
+    }
+
+    try {
+      return await this.findExisting(policyId);
+    } catch (error) {
+      await this.failover("upload policy lookup unavailable; using JSON store", error);
+      return this.fallback.find(policyId);
+    }
+  }
+
+  async create(input: UploadPolicyInput) {
+    if (!this.dbAvailable) {
+      return this.fallback.create(input);
+    }
+
+    try {
+      const parsed = uploadPolicyInputSchema.parse(input);
+      const policy = uploadPolicySchema.parse({
+        ...parsed,
+        id: parsed.id ?? `upload_policy_${randomUUID()}`,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await this.writePolicy(policy);
+
+      return policy;
+    } catch (error) {
+      await this.failover("upload policy create unavailable; using JSON store", error);
+      return this.fallback.create(input);
+    }
+  }
+
+  async update(policyId: string, input: UploadPolicyUpdate) {
+    if (!this.dbAvailable) {
+      return this.fallback.update(policyId, input);
+    }
+
+    try {
+      const existing = await this.findExisting(policyId);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      const updated = uploadPolicySchema.parse({
+        ...existing,
+        ...uploadPolicyUpdateSchema.parse(input),
+        id: policyId,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await this.writePolicy(updated);
+
+      return updated;
+    } catch (error) {
+      await this.failover("upload policy update unavailable; using JSON store", error);
+      return this.fallback.update(policyId, input);
+    }
+  }
+
+  private async findExisting(policyId: string) {
+    const [row] = await this.db
+      .select()
+      .from(uploadPoliciesTable)
+      .where(eq(uploadPoliciesTable.id, policyId))
+      .limit(1);
+
+    if (row) {
+      return policyFromRow(row);
+    }
+
+    return policyId === defaultStubUploadPolicy.id ? defaultStubUploadPolicy : undefined;
+  }
+
+  private async writePolicy(policy: UploadPolicy) {
+    await this.db
+      .insert(uploadPoliciesTable)
+      .values(policyToRow(policy))
+      .onConflictDoUpdate({
+        set: {
+          deleteCacheAfterUpload: policy.deleteCacheAfterUpload,
+          enabled: policy.enabled,
+          maxAttempts: policy.maxAttempts,
+          name: policy.name,
+          provider: policy.provider,
+          target: policy.target ?? null,
+          trigger: policy.trigger,
+          updatedAt: new Date(policy.updatedAt),
+        },
+        target: uploadPoliciesTable.id,
+      });
+  }
+
+  private async failover(message: string, error: unknown) {
+    this.dbAvailable = false;
+    console.warn(message, error);
+  }
+}
+
+function createUploadPolicyStore() {
+  const fallback = new JsonUploadPolicyStore();
+
+  return process.env.DATABASE_URL ? new PostgresUploadPolicyStore(fallback) : fallback;
+}
+
+const uploadPolicyStore = createUploadPolicyStore();
 
 export function listUploadPolicies() {
   return uploadPolicyStore.list();
@@ -150,4 +302,32 @@ function readUploadPolicies() {
 
 function isPolicyStore(value: unknown): value is { policies: unknown[] } {
   return typeof value === "object" && value !== null && "policies" in value;
+}
+
+function policyFromRow(row: UploadPolicyRow): UploadPolicy {
+  return uploadPolicySchema.parse({
+    deleteCacheAfterUpload: row.deleteCacheAfterUpload,
+    enabled: row.enabled,
+    id: row.id,
+    maxAttempts: row.maxAttempts,
+    name: row.name,
+    provider: row.provider,
+    target: row.target ?? undefined,
+    trigger: row.trigger,
+    updatedAt: row.updatedAt.toISOString(),
+  });
+}
+
+function policyToRow(policy: UploadPolicy) {
+  return {
+    deleteCacheAfterUpload: policy.deleteCacheAfterUpload,
+    enabled: policy.enabled,
+    id: policy.id,
+    maxAttempts: policy.maxAttempts,
+    name: policy.name,
+    provider: policy.provider,
+    target: policy.target ?? null,
+    trigger: policy.trigger,
+    updatedAt: new Date(policy.updatedAt),
+  };
 }

@@ -504,8 +504,7 @@ Current implementation baseline:
 - Upload provider and upload policy Settings UI reads/actions mirror `settings:read` and `settings:manage`.
 - Upload policies can delete controller cache after confirmed non-stub upload.
 - Upload queue reads can filter visible items by status, provider, and recording.
-- Upload provider config persistence is Postgres-backed with JSON fallback.
-- Upload policy and queue stores remain JSON-backed MVP operational stores; Postgres-backed stores remain a future hardening item.
+- Upload provider, policy, and queue persistence is Postgres-backed with JSON fallback.
 
 ## Observability
 
@@ -764,6 +763,7 @@ Current implementation baseline:
 173. ✅ Add RBAC/audited watchdog field calibration from meter history.
 174. ✅ Add Settings UI watchdog calibration controls.
 175. ✅ Add Postgres-backed upload provider config store.
+176. ✅ Add Postgres-backed upload policy and queue stores.
 
 ## Open Questions
 

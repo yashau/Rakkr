@@ -397,6 +397,47 @@ export const uploadProviders = pgTable("upload_providers", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const uploadPolicies = pgTable("upload_policies", {
+  deleteCacheAfterUpload: boolean("delete_cache_after_upload").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(false),
+  id: varchar("id", { length: 160 }).primaryKey(),
+  maxAttempts: integer("max_attempts").notNull().default(5),
+  name: varchar("name", { length: 160 }).notNull(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  target: text("target"),
+  trigger: varchar("trigger", { length: 40 }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const uploadQueueItems = pgTable(
+  "upload_queue_items",
+  {
+    attemptCount: integer("attempt_count").notNull().default(0),
+    cachePath: text("cache_path"),
+    checksum: varchar("checksum", { length: 160 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    fileName: text("file_name").notNull(),
+    id: varchar("id", { length: 160 }).primaryKey(),
+    lastError: text("last_error"),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull(),
+    provider: varchar("provider", { length: 32 }).notNull(),
+    recordingId: varchar("recording_id", { length: 160 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    target: text("target"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    uploadPolicyId: varchar("upload_policy_id", { length: 160 }),
+  },
+  (table) => ({
+    dueIdx: index("upload_queue_items_due_idx").on(table.status, table.nextAttemptAt),
+    providerStatusIdx: index("upload_queue_items_provider_status_idx").on(
+      table.provider,
+      table.status,
+    ),
+    recordingIdx: index("upload_queue_items_recording_idx").on(table.recordingId),
+  }),
+);
+
 export const schedules = pgTable(
   "schedules",
   {
