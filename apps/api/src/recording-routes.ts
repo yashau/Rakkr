@@ -6,12 +6,18 @@ import {
   defaultVoiceRecordingProfile,
   type Permission,
   type RecorderNode,
+  recordingJobStatusSchema,
   type RecordingSummary,
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
+import {
+  filterRecordingJobsForExport,
+  recordingJobsCsv,
+  recordingJobsExportFileName,
+} from "./recording-job-export.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
 import {
@@ -69,6 +75,16 @@ const recordingSelectedExportSchema = z
     recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
   })
   .strict();
+const recordingJobsQuerySchema = z.object({
+  search: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().trim().max(160).optional(),
+  ),
+  status: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    recordingJobStatusSchema.optional(),
+  ),
+});
 
 export function registerRecordingRoutes({
   app,
@@ -291,13 +307,48 @@ export function registerRecordingRoutes({
     "/api/v1/recording-jobs",
     requirePermission("recording:read", "recording_jobs.read"),
     async (c) => {
-      const visibleRecordingIds = new Set(
-        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
-      );
-      const jobs = await listRecordingJobs();
-
       return c.json({
-        data: jobs.filter((job) => visibleRecordingIds.has(job.recordingId)),
+        data: await scopedRecordingJobs(currentUser(c)),
+      });
+    },
+  );
+
+  app.get(
+    "/api/v1/recording-jobs/export",
+    requirePermission("recording:read", "recording_jobs.export", () => ({
+      id: "recording_job_collection",
+      type: "recording_collection",
+    })),
+    async (c) => {
+      const query = recordingJobsQuerySchema.safeParse(c.req.query());
+
+      if (!query.success) {
+        return c.json({ error: "Invalid recording job filters", issues: query.error.issues }, 400);
+      }
+
+      const jobs = filterRecordingJobsForExport(
+        await scopedRecordingJobs(currentUser(c)),
+        query.data,
+      );
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.export.succeeded",
+        auth: currentAuth(c),
+        details: {
+          exportedCount: jobs.length,
+          filters: query.data,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: {
+          id: "recording_job_collection",
+          type: "recording_collection",
+        },
+      });
+
+      return c.body(recordingJobsCsv(jobs), 200, {
+        "Content-Disposition": `attachment; filename="${recordingJobsExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
       });
     },
   );
@@ -311,6 +362,15 @@ export function registerRecordingRoutes({
     requirePermission,
     scopedRecordings,
   });
+
+  async function scopedRecordingJobs(user: NonNullable<AuthResult["user"]>) {
+    const visibleRecordingIds = new Set(
+      (await scopedRecordings(user)).map((recording) => recording.id),
+    );
+    const jobs = await listRecordingJobs();
+
+    return jobs.filter((job) => visibleRecordingIds.has(job.recordingId));
+  }
 
   app.post(
     "/api/v1/recordings/:recordingId/playback",

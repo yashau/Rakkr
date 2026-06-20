@@ -1,7 +1,15 @@
 import { type ReactNode, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RecordingJob } from "@rakkr/shared";
-import { AlertTriangle, CheckCircle2, Clock3, ListChecks, RefreshCw, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Download,
+  ListChecks,
+  RefreshCw,
+  Square,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +29,7 @@ import {
   recordingJobSummary,
   type JobsPageFilters,
 } from "@/lib/jobs-page-helpers";
+import { downloadBlob } from "@/lib/recording-page-helpers";
 
 const statuses: Array<"" | RecordingJob["status"]> = [
   "",
@@ -67,6 +76,14 @@ export function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
   });
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      api.recordingJobsExport({
+        search: filters.search.trim() || undefined,
+        status: filters.status || undefined,
+      }),
+    onSuccess: downloadBlob,
+  });
 
   if (currentUserQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading recording jobs.</p>;
@@ -100,6 +117,15 @@ export function JobsPage() {
             <p className="mt-1 text-sm text-muted-foreground">{visibleJobs.length} visible jobs</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={exportMutation.isPending}
+              onClick={() => exportMutation.mutate()}
+              type="button"
+              variant="outline"
+            >
+              <Download className="size-4" />
+              Export CSV
+            </Button>
             <Button
               disabled={jobsQuery.isFetching}
               onClick={() => void jobsQuery.refetch()}

@@ -221,6 +221,11 @@ export type RecordingSortBy =
 export type RecordingSortOrder = "asc" | "desc";
 export type RecordingCacheState = "cached" | "missing";
 
+export interface RecordingJobFilters {
+  search?: string;
+  status?: RecordingJob["status"];
+}
+
 export interface RecordingListMeta {
   hasNextPage: boolean;
   hasPreviousPage: boolean;
@@ -538,6 +543,8 @@ export const api = {
       method: "POST",
     }),
   recordingJobs: () => fetchJson<{ data: RecordingJob[] }>("/api/v1/recording-jobs"),
+  recordingJobsExport: (filters: RecordingJobFilters = {}) =>
+    fetchBlob(withQuery("/api/v1/recording-jobs/export", filters)),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
   uploadProviders: () =>

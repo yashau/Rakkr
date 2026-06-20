@@ -30,7 +30,7 @@ Status: MVP baseline checked.
 | `recording:download` | Recording download prepare and file routes | `apps/api/src/recording-routes.ts`, `apps/web/src/lib/recording-page-helpers.ts` |
 | `recording:edit` | Recording metadata and bulk organization | `apps/api/src/recording-routes.ts`, `apps/web/src/lib/recording-page-helpers.ts` |
 | `recording:playback` | Playback sessions and cached media streams | `apps/api/src/recording-routes.ts`, `apps/web/src/lib/recording-page-helpers.ts` |
-| `recording:read` | Library, facets, manifests, jobs, upload queue reads | `apps/api/src/recording-routes.ts`, `apps/api/src/recording-upload-queue-routes.ts` |
+| `recording:read` | Library, facets, manifests, jobs, job export, upload queue reads | `apps/api/src/recording-routes.ts`, `apps/api/src/recording-upload-queue-routes.ts` |
 | `schedule:manage` | Schedule create, update, run-now, skip-next, delete, due-run service audit | `apps/api/src/schedule-routes.ts`, `apps/api/src/schedule-runner.ts` |
 | `schedule:read` | Schedule list, occurrences, detail context | `apps/api/src/schedule-routes.ts`, `apps/web/src/lib/schedule-page-helpers.ts` |
 | `settings:manage` | Recording profiles, watchdog policies, channel maps, upload settings writes | `apps/api/src/settings-routes.ts`, `apps/web/src/lib/settings-page-helpers.ts` |

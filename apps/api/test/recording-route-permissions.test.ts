@@ -67,6 +67,7 @@ test("recording routes deny users without required permissions", async () => {
     }),
     app.request("/api/v1/recordings/facets"),
     app.request("/api/v1/recording-jobs"),
+    app.request("/api/v1/recording-jobs/export"),
     app.request("/api/v1/upload-queue"),
     app.request(`/api/v1/recordings/${recording().id}/playback`, { method: "POST" }),
     app.request(`/api/v1/recordings/${recording().id}/download`, { method: "POST" }),
@@ -102,6 +103,7 @@ test("recording routes deny users without required permissions", async () => {
   assert.deepEqual(
     Object.fromEntries(deniedEvents.map((event) => [event.action, event.permission]).sort()),
     {
+      "recording_jobs.export": "recording:read",
       "recording_jobs.read": "recording:read",
       "recordings.bulk_delete": "recording:delete",
       "recordings.delete": "recording:delete",

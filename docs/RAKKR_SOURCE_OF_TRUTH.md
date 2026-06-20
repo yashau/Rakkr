@@ -481,7 +481,7 @@ Current implementation baseline:
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
 - Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
-- Recording jobs workbench shows scoped job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus RBAC-mirrored stop controls for active jobs.
+- Recording jobs workbench shows scoped job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export and RBAC-mirrored stop controls for active jobs.
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
 - `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, controller capacity override, bounded concurrent jobs, concurrent-safe local health log output, rendered MP3/VBR, recorder-cache delete-after-upload, recorder-cache max-bytes idle sweep, cache-upload failure handling, and controller stop requests without audio hardware.
 - `mise run check` includes fake-controller agent smoke coverage for recorder-cache min-free-disk idle sweep using deterministic disk-pressure input.
@@ -800,6 +800,7 @@ Current implementation baseline:
 199. ✅ Add recording jobs workbench.
 200. ✅ Add recording jobs stop controls.
 201. ✅ Add scoped health-event CSV export.
+202. ✅ Add scoped recording-job CSV export.
 
 ## Open Questions
 
