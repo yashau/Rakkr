@@ -281,7 +281,7 @@ Current partial implementation:
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
-- Fake-controller smoke coverage exercises controller-synced meter xrun health with synthetic fallback without audio hardware.
+- Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 - `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
@@ -784,6 +784,8 @@ Current implementation baseline:
 186. ✅ Add fake-controller smoke coverage for stalled-capture health sync.
 187. ✅ Add fake-controller smoke coverage for render-failure health sync.
 188. ✅ Add fake-controller smoke coverage for meter xrun health sync.
+189. ✅ Add fake-controller smoke coverage for meter device-unavailable health sync.
+190. ✅ Add fake-controller smoke coverage for meter recovery health sync.
 
 ## Open Questions
 

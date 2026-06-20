@@ -115,6 +115,123 @@ export async function runMeterXrunScenario({
   setActiveScenario(undefined);
 }
 
+export async function runMeterDeviceUnavailableScenario({
+  address,
+  createObserved,
+  deviceUnavailableMeterCommand,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "meter-device-unavailable-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "meter-device-unavailable-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: { expectSuccess: true, name: "meter-device-unavailable" },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand: deviceUnavailableMeterCommand,
+    extraAgentArgs: ["--meter-backend", "alsa"],
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.meter.device_unavailable") &&
+        observed.meterFrames >= 1 &&
+        observed.monitorChunks.length >= 1,
+      20_000,
+      () =>
+        `meters=${observed.meterFrames} monitor=${observed.monitorChunks.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.meter.device_unavailable",
+  );
+
+  invariant(
+    syncedEvent?.severity === "critical",
+    "meter device unavailable event was not critical",
+  );
+  invariant(
+    syncedEvent?.details?.usingSyntheticFallback === true,
+    "meter device unavailable did not report synthetic fallback",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.meter.device_unavailable"),
+    "meter device unavailable event was not written locally",
+  );
+  setActiveScenario(undefined);
+}
+
+export async function runMeterRecoveryScenario({
+  address,
+  createObserved,
+  recoveringMeterCommand,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "meter-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "meter-recovery-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: { expectSuccess: true, name: "meter-recovery" },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand: recoveringMeterCommand,
+    extraAgentArgs: ["--meter-backend", "alsa"],
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.meter.xrun") &&
+        observed.healthEvents.some((event) => event.type === "agent.meter.capture_recovered") &&
+        observed.meterFrames >= 2,
+      20_000,
+      () =>
+        `meters=${observed.meterFrames} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const recoveryEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.meter.capture_recovered",
+  );
+
+  invariant(recoveryEvent?.severity === "info", "meter recovery event was not info");
+  invariant(
+    recoveryEvent?.details?.previousType === "agent.meter.xrun",
+    "meter recovery did not preserve previous xrun type",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.meter.capture_recovered"),
+    "meter recovery event was not written locally",
+  );
+  setActiveScenario(undefined);
+}
+
 function fakeDfCommandPath(fakeDfPath) {
   return path.join(fakeDfPath, process.platform === "win32" ? "df.cmd" : "df");
 }

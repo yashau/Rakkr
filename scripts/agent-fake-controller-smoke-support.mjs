@@ -92,6 +92,61 @@ process.exit(1);
   return meterScript;
 }
 
+export async function writeFakeRecoveringMeterCommand(directory) {
+  const meterScript = path.join(directory, "fake-recovering-meter.mjs");
+  const stateFile = path.join(directory, "fake-recovering-meter-state.txt");
+  await writeFile(
+    meterScript,
+    `#!/usr/bin/env node
+import { existsSync, writeFileSync } from "node:fs";
+
+if (!existsSync(${JSON.stringify(stateFile)})) {
+  writeFileSync(${JSON.stringify(stateFile)}, "failed-once");
+  console.error("overrun!!!");
+  process.exit(1);
+}
+
+const samples = [0, 12000, -12000, 6000, -6000, 3000, 1000, -1000];
+const buffer = Buffer.alloc(samples.length * 2);
+samples.forEach((sample, index) => buffer.writeInt16LE(sample, index * 2));
+process.stdout.write(buffer);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-recovering-meter.cmd");
+    await writeFile(commandPath, commandShim(meterScript));
+
+    return commandPath;
+  }
+
+  await chmod(meterScript, 0o755);
+
+  return meterScript;
+}
+
+export async function writeFakeDeviceUnavailableMeterCommand(directory) {
+  const meterScript = path.join(directory, "fake-device-unavailable-meter.mjs");
+  await writeFile(
+    meterScript,
+    `#!/usr/bin/env node
+console.error("ALSA lib pcm.c: unknown pcm fake-device");
+process.exit(1);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-device-unavailable-meter.cmd");
+    await writeFile(commandPath, commandShim(meterScript));
+
+    return commandPath;
+  }
+
+  await chmod(meterScript, 0o755);
+
+  return meterScript;
+}
+
 async function writeFakeCaptureCommandScript(directory, commandName, requireTemplateOutputFlag) {
   const captureScript = path.join(directory, `${commandName}.mjs`);
   await writeFile(

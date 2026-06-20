@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import {
   writeFakeCaptureCommand,
   writeFakeDfCommand,
+  writeFakeDeviceUnavailableMeterCommand,
   writeFakeFailingRenderCommand,
+  writeFakeRecoveringMeterCommand,
   writeFakeRenderCommand,
   writeFakeStalledCaptureCommand,
   writeFakeTemplateCaptureCommand,
@@ -20,6 +22,8 @@ import {
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
 import {
+  runMeterDeviceUnavailableScenario,
+  runMeterRecoveryScenario,
   runMeterXrunScenario,
   runSystemHealthScenario,
 } from "./agent-fake-controller-smoke-health.mjs";
@@ -84,6 +88,8 @@ try {
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
   const stalledCaptureCommand = await writeFakeStalledCaptureCommand(smokeRoot);
   const templateCaptureCommand = await writeFakeTemplateCaptureCommand(smokeRoot);
+  const deviceUnavailableMeterCommand = await writeFakeDeviceUnavailableMeterCommand(smokeRoot);
+  const recoveringMeterCommand = await writeFakeRecoveringMeterCommand(smokeRoot);
   const xrunMeterCommand = await writeFakeXrunMeterCommand(smokeRoot);
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
@@ -139,6 +145,12 @@ try {
     healthScenarioDeps({ address, captureCommand, fakeDfPath, renderCommand }),
   );
   await runMeterXrunScenario(healthScenarioDeps({ address, renderCommand, xrunMeterCommand }));
+  await runMeterDeviceUnavailableScenario(
+    healthScenarioDeps({ address, deviceUnavailableMeterCommand, renderCommand }),
+  );
+  await runMeterRecoveryScenario(
+    healthScenarioDeps({ address, recoveringMeterCommand, renderCommand }),
+  );
   console.log("Agent fake-controller smoke passed.");
 } finally {
   server.close();

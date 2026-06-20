@@ -13,7 +13,7 @@ Status: Partial baseline checked.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
 - Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
-- Fake-controller smoke coverage exercises controller-synced meter xrun health with synthetic fallback without audio hardware.
+- Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, hum/static likelihood, and independent-channel behavior for local quality scoring.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
