@@ -60,8 +60,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes with backend filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health bulk lifecycle controls, recording-job filters/controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes with backend filters/exports, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls, recording-job filters/controls/exports, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes with backend filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health bulk lifecycle controls/exports, recording-job filters/controls/exports, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes with backend filters/exports, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench, bulk health lifecycle controls/exports, recording-job filters/controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
@@ -284,7 +284,7 @@ Current partial implementation:
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
-- Node health summaries, central health workbench, recent events, trends, scoped CSV export, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
+- Node health summaries, central health workbench, recent events, trends, scoped and selected CSV exports, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, clipping, flatline, quality anomaly, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
@@ -832,6 +832,7 @@ Current implementation baseline:
 220. ✅ Add policy-tuned broadband-noise quality anomaly alerts.
 221. ✅ Add server-backed node inventory backend filters.
 222. ✅ Add filtered node inventory CSV export.
+223. ✅ Add selected health-event CSV export.
 
 ## Open Questions
 

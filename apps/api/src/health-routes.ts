@@ -85,6 +85,11 @@ const healthBulkLifecycleSchema = healthLifecycleSchema.extend({
   action: healthLifecycleActionSchema,
   eventIds: z.array(z.string().trim().min(1).max(160)).min(1).max(100),
 });
+const healthEventSelectedExportSchema = z
+  .object({
+    eventIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
+  })
+  .strict();
 
 export function registerHealthRoutes({
   app,
@@ -122,6 +127,71 @@ export function registerHealthRoutes({
         outcome: "succeeded",
         permission: "health:read",
         target: healthReadTarget(c),
+      });
+
+      return c.text(healthEventsCsv(events), 200, {
+        "Content-Disposition": `attachment; filename="${healthExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
+  );
+
+  app.post(
+    "/api/v1/health-events/export",
+    requirePermission("health:read", "health.events.export_selected", () => ({
+      type: "health",
+    })),
+    async (c) => {
+      const body = healthEventSelectedExportSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSelectedHealthExportFailure(c, "invalid_request");
+        return c.json(
+          { error: "Invalid health event export request", issues: body.error.issues },
+          400,
+        );
+      }
+
+      const eventIds = uniqueHealthEventIds(body.data.eventIds);
+      const events: HealthEvent[] = [];
+
+      for (const eventId of eventIds) {
+        const event = await healthEventStore.find(eventId);
+
+        if (!event) {
+          await recordSelectedHealthExportFailure(c, "health_event_not_found", {
+            eventIds,
+            missingId: eventId,
+          });
+          return c.json({ error: "Health event not found", eventId }, 404);
+        }
+
+        if (!(await visibleHealthEvent(currentUser(c), event, hasResourceScope))) {
+          await recordSelectedHealthExportFailure(c, "health_event_not_visible", {
+            eventIds,
+            hiddenId: event.id,
+          });
+          return c.json({ error: "One or more health events are not visible" }, 404);
+        }
+
+        events.push(event);
+      }
+
+      await recordAuditEvent(c, {
+        action: "health.events.export_selected.succeeded",
+        auth: currentAuth(c),
+        correlationIds: Object.fromEntries(
+          eventIds.map((eventId, index) => [`healthEventId${index + 1}`, eventId]),
+        ),
+        details: {
+          exportedCount: events.length,
+          requestedCount: body.data.eventIds.length,
+        },
+        outcome: "succeeded",
+        permission: "health:read",
+        target: {
+          type: "health",
+        },
       });
 
       return c.text(healthEventsCsv(events), 200, {
@@ -413,6 +483,24 @@ export function registerHealthRoutes({
       target,
     });
   }
+
+  async function recordSelectedHealthExportFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action: "health.events.export_selected.failed",
+      auth: currentAuth(c),
+      details,
+      outcome: reason === "health_event_not_visible" ? "denied" : "failed",
+      permission: "health:read",
+      reason,
+      target: {
+        type: "health",
+      },
+    });
+  }
 }
 
 function healthReadTarget(c: Context<AppBindings>): AuditTarget {
@@ -641,4 +729,8 @@ function jsonCell(value: unknown) {
 
 function healthExportFileName() {
   return `rakkr-health-events-${new Date().toISOString().replaceAll(":", "-")}.csv`;
+}
+
+function uniqueHealthEventIds(eventIds: string[]) {
+  return Array.from(new Set(eventIds));
 }

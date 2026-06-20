@@ -120,6 +120,10 @@ export function HealthPage() {
     mutationFn: () => api.healthEventsExport(apiFilters),
     onSuccess: downloadBlob,
   });
+  const selectedExportMutation = useMutation({
+    mutationFn: (eventIds: string[]) => api.healthEventsExportSelected({ eventIds }),
+    onSuccess: downloadBlob,
+  });
 
   if (currentUserQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading health events.</p>;
@@ -261,15 +265,16 @@ export function HealthPage() {
           </Field>
         </div>
 
-        {permissions.canAcknowledgeHealth ? (
-          <BulkHealthActions
-            events={events}
-            onAction={runBulkAction}
-            onToggleAll={(checked) => setSelectedEventIds(checked ? visibleEventIds : [])}
-            pending={lifecyclePending}
-            selectedEventIds={selectedVisibleEventIds}
-          />
-        ) : null}
+        <BulkHealthActions
+          canManage={permissions.canAcknowledgeHealth}
+          events={events}
+          exportPending={selectedExportMutation.isPending}
+          onAction={runBulkAction}
+          onExport={() => selectedExportMutation.mutate(selectedVisibleEventIds)}
+          onToggleAll={(checked) => setSelectedEventIds(checked ? visibleEventIds : [])}
+          pending={lifecyclePending}
+          selectedEventIds={selectedVisibleEventIds}
+        />
       </section>
 
       <section className="grid gap-3">
@@ -364,20 +369,27 @@ function SummaryTile({
 }
 
 function BulkHealthActions({
+  canManage,
   events,
+  exportPending,
   onAction,
+  onExport,
   onToggleAll,
   pending,
   selectedEventIds,
 }: {
+  canManage: boolean;
   events: HealthEvent[];
+  exportPending: boolean;
   onAction: (action: HealthLifecycleAction) => void;
+  onExport: () => void;
   onToggleAll: (checked: boolean) => void;
   pending: boolean;
   selectedEventIds: string[];
 }) {
   const allSelected = events.length > 0 && selectedEventIds.length === events.length;
   const actions: HealthLifecycleAction[] = ["acknowledge", "suppress", "resolve", "reopen"];
+  const selectionPending = pending || exportPending;
 
   return (
     <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
@@ -385,30 +397,46 @@ function BulkHealthActions({
         <input
           checked={allSelected}
           className="size-4 rounded border-border"
-          disabled={pending || events.length === 0}
+          disabled={selectionPending || events.length === 0}
           onChange={(event) => onToggleAll(event.target.checked)}
           type="checkbox"
         />
         {selectedEventIds.length} selected
       </label>
       <div className="flex flex-wrap gap-2">
-        {actions.map((action) => {
-          const targetCount = healthEventBulkActionTargets(events, selectedEventIds, action).length;
+        <Button
+          disabled={exportPending || selectedEventIds.length === 0}
+          onClick={onExport}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Download className="size-4" />
+          Export {selectedEventIds.length}
+        </Button>
+        {canManage
+          ? actions.map((action) => {
+              const targetCount = healthEventBulkActionTargets(
+                events,
+                selectedEventIds,
+                action,
+              ).length;
 
-          return (
-            <Button
-              disabled={pending || targetCount === 0}
-              key={action}
-              onClick={() => onAction(action)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <HealthActionIcon action={action} />
-              {actionLabel(action)} {targetCount}
-            </Button>
-          );
-        })}
+              return (
+                <Button
+                  disabled={pending || targetCount === 0}
+                  key={action}
+                  onClick={() => onAction(action)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <HealthActionIcon action={action} />
+                  {actionLabel(action)} {targetCount}
+                </Button>
+              );
+            })
+          : null}
       </div>
     </div>
   );
@@ -436,15 +464,13 @@ function HealthEventRow({
   return (
     <Card className="rounded-lg p-4 shadow-sm">
       <div className="flex gap-3">
-        {canManage ? (
-          <input
-            checked={selected}
-            className="mt-1 size-4 rounded border-border"
-            disabled={pending}
-            onChange={(input) => onSelectionChange(input.target.checked)}
-            type="checkbox"
-          />
-        ) : null}
+        <input
+          checked={selected}
+          className="mt-1 size-4 rounded border-border"
+          disabled={pending}
+          onChange={(input) => onSelectionChange(input.target.checked)}
+          type="checkbox"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">

@@ -298,6 +298,10 @@ export interface HealthEventBulkLifecycleInput extends HealthEventLifecycleInput
   eventIds: string[];
 }
 
+export interface HealthEventSelectedExportInput {
+  eventIds: string[];
+}
+
 export interface UserAccessUpdate {
   groupIds: string[];
   resourceGrants: ResourceGrant[];
@@ -473,6 +477,14 @@ export const api = {
     fetchJson<{ data: HealthEvent[] }>(withQuery("/api/v1/health-events", filters)),
   healthEventsExport: (filters: HealthEventFilters = {}) =>
     fetchBlob(withQuery("/api/v1/health-events/export", filters)),
+  healthEventsExportSelected: (input: HealthEventSelectedExportInput) =>
+    fetchBlob("/api/v1/health-events/export", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   createHealthEvent: (input: HealthEventCreateInput) =>
     fetchJson<{ data: HealthEvent }>("/api/v1/health-events", {
       body: JSON.stringify(input),

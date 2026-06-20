@@ -35,6 +35,9 @@ test("health routes deny users without required permissions", async () => {
   const responses = await Promise.all([
     app.request("/api/v1/health-events"),
     app.request("/api/v1/health-events/export"),
+    requestJson(app, "/api/v1/health-events/export", "POST", {
+      eventIds: ["health_denied"],
+    }),
     requestJson(app, "/api/v1/health-events", "POST", {
       nodeId: "node_health_denied",
       severity: "warning",
@@ -63,7 +66,7 @@ test("health routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "health:acknowledge:health.events.acknowledge",
@@ -73,6 +76,7 @@ test("health routes deny users without required permissions", async () => {
     "health:acknowledge:health.events.resolve",
     "health:acknowledge:health.events.suppress",
     "health:read:health.events.export",
+    "health:read:health.events.export_selected",
     "health:read:health.events.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
@@ -147,6 +151,93 @@ test("health event export returns scoped filtered csv and audits access", async 
     status: undefined,
     type: "watchdog.scheduled_low_signal",
   });
+});
+
+test("selected health event export preserves requested order and audits access", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:read"]);
+  const healthEventStore = createHealthEventStore("", [
+    event({
+      id: "health_first",
+      nodeId: "node_1",
+      severity: "warning",
+      status: "open",
+      type: "watchdog.node_offline",
+    }),
+    event({
+      details: { broadbandNoiseScore: 0.82 },
+      id: "health_second",
+      recordingId: "rec_1",
+      severity: "critical",
+      status: "acknowledged",
+      type: "watchdog.quality_anomaly",
+    }),
+  ]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async () => true,
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermission,
+  });
+
+  const response = await requestJson(app, "/api/v1/health-events/export", "POST", {
+    eventIds: ["health_second", "health_first", "health_second"],
+  });
+  const csv = await response.text();
+  const [auditEvent] = await auditStore.list({
+    action: "health.events.export_selected.succeeded",
+  });
+  const secondIndex = csv.indexOf("health_second");
+  const firstIndex = csv.indexOf("health_first");
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+  assert.match(csv, /"health_second","watchdog\.quality_anomaly","critical","acknowledged"/);
+  assert.match(csv, /"health_first","watchdog\.node_offline","warning","open"/);
+  assert.ok(secondIndex > -1 && firstIndex > secondIndex);
+  assert.equal(auditEvent?.permission, "health:read");
+  assert.equal(auditEvent?.details.exportedCount, 2);
+  assert.equal(auditEvent?.details.requestedCount, 3);
+  assert.equal(auditEvent?.correlationIds?.healthEventId1, "health_second");
+  assert.equal(auditEvent?.correlationIds?.healthEventId2, "health_first");
+});
+
+test("selected health event export rejects hidden events before exporting", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:read"]);
+  const healthEventStore = createHealthEventStore("", [
+    event({ id: "health_visible", nodeId: "node_1" }),
+    event({ id: "health_hidden", nodeId: "node_hidden" }),
+  ]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async (_user, target) => target.id !== "node_hidden",
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermission,
+  });
+
+  const response = await requestJson(app, "/api/v1/health-events/export", "POST", {
+    eventIds: ["health_visible", "health_hidden"],
+  });
+  const [auditEvent] = await auditStore.list({ action: "health.events.export_selected.failed" });
+
+  assert.equal(response.status, 404);
+  assert.equal(auditEvent?.outcome, "denied");
+  assert.equal(auditEvent?.permission, "health:read");
+  assert.equal(auditEvent?.reason, "health_event_not_visible");
+  assert.equal(auditEvent?.details.hiddenId, "health_hidden");
 });
 
 test("health bulk lifecycle updates visible events and audits each event", async () => {
