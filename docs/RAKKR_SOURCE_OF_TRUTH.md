@@ -61,14 +61,14 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | 🟨 | Auth, RBAC, audit, nodes, capacity, recordings, jobs, lifecycle coverage, schedules, settings, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, schedules, settings, quality timelines |
+| Controller UI | 🟨 | Dashboard, access, nodes, capacity, recordings, schedules, settings, health lifecycle controls, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, template-driven capture/meter args, ALSA device matching, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, field calibration helper, offline, local-log, metrics, and timeline baseline; long-duration real-room validation remains |
+| Health watchdog | 🟨 | Checked low-signal, speech/noise, hum/static/correlation telemetry, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, and node health lifecycle controls; long-duration real-room validation remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, checked baseline |
@@ -202,7 +202,7 @@ Current partial implementation:
 - Node and dashboard UI color-code online/offline/recording/degraded/alerting status.
 - Node API and inventory UI can filter visible nodes by status.
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
-- Nodes page direct access mirrors `node:read`; node health panels mirror `health:read`.
+- Nodes page direct access mirrors `node:read`; node health panels mirror `health:read` and expose lifecycle actions only with `health:acknowledge`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
 - Agent capture and meter sampling can use operator-provided argument templates for non-`arecord` commands while preserving the default `arecord` path.
@@ -278,7 +278,7 @@ Current partial implementation:
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can filter by event type, node, recording, schedule, severity, and status.
-- Node health summaries, recent events, trends, and recording/schedule quality timelines.
+- Node health summaries, recent events, trends, RBAC-mirrored lifecycle actions, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, clipping, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
@@ -793,6 +793,7 @@ Current implementation baseline:
 193. ✅ Add quality timeline upload-failure evidence display.
 194. ✅ Add fake-controller smoke coverage for template-driven meter arguments.
 195. ✅ Add controller-managed per-node audio command defaults.
+196. ✅ Add node health lifecycle controls.
 
 ## Open Questions
 

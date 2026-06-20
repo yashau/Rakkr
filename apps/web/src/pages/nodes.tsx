@@ -21,6 +21,7 @@ import {
   NodeIdentityEditor,
   NodeInterfaceEditor,
 } from "@/components/node-inventory-editors";
+import { NodeHealthEvents } from "@/components/node-health-events";
 import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type NodeEnrollmentInput, type NodeEnrollmentResult } from "@/lib/api";
 import { formatDateTime, localIsoDate, startOfLocalDay } from "@/lib/dates";
-import { nodePageActionPermissions, rotateNodeTokenTitle } from "@/lib/node-page-helpers";
+import {
+  nodeHealthLifecycleInput,
+  nodePageActionPermissions,
+  rotateNodeTokenTitle,
+  type NodeHealthLifecycleAction,
+} from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 interface EnrollmentDraft {
@@ -134,6 +140,23 @@ export function NodesPage() {
     onSuccess: ({ data }) => {
       setCredential(data);
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+    },
+  });
+  const healthLifecycleMutation = useMutation({
+    mutationFn: ({
+      action,
+      eventId,
+      suppressedUntil,
+    }: {
+      action: NodeHealthLifecycleAction;
+      eventId: string;
+      suppressedUntil?: string;
+    }) => api.updateHealthEventLifecycle(eventId, action, { suppressedUntil }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["node-health-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
   });
 
@@ -430,7 +453,19 @@ export function NodesPage() {
                 </div>
 
                 <NodeHealthTrend events={healthEvents} />
-                <NodeHealthEvents events={healthEvents} />
+                <NodeHealthEvents
+                  canManage={actionPermissions.canAcknowledgeHealth}
+                  events={healthEvents}
+                  healthBadgeClass={healthBadgeClass}
+                  healthEventDetails={healthEventDetails}
+                  healthTone={healthTone}
+                  onAction={(event, action) =>
+                    healthLifecycleMutation.mutate(nodeHealthLifecycleInput(event.id, action))
+                  }
+                  pending={healthLifecycleMutation.isPending}
+                  readableHealthType={readableHealthType}
+                  renderDateTime={formatDateTime}
+                />
               </div>
 
               <div className="grid gap-3 text-sm md:min-w-72">
@@ -597,46 +632,6 @@ function HealthSummaryTile({
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">{healthDetail(event)}</p>
-    </div>
-  );
-}
-
-function NodeHealthEvents({ events }: { events: HealthEvent[] }) {
-  const recentEvents = [...events]
-    .sort((left, right) => Date.parse(right.openedAt) - Date.parse(left.openedAt))
-    .slice(0, 3);
-  const tone = recentEvents.reduce<"critical" | "healthy" | "unknown" | "warning">(
-    (current, event) => highestTone(current, healthTone(event)),
-    recentEvents.length > 0 ? "healthy" : "unknown",
-  );
-
-  return (
-    <div className="rounded-md border border-border bg-background p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">Recent Health Events</div>
-        <Badge className={healthBadgeClass(tone)} variant="outline">
-          {recentEvents.length}
-        </Badge>
-      </div>
-      {recentEvents.length > 0 ? (
-        <div className="grid gap-2">
-          {recentEvents.map((event) => (
-            <div className="grid gap-1 text-xs" key={event.id}>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className={healthBadgeClass(healthTone(event))} variant="outline">
-                  {event.severity}
-                </Badge>
-                <span className="font-medium">{readableHealthType(event.type)}</span>
-                <span className="text-muted-foreground">{event.status}</span>
-                <span className="text-muted-foreground">{formatDateTime(event.openedAt)}</span>
-              </div>
-              <div className="truncate text-muted-foreground">{healthEventDetails(event)}</div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">No node health events.</p>
-      )}
     </div>
   );
 }
