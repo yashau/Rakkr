@@ -290,6 +290,26 @@ export function registerRecordingRoutes({
     },
   );
 
+  app.get(
+    "/api/v1/recordings/:recordingId",
+    requirePermission("recording:read", "recordings.detail.read", (c) => ({
+      id: c.req.param("recordingId"),
+      type: "recording",
+    })),
+    async (c) => {
+      const recordingId = c.req.param("recordingId");
+      const recording = (await scopedRecordings(currentUser(c))).find(
+        (candidate) => candidate.id === recordingId,
+      );
+
+      if (!recording) {
+        return c.json({ error: "Recording not found" }, 404);
+      }
+
+      return c.json({ data: recording });
+    },
+  );
+
   registerRecordingJobRoutes({
     app,
     currentAuth,

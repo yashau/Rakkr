@@ -112,6 +112,45 @@ test("recording facets summarize visible library relationships", async () => {
   ]);
 });
 
+test("recording detail route returns scoped recordings only", async () => {
+  const visible = recording({ id: "rec_visible_detail", name: "Visible Detail" });
+  const hidden = recording({ id: "rec_hidden_detail", name: "Hidden Detail" });
+  const permissionCalls: PermissionCall[] = [];
+  const app = recordingApp({
+    auditStore: createAuditStore(""),
+    nodes: [recorderNode()],
+    permissionCalls,
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore([visible, hidden]),
+    visibleRecordingIds: [visible.id],
+  });
+
+  const visibleResponse = await app.request(`/api/v1/recordings/${visible.id}`);
+  const hiddenResponse = await app.request(`/api/v1/recordings/${hidden.id}`);
+  const missingResponse = await app.request("/api/v1/recordings/rec_missing_detail");
+  const visibleBody = (await visibleResponse.json()) as { data: RecordingSummary };
+
+  assert.equal(visibleResponse.status, 200);
+  assert.equal(visibleBody.data.id, visible.id);
+  assert.equal(hiddenResponse.status, 404);
+  assert.equal(missingResponse.status, 404);
+  assert.deepEqual(permissionCalls.at(-3), {
+    action: "recordings.detail.read",
+    permission: "recording:read",
+    target: { id: visible.id, type: "recording" },
+  });
+  assert.deepEqual(permissionCalls.at(-2), {
+    action: "recordings.detail.read",
+    permission: "recording:read",
+    target: { id: hidden.id, type: "recording" },
+  });
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "recordings.detail.read",
+    permission: "recording:read",
+    target: { id: "rec_missing_detail", type: "recording" },
+  });
+});
+
 test("recording list filters by recorded date range", async () => {
   const auditStore = createAuditStore("");
   const app = recordingApp({

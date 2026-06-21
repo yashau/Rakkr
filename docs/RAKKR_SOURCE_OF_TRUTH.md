@@ -60,7 +60,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, node detail/list with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recordings, ad-hoc and scheduled backend/interface selection, schedule list filters/detail, jobs, lifecycle coverage, settings, searchable health filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
+| Controller API | 🟨 | Auth, RBAC, audit, node detail/list with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail, jobs, lifecycle coverage, settings, searchable health filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -481,6 +481,7 @@ Current implementation baseline:
 - Recording metadata supports searchable operator notes with audit snapshots and manifest export.
 - Recording metadata supports searchable transcript snippets with audit snapshots and manifest export; generation remains deferred.
 - Recording card action readiness uses tested cached/terminal recording predicates.
+- Recording library API exposes scoped detail reads for visible recordings.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
 - Recording library API deletes terminal recordings and cached files with audit snapshots.
@@ -863,6 +864,7 @@ Current implementation baseline:
 243. ✅ Scope aggregate status settings summaries to settings read.
 244. ✅ Add scoped schedule detail API.
 245. ✅ Add scoped node detail API.
+246. ✅ Add scoped recording detail API.
 
 ## Open Questions
 
