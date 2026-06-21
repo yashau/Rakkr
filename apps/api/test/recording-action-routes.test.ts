@@ -186,6 +186,7 @@ function recordingActionsApp({
     recordAuditEvent: recordAuditEvent(createAuditStore("")),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => [],
     scopedRecordings: async () =>
       (await recordingStore.list()).filter((recording) =>
         visibleRecordingIds.includes(recording.id),

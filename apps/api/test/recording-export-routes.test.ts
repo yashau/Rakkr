@@ -174,6 +174,7 @@ function recordingExportApp({
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => [],
     scopedRecordings: async () =>
       (await recordingStore.list()).filter((recording) =>
         visibleRecordingIds.includes(recording.id),

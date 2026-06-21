@@ -22,7 +22,6 @@ import type { MeterFrameStore } from "../src/meter-store.js";
 import type { NodeHeartbeatInput, NodeStore } from "../src/node-store.js";
 import type { RecordingStore } from "../src/recording-store.js";
 import type { SettingsStore } from "../src/settings-store.js";
-
 const agentRoot = await mkdtemp(path.join(tmpdir(), "rakkr-agent-routes-"));
 process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(agentRoot, "jobs.json");
@@ -30,7 +29,6 @@ process.env.RAKKR_RECORDING_CACHE_DIR = path.join(agentRoot, "cache");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(agentRoot, "retention-policies.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(agentRoot, "upload-policies.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(agentRoot, "upload-queue.json");
-
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAgentRoutes } = await import("../src/agent-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
@@ -38,7 +36,6 @@ const { createRecordingJob } = await import("../src/recording-jobs.js");
 const { createRetentionPolicy } = await import("../src/retention-policies.js");
 const { registerRecordingRoutes } = await import("../src/recording-routes.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
-
 test.after(async () => {
   await rm(agentRoot, { force: true, recursive: true });
 });
@@ -436,6 +433,7 @@ test("ad hoc recording completes through agent cache attach and exposes cached m
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(),
+    scopedNodes: () => nodeStore.list(),
     scopedRecordings: () => recordingStore.list(),
     settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
   });
@@ -560,6 +558,7 @@ test("claim-next lets one node claim multiple queued recordings independently", 
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(),
+    scopedNodes: () => nodeStore.list(),
     scopedRecordings: () => recordingStore.list(),
     settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
   });
@@ -663,6 +662,7 @@ test("controller stop request survives agent cancellation as completed recording
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(),
+    scopedNodes: () => nodeStore.list(),
     scopedRecordings: () => recordingStore.list(),
     settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
   });

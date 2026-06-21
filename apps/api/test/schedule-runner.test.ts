@@ -164,6 +164,7 @@ test("scheduled recording completes through agent cache attach and exposes sched
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(),
+    scopedNodes: () => nodeStore.list(),
     scopedRecordings: () => recordingStore.list(),
     settingsStore,
   });

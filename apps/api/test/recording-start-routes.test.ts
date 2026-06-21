@@ -118,6 +118,35 @@ test("ad hoc recording start rejects interfaces outside the requested node", asy
   assert.equal(event?.target.id, node.id);
 });
 
+test("ad hoc recording start only operates on scoped visible nodes", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const visible = recorderNode({ id: "node_start_visible" });
+  const hidden = recorderNode({ id: "node_start_hidden" });
+  const app = recordingApp({
+    auditStore,
+    nodes: [visible, hidden],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+    scopedNodeIds: [visible.id],
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({ nodeId: hidden.id }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "recordings.start.failed" });
+  const recordings = await recordingStore.list();
+
+  assert.equal(response.status, 404);
+  assert.equal(event?.reason, "node_not_found");
+  assert.equal(event?.target.id, hidden.id);
+  assert.equal(event?.target.type, "node");
+  assert.equal(recordings.length, 0);
+});
+
 interface PermissionCall {
   action: string;
   permission: Permission;
@@ -130,12 +159,14 @@ function recordingApp({
   permissionCalls,
   profiles,
   recordingStore,
+  scopedNodeIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
   profiles: RecordingProfile[];
   recordingStore: RecordingStore;
+  scopedNodeIds?: string[];
 }) {
   const app = new Hono<AppBindings>();
 
@@ -147,6 +178,10 @@ function recordingApp({
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () =>
+      nodes.filter(
+        (candidate) => scopedNodeIds === undefined || scopedNodeIds.includes(candidate.id),
+      ),
     scopedRecordings: async () => recordingStore.list(),
     settingsStore: memorySettingsStore(profiles),
   });
@@ -310,7 +345,7 @@ function user(): CurrentUser {
   };
 }
 
-function recorderNode(): RecorderNode {
+function recorderNode(overrides: Partial<RecorderNode> = {}): RecorderNode {
   return {
     agentVersion: "0.1.0",
     alias: "Room Alpha Recorder",
@@ -352,6 +387,7 @@ function recorderNode(): RecorderNode {
     },
     status: "online",
     tags: ["voice"],
+    ...overrides,
   };
 }
 

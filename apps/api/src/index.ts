@@ -709,6 +709,7 @@ registerRecordingRoutes({
   recordAuditEvent,
   recordingStore,
   requirePermission,
+  scopedNodes,
   scopedRecordings,
   settingsStore,
 });

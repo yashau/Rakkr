@@ -55,6 +55,7 @@ test("recording routes deny users without required permissions", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: createRecordingStore([recording()]),
     requirePermission: denyMissingPermission(auditStore, deniedUser),
+    scopedNodes: async () => [node()],
     scopedRecordings: async () => [recording()],
     settingsStore: createSettingsStore([defaultVoiceRecordingProfile]),
   });

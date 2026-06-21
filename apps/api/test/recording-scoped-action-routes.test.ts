@@ -38,6 +38,7 @@ test("single recording action routes only operate on scoped recordings", async (
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: allowPermission,
+    scopedNodes: async () => [],
     scopedRecordings: async () => [visible],
     settingsStore: memorySettingsStore(),
   });

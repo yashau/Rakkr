@@ -501,6 +501,7 @@ Current implementation baseline:
 - Recording card waveform previews show peak bars plus sample/channel/source metadata.
 - Schedule run-now materializes schedule-owned names, folders, tags, profile, watchdog policy.
 - Ad-hoc starts accept target node, profile, upload policy, and optional metadata.
+- Ad-hoc recording start APIs operate only on scoped visible nodes.
 - Ad-hoc start UI shows node room/status/IP context before queueing a recording.
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
@@ -896,6 +897,7 @@ Current implementation baseline:
 267. ✅ Scope node management, meter, and live-listen action APIs.
 268. ✅ Scope health lifecycle action APIs.
 269. ✅ Scope single-recording upload queue API.
+270. ✅ Scope ad-hoc recording start API.
 
 ## Open Questions
 

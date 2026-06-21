@@ -32,6 +32,7 @@ test("recording metadata update saves and clears operator notes with audit snaps
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => [],
     scopedRecordings: () => recordingStore.list(),
     settingsStore: {},
   });
@@ -97,6 +98,7 @@ test("recording metadata update saves and clears transcript snippets with audit 
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => [],
     scopedRecordings: () => recordingStore.list(),
     settingsStore: {},
   });

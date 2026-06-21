@@ -51,6 +51,7 @@ interface RecordingRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
   requirePermission: RequirePermission;
+  scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
   settingsStore: SettingsStore;
 }
@@ -82,10 +83,10 @@ export function registerRecordingRoutes({
   currentAuth,
   currentUser,
   healthEventStore,
-  nodeStore,
   recordAuditEvent,
   recordingStore,
   requirePermission,
+  scopedNodes,
   scopedRecordings,
   settingsStore,
 }: RecordingRouteDependencies) {
@@ -706,7 +707,9 @@ export function registerRecordingRoutes({
       }
 
       const now = new Date();
-      const node = await nodeStore.find(body.data.nodeId);
+      const node = (await scopedNodes(currentUser(c))).find(
+        (candidate) => candidate.id === body.data.nodeId,
+      );
 
       if (!node) {
         await recordRecordingStartFailure(c, "node_not_found", body.data.nodeId);

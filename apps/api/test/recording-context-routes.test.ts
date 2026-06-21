@@ -166,6 +166,7 @@ function recordingApp({
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => [],
     scopedRecordings: async () => {
       const recordings = await recordingStore.list();
 

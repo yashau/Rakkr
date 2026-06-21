@@ -204,6 +204,7 @@ test("recording job detail route lets controller bearer reads pass agent route",
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => [],
     scopedRecordings: () => recordingStore.list(),
     settingsStore: memorySettingsStore(),
   });
@@ -717,6 +718,7 @@ function recordingApp({
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
+    scopedNodes: async () => [],
     scopedRecordings: async () => {
       const recordings = await recordingStore.list();
 
