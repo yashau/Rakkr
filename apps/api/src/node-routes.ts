@@ -22,6 +22,7 @@ import type {
 import type { ListenMonitorStore, StoredListenMonitorChunk } from "./listen-monitor-store.js";
 import type { ListenSessionStore } from "./listen-session-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
+import { registerNodeActionRoutes } from "./node-action-routes.js";
 import { registerNodeInventoryRoutes } from "./node-inventory-routes.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
@@ -144,6 +145,14 @@ export function registerNodeRoutes({
     currentAuth,
     currentUser,
     recordAuditEvent,
+    requirePermission,
+    scopedNodes,
+  });
+  registerNodeActionRoutes({
+    app,
+    currentUser,
+    listenMonitorStore,
+    meterFrameStore,
     requirePermission,
     scopedNodes,
   });
