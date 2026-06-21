@@ -88,6 +88,52 @@ test("node list filters by audio backend", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("node list filters by location hierarchy", async () => {
+  const app = nodeInventoryApp({
+    nodes: [
+      node({
+        id: "node_chamber",
+        location: {
+          building: "City Hall",
+          floor: "2",
+          room: "Council Room",
+          site: "Main Site",
+        },
+      }),
+      node({
+        id: "node_overflow",
+        location: {
+          building: "City Hall",
+          floor: "1",
+          room: "Overflow",
+          site: "Main Site",
+        },
+      }),
+      node({
+        id: "node_remote",
+        location: {
+          room: "Council Room",
+          site: "Remote",
+        },
+      }),
+    ],
+    permissionCalls: [],
+  });
+
+  const response = await app.request(
+    "/api/v1/nodes?site=main%20site&building=city%20hall&floor=2&room=council%20room",
+  );
+  const body = (await response.json()) as { data: RecorderNode[] };
+  const invalidResponse = await app.request(`/api/v1/nodes?site=${"x".repeat(161)}`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.data.map((item) => item.id),
+    ["node_chamber"],
+  );
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("node list searches inventory identity fields", async () => {
   const chamberNode = nodeWithInterface({
     alias: "Council Chamber",

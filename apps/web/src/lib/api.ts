@@ -76,13 +76,15 @@ export interface AuditEventFilters {
 
 export interface NodeFilters {
   backend?: "alsa" | "jack" | "pipewire" | "unknown";
+  building?: string;
+  floor?: string;
   q?: string;
+  room?: string;
+  site?: string;
   status?: NodeStatus;
 }
 
-export interface NodeSelectedExportInput {
-  nodeIds: string[];
-}
+export type NodeSelectedExportInput = { nodeIds: string[] };
 
 export interface RecordingDownloadTicket {
   downloadId: string;

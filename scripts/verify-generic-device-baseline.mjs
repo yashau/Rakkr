@@ -19,6 +19,7 @@ const sourceFiles = [
   "apps/api/test/node-routes.test.ts",
   "apps/api/test/agent-routes.test.ts",
   "apps/web/src/pages/nodes.tsx",
+  "apps/web/src/components/node-inventory-filters.tsx",
   "apps/web/src/components/recording-start-panel.tsx",
   "apps/web/src/lib/recording-start-helpers.test.ts",
   "apps/web/src/components/node-inventory-editors.tsx",

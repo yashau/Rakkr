@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HealthEvent, NodeStatus } from "@rakkr/shared";
+import type { HealthEvent } from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
@@ -21,6 +21,10 @@ import {
   NodeIdentityEditor,
   NodeInterfaceEditor,
 } from "@/components/node-inventory-editors";
+import {
+  emptyNodeInventoryFilters,
+  NodeInventoryFilters,
+} from "@/components/node-inventory-filters";
 import { NodeInventoryActions } from "@/components/node-inventory-actions";
 import { NodeHealthEvents } from "@/components/node-health-events";
 import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
@@ -90,18 +94,10 @@ const emptyDraft: EnrollmentDraft = {
   tags: "",
 };
 
-const nodeStatuses: NodeStatus[] = ["online", "recording", "degraded", "alerting", "offline"];
-const audioBackendFilters = ["alsa", "jack", "pipewire", "unknown"] as const;
-const selectClassName =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
-type AudioBackendFilter = (typeof audioBackendFilters)[number];
-
 export function NodesPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(emptyDraft);
-  const [nodeSearch, setNodeSearch] = useState("");
-  const [nodeStatusFilter, setNodeStatusFilter] = useState<"" | NodeStatus>("");
-  const [nodeBackendFilter, setNodeBackendFilter] = useState<"" | AudioBackendFilter>("");
+  const [nodeFilterDraft, setNodeFilterDraft] = useState(emptyNodeInventoryFilters);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
   const [listenPreview, setListenPreview] = useState<ListenMonitorPreview>();
@@ -114,14 +110,18 @@ export function NodesPage() {
     currentUserQuery.data?.data.permissions ?? [],
   );
   const nodeFilters = {
-    q: nodeSearch.trim() || undefined,
-    status: nodeStatusFilter || undefined,
-    backend: nodeBackendFilter || undefined,
+    backend: nodeFilterDraft.backend || undefined,
+    building: nodeFilterDraft.building.trim() || undefined,
+    floor: nodeFilterDraft.floor.trim() || undefined,
+    q: nodeFilterDraft.search.trim() || undefined,
+    room: nodeFilterDraft.room.trim() || undefined,
+    site: nodeFilterDraft.site.trim() || undefined,
+    status: nodeFilterDraft.status || undefined,
   } satisfies NodeFilters;
   const nodesQuery = useQuery({
     enabled: actionPermissions.canRead,
     queryFn: () => api.nodes(nodeFilters),
-    queryKey: ["nodes", nodeBackendFilter, nodeStatusFilter, nodeSearch],
+    queryKey: ["nodes", nodeFilterDraft],
     refetchInterval: 5000,
   });
   const healthEventsQuery = useQuery({
@@ -394,45 +394,7 @@ export function NodesPage() {
               selectedExportPending={selectedExportMutation.isPending}
             />
           </div>
-          <div className="grid w-full gap-3 md:max-w-3xl md:grid-cols-[minmax(0,1fr)_12rem_12rem]">
-            <Field label="Search">
-              <Input
-                onChange={(event) => setNodeSearch(event.target.value)}
-                placeholder="alias, room, IP, tag, serial"
-                value={nodeSearch}
-              />
-            </Field>
-            <Field label="Status">
-              <select
-                className={selectClassName}
-                onChange={(event) => setNodeStatusFilter(event.target.value as "" | NodeStatus)}
-                value={nodeStatusFilter}
-              >
-                <option value="">all statuses</option>
-                {nodeStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Backend">
-              <select
-                className={selectClassName}
-                onChange={(event) =>
-                  setNodeBackendFilter(event.target.value as "" | AudioBackendFilter)
-                }
-                value={nodeBackendFilter}
-              >
-                <option value="">all backends</option>
-                {audioBackendFilters.map((backend) => (
-                  <option key={backend} value={backend}>
-                    {backend}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+          <NodeInventoryFilters filters={nodeFilterDraft} onChange={setNodeFilterDraft} />
         </div>
       </section>
 

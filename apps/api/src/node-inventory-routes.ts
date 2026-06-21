@@ -19,11 +19,19 @@ const nodeSearchSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
   z.string().trim().min(1).max(200).optional(),
 );
+const nodeLocationFilterSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).max(160).optional(),
+);
 const nodeBackendFilterSchema = z.enum(["alsa", "jack", "pipewire", "unknown"]);
 const nodeListFilterSchema = z
   .object({
     backend: nodeBackendFilterSchema.optional(),
+    building: nodeLocationFilterSchema,
+    floor: nodeLocationFilterSchema,
     q: nodeSearchSchema,
+    room: nodeLocationFilterSchema,
+    site: nodeLocationFilterSchema,
     status: nodeStatusSchema.optional(),
   })
   .strict();
@@ -171,8 +179,25 @@ function filterNodes(nodes: RecorderNode[], filters: z.infer<typeof nodeListFilt
     (node) =>
       (!filters.status || node.status === filters.status) &&
       (!filters.backend || nodeMatchesBackend(node, filters.backend)) &&
+      nodeMatchesLocationFilters(node, filters) &&
       (!query || nodeSearchText(node).includes(query)),
   );
+}
+
+function nodeMatchesLocationFilters(
+  node: RecorderNode,
+  filters: z.infer<typeof nodeListFilterSchema>,
+) {
+  return (
+    locationMatches(node.location.site, filters.site) &&
+    locationMatches(node.location.building, filters.building) &&
+    locationMatches(node.location.floor, filters.floor) &&
+    locationMatches(node.location.room, filters.room)
+  );
+}
+
+function locationMatches(actual: string | undefined, expected: string | undefined) {
+  return !expected || normalizeSearchTerm(actual) === normalizeSearchTerm(expected);
 }
 
 function nodeSearchText(node: RecorderNode) {
