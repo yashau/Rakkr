@@ -43,6 +43,7 @@ test("schedule routes deny users without required permissions", async () => {
     recordingStore: recordingStore(),
     requirePermission: denyMissingPermission(auditStore, deniedUser),
     scheduleStore: scheduleStore([schedule()]),
+    scopedNodes: async () => [node()],
     scopedSchedules: async () => [],
     settingsStore: createSettingsStore(),
   });
@@ -128,6 +129,7 @@ test("schedule export returns filtered scoped csv and audits access", async () =
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node()],
     scopedSchedules: () => store.list(),
     settingsStore: createSettingsStore(),
   });
@@ -172,6 +174,7 @@ test("selected schedule export preserves request order and rejects hidden schedu
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node()],
     scopedSchedules: async () => [visibleA, visibleB],
     settingsStore: createSettingsStore(),
   });
@@ -244,6 +247,7 @@ test("schedule list route filters scoped schedules", async () => {
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node()],
     scopedSchedules: () => store.list(),
     settingsStore: createSettingsStore(),
   });
@@ -292,6 +296,7 @@ test("schedule detail route returns scoped schedules only", async () => {
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node()],
     scopedSchedules: async () => [visible],
     settingsStore: createSettingsStore(),
   });
@@ -325,6 +330,7 @@ test("schedule occurrence and lifecycle routes only operate on scoped schedules"
     recordingStore: recordings,
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node()],
     scopedSchedules: async () => [visible],
     settingsStore: createSettingsStore(),
   });
@@ -376,6 +382,7 @@ test("schedule action summary returns scoped readiness links and node context", 
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node({ id: visible.nodeId })],
     scopedSchedules: async () => [visible],
     settingsStore: createSettingsStore(),
   });
@@ -416,6 +423,7 @@ test("schedule action summary reports lifecycle blockers for disabled schedules"
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node()],
     scopedSchedules: async () => [disabled],
     settingsStore: createSettingsStore(),
   });
@@ -450,6 +458,7 @@ test("disabled schedule run-now is rejected and audited", async () => {
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [node()],
     scopedSchedules: async () => [disabled],
     settingsStore: createSettingsStore(),
   });
@@ -462,6 +471,79 @@ test("disabled schedule run-now is rejected and audited", async () => {
   assert.equal(response.status, 409);
   assert.equal(event?.reason, "schedule_disabled");
   assert.equal(event?.target.id, disabled.id);
+});
+
+test("schedule work routes only operate on scoped visible nodes", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["schedule:manage", "schedule:read"]);
+  const visibleNode = node({ id: "node_schedule_visible" });
+  const hiddenNode = node({ id: "node_schedule_hidden" });
+  const visible = schedule({
+    id: "sched_visible_node_scope",
+    nodeId: visibleNode.id,
+  });
+  const hiddenNodeSchedule = schedule({
+    id: "sched_hidden_node_scope",
+    nodeId: hiddenNode.id,
+  });
+  const store = scheduleStore([visible, hiddenNodeSchedule]);
+  const recordings = recordingStore();
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([visibleNode, hiddenNode]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: recordings,
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedNodes: async () => [visibleNode],
+    scopedSchedules: () => store.list(),
+    settingsStore: createSettingsStore(),
+  });
+
+  const createHidden = await requestJson(app, "/api/v1/schedules", "POST", {
+    enabled: true,
+    folderTemplate: "Hidden/{{date}}",
+    name: "Hidden Node Schedule",
+    nodeId: hiddenNode.id,
+    recordingProfileId: "voice-mp3-vbr",
+    room: "Hidden Room",
+    timezone: "UTC",
+    titleTemplate: "{{date}} Hidden Node Schedule",
+    watchdogPolicyId: "scheduled-voice-watchdog",
+  });
+  const updateHidden = await requestJson(app, `/api/v1/schedules/${visible.id}`, "PATCH", {
+    nodeId: hiddenNode.id,
+  });
+  const runHidden = await app.request(`/api/v1/schedules/${hiddenNodeSchedule.id}/run-now`, {
+    method: "POST",
+  });
+  const failedEvents = await auditStore.list({
+    outcome: "failed",
+    permission: "schedule:manage",
+  });
+
+  assert.equal(createHidden.status, 409);
+  assert.equal(updateHidden.status, 409);
+  assert.equal(runHidden.status, 409);
+  assert.equal((await store.find(visible.id))?.nodeId, visibleNode.id);
+  assert.equal(
+    (await store.list()).some((candidate) => candidate.name === "Hidden Node Schedule"),
+    false,
+  );
+  assert.equal((await recordings.list()).length, 0);
+  assert.deepEqual(failedEvents.map((event) => `${event.action}:${event.reason}`).sort(), [
+    "schedules.create.failed:schedule_node_not_found",
+    "schedules.run_now.failed:schedule_node_not_found",
+    "schedules.update.failed:schedule_node_not_found",
+  ]);
+  assert.equal(
+    failedEvents.find((event) => event.action === "schedules.run_now.failed")?.target.id,
+    hiddenNodeSchedule.id,
+  );
 });
 
 test("schedule routes create update run-now and skip-next with audit events", async () => {
@@ -501,6 +583,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
     recordingStore: recordings,
     requirePermission: allowPermission(),
     scheduleStore: store,
+    scopedNodes: async () => [routeNode],
     scopedSchedules: () => store.list(),
     settingsStore: createSettingsStore(),
   });

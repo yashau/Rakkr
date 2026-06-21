@@ -40,6 +40,7 @@ interface ScheduleRouteDependencies {
   recordingStore: RecordingStore;
   requirePermission: RequirePermission;
   scheduleStore: ScheduleStore;
+  scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
   scopedSchedules: (user: NonNullable<AuthResult["user"]>) => Promise<ScheduleSummary[]>;
   settingsStore: SettingsStore;
 }
@@ -59,6 +60,7 @@ export function registerScheduleRoutes({
   recordingStore,
   requirePermission,
   scheduleStore,
+  scopedNodes,
   scopedSchedules,
   settingsStore,
 }: ScheduleRouteDependencies) {
@@ -217,7 +219,7 @@ export function registerScheduleRoutes({
         return c.json({ error: "Invalid next run date" }, 400);
       }
 
-      const node = await nodeStore.find(body.data.nodeId);
+      const node = await findScopedNode(c, body.data.nodeId);
 
       if (!node) {
         await recordScheduleWriteFailure(c, "schedules.create.failed", "schedule_node_not_found");
@@ -299,7 +301,7 @@ export function registerScheduleRoutes({
       }
 
       const targetNodeId = body.data.nodeId ?? before.nodeId;
-      const targetNode = await nodeStore.find(targetNodeId);
+      const targetNode = await findScopedNode(c, targetNodeId);
 
       if (!targetNode) {
         await recordScheduleWriteFailure(
@@ -379,7 +381,7 @@ export function registerScheduleRoutes({
         return c.json({ error: "Disabled schedules cannot be run now" }, 409);
       }
 
-      const node = await nodeStore.find(schedule.nodeId);
+      const node = await findScopedNode(c, schedule.nodeId);
 
       if (!node) {
         await recordScheduleRunFailure(c, scheduleId, "schedule_node_not_found", schedule.name);
@@ -553,6 +555,10 @@ export function registerScheduleRoutes({
 
   async function findScopedSchedule(c: Context<AppBindings>, scheduleId: string) {
     return (await scopedSchedules(currentUser(c))).find((schedule) => schedule.id === scheduleId);
+  }
+
+  async function findScopedNode(c: Context<AppBindings>, nodeId: string) {
+    return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
   }
 
   async function recordScheduleRunFailure(

@@ -252,6 +252,7 @@ Current implementation baseline:
 - Schedules can pin ALSA, JACK, or PipeWire capture backend selection and target audio interfaces for run-now and due-run jobs, or inherit node defaults.
 - Schedule list API and UI filter visible schedules by search, enabled state, node, backend, and interface with removable active chips.
 - Schedule detail, occurrence preview, and lifecycle control APIs operate only on scoped visible schedules.
+- Schedule create, update, and run-now APIs operate only on scoped visible nodes.
 - Schedule detail API exposes scoped action summaries with permission, node, enabled-state, next-occurrence, and lifecycle readiness.
 - Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
 - Schedules UI mirrors RBAC for create, edit, run-now, skip-next, and delete actions.
@@ -898,6 +899,7 @@ Current implementation baseline:
 268. ✅ Scope health lifecycle action APIs.
 269. ✅ Scope single-recording upload queue API.
 270. ✅ Scope ad-hoc recording start API.
+271. ✅ Scope schedule work creation APIs.
 
 ## Open Questions
 

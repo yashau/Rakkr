@@ -668,6 +668,7 @@ registerScheduleRoutes({
   recordingStore,
   requirePermission,
   scheduleStore,
+  scopedNodes,
   scopedSchedules,
   settingsStore,
 });
