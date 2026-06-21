@@ -60,7 +60,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, upload queue detail/action summaries and runner actions, metrics |
+| Controller API | 🟨 | Auth detail/action summaries, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, upload queue detail/action summaries and runner actions, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -372,7 +372,7 @@ Current implementation baseline:
 - Access UI includes a structured resource-scope composer for local user grants.
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
 - Access policy update routes have regression coverage for before/after audit snapshots.
-- Auth management routes have missing-permission deny coverage.
+- Auth management routes have missing-permission deny coverage, user detail, and action summaries.
 - Access policy denies have route coverage for protected recording metadata writes and bulk organization.
 - Access policy denies have route coverage for live-listen monitor starts.
 - Access policy denies have route coverage for recording stop controls.
@@ -881,6 +881,7 @@ Current implementation baseline:
 256. ✅ Add scoped recording-job action summary API.
 257. ✅ Add settings resource action summary APIs.
 258. ✅ Add upload queue item and runner action summary APIs.
+259. ✅ Add auth management detail and action summary APIs.
 
 ## Open Questions
 

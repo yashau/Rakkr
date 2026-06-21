@@ -10,12 +10,7 @@ import { registerAgentMonitorRoutes } from "./agent-monitor-routes.js";
 import { registerAgentRoutes } from "./agent-routes.js";
 import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
-  accessGroupIdSchema,
-  accessPolicyInputSchema,
-  resourceGrantSchema,
-  roleSchema,
   type AuditEvent,
-  type CurrentUser,
   type Permission,
   type RecorderNode,
   type ScheduleSummary,
@@ -23,9 +18,9 @@ import {
 import { registerAuditRoutes } from "./audit-routes.js";
 import { createAuditStore } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
+import { registerAuthManagementRoutes } from "./auth-management-routes.js";
 import { clearOidcLoginStateCookie, registerAuthOidcRoutes } from "./auth-oidc-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
-import { accessKeepsAuthManage, accessSnapshot } from "./auth-utils.js";
 import { registerHealthRoutes } from "./health-routes.js";
 import { createHealthEventStore } from "./health-store.js";
 import type { RecordAuditEvent } from "./http-types.js";
@@ -80,24 +75,6 @@ type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-});
-const userAccessRequestSchema = z
-  .object({
-    groupIds: z.array(accessGroupIdSchema).max(64).default([]),
-    resourceGrants: z.array(resourceGrantSchema).default([]),
-    roles: z.array(roleSchema).min(1),
-  })
-  .strict();
-const localUserCreateRequestSchema = userAccessRequestSchema.extend({
-  email: z
-    .string()
-    .email()
-    .transform((value) => value.toLowerCase()),
-  name: z.string().trim().min(1).max(160),
-  password: z.string().min(8).max(200),
-});
-const accessPolicyUpdateSchema = z.object({
-  policies: z.array(accessPolicyInputSchema).default([]),
 });
 
 function requestContext(c: Context<AppBindings>, sessionId?: string) {
@@ -445,24 +422,6 @@ function currentUser(c: Context<AppBindings>) {
   return user;
 }
 
-async function recordUserAccessUpdateFailure(
-  c: Context<AppBindings>,
-  userId: string,
-  reason: string,
-) {
-  await recordAuditEvent(c, {
-    action: "auth.users.access.update.failed",
-    auth: currentAuth(c),
-    outcome: "failed",
-    permission: "auth:manage",
-    reason,
-    target: {
-      id: userId,
-      type: "user",
-    },
-  });
-}
-
 async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
   const result: NodeRecord[] = [];
 
@@ -660,243 +619,14 @@ app.get("/api/v1/auth/me", async (c) => {
   });
 });
 
-app.get(
-  "/api/v1/auth/groups",
-  requirePermission("auth:manage", "auth.groups.read", () => ({ type: "auth" })),
-  async (c) => {
-    const groups = await authService.localGroups();
-
-    await recordAuditEvent(c, {
-      action: "auth.groups.read.succeeded",
-      auth: currentAuth(c),
-      details: {
-        count: groups.length,
-      },
-      outcome: "succeeded",
-      permission: "auth:manage",
-      target: {
-        type: "auth",
-      },
-    });
-
-    return c.json({ data: groups });
-  },
-);
-
-app.get(
-  "/api/v1/auth/users",
-  requirePermission("auth:manage", "auth.users.read", () => ({ type: "auth" })),
-  async (c) => {
-    const users = await authService.localUsers();
-
-    await recordAuditEvent(c, {
-      action: "auth.users.read.succeeded",
-      auth: currentAuth(c),
-      details: {
-        count: users.length,
-      },
-      outcome: "succeeded",
-      permission: "auth:manage",
-      target: {
-        type: "auth",
-      },
-    });
-
-    return c.json({ data: users });
-  },
-);
-
-app.post(
-  "/api/v1/auth/users",
-  requirePermission("auth:manage", "auth.users.create", () => ({ type: "auth" })),
-  async (c) => {
-    const body = localUserCreateRequestSchema.safeParse(await c.req.json().catch(() => ({})));
-
-    if (!body.success) {
-      await recordAuditEvent(c, {
-        action: "auth.users.create.failed",
-        auth: currentAuth(c),
-        outcome: "failed",
-        permission: "auth:manage",
-        reason: "invalid_request",
-        target: {
-          type: "user",
-        },
-      });
-
-      return c.json({ error: "Invalid local user", issues: body.error.issues }, 400);
-    }
-
-    try {
-      const created = await authService.createLocalUser(body.data);
-
-      await recordAuditEvent(c, {
-        action: "auth.users.create.succeeded",
-        after: accessSnapshot(created),
-        auth: currentAuth(c),
-        details: {
-          email: created.email,
-          provider: created.provider,
-        },
-        outcome: "succeeded",
-        permission: "auth:manage",
-        target: {
-          id: created.id,
-          name: created.email,
-          type: "user",
-        },
-      });
-
-      return c.json({ data: created }, 201);
-    } catch (error) {
-      const reason = error instanceof AuthError ? error.code : "unknown_user_create_error";
-
-      await recordAuditEvent(c, {
-        action: "auth.users.create.failed",
-        auth: currentAuth(c),
-        outcome: "failed",
-        permission: "auth:manage",
-        reason,
-        target: {
-          name: body.data.email,
-          type: "user",
-        },
-      });
-
-      return c.json(
-        {
-          error: reason === "user_exists" ? "Local user already exists" : "Local user unavailable",
-        },
-        reason === "user_exists" ? 409 : 503,
-      );
-    }
-  },
-);
-
-app.get(
-  "/api/v1/auth/access-policies",
-  requirePermission("auth:manage", "auth.access_policies.read", () => ({ type: "auth" })),
-  async (c) => {
-    const policies = await authService.accessPolicies();
-
-    await recordAuditEvent(c, {
-      action: "auth.access_policies.read.succeeded",
-      auth: currentAuth(c),
-      details: {
-        count: policies.length,
-      },
-      outcome: "succeeded",
-      permission: "auth:manage",
-      target: {
-        type: "auth",
-      },
-    });
-
-    return c.json({ data: policies });
-  },
-);
-
-app.patch(
-  "/api/v1/auth/access-policies",
-  requirePermission("auth:manage", "auth.access_policies.update", () => ({ type: "auth" })),
-  async (c) => {
-    const body = accessPolicyUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
-
-    if (!body.success) {
-      await recordAuditEvent(c, {
-        action: "auth.access_policies.update.failed",
-        auth: currentAuth(c),
-        outcome: "failed",
-        permission: "auth:manage",
-        reason: "invalid_request",
-        target: {
-          type: "auth",
-        },
-      });
-
-      return c.json({ error: "Invalid access policies", issues: body.error.issues }, 400);
-    }
-
-    const before = await authService.accessPolicies();
-    const updated = await authService.updateLocalAccessPolicies(
-      body.data.policies,
-      currentUser(c).id,
-    );
-
-    await recordAuditEvent(c, {
-      action: "auth.access_policies.update.succeeded",
-      after: {
-        policies: updated,
-      },
-      auth: currentAuth(c),
-      before: {
-        policies: before,
-      },
-      outcome: "succeeded",
-      permission: "auth:manage",
-      target: {
-        type: "auth",
-      },
-    });
-
-    return c.json({ data: updated });
-  },
-);
-
-app.patch(
-  "/api/v1/auth/users/:userId/access",
-  requirePermission("auth:manage", "auth.users.access.update", (c) => ({
-    id: c.req.param("userId"),
-    type: "user",
-  })),
-  async (c) => {
-    const userId = c.req.param("userId");
-    const body = userAccessRequestSchema.safeParse(await c.req.json().catch(() => ({})));
-
-    if (!body.success) {
-      await recordUserAccessUpdateFailure(c, userId, "invalid_request");
-      return c.json({ error: "Invalid access update", issues: body.error.issues }, 400);
-    }
-
-    if (userId === currentUser(c).id && !accessKeepsAuthManage(body.data.roles)) {
-      await recordUserAccessUpdateFailure(c, userId, "self_auth_manage_required");
-      return c.json({ error: "Local access manager must keep auth:manage" }, 400);
-    }
-
-    const before = await authService.localUser(userId);
-    let updated: CurrentUser | undefined;
-
-    try {
-      updated = await authService.updateLocalUserAccess(userId, body.data);
-    } catch (error) {
-      const reason = error instanceof AuthError ? error.code : "unknown_access_update_error";
-
-      await recordUserAccessUpdateFailure(c, userId, reason);
-      return c.json({ error: "Local user access unavailable" }, 503);
-    }
-
-    if (!updated) {
-      await recordUserAccessUpdateFailure(c, userId, "user_not_found");
-      return c.json({ error: "User not found" }, 404);
-    }
-
-    await recordAuditEvent(c, {
-      action: "auth.users.access.update.succeeded",
-      after: accessSnapshot(updated),
-      auth: currentAuth(c),
-      before: accessSnapshot(before),
-      outcome: "succeeded",
-      permission: "auth:manage",
-      target: {
-        id: updated.id,
-        name: updated.email,
-        type: "user",
-      },
-    });
-
-    return c.json({ data: updated });
-  },
-);
+registerAuthManagementRoutes({
+  app,
+  authService,
+  currentAuth,
+  currentUser,
+  recordAuditEvent,
+  requirePermission,
+});
 
 registerAuthLifecycleRoutes({
   app,
