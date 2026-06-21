@@ -15,6 +15,8 @@ export interface NodeInventoryFilterDraft {
   backend: "" | AudioBackendFilter;
   building: string;
   floor: string;
+  lastSeenFrom: string;
+  lastSeenTo: string;
   room: string;
   search: string;
   site: string;
@@ -25,6 +27,8 @@ export const emptyNodeInventoryFilters: NodeInventoryFilterDraft = {
   backend: "",
   building: "",
   floor: "",
+  lastSeenFrom: "",
+  lastSeenTo: "",
   room: "",
   search: "",
   site: "",
@@ -46,7 +50,7 @@ export function NodeInventoryFilters({
   }
 
   return (
-    <div className="grid w-full gap-3 md:max-w-5xl md:grid-cols-2 xl:grid-cols-7">
+    <div className="grid w-full gap-3 md:max-w-6xl md:grid-cols-2 xl:grid-cols-9">
       <Field label="Search">
         <Input
           onChange={(event) => updateFilter("search", event.target.value)}
@@ -80,6 +84,20 @@ export function NodeInventoryFilters({
           onChange={(event) => updateFilter("room", event.target.value)}
           placeholder="room"
           value={filters.room}
+        />
+      </Field>
+      <Field label="Last Seen From">
+        <Input
+          onChange={(event) => updateFilter("lastSeenFrom", event.target.value)}
+          type="date"
+          value={filters.lastSeenFrom}
+        />
+      </Field>
+      <Field label="Last Seen To">
+        <Input
+          onChange={(event) => updateFilter("lastSeenTo", event.target.value)}
+          type="date"
+          value={filters.lastSeenTo}
         />
       </Field>
       <Field label="Status">

@@ -60,8 +60,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes with location/backend filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health date filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes with location/backend filters/exports, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench with date filters, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes with location/backend/last-seen filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health date filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes with location/backend/last-seen filters/exports, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench with date filters, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
@@ -201,6 +201,7 @@ Current partial implementation:
 - Node UI summarizes connectivity/offline health alongside disk, CPU, and audio.
 - Node and dashboard UI color-code online/offline/recording/degraded/alerting status.
 - Node API and inventory UI can filter visible nodes by status.
+- Node API and inventory UI can filter visible nodes by last-seen date range.
 - Node API and inventory UI can filter visible nodes by site/building/floor/room.
 - Node API and inventory UI can filter visible nodes by audio backend.
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
@@ -839,6 +840,7 @@ Current implementation baseline:
 226. ✅ Add selected node inventory CSV export.
 227. ✅ Add server-backed node inventory location filters.
 228. ✅ Add recording-job created date filters.
+229. ✅ Add node inventory last-seen date filters.
 
 ## Open Questions
 

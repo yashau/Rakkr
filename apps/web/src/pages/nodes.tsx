@@ -40,7 +40,7 @@ import {
   type NodeEnrollmentResult,
   type NodeFilters,
 } from "@/lib/api";
-import { formatDateTime, localIsoDate, startOfLocalDay } from "@/lib/dates";
+import { formatDateTime, localDateBoundaryIso, localIsoDate, startOfLocalDay } from "@/lib/dates";
 import {
   nextNodeSelection,
   nodeHealthLifecycleInput,
@@ -113,6 +113,8 @@ export function NodesPage() {
     backend: nodeFilterDraft.backend || undefined,
     building: nodeFilterDraft.building.trim() || undefined,
     floor: nodeFilterDraft.floor.trim() || undefined,
+    lastSeenFrom: localDateBoundaryIso(nodeFilterDraft.lastSeenFrom, "start"),
+    lastSeenTo: localDateBoundaryIso(nodeFilterDraft.lastSeenTo, "end"),
     q: nodeFilterDraft.search.trim() || undefined,
     room: nodeFilterDraft.room.trim() || undefined,
     site: nodeFilterDraft.site.trim() || undefined,

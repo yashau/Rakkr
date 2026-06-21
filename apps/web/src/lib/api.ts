@@ -78,6 +78,8 @@ export interface NodeFilters {
   backend?: "alsa" | "jack" | "pipewire" | "unknown";
   building?: string;
   floor?: string;
+  lastSeenFrom?: string;
+  lastSeenTo?: string;
   q?: string;
   room?: string;
   site?: string;
@@ -138,13 +140,9 @@ export interface RecordingBulkMetadataUpdate {
   replaceTags?: string[];
 }
 
-export interface RecordingBulkDeleteInput {
-  recordingIds: string[];
-}
+export type RecordingBulkDeleteInput = { recordingIds: string[] };
 
-export interface RecordingSelectedExportInput {
-  recordingIds: string[];
-}
+export type RecordingSelectedExportInput = { recordingIds: string[] };
 
 export interface RecordingBulkUploadQueueInput extends UploadQueueInput {
   recordingIds: string[];

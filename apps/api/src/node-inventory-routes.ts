@@ -23,12 +23,18 @@ const nodeLocationFilterSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
   z.string().trim().min(1).max(160).optional(),
 );
+const nodeDateFilterSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() ? value : undefined),
+  z.string().datetime({ offset: true }).optional(),
+);
 const nodeBackendFilterSchema = z.enum(["alsa", "jack", "pipewire", "unknown"]);
 const nodeListFilterSchema = z
   .object({
     backend: nodeBackendFilterSchema.optional(),
     building: nodeLocationFilterSchema,
     floor: nodeLocationFilterSchema,
+    lastSeenFrom: nodeDateFilterSchema,
+    lastSeenTo: nodeDateFilterSchema,
     q: nodeSearchSchema,
     room: nodeLocationFilterSchema,
     site: nodeLocationFilterSchema,
@@ -174,14 +180,21 @@ function normalizeSearchTerm(value: string | undefined) {
 
 function filterNodes(nodes: RecorderNode[], filters: z.infer<typeof nodeListFilterSchema>) {
   const query = normalizeSearchTerm(filters.q);
+  const lastSeenFrom = filters.lastSeenFrom ? Date.parse(filters.lastSeenFrom) : undefined;
+  const lastSeenTo = filters.lastSeenTo ? Date.parse(filters.lastSeenTo) : undefined;
 
-  return nodes.filter(
-    (node) =>
+  return nodes.filter((node) => {
+    const lastSeenAt = Date.parse(node.lastSeenAt);
+
+    return (
+      (lastSeenFrom === undefined || lastSeenAt >= lastSeenFrom) &&
+      (lastSeenTo === undefined || lastSeenAt <= lastSeenTo) &&
       (!filters.status || node.status === filters.status) &&
       (!filters.backend || nodeMatchesBackend(node, filters.backend)) &&
       nodeMatchesLocationFilters(node, filters) &&
-      (!query || nodeSearchText(node).includes(query)),
-  );
+      (!query || nodeSearchText(node).includes(query))
+    );
+  });
 }
 
 function nodeMatchesLocationFilters(

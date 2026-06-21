@@ -134,6 +134,39 @@ test("node list filters by location hierarchy", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("node list filters by last seen window", async () => {
+  const app = nodeInventoryApp({
+    nodes: [
+      node({
+        id: "node_stale",
+        lastSeenAt: "2026-06-18T12:00:00.000Z",
+      }),
+      node({
+        id: "node_recent",
+        lastSeenAt: "2026-06-20T12:00:00.000Z",
+      }),
+      node({
+        id: "node_future",
+        lastSeenAt: "2026-06-21T12:00:00.000Z",
+      }),
+    ],
+    permissionCalls: [],
+  });
+
+  const response = await app.request(
+    "/api/v1/nodes?lastSeenFrom=2026-06-20T00%3A00%3A00.000Z&lastSeenTo=2026-06-20T23%3A59%3A59.999Z",
+  );
+  const body = (await response.json()) as { data: RecorderNode[] };
+  const invalidResponse = await app.request("/api/v1/nodes?lastSeenFrom=2026-06-20");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.data.map((item) => item.id),
+    ["node_recent"],
+  );
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("node list searches inventory identity fields", async () => {
   const chamberNode = nodeWithInterface({
     alias: "Council Chamber",
@@ -215,7 +248,9 @@ test("node export returns filtered inventory CSV and audits access", async () =>
     permissionCalls,
   });
 
-  const response = await app.request("/api/v1/nodes/export?backend=jack&status=recording");
+  const response = await app.request(
+    "/api/v1/nodes/export?backend=jack&status=recording&lastSeenFrom=2026-06-18T00%3A00%3A00.000Z&lastSeenTo=2026-06-18T23%3A59%3A59.999Z",
+  );
   const csv = await response.text();
   const [event] = await auditStore.list({ action: "nodes.export.succeeded" });
 
@@ -240,6 +275,8 @@ test("node export returns filtered inventory CSV and audits access", async () =>
   assert.equal(event?.permission, "node:read");
   assert.equal(event?.details.exportedCount, 1);
   assert.equal(event?.details.filters.backend, "jack");
+  assert.equal(event?.details.filters.lastSeenFrom, "2026-06-18T00:00:00.000Z");
+  assert.equal(event?.details.filters.lastSeenTo, "2026-06-18T23:59:59.999Z");
   assert.equal(event?.details.filters.status, "recording");
   assert.equal(event?.target.id, "node_collection");
   assert.equal(event?.target.type, "node_collection");
