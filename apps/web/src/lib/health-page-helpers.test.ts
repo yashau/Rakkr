@@ -12,6 +12,7 @@ import type {
 import {
   emptyHealthPageFilters,
   healthEventBulkActionTargets,
+  healthEventFilterChips,
   healthEventFiltersFromDraft,
   healthEventSummary,
   healthEventTargetLabel,
@@ -19,7 +20,7 @@ import {
   healthPagePermissions,
   readableHealthEventType,
 } from "./health-page-helpers";
-import { localDateBoundaryIso } from "./dates";
+import { formatDateTime, localDateBoundaryIso } from "./dates";
 
 test("health page permissions are closed by default", () => {
   assert.deepEqual(healthPagePermissions(undefined), {
@@ -88,6 +89,44 @@ test("health event filter draft trims API filters and caps limits", () => {
   assert.equal(
     healthEventFiltersFromDraft({ ...emptyHealthPageFilters, limit: "nope" }).limit,
     undefined,
+  );
+});
+
+test("health event filter chips expose active filters in operator order", () => {
+  assert.deepEqual(
+    healthEventFilterChips({
+      limit: 200,
+      nodeId: "node_1",
+      openedFrom: "2026-06-20T00:00:00.000Z",
+      recordingId: "rec_1",
+      resolvedTo: "2026-06-23T23:59:59.999Z",
+      search: "too quiet",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.scheduled_low_signal",
+    }),
+    [
+      { key: "search", label: "search", value: "too quiet" },
+      { key: "status", label: "status", value: "open" },
+      { key: "severity", label: "severity", value: "critical" },
+      {
+        key: "openedFrom",
+        label: "opened from",
+        value: formatDateTime("2026-06-20T00:00:00.000Z"),
+      },
+      {
+        key: "resolvedTo",
+        label: "resolved to",
+        value: formatDateTime("2026-06-23T23:59:59.999Z"),
+      },
+      {
+        key: "type",
+        label: "type",
+        value: "watchdog.scheduled_low_signal",
+      },
+      { key: "nodeId", label: "node", value: "node_1" },
+      { key: "recordingId", label: "recording", value: "rec_1" },
+    ],
   );
 });
 

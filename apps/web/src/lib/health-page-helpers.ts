@@ -9,9 +9,17 @@ import type {
 } from "@rakkr/shared";
 
 import type { HealthEventFilters } from "@/lib/api";
-import { localDateBoundaryIso } from "@/lib/dates";
+import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 
 export type HealthLifecycleAction = "acknowledge" | "reopen" | "resolve" | "suppress";
+
+export type HealthEventFilterKey = Exclude<keyof HealthEventFilters, "limit">;
+
+export interface ActiveHealthEventFilterChip {
+  key: HealthEventFilterKey;
+  label: string;
+  value: string;
+}
 
 export interface HealthPageFilterDraft {
   limit: string;
@@ -72,6 +80,24 @@ export function healthEventFiltersFromDraft(draft: HealthPageFilterDraft): Healt
     status: draft.status || undefined,
     type: trimmed(draft.type),
   };
+}
+
+export function healthEventFilterChips(filters: HealthEventFilters): ActiveHealthEventFilterChip[] {
+  return healthFilterOrder.flatMap((key) => {
+    const value = filters[key];
+
+    if (!value) {
+      return [];
+    }
+
+    return [
+      {
+        key,
+        label: healthFilterLabels[key],
+        value: healthFilterValue(key, value),
+      },
+    ];
+  });
 }
 
 export function healthEventSummary(events: HealthEvent[]) {
@@ -162,3 +188,44 @@ function trimmed(value: string) {
 
   return next || undefined;
 }
+
+function healthFilterValue(key: HealthEventFilterKey, value: string) {
+  if (
+    key === "openedFrom" ||
+    key === "openedTo" ||
+    key === "resolvedFrom" ||
+    key === "resolvedTo"
+  ) {
+    return formatDateTime(value);
+  }
+
+  return value;
+}
+
+const healthFilterOrder: HealthEventFilterKey[] = [
+  "search",
+  "status",
+  "severity",
+  "openedFrom",
+  "openedTo",
+  "resolvedFrom",
+  "resolvedTo",
+  "type",
+  "nodeId",
+  "scheduleId",
+  "recordingId",
+];
+
+const healthFilterLabels: Record<HealthEventFilterKey, string> = {
+  nodeId: "node",
+  openedFrom: "opened from",
+  openedTo: "opened to",
+  recordingId: "recording",
+  resolvedFrom: "resolved from",
+  resolvedTo: "resolved to",
+  scheduleId: "schedule",
+  search: "search",
+  severity: "severity",
+  status: "status",
+  type: "type",
+};

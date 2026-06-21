@@ -9,6 +9,7 @@ import {
   RotateCcw,
   ShieldCheck,
   ShieldOff,
+  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,12 +22,14 @@ import { formatDateTime } from "@/lib/dates";
 import {
   emptyHealthPageFilters,
   healthEventBulkActionTargets,
+  healthEventFilterChips,
   healthEventFiltersFromDraft,
   healthEventSummary,
   healthEventTargetLabel,
   healthLifecycleActions,
   healthPagePermissions,
   readableHealthEventType,
+  type HealthEventFilterKey,
   type HealthLifecycleAction,
   type HealthPageFilterDraft,
 } from "@/lib/health-page-helpers";
@@ -46,6 +49,19 @@ const statuses: Array<"" | HealthEvent["status"]> = [
 const severities: Array<"" | HealthEvent["severity"]> = ["", "critical", "warning", "info"];
 const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const healthFilterDraftKeys: Record<HealthEventFilterKey, keyof HealthPageFilterDraft> = {
+  nodeId: "nodeId",
+  openedFrom: "openedFromDate",
+  openedTo: "openedToDate",
+  recordingId: "recordingId",
+  resolvedFrom: "resolvedFromDate",
+  resolvedTo: "resolvedToDate",
+  scheduleId: "scheduleId",
+  search: "search",
+  severity: "severity",
+  status: "status",
+  type: "type",
+};
 
 export function HealthPage() {
   const queryClient = useQueryClient();
@@ -142,6 +158,7 @@ export function HealthPage() {
   }
 
   const events = healthQuery.data?.data ?? [];
+  const activeFilterChips = healthEventFilterChips(apiFilters);
   const summary = healthEventSummary(events);
   const visibleEventIds = events.map((event) => event.id);
   const selectedVisibleEventIds = selectedEventIds.filter((eventId) =>
@@ -300,6 +317,29 @@ export function HealthPage() {
           </Field>
         </div>
 
+        {activeFilterChips.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {activeFilterChips.map((filter) => (
+              <Badge
+                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
+                key={filter.key}
+                variant="outline"
+              >
+                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
+                <span className="truncate font-mono">{filter.value}</span>
+                <button
+                  aria-label={`Clear ${filter.label} filter`}
+                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => clearActiveFilter(filter.key)}
+                  type="button"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+
         <BulkHealthActions
           canManage={permissions.canAcknowledgeHealth}
           events={events}
@@ -345,6 +385,10 @@ export function HealthPage() {
     value: HealthPageFilterDraft[Key],
   ) {
     setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function clearActiveFilter(key: HealthEventFilterKey) {
+    setFilters((current) => ({ ...current, [healthFilterDraftKeys[key]]: "" }));
   }
 
   function toggleSelectedEvent(eventId: string, checked: boolean) {
