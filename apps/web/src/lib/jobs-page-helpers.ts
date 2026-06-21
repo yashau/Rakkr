@@ -3,6 +3,8 @@ import type { CurrentUser, RecorderNode, RecordingJob, RecordingSummary } from "
 export interface JobsPageFilters {
   captureBackend: "" | NonNullable<RecordingJob["command"]["captureBackend"]>;
   captureInterfaceId: string;
+  createdFrom: string;
+  createdTo: string;
   nodeId: string;
   search: string;
   status: "" | RecordingJob["status"];
@@ -11,6 +13,8 @@ export interface JobsPageFilters {
 export const emptyJobsPageFilters: JobsPageFilters = {
   captureBackend: "",
   captureInterfaceId: "",
+  createdFrom: "",
+  createdTo: "",
   nodeId: "",
   search: "",
   status: "",
@@ -137,8 +141,20 @@ export function recordingJobSummary(jobs: RecordingJob[]) {
 export function filterRecordingJobs(jobs: RecordingJob[], filters: JobsPageFilters) {
   const nodeId = filters.nodeId.trim();
   const search = filters.search.trim().toLowerCase();
+  const createdFrom = localDateStart(filters.createdFrom);
+  const createdTo = localDateEnd(filters.createdTo);
 
   return jobs.filter((job) => {
+    const createdAt = Date.parse(job.createdAt);
+
+    if (createdFrom !== undefined && createdAt < createdFrom) {
+      return false;
+    }
+
+    if (createdTo !== undefined && createdAt > createdTo) {
+      return false;
+    }
+
     if (filters.status && job.status !== filters.status) {
       return false;
     }
@@ -271,3 +287,37 @@ function recordingJobSearchText(job: RecordingJob) {
 const activeJobStatuses: Array<RecordingJob["status"]> = ["queued", "running", "stop_requested"];
 const retryableJobStatuses: Array<RecordingJob["status"]> = ["cancelled", "failed"];
 const stoppableJobStatuses: Array<RecordingJob["status"]> = ["queued", "running"];
+
+function localDateStart(value: string) {
+  const parts = localDateParts(value);
+
+  if (!parts) {
+    return undefined;
+  }
+
+  return new Date(parts.year, parts.month - 1, parts.day, 0, 0, 0, 0).getTime();
+}
+
+function localDateEnd(value: string) {
+  const parts = localDateParts(value);
+
+  if (!parts) {
+    return undefined;
+  }
+
+  return new Date(parts.year, parts.month - 1, parts.day, 23, 59, 59, 999).getTime();
+}
+
+function localDateParts(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    day: Number(match[3]),
+    month: Number(match[2]),
+    year: Number(match[1]),
+  };
+}

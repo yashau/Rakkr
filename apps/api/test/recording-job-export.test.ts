@@ -43,24 +43,29 @@ test.after(async () => {
 test("recording job export helpers filter and render csv", () => {
   const visibleJob = job({
     command: { ...job().command, captureBackend: "pipewire", captureDevice: "hw:EXPORT,0" },
+    createdAt: "2026-06-20T12:00:00.000Z",
     id: "job_export_visible",
     nodeId: "node_export_visible",
     status: "queued",
   });
   const hiddenByStatus = job({
     command: { ...job().command, captureDevice: "hw:EXPORT,1" },
+    createdAt: "2026-06-20T12:30:00.000Z",
     id: "job_export_failed",
     nodeId: "node_export_visible",
     status: "failed",
   });
   const hiddenBySearch = job({
     command: { ...job().command, captureDevice: "hw:OTHER,0" },
+    createdAt: "2026-06-21T12:00:00.000Z",
     id: "job_other",
     nodeId: "node_export_hidden",
     status: "queued",
   });
 
   const filtered = filterRecordingJobsForExport([visibleJob, hiddenByStatus, hiddenBySearch], {
+    createdFrom: "2026-06-20T00:00:00.000Z",
+    createdTo: "2026-06-20T23:59:59.999Z",
     nodeId: "node_export_visible",
     search: "export",
     status: "queued",
@@ -114,9 +119,10 @@ test("recording job list route filters scoped jobs by status search node and bac
     recordingStore,
   });
   const response = await app.request(
-    `/api/v1/recording-jobs?search=${prefix}&status=queued&nodeId=${prefix}_node_jack&captureBackend=jack&captureInterfaceId=${prefix}_iface_jack`,
+    `/api/v1/recording-jobs?search=${prefix}&status=queued&nodeId=${prefix}_node_jack&captureBackend=jack&captureInterfaceId=${prefix}_iface_jack&createdFrom=2026-06-01T00%3A00%3A00.000Z&createdTo=2099-12-31T23%3A59%3A59.999Z`,
   );
   const body = (await response.json()) as { data: RecordingJob[] };
+  const invalidResponse = await app.request("/api/v1/recording-jobs?createdFrom=2026-06-20");
 
   assert.equal(response.status, 200);
   assert.equal(permissionCalls.at(-1)?.permission, "recording:read");
@@ -125,6 +131,7 @@ test("recording job list route filters scoped jobs by status search node and bac
     body.data.map((recordingJob) => recordingJob.id),
     [jackJob.id],
   );
+  assert.equal(invalidResponse.status, 400);
 });
 
 test("recording job export route is RBAC-gated and audited", async () => {
@@ -137,7 +144,7 @@ test("recording job export route is RBAC-gated and audited", async () => {
   });
 
   const response = await app.request(
-    "/api/v1/recording-jobs/export?status=queued&nodeId=node_export_jack&search=room&captureBackend=jack&captureInterfaceId=iface_export_jack",
+    "/api/v1/recording-jobs/export?status=queued&nodeId=node_export_jack&search=room&captureBackend=jack&captureInterfaceId=iface_export_jack&createdFrom=2026-06-20T00%3A00%3A00.000Z&createdTo=2026-06-20T23%3A59%3A59.999Z",
   );
   const csv = await response.text();
   const [event] = await auditStore.list({ action: "recording_jobs.export.succeeded" });
@@ -160,6 +167,8 @@ test("recording job export route is RBAC-gated and audited", async () => {
   assert.deepEqual(event?.details.filters, {
     captureBackend: "jack",
     captureInterfaceId: "iface_export_jack",
+    createdFrom: "2026-06-20T00:00:00.000Z",
+    createdTo: "2026-06-20T23:59:59.999Z",
     nodeId: "node_export_jack",
     search: "room",
     status: "queued",

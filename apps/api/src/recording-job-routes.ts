@@ -36,6 +36,14 @@ const recordingJobsQuerySchema = z.object({
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     z.string().trim().max(160).optional(),
   ),
+  createdFrom: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().datetime({ offset: true }).optional(),
+  ),
+  createdTo: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().datetime({ offset: true }).optional(),
+  ),
   nodeId: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     z.string().trim().max(160).optional(),

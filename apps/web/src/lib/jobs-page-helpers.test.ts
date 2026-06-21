@@ -76,8 +76,13 @@ test("recording job summary counts active and terminal states", () => {
 
 test("recording job filters match status and searchable job fields", () => {
   const jobs = [
-    job({ id: "job_1", command: { ...job().command, captureDevice: "hw:CARD=Loopback,DEV=0" } }),
     job({
+      createdAt: "2026-06-20T12:00:00.000Z",
+      id: "job_1",
+      command: { ...job().command, captureDevice: "hw:CARD=Loopback,DEV=0" },
+    }),
+    job({
+      createdAt: "2026-06-21T12:00:00.000Z",
       id: "job_2",
       command: { ...job().command, captureBackend: "pipewire", captureInterfaceId: "iface_pw" },
       claimedBy: "agent-node-2",
@@ -110,6 +115,14 @@ test("recording job filters match status and searchable job fields", () => {
   assert.deepEqual(filterRecordingJobs(jobs, { ...emptyJobsPageFilters, nodeId: " node_1 " }), [
     jobs[0],
   ]);
+  assert.deepEqual(
+    filterRecordingJobs(jobs, {
+      ...emptyJobsPageFilters,
+      createdFrom: "2026-06-21",
+      createdTo: "2026-06-21",
+    }),
+    [jobs[1]],
+  );
 });
 
 test("recording job relationship labels prefer permitted friendly names", () => {

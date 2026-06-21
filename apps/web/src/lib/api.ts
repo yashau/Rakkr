@@ -234,6 +234,8 @@ export type RecordingCacheState = "cached" | "missing";
 export interface RecordingJobFilters {
   captureBackend?: NonNullable<RecordingJob["command"]["captureBackend"]>;
   captureInterfaceId?: string;
+  createdFrom?: string;
+  createdTo?: string;
   nodeId?: string;
   search?: string;
   status?: RecordingJob["status"];
@@ -243,9 +245,7 @@ export interface RecordingJobBulkActionInput {
   jobIds: string[];
 }
 
-export interface RecordingJobSelectedExportInput {
-  jobIds: string[];
-}
+export type RecordingJobSelectedExportInput = { jobIds: string[] };
 
 export interface RecordingListMeta {
   hasNextPage: boolean;

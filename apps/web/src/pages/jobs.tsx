@@ -18,7 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 import {
   emptyJobsPageFilters,
   filterRecordingJobs,
@@ -203,7 +203,7 @@ export function JobsPage() {
           <SummaryTile icon={AlertTriangle} label="Failed" tone="critical" value={summary.failed} />
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[160px_160px_220px_220px_1fr]">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[160px_160px_180px_180px_220px_220px_1fr]">
           <Field label="Status">
             <select
               className={selectClassName}
@@ -239,6 +239,24 @@ export function JobsPage() {
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label="Created From">
+            <Input
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, createdFrom: event.target.value }))
+              }
+              type="date"
+              value={filters.createdFrom}
+            />
+          </Field>
+          <Field label="Created To">
+            <Input
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, createdTo: event.target.value }))
+              }
+              type="date"
+              value={filters.createdTo}
+            />
           </Field>
           <Field label="Node">
             {permissions.canReadNodes && (nodesQuery.data?.data.length ?? 0) > 0 ? (
@@ -537,6 +555,8 @@ function recordingJobApiFilters(filters: JobsPageFilters) {
   return {
     captureBackend: filters.captureBackend || undefined,
     captureInterfaceId: filters.captureInterfaceId.trim() || undefined,
+    createdFrom: localDateBoundaryIso(filters.createdFrom, "start"),
+    createdTo: localDateBoundaryIso(filters.createdTo, "end"),
     nodeId: filters.nodeId.trim() || undefined,
     search: filters.search.trim() || undefined,
     status: filters.status || undefined,

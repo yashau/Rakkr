@@ -3,6 +3,8 @@ import type { RecordingJob, RecordingJobStatus } from "@rakkr/shared";
 export interface RecordingJobExportFilters {
   captureBackend?: RecordingJob["command"]["captureBackend"];
   captureInterfaceId?: string;
+  createdFrom?: string;
+  createdTo?: string;
   nodeId?: string;
   search?: string;
   status?: RecordingJobStatus;
@@ -13,8 +15,20 @@ export function filterRecordingJobsForExport(
   filters: RecordingJobExportFilters,
 ) {
   const search = filters.search?.toLocaleLowerCase();
+  const createdFrom = filters.createdFrom ? Date.parse(filters.createdFrom) : undefined;
+  const createdTo = filters.createdTo ? Date.parse(filters.createdTo) : undefined;
 
   return jobs.filter((job) => {
+    const createdAt = Date.parse(job.createdAt);
+
+    if (createdFrom !== undefined && createdAt < createdFrom) {
+      return false;
+    }
+
+    if (createdTo !== undefined && createdAt > createdTo) {
+      return false;
+    }
+
     if (
       filters.captureBackend &&
       (job.command.captureBackend ?? "alsa") !== filters.captureBackend
