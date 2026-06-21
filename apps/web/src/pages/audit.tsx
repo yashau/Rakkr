@@ -1,7 +1,15 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Download, RotateCcw, Search, ShieldCheck } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import { Fragment, useState } from "react";
-import { permissions, type AuditEvent, type AuditOutcome, type Permission } from "@rakkr/shared";
+import { permissions, type AuditEvent } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,31 +17,28 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type AuditEventFilters } from "@/lib/api";
-import { auditPagePermissions } from "@/lib/audit-page-helpers";
+import {
+  auditFilterChips,
+  auditFiltersFromDraft,
+  auditPagePermissions,
+  emptyAuditFilterDraft,
+  type AuditFilterDraft,
+  type AuditFilterKey,
+} from "@/lib/audit-page-helpers";
 import { formatDateTime } from "@/lib/dates";
 
 const outcomes = ["allowed", "denied", "failed", "partial", "succeeded"] as const;
 
-interface AuditFilterDraft {
-  action: string;
-  actor: string;
-  from: string;
-  outcome: "" | AuditOutcome;
-  permission: "" | Permission;
-  reason: string;
-  target: string;
-  to: string;
-}
-
-const emptyDraft: AuditFilterDraft = {
-  action: "",
-  actor: "",
-  from: "",
-  outcome: "",
-  permission: "",
-  reason: "",
-  target: "",
-  to: "",
+const auditFilterDraftKeys: Record<AuditFilterKey, keyof AuditFilterDraft> = {
+  action: "action",
+  actor: "actor",
+  from: "from",
+  limit: "limit",
+  outcome: "outcome",
+  permission: "permission",
+  reason: "reason",
+  target: "target",
+  to: "to",
 };
 
 function outcomeClass(outcome: string) {
@@ -49,7 +54,7 @@ function outcomeClass(outcome: string) {
 }
 
 export function AuditPage() {
-  const [draft, setDraft] = useState<AuditFilterDraft>(emptyDraft);
+  const [draft, setDraft] = useState<AuditFilterDraft>(emptyAuditFilterDraft);
   const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<AuditEventFilters>({});
   const currentUserQuery = useQuery({
@@ -69,6 +74,7 @@ export function AuditPage() {
   });
 
   const events = auditQuery.data?.data ?? [];
+  const activeFilterChips = auditFilterChips(filters);
   const updateDraft = (key: keyof AuditFilterDraft, value: string) =>
     setDraft((current) => ({
       ...current,
@@ -114,7 +120,7 @@ export function AuditPage() {
         className="grid gap-3 border-b border-border bg-panel px-4 py-3 md:grid-cols-2 xl:grid-cols-4"
         onSubmit={(event) => {
           event.preventDefault();
-          setFilters(filtersFromDraft(draft));
+          setFilters(auditFiltersFromDraft(draft));
         }}
       >
         <FilterInput
@@ -156,6 +162,12 @@ export function AuditPage() {
           label="Reason"
           onChange={(value) => updateDraft("reason", value)}
           value={draft.reason}
+        />
+        <FilterInput
+          label="Limit"
+          onChange={(value) => updateDraft("limit", value)}
+          type="number"
+          value={draft.limit}
         />
 
         <div className="grid gap-1">
@@ -208,7 +220,7 @@ export function AuditPage() {
           <Button
             className="h-9"
             onClick={() => {
-              setDraft(emptyDraft);
+              setDraft(emptyAuditFilterDraft);
               setFilters({});
             }}
             type="button"
@@ -218,6 +230,28 @@ export function AuditPage() {
             Clear
           </Button>
         </div>
+        {activeFilterChips.length > 0 ? (
+          <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-4">
+            {activeFilterChips.map((filter) => (
+              <Badge
+                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
+                key={filter.key}
+                variant="outline"
+              >
+                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
+                <span className="truncate font-mono">{filter.value}</span>
+                <button
+                  aria-label={`Clear ${filter.label} filter`}
+                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => clearAuditFilter(filter.key)}
+                  type="button"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        ) : null}
       </form>
 
       <div className="overflow-x-auto">
@@ -312,6 +346,11 @@ export function AuditPage() {
       </div>
     </Card>
   );
+
+  function clearAuditFilter(key: AuditFilterKey) {
+    setDraft((current) => ({ ...current, [auditFilterDraftKeys[key]]: "" }));
+    setFilters((current) => ({ ...current, [key]: undefined }));
+  }
 }
 
 function downloadAuditExport(file: Awaited<ReturnType<typeof api.auditEventsExport>>) {
@@ -385,7 +424,7 @@ function FilterInput({
 }: {
   label: string;
   onChange: (value: string) => void;
-  type?: "datetime-local" | "text";
+  type?: "datetime-local" | "number" | "text";
   value: string;
 }) {
   return (
@@ -402,27 +441,4 @@ function FilterInput({
       />
     </div>
   );
-}
-
-function filtersFromDraft(draft: AuditFilterDraft): AuditEventFilters {
-  return {
-    action: valueOrUndefined(draft.action),
-    actor: valueOrUndefined(draft.actor),
-    from: dateTimeOrUndefined(draft.from),
-    outcome: draft.outcome || undefined,
-    permission: draft.permission || undefined,
-    reason: valueOrUndefined(draft.reason),
-    target: valueOrUndefined(draft.target),
-    to: dateTimeOrUndefined(draft.to),
-  };
-}
-
-function valueOrUndefined(value: string) {
-  const trimmed = value.trim();
-
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function dateTimeOrUndefined(value: string) {
-  return value ? new Date(value).toISOString() : undefined;
 }
