@@ -425,6 +425,86 @@ test("node interface update changes device and channel aliases and audits before
   assert.equal(event?.details.nodeId, node().id);
 });
 
+test("node action routes only operate on scoped visible nodes", async () => {
+  const auditStore = createAuditStore("");
+  const hidden = nodeWithInterface({
+    alias: "Hidden Recorder",
+    id: "node_hidden_action",
+    notes: "do not touch",
+  });
+  const visible = node({ id: "node_visible_action" });
+  const nodes = [visible, hidden];
+  const listenSessionStore = createListenSessionStore();
+  const hiddenSession = await listenSessionStore.start({
+    mode: "controller_meter_preview",
+    nodeId: hidden.id,
+    sessionId: "listen_hidden",
+    startedAt: "2026-06-18T12:00:00.000Z",
+    stopUrl: `/api/v1/nodes/${hidden.id}/listen/listen_hidden`,
+    streamUrl: `/api/v1/nodes/${hidden.id}/listen/stream?sessionId=listen_hidden`,
+    targetLatencyMs: 1500,
+  });
+  const app = nodeApp({
+    auditStore,
+    frames: [meterFrame(hidden.id)],
+    listenSessionStore,
+    nodes,
+    permissionCalls: [],
+    scopedNodeIds: [visible.id],
+  });
+
+  const update = await app.request(`/api/v1/nodes/${hidden.id}`, {
+    body: JSON.stringify({ alias: "Mutated" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const interfaceUpdate = await app.request(`/api/v1/nodes/${hidden.id}/interfaces/iface_monitor`, {
+    body: JSON.stringify({ alias: "Mutated Interface" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const rotate = await app.request(`/api/v1/nodes/${hidden.id}/credentials/rotate`, {
+    method: "POST",
+  });
+  const meters = await app.request(`/api/v1/nodes/${hidden.id}/meters`);
+  const listenStart = await app.request(`/api/v1/nodes/${hidden.id}/listen`, { method: "POST" });
+  const listenStream = await app.request(
+    `/api/v1/nodes/${hidden.id}/listen/stream?sessionId=${hiddenSession.sessionId}`,
+  );
+  const listenStop = await app.request(
+    `/api/v1/nodes/${hidden.id}/listen/${hiddenSession.sessionId}`,
+    { method: "DELETE" },
+  );
+  const storedHidden = nodes.find((candidate) => candidate.id === hidden.id);
+  const storedSession = await listenSessionStore.find(hidden.id, hiddenSession.sessionId);
+  const failedEvents = await auditStore.list({ outcome: "failed" });
+
+  assert.deepEqual(
+    [
+      update.status,
+      interfaceUpdate.status,
+      rotate.status,
+      meters.status,
+      listenStart.status,
+      listenStream.status,
+      listenStop.status,
+    ],
+    [404, 404, 404, 404, 404, 404, 404],
+  );
+  assert.equal(storedHidden?.alias, "Hidden Recorder");
+  assert.equal(storedHidden?.notes, "do not touch");
+  assert.equal(storedHidden?.interfaces[0]?.alias, "Monitor USB");
+  assert.equal(storedSession?.endedAt, undefined);
+  assert.deepEqual(failedEvents.map((event) => `${event.action}:${event.reason}`).sort(), [
+    "listen.monitor.start.failed:node_not_found",
+    "listen.monitor.stop.failed:node_not_found",
+    "listen.monitor.stream.failed:node_not_found",
+    "nodes.credentials.rotate.failed:node_not_found",
+    "nodes.interfaces.update.failed:node_not_found",
+    "nodes.update.failed:node_not_found",
+  ]);
+});
+
 async function startListenSession(app: Hono<AppBindings>, nodeId: string) {
   const response = await app.request(`/api/v1/nodes/${nodeId}/listen`, { method: "POST" });
   const body = (await response.json()) as {
@@ -455,6 +535,7 @@ function nodeApp({
   nodes,
   permissionCalls,
   permissionMiddleware,
+  scopedNodeIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
   currentUser?: CurrentUser;
@@ -464,6 +545,7 @@ function nodeApp({
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
   permissionMiddleware?: RequirePermission;
+  scopedNodeIds?: string[];
 }) {
   const app = new Hono<AppBindings>();
 
@@ -478,7 +560,10 @@ function nodeApp({
     nodeStore: memoryNodeStore(nodes),
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: permissionMiddleware ?? requirePermission(permissionCalls),
-    scopedNodes: async () => nodes,
+    scopedNodes: async () =>
+      nodes.filter(
+        (candidate) => scopedNodeIds === undefined || scopedNodeIds.includes(candidate.id),
+      ),
   });
 
   return app;

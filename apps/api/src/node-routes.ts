@@ -212,7 +212,7 @@ export function registerNodeRoutes({
         return c.json({ error: "Invalid node update", issues: body.error.issues }, 400);
       }
 
-      const before = await nodeStore.find(nodeId);
+      const before = await findScopedNode(c, nodeId);
 
       if (!before) {
         await recordNodeFailure(c, "nodes.update.failed", "node_not_found", nodeId, {
@@ -284,7 +284,7 @@ export function registerNodeRoutes({
         return c.json({ error: "Invalid node interface update", issues: body.error.issues }, 400);
       }
 
-      const beforeNode = await nodeStore.find(nodeId);
+      const beforeNode = await findScopedNode(c, nodeId);
 
       if (!beforeNode) {
         await recordNodeFailure(c, "nodes.interfaces.update.failed", "node_not_found", nodeId, {
@@ -372,7 +372,13 @@ export function registerNodeRoutes({
     })),
     async (c) => {
       const nodeId = c.req.param("nodeId");
-      const before = await nodeStore.find(nodeId);
+      const before = await findScopedNode(c, nodeId);
+
+      if (!before) {
+        await recordNodeFailure(c, "nodes.credentials.rotate.failed", "node_not_found", nodeId);
+        return c.json({ error: "Node not found" }, 404);
+      }
+
       const result = await nodeStore
         .rotateCredential(nodeId, currentUser(c).id)
         .catch(async (error: unknown) => {
@@ -419,11 +425,13 @@ export function registerNodeRoutes({
     })),
     async (c) => {
       const nodeId = c.req.param("nodeId");
-      const frame = (await meterFrameStore.latest(nodeId)) ?? buildMeterFrame();
+      const node = await findScopedNode(c, nodeId);
 
-      if (!(await nodeStore.find(nodeId))) {
+      if (!node) {
         return c.json({ error: "Node not found" }, 404);
       }
+
+      const frame = (await meterFrameStore.latest(node.id)) ?? buildMeterFrame();
 
       if (nodeId !== frame.nodeId) {
         return c.json({ error: "Meter data unavailable" }, 409);
@@ -441,7 +449,7 @@ export function registerNodeRoutes({
     })),
     async (c) => {
       const nodeId = c.req.param("nodeId");
-      const node = await nodeStore.find(nodeId);
+      const node = await findScopedNode(c, nodeId);
 
       if (!node) {
         await recordNodeFailure(c, "listen.monitor.start.failed", "node_not_found", nodeId, {
@@ -513,7 +521,7 @@ export function registerNodeRoutes({
     })),
     async (c) => {
       const nodeId = c.req.param("nodeId");
-      const node = await nodeStore.find(nodeId);
+      const node = await findScopedNode(c, nodeId);
 
       if (!node) {
         await recordNodeFailure(c, "listen.monitor.stream.failed", "node_not_found", nodeId, {
@@ -598,7 +606,7 @@ export function registerNodeRoutes({
     async (c) => {
       const nodeId = c.req.param("nodeId");
       const sessionId = c.req.param("sessionId");
-      const node = await nodeStore.find(nodeId);
+      const node = await findScopedNode(c, nodeId);
 
       if (!node) {
         await recordNodeFailure(c, "listen.monitor.stop.failed", "node_not_found", nodeId, {
@@ -677,6 +685,10 @@ export function registerNodeRoutes({
     const seededFrame = buildMeterFrame();
 
     return seededFrame.nodeId === nodeId ? seededFrame : undefined;
+  }
+
+  async function findScopedNode(c: Context<AppBindings>, nodeId: string) {
+    return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
   }
 
   async function recordNodeFailure(

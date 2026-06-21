@@ -209,6 +209,7 @@ Current partial implementation:
 - Node API and inventory UI can export visible filtered and selected inventory as audited CSV, with active filter chips for applied inventory filters.
 - Node detail API returns only scoped visible nodes for detail contexts.
 - Node detail API exposes scoped action summaries for live listen, meters, inventory edits, token rotation, health, and ad-hoc recording start readiness.
+- Node management, meter, and live-listen action APIs operate only on scoped visible nodes.
 - Nodes page direct access mirrors `node:read`; node health panels mirror `health:read` and expose lifecycle actions only with `health:acknowledge`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
@@ -890,6 +891,7 @@ Current implementation baseline:
 264. ✅ Add expanded scoped aggregate status API.
 265. ✅ Scope schedule occurrence and lifecycle APIs.
 266. ✅ Scope single-recording action APIs.
+267. ✅ Scope node management, meter, and live-listen action APIs.
 
 ## Open Questions
 
@@ -901,4 +903,4 @@ Current implementation baseline:
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 
-Last updated: `2026-06-21`
+Last updated: `2026-06-22`
