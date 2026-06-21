@@ -15,11 +15,13 @@ import {
   recordingJobBulkRetryTargets,
   recordingJobBulkStopTargets,
   recordingJobCaptureDetails,
+  recordingJobFilterChips,
   recordingJobRelationshipLabel,
   recordingJobRetryActionState,
   recordingJobStopActionState,
   recordingJobSummary,
 } from "./jobs-page-helpers";
+import { formatDateTime } from "./dates";
 
 test("jobs page permissions are closed by default", () => {
   assert.deepEqual(jobsPagePermissions(undefined), {
@@ -122,6 +124,31 @@ test("recording job filters match status and searchable job fields", () => {
       createdTo: "2026-06-21",
     }),
     [jobs[1]],
+  );
+});
+
+test("recording job filter chips expose active filters in operator order", () => {
+  assert.deepEqual(
+    recordingJobFilterChips({
+      captureBackend: "jack",
+      captureInterfaceId: "iface_jack",
+      createdFrom: "2026-06-20T00:00:00.000Z",
+      nodeId: "node_1",
+      search: "council",
+      status: "queued",
+    }),
+    [
+      { key: "search", label: "search", value: "council" },
+      { key: "status", label: "status", value: "queued" },
+      { key: "nodeId", label: "node", value: "node_1" },
+      { key: "captureBackend", label: "backend", value: "jack" },
+      { key: "captureInterfaceId", label: "interface", value: "iface_jack" },
+      {
+        key: "createdFrom",
+        label: "created from",
+        value: formatDateTime("2026-06-20T00:00:00.000Z"),
+      },
+    ],
   );
 });
 

@@ -10,6 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
   Square,
+  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -26,12 +27,14 @@ import {
   recordingJobBulkRetryTargets,
   recordingJobBulkStopTargets,
   recordingJobCaptureDetails,
+  recordingJobFilterChips,
   recordingJobRelationshipLabel,
   recordingJobRetryActionState,
   recordingJobStopActionState,
   recordingJobStatusClass,
   recordingJobSummary,
   type JobsPageFilters,
+  type RecordingJobFilterKey,
 } from "@/lib/jobs-page-helpers";
 import { downloadBlob } from "@/lib/recording-page-helpers";
 
@@ -47,6 +50,15 @@ const statuses: Array<"" | RecordingJob["status"]> = [
 const captureBackends: JobsPageFilters["captureBackend"][] = ["", "alsa", "jack", "pipewire"];
 const selectClassName =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const recordingJobFilterDraftKeys: Record<RecordingJobFilterKey, keyof JobsPageFilters> = {
+  captureBackend: "captureBackend",
+  captureInterfaceId: "captureInterfaceId",
+  createdFrom: "createdFrom",
+  createdTo: "createdTo",
+  nodeId: "nodeId",
+  search: "search",
+  status: "status",
+};
 
 export function JobsPage() {
   const queryClient = useQueryClient();
@@ -135,6 +147,7 @@ export function JobsPage() {
 
   const jobs = jobsQuery.data?.data ?? [];
   const visibleJobs = filterRecordingJobs(jobs, filters);
+  const activeFilterChips = recordingJobFilterChips(recordingJobApiFilters(filters));
   const summary = recordingJobSummary(visibleJobs);
   const visibleJobIds = visibleJobs.map((job) => job.id);
   const selectedVisibleJobIds = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId));
@@ -307,6 +320,29 @@ export function JobsPage() {
           </Field>
         </div>
 
+        {activeFilterChips.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {activeFilterChips.map((filter) => (
+              <Badge
+                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
+                key={filter.key}
+                variant="outline"
+              >
+                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
+                <span className="truncate font-mono">{filter.value}</span>
+                <button
+                  aria-label={`Clear ${filter.label} filter`}
+                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => clearRecordingJobFilter(filter.key)}
+                  type="button"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+
         <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -398,6 +434,10 @@ export function JobsPage() {
       </section>
     </div>
   );
+
+  function clearRecordingJobFilter(key: RecordingJobFilterKey) {
+    setFilters((current) => ({ ...current, [recordingJobFilterDraftKeys[key]]: "" }));
+  }
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {

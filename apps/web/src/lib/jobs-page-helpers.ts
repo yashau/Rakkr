@@ -1,5 +1,16 @@
 import type { CurrentUser, RecorderNode, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
+import type { RecordingJobFilters } from "@/lib/api";
+import { formatDateTime } from "@/lib/dates";
+
+export type RecordingJobFilterKey = keyof RecordingJobFilters;
+
+export interface ActiveRecordingJobFilterChip {
+  key: RecordingJobFilterKey;
+  label: string;
+  value: string;
+}
+
 export interface JobsPageFilters {
   captureBackend: "" | NonNullable<RecordingJob["command"]["captureBackend"]>;
   captureInterfaceId: string;
@@ -136,6 +147,26 @@ export function recordingJobSummary(jobs: RecordingJob[]) {
     stopRequested: jobs.filter((job) => job.status === "stop_requested").length,
     total: jobs.length,
   };
+}
+
+export function recordingJobFilterChips(
+  filters: RecordingJobFilters,
+): ActiveRecordingJobFilterChip[] {
+  return recordingJobFilterOrder.flatMap((key) => {
+    const value = filters[key];
+
+    if (!value) {
+      return [];
+    }
+
+    return [
+      {
+        key,
+        label: recordingJobFilterLabels[key],
+        value: recordingJobFilterValue(key, value),
+      },
+    ];
+  });
 }
 
 export function filterRecordingJobs(jobs: RecordingJob[], filters: JobsPageFilters) {
@@ -287,6 +318,34 @@ function recordingJobSearchText(job: RecordingJob) {
 const activeJobStatuses: Array<RecordingJob["status"]> = ["queued", "running", "stop_requested"];
 const retryableJobStatuses: Array<RecordingJob["status"]> = ["cancelled", "failed"];
 const stoppableJobStatuses: Array<RecordingJob["status"]> = ["queued", "running"];
+
+function recordingJobFilterValue(key: RecordingJobFilterKey, value: string) {
+  if (key === "createdFrom" || key === "createdTo") {
+    return formatDateTime(value);
+  }
+
+  return value;
+}
+
+const recordingJobFilterOrder: RecordingJobFilterKey[] = [
+  "search",
+  "status",
+  "nodeId",
+  "captureBackend",
+  "captureInterfaceId",
+  "createdFrom",
+  "createdTo",
+];
+
+const recordingJobFilterLabels: Record<RecordingJobFilterKey, string> = {
+  captureBackend: "backend",
+  captureInterfaceId: "interface",
+  createdFrom: "created from",
+  createdTo: "created to",
+  nodeId: "node",
+  search: "search",
+  status: "status",
+};
 
 function localDateStart(value: string) {
   const parts = localDateParts(value);
