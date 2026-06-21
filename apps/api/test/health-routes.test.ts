@@ -373,6 +373,74 @@ test("health bulk lifecycle updates visible events and audits each event", async
   ]);
 });
 
+test("health lifecycle routes only operate on scoped visible events", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:acknowledge", "health:read"]);
+  const visible = event({ id: "health_visible_lifecycle", nodeId: "node_1" });
+  const hidden = event({
+    details: { note: "do not touch" },
+    id: "health_hidden_lifecycle",
+    nodeId: "node_hidden",
+    status: "open",
+  });
+  const healthEventStore = createHealthEventStore("", [visible, hidden]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async (_user, target) => target.id !== "node_hidden",
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermission,
+  });
+
+  const acknowledge = await requestJson(
+    app,
+    `/api/v1/health-events/${hidden.id}/acknowledge`,
+    "POST",
+    { note: "hidden ack" },
+  );
+  const suppress = await requestJson(app, `/api/v1/health-events/${hidden.id}/suppress`, "POST", {
+    note: "hidden suppress",
+    suppressedUntil: "2026-06-20T13:00:00.000Z",
+  });
+  const resolve = await requestJson(app, `/api/v1/health-events/${hidden.id}/resolve`, "POST", {
+    note: "hidden resolve",
+  });
+  const reopen = await requestJson(app, `/api/v1/health-events/${hidden.id}/reopen`, "POST", {
+    note: "hidden reopen",
+  });
+  const bulk = await requestJson(app, "/api/v1/health-events/bulk-lifecycle", "POST", {
+    action: "resolve",
+    eventIds: [visible.id, hidden.id],
+    note: "hidden bulk",
+  });
+  const storedVisible = await healthEventStore.find(visible.id);
+  const storedHidden = await healthEventStore.find(hidden.id);
+  const failedEvents = await auditStore.list({ outcome: "failed" });
+
+  assert.deepEqual(
+    [acknowledge.status, suppress.status, resolve.status, reopen.status, bulk.status],
+    [404, 404, 404, 404, 404],
+  );
+  assert.equal(storedVisible?.status, "open");
+  assert.equal(storedHidden?.status, "open");
+  assert.deepEqual(storedHidden?.details, { note: "do not touch" });
+  assert.deepEqual(
+    failedEvents.map((auditEvent) => `${auditEvent.action}:${auditEvent.reason}`).sort(),
+    [
+      "health.events.acknowledge.failed:health_event_not_found",
+      "health.events.bulk_lifecycle.failed:health_event_not_found",
+      "health.events.reopen.failed:health_event_not_found",
+      "health.events.resolve.failed:health_event_not_found",
+      "health.events.suppress.failed:health_event_not_found",
+    ],
+  );
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   path: string,

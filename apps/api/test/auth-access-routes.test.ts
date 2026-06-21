@@ -571,7 +571,7 @@ test("node resource denies hide health events and block alert detail and acknowl
     const eventsResponse = await app.request(
       [
         "/api/v1/audit-events",
-        "?action=health.events.acknowledge.failed",
+        "?action=health.events.acknowledge",
         "&outcome=denied",
         "&permission=health%3Aacknowledge",
         `&target=${eventId}`,
@@ -610,7 +610,7 @@ test("node resource denies hide health events and block alert detail and acknowl
     assert.equal(detailEvent?.target.type, "health_event");
     assert.equal(acknowledgeResponse.status, 403);
     assert.equal(event?.permission, "health:acknowledge");
-    assert.equal(event?.reason, "missing_resource_scope");
+    assert.equal(event?.reason, "access_policy_denied");
     assert.equal(event?.target.id, eventId);
     assert.equal(event?.target.type, "health_event");
   } finally {

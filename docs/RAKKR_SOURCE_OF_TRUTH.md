@@ -294,6 +294,7 @@ Current partial implementation:
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can search, filter, and detail by scoped incident, opened/resolved date range, event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
+- Health event lifecycle APIs target exact incidents for RBAC and operate only on scoped visible events.
 - Node health summaries, central health workbench with active filter chips, recent events, trends, scoped and selected CSV exports, RBAC-mirrored single and bulk lifecycle actions, scoped action summaries, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, clipping, flatline, quality anomaly, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
@@ -892,6 +893,7 @@ Current implementation baseline:
 265. ✅ Scope schedule occurrence and lifecycle APIs.
 266. ✅ Scope single-recording action APIs.
 267. ✅ Scope node management, meter, and live-listen action APIs.
+268. ✅ Scope health lifecycle action APIs.
 
 ## Open Questions
 

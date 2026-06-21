@@ -338,13 +338,13 @@ export function registerHealthRoutes({
           await recordHealthFailure(
             c,
             "health.events.bulk_lifecycle.failed",
-            "missing_resource_scope",
+            "health_event_not_found",
             {
               id: event.id,
               type: "health_event",
             },
           );
-          return c.json({ error: "Forbidden", eventId: event.id }, 403);
+          return c.json({ error: "Health event not found", eventId: event.id }, 404);
         }
 
         if (event.status === "resolved" && body.data.action !== "reopen") {
@@ -384,31 +384,37 @@ export function registerHealthRoutes({
 
   app.post(
     "/api/v1/health-events/:eventId/acknowledge",
-    requirePermission("health:acknowledge", "health.events.acknowledge", () => ({
-      type: "health",
+    requirePermission("health:acknowledge", "health.events.acknowledge", (c) => ({
+      id: c.req.param("eventId"),
+      type: "health_event",
     })),
     async (c) => updateHealthLifecycle(c, "acknowledge"),
   );
 
   app.post(
     "/api/v1/health-events/:eventId/suppress",
-    requirePermission("health:acknowledge", "health.events.suppress", () => ({
-      type: "health",
+    requirePermission("health:acknowledge", "health.events.suppress", (c) => ({
+      id: c.req.param("eventId"),
+      type: "health_event",
     })),
     async (c) => updateHealthLifecycle(c, "suppress"),
   );
 
   app.post(
     "/api/v1/health-events/:eventId/resolve",
-    requirePermission("health:acknowledge", "health.events.resolve", () => ({
-      type: "health",
+    requirePermission("health:acknowledge", "health.events.resolve", (c) => ({
+      id: c.req.param("eventId"),
+      type: "health_event",
     })),
     async (c) => updateHealthLifecycle(c, "resolve"),
   );
 
   app.post(
     "/api/v1/health-events/:eventId/reopen",
-    requirePermission("health:acknowledge", "health.events.reopen", () => ({ type: "health" })),
+    requirePermission("health:acknowledge", "health.events.reopen", (c) => ({
+      id: c.req.param("eventId"),
+      type: "health_event",
+    })),
     async (c) => updateHealthLifecycle(c, "reopen"),
   );
 
@@ -431,11 +437,11 @@ export function registerHealthRoutes({
     }
 
     if (!(await visibleHealthEvent(currentUser(c), event, hasResourceScope))) {
-      await recordHealthFailure(c, `health.events.${action}.failed`, "missing_resource_scope", {
+      await recordHealthFailure(c, `health.events.${action}.failed`, "health_event_not_found", {
         id: event.id,
         type: "health_event",
       });
-      return c.json({ error: "Forbidden" }, 403);
+      return c.json({ error: "Health event not found" }, 404);
     }
 
     const body = healthLifecycleSchema.safeParse(await c.req.json().catch(() => ({})));
