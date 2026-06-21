@@ -386,7 +386,7 @@ Current implementation baseline:
 - Health read and lifecycle routes have missing-permission deny coverage.
 - Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
 - Status, Prometheus metrics, and OIDC discovery routes have missing-permission deny coverage.
-- Aggregate status counts require node read, and embedded settings summaries require settings read.
+- Aggregate status includes scoped node, recording, and unresolved health-event counts behind node read; embedded settings summaries require settings read.
 - Upload runner read and run-now controls have route coverage for missing-permission denial.
 - Recording profile, watchdog policy, channel map, upload provider, and upload policy Settings UI controls mirror `settings:manage`.
 - Settings UI read queries and page access mirror `settings:read`.
@@ -886,6 +886,7 @@ Current implementation baseline:
 261. ✅ Add OIDC login and discovery action summary APIs.
 262. ✅ Add selected audit event CSV export API.
 263. ✅ Add audit event facet summary API.
+264. ✅ Add expanded scoped aggregate status API.
 
 ## Open Questions
 

@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import {
   defaultScheduledVoiceWatchdogPolicy,
   defaultVoiceRecordingProfile,
+  type HealthEvent,
   type RecorderNode,
   type RecordingSummary,
 } from "@rakkr/shared";
@@ -58,18 +59,46 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
       return c.json({
         activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
           .length,
+        alertingNodes: nodeStatusCount(visibleNodes, "alerting"),
+        acknowledgedAlerts: healthStatusCount(visibleHealthEvents, "acknowledged"),
         cachedRecordings: visibleRecordings.filter((recording) => recording.cached).length,
+        completedRecordings: recordingStatusCount(visibleRecordings, "completed"),
         criticalAlerts: visibleHealthEvents.filter(
           (event) => event.severity === "critical" && event.status !== "resolved",
         ).length,
+        degradedNodes: nodeStatusCount(visibleNodes, "degraded"),
+        failedRecordings: recordingStatusCount(visibleRecordings, "failed"),
         nodeCount: visibleNodes.length,
-        onlineNodes: visibleNodes.filter((node) => node.status === "online").length,
+        offlineNodes: nodeStatusCount(visibleNodes, "offline"),
+        onlineNodes: nodeStatusCount(visibleNodes, "online"),
+        openAlerts: healthStatusCount(visibleHealthEvents, "open"),
+        queuedRecordings: recordingStatusCount(visibleRecordings, "queued"),
+        recordingNodes: nodeStatusCount(visibleNodes, "recording"),
         ...(recordingProfile ? { recordingProfile } : {}),
         startedAt: dependencies.startedAt.toISOString(),
+        suppressedAlerts: healthStatusCount(visibleHealthEvents, "suppressed"),
+        totalRecordings: visibleRecordings.length,
+        unresolvedAlerts: visibleHealthEvents.filter((event) => event.status !== "resolved").length,
+        uploadedRecordings: recordingStatusCount(visibleRecordings, "uploaded"),
+        warningAlerts: visibleHealthEvents.filter(
+          (event) => event.severity === "warning" && event.status !== "resolved",
+        ).length,
         ...(watchdogPolicy ? { watchdogPolicy } : {}),
       });
     },
   );
+}
+
+function healthStatusCount(events: HealthEvent[], status: HealthEvent["status"]) {
+  return events.filter((event) => event.status === status).length;
+}
+
+function nodeStatusCount(nodes: RecorderNode[], status: RecorderNode["status"]) {
+  return nodes.filter((node) => node.status === status).length;
+}
+
+function recordingStatusCount(recordings: RecordingSummary[], status: RecordingSummary["status"]) {
+  return recordings.filter((recording) => recording.status === status).length;
 }
 
 async function defaultRecordingProfile(settingsStore: SettingsStore) {

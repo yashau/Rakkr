@@ -47,18 +47,12 @@ import type {
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
+import type { ControllerStatus } from "./status-types";
+
+export type { ControllerStatus } from "./status-types";
+
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 const authTokenKey = "rakkr.authToken";
-export interface ControllerStatus {
-  activeRecordings: number;
-  cachedRecordings: number;
-  criticalAlerts: number;
-  nodeCount: number;
-  onlineNodes: number;
-  recordingProfile?: RecordingProfile;
-  startedAt: string;
-  watchdogPolicy?: WatchdogPolicy;
-}
 
 export interface AuditEventFilters {
   action?: string;

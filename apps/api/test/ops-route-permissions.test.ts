@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, CurrentUser, Permission } from "@rakkr/shared";
+import type {
+  AuditEvent,
+  CurrentUser,
+  HealthEvent,
+  Permission,
+  RecorderNode,
+  RecordingSummary,
+} from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
@@ -124,6 +131,75 @@ test("status route only includes settings summaries with settings read", async (
   assert.equal(typeof settingsBody.watchdogPolicy, "object");
 });
 
+test("status route includes scoped operational aggregates", async () => {
+  const app = new Hono<AppBindings>();
+
+  registerStatusRoutes({
+    app,
+    currentUser: () => user(["node:read"]),
+    hasResourceScope: async (_user, target) => target.id !== "health_hidden",
+    healthEventStore: createHealthEventStore("", [
+      healthEvent({ id: "health_critical", nodeId: "node_online", severity: "critical" }),
+      healthEvent({
+        id: "health_warning_ack",
+        nodeId: "node_recording",
+        severity: "warning",
+        status: "acknowledged",
+      }),
+      healthEvent({
+        id: "health_warning_resolved",
+        resolvedAt: "2026-06-20T12:30:00.000Z",
+        severity: "warning",
+        status: "resolved",
+      }),
+      healthEvent({ id: "health_suppressed", severity: "info", status: "suppressed" }),
+      healthEvent({ id: "health_hidden", nodeId: "health_hidden", severity: "critical" }),
+    ]),
+    requirePermission: allowPermission,
+    scopedNodes: async () => [
+      node({ id: "node_online", status: "online" }),
+      node({ id: "node_offline", status: "offline" }),
+      node({ id: "node_degraded", status: "degraded" }),
+      node({ id: "node_recording", status: "recording" }),
+      node({ id: "node_alerting", status: "alerting" }),
+    ],
+    scopedRecordings: async () => [
+      recording({ cached: true, id: "rec_recording", status: "recording" }),
+      recording({ cached: true, id: "rec_cached", status: "cached" }),
+      recording({ id: "rec_completed", status: "completed" }),
+      recording({ id: "rec_failed", status: "failed" }),
+      recording({ id: "rec_queued", status: "queued" }),
+      recording({ id: "rec_uploaded", status: "uploaded" }),
+    ],
+    settingsStore: createSettingsStore(),
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/api/v1/status");
+  const body = (await response.json()) as Record<string, unknown>;
+
+  assert.equal(response.status, 200);
+  assert.equal(body.nodeCount, 5);
+  assert.equal(body.onlineNodes, 1);
+  assert.equal(body.offlineNodes, 1);
+  assert.equal(body.degradedNodes, 1);
+  assert.equal(body.recordingNodes, 1);
+  assert.equal(body.alertingNodes, 1);
+  assert.equal(body.totalRecordings, 6);
+  assert.equal(body.activeRecordings, 1);
+  assert.equal(body.cachedRecordings, 2);
+  assert.equal(body.completedRecordings, 1);
+  assert.equal(body.failedRecordings, 1);
+  assert.equal(body.queuedRecordings, 1);
+  assert.equal(body.uploadedRecordings, 1);
+  assert.equal(body.unresolvedAlerts, 3);
+  assert.equal(body.criticalAlerts, 1);
+  assert.equal(body.warningAlerts, 1);
+  assert.equal(body.openAlerts, 1);
+  assert.equal(body.acknowledgedAlerts, 1);
+  assert.equal(body.suppressedAlerts, 1);
+});
+
 function denyMissingPermission(
   auditStore: ReturnType<typeof createAuditStore>,
   currentUser: CurrentUser,
@@ -193,5 +269,49 @@ function user(permissions: Permission[]): CurrentUser {
     provider: "local",
     resourceGrants: [],
     roles: ["viewer"],
+  };
+}
+
+function healthEvent(input: Partial<HealthEvent> = {}): HealthEvent {
+  return {
+    acknowledgedAt: null,
+    details: {},
+    id: "health_status_test",
+    openedAt: "2026-06-20T12:00:00.000Z",
+    resolvedAt: null,
+    severity: "warning",
+    status: "open",
+    suppressedAt: null,
+    suppressedUntil: null,
+    type: "watchdog.node_offline",
+    ...input,
+  };
+}
+
+function node(input: Partial<RecorderNode> = {}): RecorderNode {
+  return {
+    alias: "Status Node",
+    id: "node_status_test",
+    interfaces: [],
+    ipAddresses: ["10.0.0.50"],
+    status: "online",
+    tags: [],
+    ...input,
+  };
+}
+
+function recording(input: Partial<RecordingSummary> = {}): RecordingSummary {
+  return {
+    cached: false,
+    durationSeconds: 120,
+    folder: "Meetings",
+    healthStatus: "healthy",
+    id: "rec_status_test",
+    name: "Status Recording",
+    recordedAt: "2026-06-18T12:00:00.000Z",
+    source: "ad_hoc",
+    status: "completed",
+    tags: [],
+    ...input,
   };
 }
