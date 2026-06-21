@@ -7,7 +7,6 @@ import {
   nodeAudioCommandDefaultsSchema,
   nodeRecordingCapacitySchema,
   nodeRuntimeSchema,
-  nodeStatusSchema,
   type MeterFrame,
   type RecorderNode,
 } from "@rakkr/shared";
@@ -23,7 +22,7 @@ import type {
 import type { ListenMonitorStore, StoredListenMonitorChunk } from "./listen-monitor-store.js";
 import type { ListenSessionStore } from "./listen-session-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
-import { nodeExportFileName, nodeInventoryCsv } from "./node-inventory-export.js";
+import { registerNodeInventoryRoutes } from "./node-inventory-routes.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
 
@@ -123,18 +122,6 @@ const nodeInterfaceUpdateSchema = z
   })
   .strict()
   .refine(hasNodeUpdate, "At least one interface field is required");
-const nodeSearchSchema = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-  z.string().trim().min(1).max(200).optional(),
-);
-const nodeBackendFilterSchema = z.enum(["alsa", "jack", "pipewire", "unknown"]);
-const nodeListFilterSchema = z
-  .object({
-    backend: nodeBackendFilterSchema.optional(),
-    q: nodeSearchSchema,
-    status: nodeStatusSchema.optional(),
-  })
-  .strict();
 const monitorChunkDurationMs = 1500;
 const monitorChunkMaxAgeMs = 5000;
 const monitorChunkSampleRate = 16_000;
@@ -152,47 +139,13 @@ export function registerNodeRoutes({
   requirePermission,
   scopedNodes,
 }: NodeRouteDependencies) {
-  app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), async (c) => {
-    const filters = nodeListFilterSchema.safeParse(c.req.query());
-
-    if (!filters.success) {
-      return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
-    }
-
-    const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
-
-    return c.json({ data: filteredNodes });
-  });
-
-  app.get("/api/v1/nodes/export", requirePermission("node:read", "nodes.export"), async (c) => {
-    const filters = nodeListFilterSchema.safeParse(c.req.query());
-
-    if (!filters.success) {
-      return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
-    }
-
-    const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
-
-    await recordAuditEvent(c, {
-      action: "nodes.export.succeeded",
-      auth: currentAuth(c),
-      details: {
-        exportedCount: filteredNodes.length,
-        filters: filters.data,
-      },
-      outcome: "succeeded",
-      permission: "node:read",
-      target: {
-        id: "node_collection",
-        type: "node_collection",
-      },
-    });
-
-    return c.body(nodeInventoryCsv(filteredNodes), 200, {
-      "Cache-Control": "no-store",
-      "Content-Disposition": `attachment; filename="${nodeExportFileName()}"`,
-      "Content-Type": "text/csv; charset=utf-8",
-    });
+  registerNodeInventoryRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    recordAuditEvent,
+    requirePermission,
+    scopedNodes,
   });
 
   app.post(
@@ -773,79 +726,6 @@ function hasNodeUpdate(value: Record<string, unknown>) {
 
     return entry !== undefined;
   });
-}
-
-function normalizeSearchTerm(value: string | undefined) {
-  return value?.trim().toLowerCase();
-}
-
-function filterNodes(nodes: RecorderNode[], filters: z.infer<typeof nodeListFilterSchema>) {
-  const query = normalizeSearchTerm(filters.q);
-
-  return nodes.filter(
-    (node) =>
-      (!filters.status || node.status === filters.status) &&
-      (!filters.backend || nodeMatchesBackend(node, filters.backend)) &&
-      (!query || nodeSearchText(node).includes(query)),
-  );
-}
-
-function nodeSearchText(node: RecorderNode) {
-  return [
-    node.id,
-    node.alias,
-    node.hostname,
-    node.agentVersion,
-    node.audioDefaults
-      ? [
-          node.audioDefaults.captureBackend,
-          node.audioDefaults.captureCommand,
-          node.audioDefaults.captureDevice,
-          node.audioDefaults.captureFormat,
-          node.audioDefaults.captureSampleRate === undefined
-            ? undefined
-            : String(node.audioDefaults.captureSampleRate),
-        ]
-      : undefined,
-    node.status,
-    node.notes,
-    node.ipAddresses,
-    node.tags,
-    Object.values(node.location),
-    node.runtime
-      ? [
-          node.runtime.architecture,
-          node.runtime.audioBackends,
-          node.runtime.kernelRelease,
-          node.runtime.osName,
-          node.runtime.uptimeSeconds === undefined ? undefined : String(node.runtime.uptimeSeconds),
-        ]
-      : undefined,
-    node.interfaces.map((audioInterface) => [
-      audioInterface.alias,
-      audioInterface.backend,
-      String(audioInterface.channelCount),
-      audioInterface.hardwarePath,
-      audioInterface.id,
-      audioInterface.sampleRates.map(String),
-      audioInterface.serialNumber,
-      audioInterface.systemName,
-      audioInterface.systemRef,
-      audioInterface.channels.map((channel) => [channel.alias, String(channel.index)]),
-    ]),
-  ]
-    .flat(4)
-    .filter((value): value is string => typeof value === "string" && value.length > 0)
-    .join(" ")
-    .toLowerCase();
-}
-
-function nodeMatchesBackend(node: RecorderNode, backend: z.infer<typeof nodeBackendFilterSchema>) {
-  if (node.runtime?.audioBackends.includes(backend)) {
-    return true;
-  }
-
-  return node.interfaces.some((audioInterface) => audioInterface.backend === backend);
 }
 
 function monitorWavChunk(frame: MeterFrame) {

@@ -1,11 +1,10 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HealthEvent, NodeRuntime, NodeStatus } from "@rakkr/shared";
+import type { HealthEvent, NodeStatus } from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
   Cpu,
-  Download,
   HardDrive,
   Headphones,
   KeyRound,
@@ -22,6 +21,7 @@ import {
   NodeIdentityEditor,
   NodeInterfaceEditor,
 } from "@/components/node-inventory-editors";
+import { NodeInventoryActions } from "@/components/node-inventory-actions";
 import { NodeHealthEvents } from "@/components/node-health-events";
 import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
 import { Badge } from "@/components/ui/badge";
@@ -38,8 +38,12 @@ import {
 } from "@/lib/api";
 import { formatDateTime, localIsoDate, startOfLocalDay } from "@/lib/dates";
 import {
+  nextNodeSelection,
   nodeHealthLifecycleInput,
+  nodeLocationSummary,
   nodePageActionPermissions,
+  nodeRuntimeSummary,
+  nodeSelectionState,
   rotateNodeTokenTitle,
   type NodeHealthLifecycleAction,
 } from "@/lib/node-page-helpers";
@@ -98,6 +102,7 @@ export function NodesPage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [nodeStatusFilter, setNodeStatusFilter] = useState<"" | NodeStatus>("");
   const [nodeBackendFilter, setNodeBackendFilter] = useState<"" | AudioBackendFilter>("");
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
   const [listenPreview, setListenPreview] = useState<ListenMonitorPreview>();
   const currentUserQuery = useQuery({
@@ -174,8 +179,13 @@ export function NodesPage() {
     mutationFn: () => api.nodesExport(nodeFilters),
     onSuccess: downloadBlob,
   });
+  const selectedExportMutation = useMutation({
+    mutationFn: (nodeIds: string[]) => api.nodesExportSelected({ nodeIds }),
+    onSuccess: downloadBlob,
+  });
 
   const nodes = nodesQuery.data?.data ?? [];
+  const selection = nodeSelectionState(nodes, selectedNodeIds);
 
   if (currentUserQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading nodes.</p>;
@@ -369,16 +379,20 @@ export function NodesPage() {
           <div>
             <h2 className="text-sm font-semibold">Recorder Nodes</h2>
             <p className="text-xs text-muted-foreground">{nodes.length} shown</p>
-            <Button
-              className="mt-3"
-              disabled={exportMutation.isPending}
-              onClick={() => exportMutation.mutate()}
-              title="Export filtered node inventory"
-              variant="outline"
-            >
-              <Download className="size-4" />
-              Export
-            </Button>
+            <NodeInventoryActions
+              allVisibleSelected={selection.allVisibleSelected}
+              exportPending={exportMutation.isPending}
+              onClear={() => setSelectedNodeIds([])}
+              onExport={() => exportMutation.mutate()}
+              onExportSelected={() =>
+                selectedExportMutation.mutate(selection.selectedVisibleNodeIds)
+              }
+              onSelectAll={(selected) =>
+                setSelectedNodeIds(selected ? selection.visibleNodeIds : [])
+              }
+              selectedCount={selection.selectedVisibleNodeIds.length}
+              selectedExportPending={selectedExportMutation.isPending}
+            />
           </div>
           <div className="grid w-full gap-3 md:max-w-3xl md:grid-cols-[minmax(0,1fr)_12rem_12rem]">
             <Field label="Search">
@@ -440,6 +454,17 @@ export function NodesPage() {
               <div className="grid flex-1 gap-4">
                 <div>
                   <div className="mb-2 flex items-center gap-2">
+                    <input
+                      checked={selection.selectedVisibleNodeIds.includes(node.id)}
+                      className="size-4"
+                      onChange={(event) =>
+                        setSelectedNodeIds((current) =>
+                          nextNodeSelection(current, node.id, event.target.checked),
+                        )
+                      }
+                      title="Select node"
+                      type="checkbox"
+                    />
                     <h2 className="text-lg font-semibold">{node.alias}</h2>
                     <Badge className={nodeStatusBadgeClass(node.status)} variant="outline">
                       {node.status}
@@ -451,7 +476,7 @@ export function NodesPage() {
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <MapPin className="size-4" />
-                      {locationSummary(node.location)}
+                      {nodeLocationSummary(node.location)}
                     </div>
                     <div className="flex items-center gap-2">
                       <Network className="size-4" />
@@ -464,7 +489,7 @@ export function NodesPage() {
                     {node.runtime ? (
                       <div className="flex items-center gap-2">
                         <HardDrive className="size-4" />
-                        {runtimeSummary(node.runtime)}
+                        {nodeRuntimeSummary(node.runtime)}
                       </div>
                     ) : null}
                   </div>
@@ -616,40 +641,6 @@ function parseNumbers(value: string) {
   return parseList(value)
     .map(Number)
     .filter((item) => Number.isInteger(item) && item > 0);
-}
-
-function locationSummary(location: {
-  building?: string;
-  floor?: string;
-  room: string;
-  site: string;
-}) {
-  return [location.site, location.building, location.floor, location.room]
-    .filter(Boolean)
-    .join(" / ");
-}
-
-function runtimeSummary(runtime: NodeRuntime) {
-  return [
-    runtime.osName,
-    runtime.kernelRelease ? `kernel ${runtime.kernelRelease}` : undefined,
-    runtime.architecture,
-    runtime.audioBackends.length > 0 ? runtime.audioBackends.join(", ") : undefined,
-    runtime.uptimeSeconds === undefined ? undefined : `uptime ${uptime(runtime.uptimeSeconds)}`,
-  ]
-    .filter(Boolean)
-    .join(" / ");
-}
-
-function uptime(seconds: number) {
-  const days = Math.floor(seconds / 86_400);
-  const hours = Math.floor((seconds % 86_400) / 3600);
-
-  if (days > 0) {
-    return `${days}d ${hours}h`;
-  }
-
-  return `${hours}h`;
 }
 
 function HealthSummaryTile({

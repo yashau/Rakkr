@@ -203,7 +203,7 @@ Current partial implementation:
 - Node API and inventory UI can filter visible nodes by status.
 - Node API and inventory UI can filter visible nodes by audio backend.
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
-- Node API and inventory UI can export visible filtered inventory as audited CSV.
+- Node API and inventory UI can export visible filtered and selected inventory as audited CSV.
 - Nodes page direct access mirrors `node:read`; node health panels mirror `health:read` and expose lifecycle actions only with `health:acknowledge`.
 - Agent interface inventory prefers Linux sysfs device paths and serials when exposed.
 - Agent interface inventory falls back to ALSA hw-params metadata when stream metadata is unavailable.
@@ -835,6 +835,7 @@ Current implementation baseline:
 223. ✅ Add selected health-event CSV export.
 224. ✅ Add health-event opened date range filters.
 225. ✅ Add server-backed recording-job node filters.
+226. ✅ Add selected node inventory CSV export.
 
 ## Open Questions
 

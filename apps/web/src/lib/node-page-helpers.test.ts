@@ -8,7 +8,11 @@ import {
   listenMonitorPollInterval,
   nodeHealthLifecycleActions,
   nodeHealthLifecycleInput,
+  nodeLocationSummary,
   nodePageActionPermissions,
+  nodeRuntimeSummary,
+  nodeSelectionState,
+  nextNodeSelection,
   rotateNodeTokenTitle,
 } from "./node-page-helpers";
 
@@ -43,6 +47,45 @@ test("node token rotation titles explain permission and persistence state", () =
   assert.equal(rotateNodeTokenTitle(false, true), "Requires node manage");
   assert.equal(rotateNodeTokenTitle(true, false), "Demo node tokens are not persisted");
   assert.equal(rotateNodeTokenTitle(true, true), "Rotate node token");
+});
+
+test("node selection state tracks visible selected inventory", () => {
+  assert.deepEqual(
+    nodeSelectionState([{ id: "node_a" }, { id: "node_b" }], ["node_b", "node_hidden"]),
+    {
+      allVisibleSelected: false,
+      selectedVisibleNodeIds: ["node_b"],
+      visibleNodeIds: ["node_a", "node_b"],
+    },
+  );
+  assert.deepEqual(nodeSelectionState([{ id: "node_a" }], ["node_a"]), {
+    allVisibleSelected: true,
+    selectedVisibleNodeIds: ["node_a"],
+    visibleNodeIds: ["node_a"],
+  });
+});
+
+test("node selection toggle adds and removes ids without duplicates", () => {
+  assert.deepEqual(nextNodeSelection(["node_a"], "node_b", true), ["node_a", "node_b"]);
+  assert.deepEqual(nextNodeSelection(["node_a"], "node_a", true), ["node_a"]);
+  assert.deepEqual(nextNodeSelection(["node_a", "node_b"], "node_a", false), ["node_b"]);
+});
+
+test("node location and runtime summaries stay compact", () => {
+  assert.equal(
+    nodeLocationSummary({ building: "Hall", floor: "2", room: "Chamber", site: "Main" }),
+    "Main / Hall / 2 / Chamber",
+  );
+  assert.equal(
+    nodeRuntimeSummary({
+      architecture: "x64",
+      audioBackends: ["alsa", "jack"],
+      kernelRelease: "6.8.0",
+      osName: "Debian",
+      uptimeSeconds: 90_000,
+    }),
+    "Debian / kernel 6.8.0 / x64 / alsa, jack / uptime 1d 1h",
+  );
 });
 
 test("listen monitor helpers expose source labels and bounded refresh intervals", () => {

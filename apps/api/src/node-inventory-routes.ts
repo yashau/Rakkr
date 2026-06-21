@@ -1,0 +1,238 @@
+import type { Context, Hono } from "hono";
+import { z } from "zod";
+import { nodeStatusSchema, type RecorderNode } from "@rakkr/shared";
+
+import type { AuthResult } from "./auth-service.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import { nodeExportFileName, nodeInventoryCsv } from "./node-inventory-export.js";
+
+interface NodeInventoryRouteDependencies {
+  app: Hono<AppBindings>;
+  currentAuth: (c: Context<AppBindings>) => AuthResult;
+  currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  recordAuditEvent: RecordAuditEvent;
+  requirePermission: RequirePermission;
+  scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
+}
+
+const nodeSearchSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).max(200).optional(),
+);
+const nodeBackendFilterSchema = z.enum(["alsa", "jack", "pipewire", "unknown"]);
+const nodeListFilterSchema = z
+  .object({
+    backend: nodeBackendFilterSchema.optional(),
+    q: nodeSearchSchema,
+    status: nodeStatusSchema.optional(),
+  })
+  .strict();
+const nodeSelectedExportSchema = z
+  .object({
+    nodeIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
+  })
+  .strict();
+
+export function registerNodeInventoryRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  recordAuditEvent,
+  requirePermission,
+  scopedNodes,
+}: NodeInventoryRouteDependencies) {
+  app.get("/api/v1/nodes", requirePermission("node:read", "nodes.read"), async (c) => {
+    const filters = nodeListFilterSchema.safeParse(c.req.query());
+
+    if (!filters.success) {
+      return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
+    }
+
+    const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
+
+    return c.json({ data: filteredNodes });
+  });
+
+  app.get("/api/v1/nodes/export", requirePermission("node:read", "nodes.export"), async (c) => {
+    const filters = nodeListFilterSchema.safeParse(c.req.query());
+
+    if (!filters.success) {
+      return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
+    }
+
+    const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
+
+    await recordAuditEvent(c, {
+      action: "nodes.export.succeeded",
+      auth: currentAuth(c),
+      details: {
+        exportedCount: filteredNodes.length,
+        filters: filters.data,
+      },
+      outcome: "succeeded",
+      permission: "node:read",
+      target: {
+        id: "node_collection",
+        type: "node_collection",
+      },
+    });
+
+    return c.body(nodeInventoryCsv(filteredNodes), 200, {
+      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="${nodeExportFileName()}"`,
+      "Content-Type": "text/csv; charset=utf-8",
+    });
+  });
+
+  app.post(
+    "/api/v1/nodes/export",
+    requirePermission("node:read", "nodes.export_selected", () => ({
+      id: "node_collection",
+      type: "node_collection",
+    })),
+    async (c) => {
+      const body = nodeSelectedExportSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSelectedNodeExportFailure(c, "invalid_request");
+        return c.json({ error: "Invalid node export request", issues: body.error.issues }, 400);
+      }
+
+      const nodeIds = uniqueNodeIds(body.data.nodeIds);
+      const visibleNodeMap = new Map(
+        (await scopedNodes(currentUser(c))).map((node) => [node.id, node]),
+      );
+      const hiddenIds = nodeIds.filter((nodeId) => !visibleNodeMap.has(nodeId));
+
+      if (hiddenIds.length > 0) {
+        await recordSelectedNodeExportFailure(c, "node_not_visible", {
+          hiddenIds,
+          nodeIds,
+        });
+        return c.json({ error: "One or more nodes are not visible" }, 404);
+      }
+
+      const nodes = nodeIds.map((nodeId) => visibleNodeMap.get(nodeId)!);
+
+      await recordAuditEvent(c, {
+        action: "nodes.export_selected.succeeded",
+        auth: currentAuth(c),
+        correlationIds: Object.fromEntries(
+          nodeIds.map((nodeId, index) => [`nodeId${index + 1}`, nodeId]),
+        ),
+        details: {
+          exportedCount: nodes.length,
+          requestedCount: body.data.nodeIds.length,
+        },
+        outcome: "succeeded",
+        permission: "node:read",
+        target: {
+          id: "node_collection",
+          type: "node_collection",
+        },
+      });
+
+      return c.body(nodeInventoryCsv(nodes), 200, {
+        "Cache-Control": "no-store",
+        "Content-Disposition": `attachment; filename="${nodeExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
+  );
+
+  async function recordSelectedNodeExportFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action: "nodes.export_selected.failed",
+      auth: currentAuth(c),
+      details,
+      outcome: reason === "node_not_visible" ? "denied" : "failed",
+      permission: "node:read",
+      reason,
+      target: {
+        id: "node_collection",
+        type: "node_collection",
+      },
+    });
+  }
+}
+
+function normalizeSearchTerm(value: string | undefined) {
+  return value?.trim().toLowerCase();
+}
+
+function filterNodes(nodes: RecorderNode[], filters: z.infer<typeof nodeListFilterSchema>) {
+  const query = normalizeSearchTerm(filters.q);
+
+  return nodes.filter(
+    (node) =>
+      (!filters.status || node.status === filters.status) &&
+      (!filters.backend || nodeMatchesBackend(node, filters.backend)) &&
+      (!query || nodeSearchText(node).includes(query)),
+  );
+}
+
+function nodeSearchText(node: RecorderNode) {
+  return [
+    node.id,
+    node.alias,
+    node.hostname,
+    node.agentVersion,
+    node.audioDefaults
+      ? [
+          node.audioDefaults.captureBackend,
+          node.audioDefaults.captureCommand,
+          node.audioDefaults.captureDevice,
+          node.audioDefaults.captureFormat,
+          node.audioDefaults.captureSampleRate === undefined
+            ? undefined
+            : String(node.audioDefaults.captureSampleRate),
+        ]
+      : undefined,
+    node.status,
+    node.notes,
+    node.ipAddresses,
+    node.tags,
+    Object.values(node.location),
+    node.runtime
+      ? [
+          node.runtime.architecture,
+          node.runtime.audioBackends,
+          node.runtime.kernelRelease,
+          node.runtime.osName,
+          node.runtime.uptimeSeconds === undefined ? undefined : String(node.runtime.uptimeSeconds),
+        ]
+      : undefined,
+    node.interfaces.map((audioInterface) => [
+      audioInterface.alias,
+      audioInterface.backend,
+      String(audioInterface.channelCount),
+      audioInterface.hardwarePath,
+      audioInterface.id,
+      audioInterface.sampleRates.map(String),
+      audioInterface.serialNumber,
+      audioInterface.systemName,
+      audioInterface.systemRef,
+      audioInterface.channels.map((channel) => [channel.alias, String(channel.index)]),
+    ]),
+  ]
+    .flat(4)
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+}
+
+function nodeMatchesBackend(node: RecorderNode, backend: z.infer<typeof nodeBackendFilterSchema>) {
+  if (node.runtime?.audioBackends.includes(backend)) {
+    return true;
+  }
+
+  return node.interfaces.some((audioInterface) => audioInterface.backend === backend);
+}
+
+function uniqueNodeIds(nodeIds: string[]) {
+  return Array.from(new Set(nodeIds));
+}

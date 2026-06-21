@@ -80,6 +80,10 @@ export interface NodeFilters {
   status?: NodeStatus;
 }
 
+export interface NodeSelectedExportInput {
+  nodeIds: string[];
+}
+
 export interface RecordingDownloadTicket {
   downloadId: string;
   expiresAt: string;
@@ -568,6 +572,14 @@ export const api = {
   nodes: (filters: NodeFilters = {}) =>
     fetchJson<{ data: RecorderNode[] }>(withQuery("/api/v1/nodes", filters)),
   nodesExport: (filters: NodeFilters = {}) => fetchBlob(withQuery("/api/v1/nodes/export", filters)),
+  nodesExportSelected: (input: NodeSelectedExportInput) =>
+    fetchBlob("/api/v1/nodes/export", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
   prepareRecordingDownload: (recordingId: string) =>
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
       method: "POST",

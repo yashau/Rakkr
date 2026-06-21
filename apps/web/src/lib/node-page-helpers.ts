@@ -1,4 +1,4 @@
-import type { HealthEventStatus, Permission } from "@rakkr/shared";
+import type { HealthEventStatus, NodeRuntime, Permission } from "@rakkr/shared";
 
 export type ListenMonitorMode = "agent_audio_chunk" | "controller_meter_preview";
 export type NodeHealthLifecycleAction = "acknowledge" | "reopen" | "resolve" | "suppress";
@@ -19,6 +19,59 @@ export function nodePageActionPermissions(permissions: readonly Permission[]) {
     canListen: permissions.includes("listen:monitor"),
     canManage: permissions.includes("node:manage"),
   } satisfies NodePageActionPermissions;
+}
+
+export function nodeSelectionState(
+  nodes: readonly { id: string }[],
+  selectedNodeIds: readonly string[],
+) {
+  const visibleNodeIds = nodes.map((node) => node.id);
+  const selectedVisibleNodeIds = selectedNodeIds.filter((nodeId) =>
+    visibleNodeIds.includes(nodeId),
+  );
+
+  return {
+    allVisibleSelected:
+      visibleNodeIds.length > 0 &&
+      visibleNodeIds.every((nodeId) => selectedNodeIds.includes(nodeId)),
+    selectedVisibleNodeIds,
+    visibleNodeIds,
+  };
+}
+
+export function nextNodeSelection(
+  selectedNodeIds: readonly string[],
+  nodeId: string,
+  selected: boolean,
+) {
+  if (!selected) {
+    return selectedNodeIds.filter((candidate) => candidate !== nodeId);
+  }
+
+  return selectedNodeIds.includes(nodeId) ? [...selectedNodeIds] : [...selectedNodeIds, nodeId];
+}
+
+export function nodeLocationSummary(location: {
+  building?: string;
+  floor?: string;
+  room: string;
+  site: string;
+}) {
+  return [location.site, location.building, location.floor, location.room]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+export function nodeRuntimeSummary(runtime: NodeRuntime) {
+  return [
+    runtime.osName,
+    runtime.kernelRelease ? `kernel ${runtime.kernelRelease}` : undefined,
+    runtime.architecture,
+    runtime.audioBackends.length > 0 ? runtime.audioBackends.join(", ") : undefined,
+    runtime.uptimeSeconds === undefined ? undefined : `uptime ${nodeUptime(runtime.uptimeSeconds)}`,
+  ]
+    .filter(Boolean)
+    .join(" / ");
 }
 
 export function rotateNodeTokenTitle(canManage: boolean, isPersistedNode: boolean) {
@@ -70,4 +123,11 @@ export function nodeHealthLifecycleInput(eventId: string, action: NodeHealthLife
     eventId,
     suppressedUntil: action === "suppress" ? defaultNodeHealthSuppressedUntil() : undefined,
   };
+}
+
+function nodeUptime(seconds: number) {
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3600);
+
+  return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
 }
