@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   uploadProviderSchema,
   uploadQueueStatusSchema,
+  type Permission,
   type RecordingSummary,
   type UploadQueueItem,
 } from "@rakkr/shared";
@@ -55,6 +56,15 @@ const uploadQueueQuerySchema = z.object({
     uploadQueueStatusSchema.optional(),
   ),
 });
+const retryableUploadQueueStatuses = new Set<UploadQueueItem["status"]>(["cancelled", "failed"]);
+
+interface UploadQueueActionState {
+  enabled: boolean;
+  href?: string;
+  method: "GET" | "POST";
+  permission: Permission;
+  reason?: string;
+}
 
 export function registerRecordingUploadQueueRoutes({
   app,
@@ -85,6 +95,73 @@ export function registerRecordingUploadQueueRoutes({
           (item) =>
             visibleRecordingIds.has(item.recordingId) && uploadQueueItemMatches(item, query.data),
         ),
+      });
+    },
+  );
+
+  app.get(
+    "/api/v1/upload-queue/:itemId",
+    requirePermission("recording:read", "recordings.upload_queue.detail.read", async (c) => {
+      const itemId = c.req.param("itemId") ?? "";
+      const item = await uploadQueueItem(itemId);
+
+      return {
+        id: item?.recordingId ?? itemId,
+        type: item ? "recording" : "upload_queue",
+      };
+    }),
+    async (c) => {
+      const item = await visibleUploadQueueItem(c.req.param("itemId") ?? "", {
+        currentUser,
+        c,
+        scopedRecordings,
+      });
+
+      if (!item) {
+        return c.json({ error: "Upload queue item not found" }, 404);
+      }
+
+      return c.json({
+        data: {
+          item,
+          links: uploadQueueLinks(item.id),
+          recording: await recordingStore.find(item.recordingId),
+        },
+      });
+    },
+  );
+
+  app.get(
+    "/api/v1/upload-queue/:itemId/actions",
+    requirePermission("recording:read", "recordings.upload_queue.actions.read", async (c) => {
+      const itemId = c.req.param("itemId") ?? "";
+      const item = await uploadQueueItem(itemId);
+
+      return {
+        id: item?.recordingId ?? itemId,
+        type: item ? "recording" : "upload_queue",
+      };
+    }),
+    async (c) => {
+      const item = await visibleUploadQueueItem(c.req.param("itemId") ?? "", {
+        currentUser,
+        c,
+        scopedRecordings,
+      });
+
+      if (!item) {
+        return c.json({ error: "Upload queue item not found" }, 404);
+      }
+
+      const recording = await recordingStore.find(item.recordingId);
+
+      return c.json({
+        data: {
+          actions: uploadQueueActions(item, currentUser(c).permissions, Boolean(recording)),
+          item,
+          links: uploadQueueLinks(item.id),
+          recording,
+        },
       });
     },
   );
@@ -344,6 +421,92 @@ export function registerRecordingUploadQueueRoutes({
       return c.json({ data: retried });
     },
   );
+}
+
+async function visibleUploadQueueItem(
+  itemId: string,
+  {
+    c,
+    currentUser,
+    scopedRecordings,
+  }: Pick<RecordingUploadQueueRouteDependencies, "currentUser" | "scopedRecordings"> & {
+    c: Context<AppBindings>;
+  },
+) {
+  const item = await uploadQueueItem(itemId);
+
+  if (!item) {
+    return undefined;
+  }
+
+  const visibleRecordingIds = new Set(
+    (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
+  );
+
+  return visibleRecordingIds.has(item.recordingId) ? item : undefined;
+}
+
+function uploadQueueActions(
+  item: UploadQueueItem,
+  permissions: readonly Permission[],
+  recordingExists: boolean,
+) {
+  return {
+    detail: uploadQueueActionState({
+      href: `/api/v1/upload-queue/${item.id}`,
+      method: "GET",
+      permission: "recording:read",
+      permissions,
+      ready: true,
+    }),
+    retry: uploadQueueActionState({
+      href: `/api/v1/upload-queue/${item.id}/retry`,
+      method: "POST",
+      permission: "recording:control",
+      permissions,
+      ready: retryableUploadQueueStatuses.has(item.status) && recordingExists,
+      reason: uploadQueueRetryBlockedReason(item, recordingExists),
+    }),
+  };
+}
+
+function uploadQueueActionState({
+  href,
+  method,
+  permission,
+  permissions,
+  ready,
+  reason,
+}: {
+  href: string;
+  method: UploadQueueActionState["method"];
+  permission: Permission;
+  permissions: readonly Permission[];
+  ready: boolean;
+  reason?: string;
+}): UploadQueueActionState {
+  if (!permissions.includes(permission)) {
+    return { enabled: false, method, permission, reason: "missing_permission" };
+  }
+
+  return ready
+    ? { enabled: true, href, method, permission }
+    : { enabled: false, method, permission, reason };
+}
+
+function uploadQueueRetryBlockedReason(item: UploadQueueItem, recordingExists: boolean) {
+  if (!retryableUploadQueueStatuses.has(item.status)) {
+    return "upload_queue_item_not_retryable";
+  }
+
+  return recordingExists ? "upload_queue_item_not_retryable" : "recording_not_found";
+}
+
+function uploadQueueLinks(itemId: string) {
+  return {
+    detail: `/api/v1/upload-queue/${itemId}`,
+    retry: `/api/v1/upload-queue/${itemId}/retry`,
+  };
 }
 
 async function enqueueOne(

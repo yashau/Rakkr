@@ -192,6 +192,112 @@ test("upload queue list filters visible items by status provider and recording",
   assert.equal(invalidResponse.status, 400);
 });
 
+test("upload queue item detail returns scoped recording context", async () => {
+  const auditStore = createAuditStore("");
+  const visibleRecording = recording({ id: "rec_queue_detail_visible" });
+  const queued = await enqueueRecordingUpload(visibleRecording, {
+    provider: "stub",
+    reason: "detail_ready",
+    target: "stub://detail",
+  });
+  const permissionCalls: PermissionCall[] = [];
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls,
+    recordingStore: memoryRecordingStore([visibleRecording]),
+  });
+
+  const response = await app.request(`/api/v1/upload-queue/${queued.id}`);
+  const body = (await response.json()) as {
+    data: { item: UploadQueueItem; links: { retry: string }; recording?: RecordingSummary };
+  };
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "recordings.upload_queue.detail.read",
+    permission: "recording:read",
+    target: { id: visibleRecording.id, type: "recording" },
+  });
+  assert.equal(body.data.item.id, queued.id);
+  assert.equal(body.data.recording?.id, visibleRecording.id);
+  assert.equal(body.data.links.retry, `/api/v1/upload-queue/${queued.id}/retry`);
+});
+
+test("upload queue item action summary returns retry readiness", async () => {
+  const auditStore = createAuditStore("");
+  const failedRecording = recording({ id: "rec_queue_actions_failed" });
+  const queuedRecording = recording({ id: "rec_queue_actions_queued" });
+  const failed = await enqueueRecordingUpload(failedRecording, {
+    maxAttempts: 1,
+    provider: "s3",
+    reason: "terminal_failure",
+    target: "s3://rakkr-route-test/actions",
+  });
+  const queued = await enqueueRecordingUpload(queuedRecording, {
+    provider: "stub",
+    reason: "still_queued",
+    target: "stub://queued",
+  });
+
+  await retryUploadQueueItem(failed.id);
+
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore: memoryRecordingStore([failedRecording, queuedRecording]),
+  });
+  const failedResponse = await app.request(`/api/v1/upload-queue/${failed.id}/actions`);
+  const queuedResponse = await app.request(`/api/v1/upload-queue/${queued.id}/actions`);
+  const failedBody = (await failedResponse.json()) as UploadQueueActionsResponse;
+  const queuedBody = (await queuedResponse.json()) as UploadQueueActionsResponse;
+
+  assert.equal(failedResponse.status, 200);
+  assert.equal(failedBody.data.actions.detail.enabled, true);
+  assert.equal(failedBody.data.actions.retry.enabled, true);
+  assert.equal(failedBody.data.actions.retry.href, `/api/v1/upload-queue/${failed.id}/retry`);
+  assert.equal(queuedResponse.status, 200);
+  assert.equal(queuedBody.data.actions.retry.enabled, false);
+  assert.equal(queuedBody.data.actions.retry.reason, "upload_queue_item_not_retryable");
+});
+
+test("upload queue item action summary reports permission and visibility blockers", async () => {
+  const auditStore = createAuditStore("");
+  const visibleRecording = recording({ id: "rec_queue_action_readonly" });
+  const hiddenRecording = recording({ id: "rec_queue_action_hidden" });
+  const visible = await enqueueRecordingUpload(visibleRecording, {
+    maxAttempts: 1,
+    provider: "s3",
+    reason: "readonly_failed",
+    target: "s3://rakkr-route-test/readonly",
+  });
+  const hidden = await enqueueRecordingUpload(hiddenRecording, {
+    maxAttempts: 1,
+    provider: "s3",
+    reason: "hidden_failed",
+    target: "s3://rakkr-route-test/hidden",
+  });
+
+  await retryUploadQueueItem(visible.id);
+  await retryUploadQueueItem(hidden.id);
+
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    permissions: ["recording:read"],
+    recordingStore: memoryRecordingStore([visibleRecording, hiddenRecording]),
+    visibleRecordingIds: [visibleRecording.id],
+  });
+
+  const visibleResponse = await app.request(`/api/v1/upload-queue/${visible.id}/actions`);
+  const hiddenResponse = await app.request(`/api/v1/upload-queue/${hidden.id}/actions`);
+  const visibleBody = (await visibleResponse.json()) as UploadQueueActionsResponse;
+
+  assert.equal(visibleResponse.status, 200);
+  assert.equal(visibleBody.data.actions.retry.enabled, false);
+  assert.equal(visibleBody.data.actions.retry.reason, "missing_permission");
+  assert.equal(hiddenResponse.status, 404);
+});
+
 test("upload queue retry audits items outside scoped visibility", async () => {
   const auditStore = createAuditStore("");
   const hiddenRecording = recording({ id: "rec_retry_hidden" });
@@ -227,23 +333,32 @@ interface PermissionCall {
   target?: AuditTarget;
 }
 
+interface UploadQueueActionsResponse {
+  data: {
+    actions: Record<string, { enabled: boolean; href?: string; reason?: string }>;
+  };
+}
+
 function recordingUploadQueueApp({
   auditStore,
   permissionCalls,
+  permissions,
   recordingStore,
   visibleRecordingIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
   permissionCalls: PermissionCall[];
+  permissions?: Permission[];
   recordingStore: RecordingStore;
   visibleRecordingIds?: string[];
 }) {
   const app = new Hono<AppBindings>();
+  const currentUser = user(permissions);
 
   registerRecordingUploadQueueRoutes({
     app,
-    currentAuth: () => auth(),
-    currentUser: () => user(),
+    currentAuth: () => auth(currentUser),
+    currentUser: () => currentUser,
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
@@ -333,17 +448,17 @@ function memoryRecordingStore(recordings: RecordingSummary[] = []): RecordingSto
   };
 }
 
-function auth(): AuthResult {
-  return { user: user() };
+function auth(currentUser = user()): AuthResult {
+  return { user: currentUser };
 }
 
-function user(): CurrentUser {
+function user(permissions: Permission[] = ["recording:control", "recording:read"]): CurrentUser {
   return {
     email: "recording-upload-queue-route@example.com",
     groups: [],
     id: "user_recording_upload_queue_route",
     name: "Recording Upload Queue Route User",
-    permissions: ["recording:control"],
+    permissions,
     provider: "local",
     resourceGrants: [],
     roles: ["operator"],

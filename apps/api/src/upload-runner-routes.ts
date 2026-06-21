@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import type { UploadQueueRunSummary, UploadRunnerStatus } from "@rakkr/shared";
+import type { Permission, UploadQueueRunSummary, UploadRunnerStatus } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
@@ -11,6 +11,14 @@ interface UploadRunnerRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   uploadRunner: UploadRunner;
+}
+
+interface UploadRunnerActionState {
+  enabled: boolean;
+  href?: string;
+  method: "GET" | "POST";
+  permission: Permission;
+  reason?: string;
 }
 
 export function registerUploadRunnerRoutes({
@@ -26,6 +34,24 @@ export function registerUploadRunnerRoutes({
       type: "upload_runner",
     })),
     (c) => c.json({ data: uploadRunner.status() }),
+  );
+
+  app.get(
+    "/api/v1/upload-runner/actions",
+    requirePermission("recording:read", "recordings.upload_runner.actions.read", () => ({
+      type: "upload_runner",
+    })),
+    (c) => {
+      const status = uploadRunner.status();
+
+      return c.json({
+        data: {
+          actions: uploadRunnerActions(status, currentAuth(c).user?.permissions ?? []),
+          links: uploadRunnerLinks(),
+          status,
+        },
+      });
+    },
   );
 
   app.post(
@@ -69,6 +95,57 @@ export function registerUploadRunnerRoutes({
       }
     },
   );
+}
+
+function uploadRunnerActions(status: UploadRunnerStatus, permissions: readonly Permission[]) {
+  return {
+    run: uploadRunnerActionState({
+      href: "/api/v1/upload-runner/run",
+      method: "POST",
+      permission: "recording:control",
+      permissions,
+      ready: !status.running,
+      reason: status.running ? "upload_runner_already_running" : undefined,
+    }),
+    status: uploadRunnerActionState({
+      href: "/api/v1/upload-runner",
+      method: "GET",
+      permission: "recording:read",
+      permissions,
+      ready: true,
+    }),
+  };
+}
+
+function uploadRunnerActionState({
+  href,
+  method,
+  permission,
+  permissions,
+  ready,
+  reason,
+}: {
+  href: string;
+  method: UploadRunnerActionState["method"];
+  permission: Permission;
+  permissions: readonly Permission[];
+  ready: boolean;
+  reason?: string;
+}): UploadRunnerActionState {
+  if (!permissions.includes(permission)) {
+    return { enabled: false, method, permission, reason: "missing_permission" };
+  }
+
+  return ready
+    ? { enabled: true, href, method, permission }
+    : { enabled: false, method, permission, reason };
+}
+
+function uploadRunnerLinks() {
+  return {
+    run: "/api/v1/upload-runner/run",
+    status: "/api/v1/upload-runner",
+  };
 }
 
 function statusSnapshot(status: UploadRunnerStatus) {

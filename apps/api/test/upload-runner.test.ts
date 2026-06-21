@@ -183,11 +183,18 @@ test("upload runner routes expose status and run-now control", async () => {
   });
 
   const before = await app.request("/api/v1/upload-runner");
+  const actions = await app.request("/api/v1/upload-runner/actions");
   const run = await app.request("/api/v1/upload-runner/run", { method: "POST" });
+  const actionPayload = (await actions.json()) as {
+    data: { actions: { run: { enabled: boolean; href?: string } } };
+  };
   const payload = await run.json();
   const events = await auditStore.list({ action: "recordings.upload_runner.run.succeeded" });
 
   assert.equal(before.status, 200);
+  assert.equal(actions.status, 200);
+  assert.equal(actionPayload.data.actions.run.enabled, true);
+  assert.equal(actionPayload.data.actions.run.href, "/api/v1/upload-runner/run");
   assert.equal(run.status, 200);
   assert.equal(payload.summary.succeeded, 1);
   assert.equal(payload.data.lastSummary.succeeded, 1);
@@ -214,21 +221,50 @@ test("upload runner routes deny users without required permissions", async () =>
   });
 
   const readResponse = await app.request("/api/v1/upload-runner");
+  const actionsResponse = await app.request("/api/v1/upload-runner/actions");
   const runResponse = await app.request("/api/v1/upload-runner/run", { method: "POST" });
   const status = runner.status();
   const events = await auditStore.list({ outcome: "denied" });
 
-  assert.deepEqual([readResponse.status, runResponse.status], [403, 403]);
+  assert.deepEqual(
+    [readResponse.status, actionsResponse.status, runResponse.status],
+    [403, 403, 403],
+  );
   assert.equal(status.lastSummary, undefined);
   assert.deepEqual(
     Object.fromEntries(events.map((event) => [event.action, event.permission]).sort()),
     {
+      "recordings.upload_runner.actions.read": "recording:read",
       "recordings.upload_runner.read": "recording:read",
       "recordings.upload_runner.run": "recording:control",
     },
   );
   assert.ok(events.every((event) => event.reason === "missing_permission"));
   assert.ok(events.every((event) => event.target.type === "upload_runner"));
+});
+
+test("upload runner action summary reports missing control permission", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const providerStore = createUploadProviderStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+
+  registerUploadRunnerRoutes({
+    app,
+    currentAuth: () => ({ user: viewer(["recording:read"]) }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allow,
+    uploadRunner: runner,
+  });
+
+  const response = await app.request("/api/v1/upload-runner/actions");
+  const body = (await response.json()) as {
+    data: { actions: { run: { enabled: boolean; reason?: string } } };
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.actions.run.enabled, false);
+  assert.equal(body.data.actions.run.reason, "missing_permission");
 });
 
 const allow: RequirePermission = () => async (_c, next) => {
@@ -300,13 +336,13 @@ function user(): CurrentUser {
   };
 }
 
-function viewer(): CurrentUser {
+function viewer(permissions: CurrentUser["permissions"] = []): CurrentUser {
   return {
     email: "upload-runner-viewer@example.com",
     groups: [],
     id: "user_upload_runner_viewer_test",
     name: "Upload Runner Viewer Test",
-    permissions: [],
+    permissions,
     provider: "local",
     resourceGrants: [],
     roles: ["viewer"],
