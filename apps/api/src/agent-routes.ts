@@ -497,18 +497,23 @@ export function registerAgentRoutes({
     return c.json({ data: job });
   });
 
-  app.get("/api/v1/recording-jobs/:jobId", async (c) => {
+  app.get("/api/v1/recording-jobs/:jobId", async (c, next) => {
     const jobId = c.req.param("jobId");
-    const auth = await authenticateNode(c, "recording_jobs.read_one", {
-      id: jobId,
-      type: "recording_job",
-    });
+    const token = bearerToken(c.req.header("authorization"));
 
-    if (auth.response) {
-      return auth.response;
+    if (!token)
+      return (
+        await authenticateNode(c, "recording_jobs.read_one", { id: jobId, type: "recording_job" })
+      ).response;
+
+    const credential = await nodeStore.authenticateCredential(token).catch(async () => undefined);
+
+    if (!credential) {
+      await next();
+      return c.res;
     }
 
-    const existing = await authorizeJobNode(c, auth.credential, jobId, "recording_jobs.read_one");
+    const existing = await authorizeJobNode(c, credential, jobId, "recording_jobs.read_one");
 
     return existing.response ?? c.json({ data: existing.job });
   });

@@ -10,6 +10,7 @@ import type {
   CurrentUser,
   Permission,
   RecorderNode,
+  MeterFrame,
   RecordingJob,
   RecordingProfile,
   RecordingSummary,
@@ -21,6 +22,7 @@ import type {
   RecordAuditEvent,
   RequirePermission,
 } from "../src/http-types.js";
+import type { MeterFrameStore } from "../src/meter-store.js";
 import type { NodeStore } from "../src/node-store.js";
 import type { RecordingStore } from "../src/recording-store.js";
 import type { SettingsStore } from "../src/settings-store.js";
@@ -31,6 +33,8 @@ process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(routeRoot, "retention-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
+const { registerAgentRoutes } = await import("../src/agent-routes.js");
+const { createHealthEventStore } = await import("../src/health-store.js");
 const { filterRecordingJobsForExport, recordingJobsCsv } =
   await import("../src/recording-job-export.js");
 const { createRecordingJob, failRecordingJob } = await import("../src/recording-jobs.js");
@@ -132,6 +136,91 @@ test("recording job list route filters scoped jobs by status search node and bac
     [jackJob.id],
   );
   assert.equal(invalidResponse.status, 400);
+});
+
+test("recording job detail route returns only scoped jobs", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const visible = recordingSummary({ id: `rec_detail_visible_${randomUUID()}` });
+  const hidden = recordingSummary({ id: `rec_detail_hidden_${randomUUID()}` });
+  const recordingStore = memoryRecordingStore([visible, hidden]);
+  const visibleJob = await createRecordingJob(visible);
+  const hiddenJob = await createRecordingJob(hidden);
+  const app = recordingApp({
+    auditStore,
+    permissionCalls,
+    recordingStore,
+    visibleRecordingIds: [visible.id],
+  });
+
+  const visibleResponse = await app.request(`/api/v1/recording-jobs/${visibleJob.id}`);
+  const hiddenResponse = await app.request(`/api/v1/recording-jobs/${hiddenJob.id}`);
+  const missingResponse = await app.request("/api/v1/recording-jobs/job_missing_detail");
+  const visibleBody = (await visibleResponse.json()) as { data: RecordingJob };
+
+  assert.equal(visibleResponse.status, 200);
+  assert.equal(visibleBody.data.id, visibleJob.id);
+  assert.equal(visibleBody.data.recordingId, visible.id);
+  assert.equal(hiddenResponse.status, 404);
+  assert.equal(missingResponse.status, 404);
+  assert.deepEqual(permissionCalls.at(-3), {
+    action: "recording_jobs.detail.read",
+    permission: "recording:read",
+    target: { id: visible.id, type: "recording" },
+  });
+  assert.deepEqual(permissionCalls.at(-2), {
+    action: "recording_jobs.detail.read",
+    permission: "recording:read",
+    target: { id: hidden.id, type: "recording" },
+  });
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "recording_jobs.detail.read",
+    permission: "recording:read",
+    target: { id: "job_missing_detail", type: "recording_job" },
+  });
+});
+
+test("recording job detail route lets controller bearer reads pass agent route", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore([recordingSummary()]);
+  const permissionCalls: PermissionCall[] = [];
+  const job = await createRecordingJob((await recordingStore.list())[0]!);
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: memorySettingsStore(),
+  });
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => ({ user: user() }),
+    currentUser: () => user(),
+    nodeStore: memoryNodeStore(),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission(permissionCalls),
+    scopedRecordings: () => recordingStore.list(),
+    settingsStore: memorySettingsStore(),
+  });
+
+  const response = await app.request(`/api/v1/recording-jobs/${job.id}`, {
+    headers: { authorization: "Bearer user-token" },
+  });
+  const body = (await response.json()) as { data: RecordingJob };
+  const missingTokenEvents = await auditStore.list({
+    action: "recording_jobs.read_one.failed",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.id, job.id);
+  assert.equal(body.data.recordingId, recordingSummary().id);
+  assert.equal(permissionCalls.at(-1)?.action, "recording_jobs.detail.read");
+  assert.equal(missingTokenEvents.length, 0);
 });
 
 test("recording job export route is RBAC-gated and audited", async () => {
@@ -585,6 +674,23 @@ function memoryNodeStore(): NodeStore {
     },
     async updateInterface() {
       throw new Error("not implemented");
+    },
+  };
+}
+
+function memoryMeterFrameStore(): MeterFrameStore {
+  return {
+    async history(): Promise<MeterFrame[]> {
+      return [];
+    },
+    async latest() {
+      return undefined;
+    },
+    async save(frame) {
+      return {
+        frame,
+        receivedAt: new Date().toISOString(),
+      };
     },
   };
 }

@@ -193,6 +193,30 @@ export function registerRecordingJobRoutes({
     },
   );
 
+  app.get(
+    "/api/v1/recording-jobs/:jobId",
+    requirePermission("recording:read", "recording_jobs.detail.read", async (c) => {
+      const jobId = c.req.param("jobId") ?? "";
+      const job = await recordingJob(jobId);
+
+      return job
+        ? { id: job.recordingId, type: "recording" }
+        : { id: jobId, type: "recording_job" };
+    }),
+    async (c) => {
+      const jobId = c.req.param("jobId") ?? "";
+      const job = (await scopedRecordingJobs(currentUser(c))).find(
+        (candidate) => candidate.id === jobId,
+      );
+
+      if (!job) {
+        return c.json({ error: "Recording job not found" }, 404);
+      }
+
+      return c.json({ data: job });
+    },
+  );
+
   app.post(
     "/api/v1/recording-jobs/bulk-retry",
     requirePermission("recording:control", "recording_jobs.bulk_retry", () => ({
