@@ -88,6 +88,40 @@ test("ops routes deny users without required permissions", async () => {
   assert.ok(deniedEvents.every((event) => event.actor.id === deniedUser.id));
 });
 
+test("status route only includes settings summaries with settings read", async () => {
+  const statusApp = (currentUser: CurrentUser) => {
+    const app = new Hono<AppBindings>();
+
+    registerStatusRoutes({
+      app,
+      currentUser: () => currentUser,
+      hasResourceScope: async () => true,
+      healthEventStore: createHealthEventStore("", []),
+      requirePermission: allowPermission,
+      scopedNodes: async () => [],
+      scopedRecordings: async () => [],
+      settingsStore: createSettingsStore(),
+      startedAt: new Date("2026-06-18T12:00:00.000Z"),
+    });
+
+    return app;
+  };
+
+  const nodeOnlyResponse = await statusApp(user(["node:read"])).request("/api/v1/status");
+  const nodeOnlyBody = (await nodeOnlyResponse.json()) as Record<string, unknown>;
+  const settingsResponse = await statusApp(user(["node:read", "settings:read"])).request(
+    "/api/v1/status",
+  );
+  const settingsBody = (await settingsResponse.json()) as Record<string, unknown>;
+
+  assert.equal(nodeOnlyResponse.status, 200);
+  assert.equal(settingsResponse.status, 200);
+  assert.equal("recordingProfile" in nodeOnlyBody, false);
+  assert.equal("watchdogPolicy" in nodeOnlyBody, false);
+  assert.equal(typeof settingsBody.recordingProfile, "object");
+  assert.equal(typeof settingsBody.watchdogPolicy, "object");
+});
+
 function denyMissingPermission(
   auditStore: ReturnType<typeof createAuditStore>,
   currentUser: CurrentUser,
@@ -112,6 +146,10 @@ function denyMissingPermission(
     return c.json({ error: "Forbidden", permission }, 403);
   };
 }
+
+const allowPermission: RequirePermission = () => async (_c, next) => {
+  await next();
+};
 
 function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
   return async (_c, input) => {

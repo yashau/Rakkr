@@ -47,16 +47,13 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
         hasResourceScope: dependencies.hasResourceScope,
         healthEventStore: dependencies.healthEventStore,
       });
-      const profiles = await dependencies.settingsStore.listRecordingProfiles();
-      const recordingProfile =
-        profiles.find((profile) => profile.id === defaultVoiceRecordingProfile.id) ??
-        profiles[0] ??
-        defaultVoiceRecordingProfile;
-      const watchdogPolicies = await dependencies.settingsStore.listWatchdogPolicies();
-      const watchdogPolicy =
-        watchdogPolicies.find((policy) => policy.id === defaultScheduledVoiceWatchdogPolicy.id) ??
-        watchdogPolicies[0] ??
-        defaultScheduledVoiceWatchdogPolicy;
+      const canReadSettings = user.permissions.includes("settings:read");
+      const recordingProfile = canReadSettings
+        ? await defaultRecordingProfile(dependencies.settingsStore)
+        : undefined;
+      const watchdogPolicy = canReadSettings
+        ? await defaultWatchdogPolicy(dependencies.settingsStore)
+        : undefined;
 
       return c.json({
         activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
@@ -67,10 +64,30 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
         ).length,
         nodeCount: visibleNodes.length,
         onlineNodes: visibleNodes.filter((node) => node.status === "online").length,
-        recordingProfile,
+        ...(recordingProfile ? { recordingProfile } : {}),
         startedAt: dependencies.startedAt.toISOString(),
-        watchdogPolicy,
+        ...(watchdogPolicy ? { watchdogPolicy } : {}),
       });
     },
+  );
+}
+
+async function defaultRecordingProfile(settingsStore: SettingsStore) {
+  const profiles = await settingsStore.listRecordingProfiles();
+
+  return (
+    profiles.find((profile) => profile.id === defaultVoiceRecordingProfile.id) ??
+    profiles[0] ??
+    defaultVoiceRecordingProfile
+  );
+}
+
+async function defaultWatchdogPolicy(settingsStore: SettingsStore) {
+  const watchdogPolicies = await settingsStore.listWatchdogPolicies();
+
+  return (
+    watchdogPolicies.find((policy) => policy.id === defaultScheduledVoiceWatchdogPolicy.id) ??
+    watchdogPolicies[0] ??
+    defaultScheduledVoiceWatchdogPolicy
   );
 }

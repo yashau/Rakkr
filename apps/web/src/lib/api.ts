@@ -57,9 +57,9 @@ export interface ControllerStatus {
   criticalAlerts: number;
   nodeCount: number;
   onlineNodes: number;
-  recordingProfile: RecordingProfile;
+  recordingProfile?: RecordingProfile;
   startedAt: string;
-  watchdogPolicy: WatchdogPolicy;
+  watchdogPolicy?: WatchdogPolicy;
 }
 
 export interface AuditEventFilters {

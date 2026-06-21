@@ -238,11 +238,11 @@ export function DashboardPage() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-muted-foreground">Profile</dt>
-                <dd>{status?.recordingProfile.name ?? "n/a"}</dd>
+                <dd>{status?.recordingProfile?.name ?? "n/a"}</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-muted-foreground">Watchdog</dt>
-                <dd>{status?.watchdogPolicy.name ?? "n/a"}</dd>
+                <dd>{status?.watchdogPolicy?.name ?? "n/a"}</dd>
               </div>
             </dl>
           </section>
