@@ -244,6 +244,20 @@ export function HealthPage() {
               value={filters.openedToDate}
             />
           </Field>
+          <Field label="Resolved From">
+            <Input
+              onChange={(event) => setFilter("resolvedFromDate", event.target.value)}
+              type="date"
+              value={filters.resolvedFromDate}
+            />
+          </Field>
+          <Field label="Resolved To">
+            <Input
+              onChange={(event) => setFilter("resolvedToDate", event.target.value)}
+              type="date"
+              value={filters.resolvedToDate}
+            />
+          </Field>
           <Field label="Type">
             <Input
               onChange={(event) => setFilter("type", event.target.value)}

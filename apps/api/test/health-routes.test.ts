@@ -93,8 +93,9 @@ test("health event export returns scoped filtered csv and audits access", async 
       id: "health_visible",
       nodeId: "node_1",
       openedAt: "2026-06-20T12:00:00.000Z",
+      resolvedAt: "2026-06-20T16:00:00.000Z",
       severity: "critical",
-      status: "open",
+      status: "resolved",
       type: "watchdog.scheduled_low_signal",
     }),
     event({
@@ -142,7 +143,7 @@ test("health event export returns scoped filtered csv and audits access", async 
   });
 
   const response = await app.request(
-    "/api/v1/health-events/export?severity=critical&type=watchdog.scheduled_low_signal&openedFrom=2026-06-20T00:00:00.000Z&openedTo=2026-06-20T23:59:59.999Z",
+    "/api/v1/health-events/export?severity=critical&type=watchdog.scheduled_low_signal&openedFrom=2026-06-20T00:00:00.000Z&openedTo=2026-06-20T23:59:59.999Z&resolvedFrom=2026-06-20T00:00:00.000Z&resolvedTo=2026-06-20T23:59:59.999Z",
   );
   const csv = await response.text();
   const [auditEvent] = await auditStore.list({ action: "health.events.export.succeeded" });
@@ -154,7 +155,7 @@ test("health event export returns scoped filtered csv and audits access", async 
     /^attachment; filename="rakkr-health-events-/,
   );
   assert.match(csv, /^"id","type","severity","status","nodeId"/m);
-  assert.match(csv, /"health_visible","watchdog\.scheduled_low_signal","critical","open"/);
+  assert.match(csv, /"health_visible","watchdog\.scheduled_low_signal","critical","resolved"/);
   assert.match(csv, /"\{""dbfs"":-72,""reason"":""too quiet""\}"/);
   assert.doesNotMatch(csv, /health_filtered/);
   assert.doesNotMatch(csv, /health_too_old/);
@@ -168,6 +169,8 @@ test("health event export returns scoped filtered csv and audits access", async 
     openedFrom: new Date("2026-06-20T00:00:00.000Z"),
     openedTo: new Date("2026-06-20T23:59:59.999Z"),
     recordingId: undefined,
+    resolvedFrom: new Date("2026-06-20T00:00:00.000Z"),
+    resolvedTo: new Date("2026-06-20T23:59:59.999Z"),
     scheduleId: undefined,
     severity: "critical",
     status: undefined,

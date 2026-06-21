@@ -29,6 +29,8 @@ export interface HealthEventFilters {
   openedFrom?: Date;
   openedTo?: Date;
   recordingId?: string;
+  resolvedFrom?: Date;
+  resolvedTo?: Date;
   scheduleId?: string;
   severity?: HealthSeverity;
   status?: HealthEventStatus;
@@ -288,6 +290,14 @@ function healthConditions(filters: HealthEventFilters): SQL[] {
     conditions.push(eq(healthEventsTable.recordingId, filters.recordingId));
   }
 
+  if (filters.resolvedFrom) {
+    conditions.push(gte(healthEventsTable.resolvedAt, filters.resolvedFrom));
+  }
+
+  if (filters.resolvedTo) {
+    conditions.push(lte(healthEventsTable.resolvedAt, filters.resolvedTo));
+  }
+
   if (filters.scheduleId) {
     conditions.push(eq(healthEventsTable.scheduleId, filters.scheduleId));
   }
@@ -313,6 +323,12 @@ function matchesHealthFilters(event: HealthEvent, filters: HealthEventFilters) {
     (!filters.openedFrom || Date.parse(event.openedAt) >= filters.openedFrom.getTime()) &&
     (!filters.openedTo || Date.parse(event.openedAt) <= filters.openedTo.getTime()) &&
     (!filters.recordingId || event.recordingId === filters.recordingId) &&
+    (!filters.resolvedFrom ||
+      (event.resolvedAt !== null &&
+        Date.parse(event.resolvedAt) >= filters.resolvedFrom.getTime())) &&
+    (!filters.resolvedTo ||
+      (event.resolvedAt !== null &&
+        Date.parse(event.resolvedAt) <= filters.resolvedTo.getTime())) &&
     (!filters.scheduleId || event.scheduleId === filters.scheduleId) &&
     (!filters.severity || event.severity === filters.severity) &&
     (!filters.status || event.status === filters.status) &&

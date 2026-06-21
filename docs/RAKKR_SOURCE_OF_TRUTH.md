@@ -60,8 +60,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, nodes with location/backend/last-seen filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health date filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard, access, nodes with location/backend/last-seen filters/exports, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench with date filters, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, quality timelines |
+| Controller API | 🟨 | Auth, RBAC, audit, nodes with location/backend/last-seen filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, jobs, lifecycle coverage, settings, health opened/resolved date filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
+| Controller UI | 🟨 | Dashboard, access, nodes with location/backend/last-seen filters/exports, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with backend/interface selection, settings, central health workbench with opened/resolved date filters, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
@@ -285,7 +285,7 @@ Current partial implementation:
 - Watchdog policies can alert and auto-resolve when scheduled recordings show sustained high broadband-noise, noise, hum, or static likelihood.
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
-- Health event APIs can filter by opened date range, event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
+- Health event APIs can filter by opened/resolved date range, event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
 - Node health summaries, central health workbench, recent events, trends, scoped and selected CSV exports, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, clipping, flatline, quality anomaly, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
@@ -841,6 +841,7 @@ Current implementation baseline:
 227. ✅ Add server-backed node inventory location filters.
 228. ✅ Add recording-job created date filters.
 229. ✅ Add node inventory last-seen date filters.
+230. ✅ Add health-event resolved date range filters.
 
 ## Open Questions
 

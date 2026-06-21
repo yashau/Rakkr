@@ -279,6 +279,8 @@ export interface HealthEventFilters {
   openedFrom?: string;
   openedTo?: string;
   recordingId?: string;
+  resolvedFrom?: string;
+  resolvedTo?: string;
   scheduleId?: string;
   severity?: HealthEvent["severity"];
   status?: HealthEvent["status"];
