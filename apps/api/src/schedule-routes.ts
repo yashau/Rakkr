@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
+import { z } from "zod";
 import {
   scheduleInputSchema,
   scheduleUpdateSchema,
@@ -42,6 +43,12 @@ interface ScheduleRouteDependencies {
   settingsStore: SettingsStore;
 }
 
+const scheduleSelectedExportSchema = z
+  .object({
+    scheduleIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
+  })
+  .strict();
+
 export function registerScheduleRoutes({
   app,
   currentAuth,
@@ -56,6 +63,93 @@ export function registerScheduleRoutes({
 }: ScheduleRouteDependencies) {
   app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
     c.json({ data: filterSchedules(await scopedSchedules(currentUser(c)), scheduleFilters(c)) }),
+  );
+
+  app.get(
+    "/api/v1/schedules/export",
+    requirePermission("schedule:read", "schedules.export", () => ({
+      id: "schedule_collection",
+      type: "schedule_collection",
+    })),
+    async (c) => {
+      const filters = scheduleFilters(c);
+      const schedules = filterSchedules(await scopedSchedules(currentUser(c)), filters);
+
+      await recordAuditEvent(c, {
+        action: "schedules.export.succeeded",
+        auth: currentAuth(c),
+        details: {
+          exportedCount: schedules.length,
+          filters,
+        },
+        outcome: "succeeded",
+        permission: "schedule:read",
+        target: {
+          id: "schedule_collection",
+          type: "schedule_collection",
+        },
+      });
+
+      return c.body(schedulesCsv(schedules), 200, {
+        "Content-Disposition": `attachment; filename="${scheduleExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
+  );
+
+  app.post(
+    "/api/v1/schedules/export",
+    requirePermission("schedule:read", "schedules.export_selected", () => ({
+      id: "schedule_collection",
+      type: "schedule_collection",
+    })),
+    async (c) => {
+      const body = scheduleSelectedExportSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSelectedScheduleExportFailure(c, "invalid_request");
+        return c.json({ error: "Invalid schedule export request", issues: body.error.issues }, 400);
+      }
+
+      const scheduleIds = uniqueScheduleIds(body.data.scheduleIds);
+      const visibleScheduleMap = new Map(
+        (await scopedSchedules(currentUser(c))).map((schedule) => [schedule.id, schedule]),
+      );
+      const hiddenIds = scheduleIds.filter((scheduleId) => !visibleScheduleMap.has(scheduleId));
+
+      if (hiddenIds.length > 0) {
+        await recordSelectedScheduleExportFailure(c, "schedule_not_visible", {
+          hiddenIds,
+          scheduleIds,
+        });
+        return c.json({ error: "One or more schedules are not visible" }, 404);
+      }
+
+      const schedules = scheduleIds.map((scheduleId) => visibleScheduleMap.get(scheduleId)!);
+
+      await recordAuditEvent(c, {
+        action: "schedules.export_selected.succeeded",
+        auth: currentAuth(c),
+        correlationIds: Object.fromEntries(
+          scheduleIds.map((scheduleId, index) => [`scheduleId${index + 1}`, scheduleId]),
+        ),
+        details: {
+          exportedCount: schedules.length,
+          requestedCount: body.data.scheduleIds.length,
+        },
+        outcome: "succeeded",
+        permission: "schedule:read",
+        target: {
+          id: "schedule_collection",
+          type: "schedule_collection",
+        },
+      });
+
+      return c.body(schedulesCsv(schedules), 200, {
+        "Content-Disposition": `attachment; filename="${scheduleExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
   );
 
   app.get(
@@ -472,6 +566,25 @@ export function registerScheduleRoutes({
       },
     });
   }
+
+  async function recordSelectedScheduleExportFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action: "schedules.export_selected.failed",
+      auth: currentAuth(c),
+      details,
+      outcome: reason === "schedule_not_visible" ? "denied" : "failed",
+      permission: "schedule:read",
+      reason,
+      target: {
+        id: "schedule_collection",
+        type: "schedule_collection",
+      },
+    });
+  }
 }
 
 interface ScheduleFilters {
@@ -655,4 +768,59 @@ function recurrenceFromNextRun(nextRunAt: string | undefined): ScheduleRecurrenc
   return nextRunAt
     ? { mode: "once", startsAt: new Date(nextRunAt).toISOString() }
     : { mode: "manual" };
+}
+
+function schedulesCsv(schedules: ScheduleSummary[]) {
+  return [
+    csvRow([
+      "id",
+      "name",
+      "enabled",
+      "nodeId",
+      "room",
+      "timezone",
+      "nextRunAt",
+      "captureBackend",
+      "captureInterfaceId",
+      "recordingProfileId",
+      "watchdogPolicyId",
+      "retentionPolicyId",
+      "uploadPolicyId",
+      "tags",
+    ]),
+    ...schedules.map((schedule) =>
+      csvRow([
+        schedule.id,
+        schedule.name,
+        String(schedule.enabled),
+        schedule.nodeId,
+        schedule.room,
+        schedule.timezone,
+        schedule.nextRunAt ?? "",
+        schedule.captureBackend ?? "",
+        schedule.captureInterfaceId ?? "",
+        schedule.recordingProfileId ?? "",
+        schedule.watchdogPolicyId ?? "",
+        schedule.retentionPolicyId ?? "",
+        schedule.uploadPolicyId ?? "",
+        schedule.tags.join(";"),
+      ]),
+    ),
+  ].join("\n");
+}
+
+function scheduleExportFileName() {
+  return `rakkr-schedules-${new Date().toISOString().replaceAll(":", "-").replace(".", "-")}.csv`;
+}
+
+function csvRow(values: string[]) {
+  return values.map(csvCell).join(",");
+}
+
+function csvCell(value: string) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function uniqueScheduleIds(scheduleIds: string[]) {
+  return Array.from(new Set(scheduleIds));
 }

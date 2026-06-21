@@ -49,6 +49,10 @@ test("schedule routes deny users without required permissions", async () => {
 
   const responses = await Promise.all([
     app.request("/api/v1/schedules"),
+    app.request("/api/v1/schedules/export"),
+    requestJson(app, "/api/v1/schedules/export", "POST", {
+      scheduleIds: [schedule().id],
+    }),
     app.request(`/api/v1/schedules/${schedule().id}`),
     app.request(`/api/v1/schedules/${schedule().id}/occurrences`),
     requestJson(app, "/api/v1/schedules", "POST", {
@@ -69,7 +73,7 @@ test("schedule routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "schedule:manage:schedules.create",
@@ -78,11 +82,120 @@ test("schedule routes deny users without required permissions", async () => {
     "schedule:manage:schedules.skip_next",
     "schedule:manage:schedules.update",
     "schedule:read:schedules.detail.read",
+    "schedule:read:schedules.export",
+    "schedule:read:schedules.export_selected",
     "schedule:read:schedules.occurrences.read",
     "schedule:read:schedules.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
   assert.ok(deniedEvents.every((event) => event.actor.id === deniedUser.id));
+});
+
+test("schedule export returns filtered scoped csv and audits access", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["schedule:read"]);
+  const schedules = [
+    schedule({
+      captureBackend: "jack",
+      enabled: true,
+      id: "sched_export_visible",
+      name: 'Council "Quoted" Sessions',
+      nodeId: "node_export",
+      room: "Council Chamber",
+      tags: ["voice", "public"],
+    }),
+    schedule({
+      captureBackend: "pipewire",
+      enabled: true,
+      id: "sched_export_other",
+      name: "Archive Export",
+      nodeId: "node_export",
+      room: "Archive",
+      tags: ["archive"],
+    }),
+  ];
+  const store = scheduleStore(schedules);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: () => store.list(),
+    settingsStore: createSettingsStore(),
+  });
+
+  const response = await app.request("/api/v1/schedules/export?search=quoted&captureBackend=jack");
+  const csv = await response.text();
+  const [event] = await auditStore.list({ action: "schedules.export.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+  assert.match(response.headers.get("content-disposition") ?? "", /rakkr-schedules-/);
+  assert.match(csv, /^"id","name","enabled"/);
+  assert.match(csv, /"sched_export_visible","Council ""Quoted"" Sessions"/);
+  assert.doesNotMatch(csv, /sched_export_other/);
+  assert.equal(event?.permission, "schedule:read");
+  assert.equal(event?.target.id, "schedule_collection");
+  assert.equal(event?.details.exportedCount, 1);
+  assert.deepEqual(event?.details.filters, {
+    captureBackend: "jack",
+    captureInterfaceId: undefined,
+    enabled: undefined,
+    nodeId: undefined,
+    search: "quoted",
+  });
+});
+
+test("selected schedule export preserves request order and rejects hidden schedules", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["schedule:read"]);
+  const visibleA = schedule({ id: "sched_selected_a", name: "Selected A" });
+  const visibleB = schedule({ id: "sched_selected_b", name: "Selected B" });
+  const hidden = schedule({ id: "sched_selected_hidden", name: "Selected Hidden" });
+  const store = scheduleStore([visibleA, visibleB, hidden]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: async () => [visibleA, visibleB],
+    settingsStore: createSettingsStore(),
+  });
+
+  const selected = await requestJson(app, "/api/v1/schedules/export", "POST", {
+    scheduleIds: [visibleB.id, visibleA.id, visibleB.id],
+  });
+  const csv = await selected.text();
+  const hiddenResponse = await requestJson(app, "/api/v1/schedules/export", "POST", {
+    scheduleIds: [visibleA.id, hidden.id],
+  });
+  const selectedEvent = (
+    await auditStore.list({ action: "schedules.export_selected.succeeded" })
+  )[0];
+  const failedEvent = (await auditStore.list({ action: "schedules.export_selected.failed" }))[0];
+
+  assert.equal(selected.status, 200);
+  assert.ok(csv.indexOf(visibleB.id) < csv.indexOf(visibleA.id));
+  assert.equal((csv.match(new RegExp(visibleB.id, "g")) ?? []).length, 1);
+  assert.equal(hiddenResponse.status, 404);
+  assert.equal(selectedEvent?.details.requestedCount, 3);
+  assert.equal(selectedEvent?.details.exportedCount, 2);
+  assert.equal(selectedEvent?.correlationIds?.scheduleId1, visibleB.id);
+  assert.equal(failedEvent?.outcome, "denied");
+  assert.equal(failedEvent?.reason, "schedule_not_visible");
+  assert.deepEqual(failedEvent?.details.hiddenIds, [hidden.id]);
 });
 
 test("schedule list route filters scoped schedules", async () => {
