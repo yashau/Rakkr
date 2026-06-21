@@ -68,17 +68,19 @@ test("ops routes deny users without required permissions", async () => {
   const responses = await Promise.all([
     app.request("/metrics"),
     app.request("/api/v1/status"),
+    app.request("/api/v1/auth/oidc/discovery/actions"),
     app.request("/api/v1/auth/oidc/discovery"),
   ]);
   const deniedEvents = await auditStore.list({ outcome: "denied" });
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403],
+    [403, 403, 403, 403],
   );
   assert.deepEqual(
     Object.fromEntries(deniedEvents.map((event) => [event.action, event.permission]).sort()),
     {
+      "auth.oidc.discovery.actions.read": "auth:manage",
       "auth.oidc.discovery.read": "auth:manage",
       "metrics.read": "metrics:read",
       "status.read": "node:read",

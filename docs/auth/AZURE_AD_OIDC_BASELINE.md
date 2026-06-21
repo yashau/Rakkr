@@ -11,7 +11,8 @@ Status: MVP baseline checked; live tenant validation remains an integration task
 - Callback state must match the browser cookie and stored state.
 - Successful callbacks create Rakkr bearer sessions for synced OIDC users.
 - Logout clears pending OIDC state cookies.
-- Discovery details are visible only through the `auth:manage` protected discovery route.
+- Public action summaries expose OIDC login readiness without secrets.
+- Discovery details and discovery action summaries are visible only through `auth:manage` protected routes.
 
 ## Required Environment
 
@@ -31,8 +32,10 @@ Status: MVP baseline checked; live tenant validation remains an integration task
 | Route | Access |
 | ----- | ------ |
 | `GET /api/v1/auth/oidc/config` | Public sanitized config |
+| `GET /api/v1/auth/oidc/actions` | Public login/config readiness |
 | `GET /api/v1/auth/oidc/login` | Starts provider redirect |
 | `GET /api/v1/auth/oidc/callback` | Completes login and creates a Rakkr session |
+| `GET /api/v1/auth/oidc/discovery/actions` | Requires `auth:manage` |
 | `GET /api/v1/auth/oidc/discovery` | Requires `auth:manage` |
 | `POST /api/v1/auth/logout` | Clears pending OIDC state cookie |
 

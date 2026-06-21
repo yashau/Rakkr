@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
+import type { Permission } from "@rakkr/shared";
 
 import type { LocalAuthService, LoginResult, SessionContext } from "./auth-service.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
@@ -33,6 +34,14 @@ interface AuthOidcRouteDependencies {
   webOrigin: string;
 }
 
+interface OidcActionState {
+  enabled: boolean;
+  href?: string;
+  method: "GET";
+  permission?: Permission;
+  reason?: string;
+}
+
 const stateCookie = "rakkr_oidc_state";
 const stateMaxAgeSeconds = 10 * 60;
 
@@ -59,6 +68,18 @@ export function registerAuthOidcRoutes({
   webOrigin,
 }: AuthOidcRouteDependencies) {
   app.get("/api/v1/auth/oidc/config", (c) => c.json({ data: publicOidcConfig(configProvider()) }));
+
+  app.get("/api/v1/auth/oidc/actions", (c) => {
+    const config = configProvider();
+
+    return c.json({
+      data: {
+        actions: oidcPublicActions(config),
+        config: publicOidcConfig(config),
+        links: oidcLinks(),
+      },
+    });
+  });
 
   app.get("/api/v1/auth/oidc/login", async (c) => {
     const config = configProvider();
@@ -140,6 +161,22 @@ export function registerAuthOidcRoutes({
   });
 
   app.get(
+    "/api/v1/auth/oidc/discovery/actions",
+    requirePermission("auth:manage", "auth.oidc.discovery.actions.read", () => ({ type: "auth" })),
+    async (c) => {
+      const config = configProvider();
+
+      return c.json({
+        data: {
+          actions: oidcDiscoveryActions(config, c.get("auth")?.user?.permissions ?? []),
+          config: publicOidcConfig(config),
+          links: oidcLinks(),
+        },
+      });
+    },
+  );
+
+  app.get(
     "/api/v1/auth/oidc/discovery",
     requirePermission("auth:manage", "auth.oidc.discovery.read", () => ({ type: "auth" })),
     async (c) => {
@@ -156,6 +193,90 @@ export function registerAuthOidcRoutes({
       }
     },
   );
+}
+
+function oidcPublicActions(config: OidcRuntimeConfig) {
+  return {
+    config: oidcActionState({
+      href: "/api/v1/auth/oidc/config",
+      method: "GET",
+      ready: true,
+    }),
+    login: oidcActionState({
+      href: "/api/v1/auth/oidc/login",
+      method: "GET",
+      ready: config.loginAvailable,
+      reason: oidcUnavailableReason(config),
+    }),
+  };
+}
+
+function oidcDiscoveryActions(config: OidcRuntimeConfig, permissions: readonly Permission[]) {
+  return {
+    discovery: oidcActionState({
+      href: "/api/v1/auth/oidc/discovery",
+      method: "GET",
+      permission: "auth:manage",
+      permissions,
+      ready: config.enabled && config.configured && Boolean(config.discoveryUrl),
+      reason: oidcDiscoveryUnavailableReason(config),
+    }),
+  };
+}
+
+function oidcActionState({
+  href,
+  method,
+  permission,
+  permissions = [],
+  ready,
+  reason,
+}: {
+  href?: string;
+  method: OidcActionState["method"];
+  permission?: Permission;
+  permissions?: readonly Permission[];
+  ready: boolean;
+  reason?: string;
+}): OidcActionState {
+  if (permission && !permissions.includes(permission)) {
+    return { enabled: false, method, permission, reason: "missing_permission" };
+  }
+
+  return ready
+    ? { enabled: true, href, method, permission }
+    : { enabled: false, method, permission, reason };
+}
+
+function oidcLinks() {
+  return {
+    actions: "/api/v1/auth/oidc/actions",
+    callback: "/api/v1/auth/oidc/callback",
+    config: "/api/v1/auth/oidc/config",
+    discovery: "/api/v1/auth/oidc/discovery",
+    discoveryActions: "/api/v1/auth/oidc/discovery/actions",
+    login: "/api/v1/auth/oidc/login",
+  };
+}
+
+function oidcUnavailableReason(config: OidcRuntimeConfig) {
+  if (!config.enabled) {
+    return "oidc_disabled";
+  }
+
+  return config.configured ? undefined : "oidc_not_configured";
+}
+
+function oidcDiscoveryUnavailableReason(config: OidcRuntimeConfig) {
+  if (!config.enabled) {
+    return "oidc_disabled";
+  }
+
+  if (!config.configured || !config.discoveryUrl) {
+    return "oidc_not_configured";
+  }
+
+  return undefined;
 }
 
 async function recordCallbackFailure(

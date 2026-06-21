@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
+import type { Permission } from "@rakkr/shared";
+import type { RequirePermission } from "../src/http-types.js";
 
 const { clearOidcLoginStateCookie, registerAuthOidcRoutes } =
   await import("../src/auth-oidc-routes.js");
@@ -93,21 +95,57 @@ test("exposes OIDC config and protected discovery routes", async () => {
       status: 200,
     }),
     recordAuditEvent: async () => auditEvent("auth.oidc.test"),
-    requirePermission: () => async (_c, next) => next(),
+    requirePermission: allowOidcPermission(["auth:manage"]),
     sessionContext: () => ({}),
     webOrigin: "http://localhost:5173",
   });
 
   const configResponse = await app.request("/api/v1/auth/oidc/config");
+  const actionsResponse = await app.request("/api/v1/auth/oidc/actions");
+  const discoveryActionsResponse = await app.request("/api/v1/auth/oidc/discovery/actions");
   const discoveryResponse = await app.request("/api/v1/auth/oidc/discovery");
 
   assert.equal(configResponse.status, 200);
+  assert.equal(actionsResponse.status, 200);
+  assert.equal(discoveryActionsResponse.status, 200);
   assert.equal(discoveryResponse.status, 200);
   assert.equal((await configResponse.json()).data.configured, true);
+  const actionsBody = await actionsResponse.json();
+  const discoveryActionsBody = await discoveryActionsResponse.json();
+
+  assert.equal(actionsBody.data.actions.login.enabled, true);
+  assert.equal(actionsBody.data.actions.login.href, "/api/v1/auth/oidc/login");
+  assert.equal(actionsBody.data.actions.config.href, "/api/v1/auth/oidc/config");
+  assert.equal(discoveryActionsBody.data.actions.discovery.enabled, true);
+  assert.equal(discoveryActionsBody.data.actions.discovery.href, "/api/v1/auth/oidc/discovery");
+  assert.equal(discoveryActionsBody.data.actions.discovery.permission, "auth:manage");
   assert.equal(
     (await discoveryResponse.json()).data.tokenEndpoint,
     "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token",
   );
+});
+
+test("reports disabled OIDC login readiness through public action summary", async () => {
+  const app = new Hono();
+
+  registerAuthOidcRoutes({
+    app,
+    authService: new LocalAuthService(""),
+    configProvider: () => oidcConfigFromEnv({}),
+    recordAuditEvent: async () => auditEvent("auth.oidc.test"),
+    requirePermission: () => async (_c, next) => next(),
+    sessionContext: () => ({}),
+    webOrigin: "http://localhost:5173",
+  });
+
+  const response = await app.request("/api/v1/auth/oidc/actions");
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.config.enabled, false);
+  assert.equal(body.data.actions.config.enabled, true);
+  assert.equal(body.data.actions.login.enabled, false);
+  assert.equal(body.data.actions.login.reason, "oidc_disabled");
 });
 
 test("starts OIDC login with PKCE state cookie and provider redirect", async () => {
@@ -285,6 +323,25 @@ function configuredOidcConfig() {
     RAKKR_OIDC_ENABLED: "1",
     RAKKR_OIDC_REDIRECT_URI: "https://rakkr.example.com/api/v1/auth/oidc/callback",
   });
+}
+
+function allowOidcPermission(permissions: Permission[]): RequirePermission {
+  return () => async (c, next) => {
+    c.set("auth", {
+      user: {
+        email: "oidc-admin@example.com",
+        groups: [],
+        id: "user_oidc_admin",
+        name: "OIDC Admin",
+        permissions,
+        provider: "local",
+        resourceGrants: [],
+        roles: ["admin"],
+      },
+    });
+
+    await next();
+  };
 }
 
 function auditEvent(action) {
