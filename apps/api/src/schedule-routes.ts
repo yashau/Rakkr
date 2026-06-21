@@ -189,7 +189,7 @@ export function registerScheduleRoutes({
       type: "schedule",
     })),
     async (c) => {
-      const schedule = await scheduleStore.find(c.req.param("scheduleId"));
+      const schedule = await findScopedSchedule(c, c.req.param("scheduleId"));
 
       if (!schedule) {
         return c.json({ error: "Schedule not found" }, 404);
@@ -272,7 +272,7 @@ export function registerScheduleRoutes({
     })),
     async (c) => {
       const scheduleId = c.req.param("scheduleId");
-      const before = await scheduleStore.find(scheduleId);
+      const before = await findScopedSchedule(c, scheduleId);
 
       if (!before) {
         await recordScheduleWriteFailure(c, "schedules.update.failed", "schedule_not_found", {
@@ -367,7 +367,7 @@ export function registerScheduleRoutes({
     })),
     async (c) => {
       const scheduleId = c.req.param("scheduleId");
-      const schedule = await scheduleStore.find(scheduleId);
+      const schedule = await findScopedSchedule(c, scheduleId);
 
       if (!schedule) {
         await recordScheduleRunFailure(c, scheduleId, "schedule_not_found");
@@ -454,7 +454,7 @@ export function registerScheduleRoutes({
     })),
     async (c) => {
       const scheduleId = c.req.param("scheduleId");
-      const before = await scheduleStore.find(scheduleId);
+      const before = await findScopedSchedule(c, scheduleId);
 
       if (!before) {
         await recordScheduleWriteFailure(c, "schedules.skip_next.failed", "schedule_not_found", {
@@ -516,6 +516,15 @@ export function registerScheduleRoutes({
     })),
     async (c) => {
       const scheduleId = c.req.param("scheduleId");
+      const before = await findScopedSchedule(c, scheduleId);
+
+      if (!before) {
+        await recordScheduleWriteFailure(c, "schedules.delete.failed", "schedule_not_found", {
+          id: scheduleId,
+        });
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
       const deleted = await scheduleStore.delete(scheduleId);
 
       if (!deleted) {
@@ -541,6 +550,10 @@ export function registerScheduleRoutes({
       return c.body(null, 204);
     },
   );
+
+  async function findScopedSchedule(c: Context<AppBindings>, scheduleId: string) {
+    return (await scopedSchedules(currentUser(c))).find((schedule) => schedule.id === scheduleId);
+  }
 
   async function recordScheduleRunFailure(
     c: Context<AppBindings>,

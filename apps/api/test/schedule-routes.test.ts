@@ -307,6 +307,55 @@ test("schedule detail route returns scoped schedules only", async () => {
   assert.equal(missingResponse.status, 404);
 });
 
+test("schedule occurrence and lifecycle routes only operate on scoped schedules", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["schedule:read", "schedule:manage"]);
+  const visible = schedule({ id: "sched_visible_lifecycle", name: "Visible Lifecycle" });
+  const hidden = schedule({ id: "sched_hidden_lifecycle", name: "Hidden Lifecycle" });
+  const store = scheduleStore([visible, hidden]);
+  const recordings = recordingStore();
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: recordings,
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: async () => [visible],
+    settingsStore: createSettingsStore(),
+  });
+
+  const occurrences = await app.request(`/api/v1/schedules/${hidden.id}/occurrences`);
+  const update = await requestJson(app, `/api/v1/schedules/${hidden.id}`, "PATCH", {
+    name: "Hidden Mutated",
+  });
+  const runNow = await app.request(`/api/v1/schedules/${hidden.id}/run-now`, { method: "POST" });
+  const skipNext = await app.request(`/api/v1/schedules/${hidden.id}/skip-next`, {
+    method: "POST",
+  });
+  const deleted = await app.request(`/api/v1/schedules/${hidden.id}`, { method: "DELETE" });
+  const stillHidden = await store.find(hidden.id);
+  const recordingList = await recordings.list();
+  const failedEvents = await auditStore.list({ outcome: "failed" });
+
+  assert.deepEqual(
+    [occurrences.status, update.status, runNow.status, skipNext.status, deleted.status],
+    [404, 404, 404, 404, 404],
+  );
+  assert.equal(stillHidden?.name, hidden.name);
+  assert.deepEqual(recordingList, []);
+  assert.deepEqual(failedEvents.map((event) => `${event.action}:${event.reason}`).sort(), [
+    "schedules.delete.failed:schedule_not_found",
+    "schedules.run_now.failed:schedule_not_found",
+    "schedules.skip_next.failed:schedule_not_found",
+    "schedules.update.failed:schedule_not_found",
+  ]);
+});
+
 test("schedule action summary returns scoped readiness links and node context", async () => {
   const app = new Hono<AppBindings>();
   const currentUser = user(["schedule:read", "schedule:manage"]);

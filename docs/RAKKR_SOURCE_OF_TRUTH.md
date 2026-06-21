@@ -250,7 +250,7 @@ Current implementation baseline:
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
 - Schedules can pin ALSA, JACK, or PipeWire capture backend selection and target audio interfaces for run-now and due-run jobs, or inherit node defaults.
 - Schedule list API and UI filter visible schedules by search, enabled state, node, backend, and interface with removable active chips.
-- Schedule detail API returns only scoped visible schedules for detail pages.
+- Schedule detail, occurrence preview, and lifecycle control APIs operate only on scoped visible schedules.
 - Schedule detail API exposes scoped action summaries with permission, node, enabled-state, next-occurrence, and lifecycle readiness.
 - Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
 - Schedules UI mirrors RBAC for create, edit, run-now, skip-next, and delete actions.
@@ -887,6 +887,7 @@ Current implementation baseline:
 262. ✅ Add selected audit event CSV export API.
 263. ✅ Add audit event facet summary API.
 264. ✅ Add expanded scoped aggregate status API.
+265. ✅ Scope schedule occurrence and lifecycle APIs.
 
 ## Open Questions
 
