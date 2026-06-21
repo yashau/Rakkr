@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CurrentUser, Permission } from "@rakkr/shared";
 
-import { rootLayoutNavItems, rootLayoutPermissions } from "./root-layout-helpers";
+import {
+  rootLayoutNavItems,
+  rootLayoutPermissions,
+  rootLayoutRecordActionState,
+} from "./root-layout-helpers";
 
 test("root layout permissions are closed by default", () => {
   assert.deepEqual(rootLayoutPermissions(undefined), {
@@ -95,6 +99,33 @@ test("root layout nav items only include permitted sections", () => {
     { id: "recordings", label: "Recordings", to: "/recordings" },
     { id: "jobs", label: "Jobs", to: "/jobs" },
   ]);
+});
+
+test("root layout record action requires complete quick-start lookup access", () => {
+  assert.deepEqual(rootLayoutRecordActionState(rootLayoutPermissions(undefined)), {
+    canOpen: false,
+    title: "Requires recording create",
+  });
+  assert.deepEqual(rootLayoutRecordActionState(rootLayoutPermissions(user(["recording:create"]))), {
+    canOpen: false,
+    title: "Requires node read",
+  });
+  assert.deepEqual(
+    rootLayoutRecordActionState(rootLayoutPermissions(user(["node:read", "recording:create"]))),
+    {
+      canOpen: false,
+      title: "Requires settings read",
+    },
+  );
+  assert.deepEqual(
+    rootLayoutRecordActionState(
+      rootLayoutPermissions(user(["node:read", "recording:create", "settings:read"])),
+    ),
+    {
+      canOpen: true,
+      title: "Start recording",
+    },
+  );
 });
 
 function user(permissions: Permission[]): CurrentUser {

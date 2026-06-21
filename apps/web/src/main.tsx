@@ -26,10 +26,12 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  X,
 } from "lucide-react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +45,7 @@ import {
 import {
   rootLayoutNavItems,
   rootLayoutPermissions,
+  rootLayoutRecordActionState,
   type RootNavItem,
 } from "@/lib/root-layout-helpers";
 import { AccessPage } from "@/pages/access";
@@ -77,6 +80,11 @@ function RootLayout() {
   const [authToken, setAuthTokenState] = React.useState(
     () => consumeOidcCallbackToken() ?? getAuthToken(),
   );
+  const [quickRecordOpen, setQuickRecordOpen] = React.useState(false);
+  const [quickRecordNotice, setQuickRecordNotice] = React.useState<{
+    detail: string;
+    title: string;
+  }>();
   const currentUserQuery = useQuery({
     enabled: Boolean(authToken),
     queryFn: api.currentUser,
@@ -113,9 +121,9 @@ function RootLayout() {
 
   const currentUser = currentUserQuery.data.data;
   const layoutPermissions = rootLayoutPermissions(currentUser);
-  const canCreateRecording = layoutPermissions.canCreateRecording;
   const canReadSettings = layoutPermissions.canReadSettings;
   const navItems = rootLayoutNavItems(layoutPermissions);
+  const recordAction = rootLayoutRecordActionState(layoutPermissions);
 
   return (
     <div className="min-h-screen bg-stone-100 text-foreground">
@@ -180,8 +188,10 @@ function RootLayout() {
                 Logout
               </Button>
               <Button
-                disabled={!canCreateRecording}
-                title={canCreateRecording ? "Start recording" : "Requires recording create"}
+                disabled={!recordAction.canOpen}
+                onClick={() => setQuickRecordOpen((open) => !open)}
+                title={recordAction.title}
+                variant={quickRecordOpen ? "secondary" : "default"}
               >
                 <Radio className="size-4" />
                 Record
@@ -189,6 +199,41 @@ function RootLayout() {
             </div>
           </div>
         </header>
+
+        {quickRecordOpen ? (
+          <section className="border-b border-border bg-stone-100 p-4 md:px-6">
+            <div className="mx-auto grid max-w-7xl gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Quick Recording</h2>
+                  <p className="text-xs text-muted-foreground">Ad-hoc recording job</p>
+                </div>
+                <Button
+                  aria-label="Close quick recording"
+                  onClick={() => setQuickRecordOpen(false)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+
+              {quickRecordNotice ? (
+                <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  <div className="font-medium">{quickRecordNotice.title}</div>
+                  <div className="text-emerald-700">{quickRecordNotice.detail}</div>
+                </section>
+              ) : null}
+
+              <RecordingStartPanel
+                canReadNodes={layoutPermissions.canReadNodes}
+                canReadSettings={layoutPermissions.canReadSettings}
+                onNotice={setQuickRecordNotice}
+              />
+            </div>
+          </section>
+        ) : null}
 
         <main className="mx-auto max-w-7xl px-4 py-5 md:px-6">
           <Outlet />

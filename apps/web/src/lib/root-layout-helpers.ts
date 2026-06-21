@@ -57,6 +57,34 @@ export function rootLayoutNavItems(permissions: RootLayoutPermissions): RootNavI
   ];
 }
 
+export function rootLayoutRecordActionState(permissions: RootLayoutPermissions) {
+  if (!permissions.canCreateRecording) {
+    return {
+      canOpen: false,
+      title: "Requires recording create",
+    };
+  }
+
+  if (!permissions.canReadNodes) {
+    return {
+      canOpen: false,
+      title: "Requires node read",
+    };
+  }
+
+  if (!permissions.canReadSettings) {
+    return {
+      canOpen: false,
+      title: "Requires settings read",
+    };
+  }
+
+  return {
+    canOpen: true,
+    title: "Start recording",
+  };
+}
+
 function navItem(id: RootNavItem["id"], label: RootNavItem["label"], to: RootNavItem["to"]) {
   return { id, label, to };
 }

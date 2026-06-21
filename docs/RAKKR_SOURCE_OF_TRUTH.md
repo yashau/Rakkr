@@ -61,7 +61,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | 🟨 | Auth, RBAC, audit, nodes with location/backend/last-seen filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, schedule list filters, jobs, lifecycle coverage, settings, searchable health filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, and selected-node recording controls, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
+| Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
@@ -391,7 +391,7 @@ Current implementation baseline:
 - UI pages and components have regression coverage preventing inline RBAC permission checks.
 - Settings channel-map assignment target lookup mirrors `node:read`.
 - Shell navigation mirrors page-level read/manage permissions.
-- Header recording shortcut mirrors `recording:create`.
+- Header recording shortcut mirrors `recording:create`, requires node/settings lookup access, and opens the audited global quick-record start workflow.
 - Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
@@ -856,6 +856,7 @@ Current implementation baseline:
 239. ✅ Add dashboard active incident panel.
 240. ✅ Add dashboard incident lifecycle controls.
 241. ✅ Add dashboard selected-node recording controls.
+242. ✅ Add global quick-record start workflow.
 
 ## Open Questions
 
