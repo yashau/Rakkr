@@ -13,6 +13,7 @@ import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
+import { registerRecordingActionRoutes } from "./recording-action-routes.js";
 import { registerRecordingJobRoutes } from "./recording-job-routes.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
@@ -346,6 +347,14 @@ export function registerRecordingRoutes({
       });
     },
   );
+
+  registerRecordingActionRoutes({
+    app,
+    currentUser,
+    recordingStore,
+    requirePermission,
+    scopedRecordings,
+  });
 
   registerRecordingJobRoutes({
     app,
