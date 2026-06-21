@@ -230,6 +230,13 @@ export function HealthPage() {
               ))}
             </select>
           </Field>
+          <Field label="Search">
+            <Input
+              onChange={(event) => setFilter("search", event.target.value)}
+              placeholder="too quiet, node, recording"
+              value={filters.search}
+            />
+          </Field>
           <Field label="Opened From">
             <Input
               onChange={(event) => setFilter("openedFromDate", event.target.value)}

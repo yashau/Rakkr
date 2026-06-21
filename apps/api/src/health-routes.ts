@@ -60,6 +60,7 @@ const healthEventsQuerySchema = z.object({
     z.string().datetime().optional(),
   ),
   scheduleId: optionalTextFilterSchema,
+  search: optionalTextFilterSchema,
   severity: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     healthSeveritySchema.optional(),
@@ -547,6 +548,7 @@ function healthFilters(input: z.infer<typeof healthEventsQuerySchema>): HealthEv
     resolvedFrom: input.resolvedFrom ? new Date(input.resolvedFrom) : undefined,
     resolvedTo: input.resolvedTo ? new Date(input.resolvedTo) : undefined,
     scheduleId: input.scheduleId,
+    search: input.search,
     severity: input.severity,
     status: input.status,
     type: input.type,

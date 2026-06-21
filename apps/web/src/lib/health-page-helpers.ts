@@ -22,6 +22,7 @@ export interface HealthPageFilterDraft {
   resolvedFromDate: string;
   resolvedToDate: string;
   scheduleId: string;
+  search: string;
   severity: "" | HealthSeverity;
   status: "" | HealthEventStatus;
   type: string;
@@ -36,6 +37,7 @@ export const emptyHealthPageFilters: HealthPageFilterDraft = {
   resolvedFromDate: "",
   resolvedToDate: "",
   scheduleId: "",
+  search: "",
   severity: "",
   status: "",
   type: "",
@@ -65,6 +67,7 @@ export function healthEventFiltersFromDraft(draft: HealthPageFilterDraft): Healt
     resolvedFrom: localDateBoundaryIso(draft.resolvedFromDate, "start"),
     resolvedTo: localDateBoundaryIso(draft.resolvedToDate, "end"),
     scheduleId: trimmed(draft.scheduleId),
+    search: trimmed(draft.search),
     severity: draft.severity || undefined,
     status: draft.status || undefined,
     type: trimmed(draft.type),

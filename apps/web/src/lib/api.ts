@@ -282,6 +282,7 @@ export interface HealthEventFilters {
   resolvedFrom?: string;
   resolvedTo?: string;
   scheduleId?: string;
+  search?: string;
   severity?: HealthEvent["severity"];
   status?: HealthEvent["status"];
   type?: string;

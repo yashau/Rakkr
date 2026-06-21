@@ -5,7 +5,10 @@ import {
   eq,
   gte,
   healthEvents as healthEventsTable,
+  ilike,
   lte,
+  or,
+  sql,
   type SQL,
 } from "@rakkr/db";
 import { randomUUID } from "node:crypto";
@@ -32,6 +35,7 @@ export interface HealthEventFilters {
   resolvedFrom?: Date;
   resolvedTo?: Date;
   scheduleId?: string;
+  search?: string;
   severity?: HealthSeverity;
   status?: HealthEventStatus;
   type?: string;
@@ -302,6 +306,18 @@ function healthConditions(filters: HealthEventFilters): SQL[] {
     conditions.push(eq(healthEventsTable.scheduleId, filters.scheduleId));
   }
 
+  if (filters.search) {
+    conditions.push(
+      or(
+        ilike(healthEventsTable.type, contains(filters.search)),
+        ilike(healthEventsTable.nodeId, contains(filters.search)),
+        ilike(healthEventsTable.recordingId, contains(filters.search)),
+        ilike(healthEventsTable.scheduleId, contains(filters.search)),
+        ilike(sql`${healthEventsTable.details}::text`, contains(filters.search)),
+      )!,
+    );
+  }
+
   if (filters.severity) {
     conditions.push(eq(healthEventsTable.severity, filters.severity));
   }
@@ -330,10 +346,29 @@ function matchesHealthFilters(event: HealthEvent, filters: HealthEventFilters) {
       (event.resolvedAt !== null &&
         Date.parse(event.resolvedAt) <= filters.resolvedTo.getTime())) &&
     (!filters.scheduleId || event.scheduleId === filters.scheduleId) &&
+    includesHealthSearch(event, filters.search) &&
     (!filters.severity || event.severity === filters.severity) &&
     (!filters.status || event.status === filters.status) &&
     (!filters.type || event.type === filters.type)
   );
+}
+
+function includesHealthSearch(event: HealthEvent, search?: string) {
+  if (!search) {
+    return true;
+  }
+
+  return [
+    event.type,
+    event.nodeId,
+    event.recordingId,
+    event.scheduleId,
+    JSON.stringify(event.details),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(search.toLowerCase());
 }
 
 function healthEventFromRow(row: HealthEventRow): HealthEvent {
@@ -428,6 +463,10 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function stringOrUndefined(value: string | null | undefined) {
   return value && value.trim() ? value : undefined;
+}
+
+function contains(value: string) {
+  return `%${value.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
 }
 
 function withoutUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {

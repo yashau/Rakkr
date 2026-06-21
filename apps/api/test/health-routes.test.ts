@@ -143,7 +143,7 @@ test("health event export returns scoped filtered csv and audits access", async 
   });
 
   const response = await app.request(
-    "/api/v1/health-events/export?severity=critical&type=watchdog.scheduled_low_signal&openedFrom=2026-06-20T00:00:00.000Z&openedTo=2026-06-20T23:59:59.999Z&resolvedFrom=2026-06-20T00:00:00.000Z&resolvedTo=2026-06-20T23:59:59.999Z",
+    "/api/v1/health-events/export?severity=critical&type=watchdog.scheduled_low_signal&search=too%20quiet&openedFrom=2026-06-20T00:00:00.000Z&openedTo=2026-06-20T23:59:59.999Z&resolvedFrom=2026-06-20T00:00:00.000Z&resolvedTo=2026-06-20T23:59:59.999Z",
   );
   const csv = await response.text();
   const [auditEvent] = await auditStore.list({ action: "health.events.export.succeeded" });
@@ -172,6 +172,7 @@ test("health event export returns scoped filtered csv and audits access", async 
     resolvedFrom: new Date("2026-06-20T00:00:00.000Z"),
     resolvedTo: new Date("2026-06-20T23:59:59.999Z"),
     scheduleId: undefined,
+    search: "too quiet",
     severity: "critical",
     status: undefined,
     type: "watchdog.scheduled_low_signal",

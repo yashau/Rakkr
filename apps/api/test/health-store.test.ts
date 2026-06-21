@@ -101,3 +101,38 @@ test("health event store filters by resolved date range", async () => {
     [scheduledLowSignalEventType],
   );
 });
+
+test("health event store searches event type target ids and details", async () => {
+  const store = createHealthEventStore("", []);
+  await store.create({
+    details: { note: "too quiet in council chamber" },
+    nodeId: "node_test",
+    recordingId: "rec_council",
+    severity: "critical",
+    type: scheduledLowSignalEventType,
+  });
+  await store.create({
+    details: { note: "interface recovered" },
+    nodeId: "node_other",
+    scheduleId: "sched_other",
+    severity: "warning",
+    type: nodeOfflineEventType,
+  });
+
+  const detailMatches = await store.list({ search: "council chamber" });
+  const targetMatches = await store.list({ search: "rec_council" });
+  const typeMatches = await store.list({ search: "node_offline" });
+
+  assert.deepEqual(
+    detailMatches.map((healthEvent) => healthEvent.type),
+    [scheduledLowSignalEventType],
+  );
+  assert.deepEqual(
+    targetMatches.map((healthEvent) => healthEvent.type),
+    [scheduledLowSignalEventType],
+  );
+  assert.deepEqual(
+    typeMatches.map((healthEvent) => healthEvent.type),
+    [nodeOfflineEventType],
+  );
+});
