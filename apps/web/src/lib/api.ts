@@ -271,6 +271,8 @@ export interface RecordingFacets {
 export interface HealthEventFilters {
   limit?: number;
   nodeId?: string;
+  openedFrom?: string;
+  openedTo?: string;
   recordingId?: string;
   scheduleId?: string;
   severity?: HealthEvent["severity"];

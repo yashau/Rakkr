@@ -42,6 +42,14 @@ const healthEventsQuerySchema = z.object({
     z.coerce.number().int().min(1).max(500).optional(),
   ),
   nodeId: optionalTextFilterSchema,
+  openedFrom: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().datetime().optional(),
+  ),
+  openedTo: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : undefined),
+    z.string().datetime().optional(),
+  ),
   recordingId: optionalTextFilterSchema,
   scheduleId: optionalTextFilterSchema,
   severity: z.preprocess(
@@ -525,6 +533,8 @@ function healthFilters(input: z.infer<typeof healthEventsQuerySchema>): HealthEv
   return {
     limit: input.limit,
     nodeId: input.nodeId,
+    openedFrom: input.openedFrom ? new Date(input.openedFrom) : undefined,
+    openedTo: input.openedTo ? new Date(input.openedTo) : undefined,
     recordingId: input.recordingId,
     scheduleId: input.scheduleId,
     severity: input.severity,

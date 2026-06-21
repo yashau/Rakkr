@@ -22,8 +22,8 @@ Status: Partial baseline checked.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
-- Health APIs are RBAC-gated, resource-scoped, lifecycle managed, filterable, export scoped filtered CSV incident lists, and audited.
-- Central health workbench lists, filters, summarizes, exports, and manages visible health events with RBAC-mirrored relationship lookups plus single and bulk lifecycle controls.
+- Health APIs are RBAC-gated, resource-scoped, lifecycle managed, filterable by opened date range and incident fields, export scoped filtered CSV incident lists, and audited.
+- Central health workbench lists, filters by opened date range, summarizes, exports, and manages visible health events with RBAC-mirrored relationship lookups plus single and bulk lifecycle controls.
 - Node health panels expose RBAC-mirrored acknowledge, one-hour suppress, resolve, and reopen lifecycle controls.
 - UI exposes live meter speech/noise/broadband-noise/SNR/intelligibility/hum/static/clipping/channel correlation cues plus recording and schedule quality timelines with event-specific watchdog and upload-failure evidence.
 - Prometheus export covers health totals, active watchdog alerts, node-offline alerts, xrun totals, clipping, speech score, noise score, broadband-noise score, estimated SNR, intelligibility score, hum score, static score, and channel correlation score.

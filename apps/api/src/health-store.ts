@@ -3,7 +3,9 @@ import {
   createDatabase,
   desc,
   eq,
+  gte,
   healthEvents as healthEventsTable,
+  lte,
   type SQL,
 } from "@rakkr/db";
 import { randomUUID } from "node:crypto";
@@ -24,6 +26,8 @@ export interface HealthEventCreateInput {
 export interface HealthEventFilters {
   limit?: number;
   nodeId?: string;
+  openedFrom?: Date;
+  openedTo?: Date;
   recordingId?: string;
   scheduleId?: string;
   severity?: HealthSeverity;
@@ -272,6 +276,14 @@ function healthConditions(filters: HealthEventFilters): SQL[] {
     conditions.push(eq(healthEventsTable.nodeId, filters.nodeId));
   }
 
+  if (filters.openedFrom) {
+    conditions.push(gte(healthEventsTable.openedAt, filters.openedFrom));
+  }
+
+  if (filters.openedTo) {
+    conditions.push(lte(healthEventsTable.openedAt, filters.openedTo));
+  }
+
   if (filters.recordingId) {
     conditions.push(eq(healthEventsTable.recordingId, filters.recordingId));
   }
@@ -298,6 +310,8 @@ function healthConditions(filters: HealthEventFilters): SQL[] {
 function matchesHealthFilters(event: HealthEvent, filters: HealthEventFilters) {
   return (
     (!filters.nodeId || event.nodeId === filters.nodeId) &&
+    (!filters.openedFrom || Date.parse(event.openedAt) >= filters.openedFrom.getTime()) &&
+    (!filters.openedTo || Date.parse(event.openedAt) <= filters.openedTo.getTime()) &&
     (!filters.recordingId || event.recordingId === filters.recordingId) &&
     (!filters.scheduleId || event.scheduleId === filters.scheduleId) &&
     (!filters.severity || event.severity === filters.severity) &&

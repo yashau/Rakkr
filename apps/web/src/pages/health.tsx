@@ -230,6 +230,20 @@ export function HealthPage() {
               ))}
             </select>
           </Field>
+          <Field label="Opened From">
+            <Input
+              onChange={(event) => setFilter("openedFromDate", event.target.value)}
+              type="date"
+              value={filters.openedFromDate}
+            />
+          </Field>
+          <Field label="Opened To">
+            <Input
+              onChange={(event) => setFilter("openedToDate", event.target.value)}
+              type="date"
+              value={filters.openedToDate}
+            />
+          </Field>
           <Field label="Type">
             <Input
               onChange={(event) => setFilter("type", event.target.value)}

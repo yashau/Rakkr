@@ -19,6 +19,7 @@ import {
   healthPagePermissions,
   readableHealthEventType,
 } from "./health-page-helpers";
+import { localDateBoundaryIso } from "./dates";
 
 test("health page permissions are closed by default", () => {
   assert.deepEqual(healthPagePermissions(undefined), {
@@ -58,6 +59,8 @@ test("health event filter draft trims API filters and caps limits", () => {
       ...emptyHealthPageFilters,
       limit: "900",
       nodeId: " node_1 ",
+      openedFromDate: "2026-06-20",
+      openedToDate: "2026-06-21",
       recordingId: " ",
       scheduleId: "sched_1",
       severity: "critical",
@@ -67,6 +70,8 @@ test("health event filter draft trims API filters and caps limits", () => {
     {
       limit: 500,
       nodeId: "node_1",
+      openedFrom: localDateBoundaryIso("2026-06-20", "start"),
+      openedTo: localDateBoundaryIso("2026-06-21", "end"),
       recordingId: undefined,
       scheduleId: "sched_1",
       severity: "critical",

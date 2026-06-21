@@ -26,3 +26,35 @@ test("health event store filters by event type", async () => {
   assert.equal(lowSignalEvents.length, 1);
   assert.equal(lowSignalEvents[0]?.type, scheduledLowSignalEventType);
 });
+
+test("health event store filters by opened date range", async () => {
+  const store = createHealthEventStore("", []);
+  await store.create({
+    nodeId: "node_test",
+    openedAt: new Date("2026-06-20T08:00:00.000Z"),
+    severity: "warning",
+    type: nodeOfflineEventType,
+  });
+  await store.create({
+    nodeId: "node_test",
+    openedAt: new Date("2026-06-20T14:00:00.000Z"),
+    severity: "critical",
+    type: scheduledLowSignalEventType,
+  });
+  await store.create({
+    nodeId: "node_test",
+    openedAt: new Date("2026-06-21T08:00:00.000Z"),
+    severity: "warning",
+    type: nodeOfflineEventType,
+  });
+
+  const events = await store.list({
+    openedFrom: new Date("2026-06-20T10:00:00.000Z"),
+    openedTo: new Date("2026-06-20T23:59:59.999Z"),
+  });
+
+  assert.deepEqual(
+    events.map((healthEvent) => healthEvent.type),
+    [scheduledLowSignalEventType],
+  );
+});

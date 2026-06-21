@@ -9,12 +9,15 @@ import type {
 } from "@rakkr/shared";
 
 import type { HealthEventFilters } from "@/lib/api";
+import { localDateBoundaryIso } from "@/lib/dates";
 
 export type HealthLifecycleAction = "acknowledge" | "reopen" | "resolve" | "suppress";
 
 export interface HealthPageFilterDraft {
   limit: string;
   nodeId: string;
+  openedFromDate: string;
+  openedToDate: string;
   recordingId: string;
   scheduleId: string;
   severity: "" | HealthSeverity;
@@ -25,6 +28,8 @@ export interface HealthPageFilterDraft {
 export const emptyHealthPageFilters: HealthPageFilterDraft = {
   limit: "200",
   nodeId: "",
+  openedFromDate: "",
+  openedToDate: "",
   recordingId: "",
   scheduleId: "",
   severity: "",
@@ -50,6 +55,8 @@ export function healthEventFiltersFromDraft(draft: HealthPageFilterDraft): Healt
   return {
     limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : undefined,
     nodeId: trimmed(draft.nodeId),
+    openedFrom: localDateBoundaryIso(draft.openedFromDate, "start"),
+    openedTo: localDateBoundaryIso(draft.openedToDate, "end"),
     recordingId: trimmed(draft.recordingId),
     scheduleId: trimmed(draft.scheduleId),
     severity: draft.severity || undefined,

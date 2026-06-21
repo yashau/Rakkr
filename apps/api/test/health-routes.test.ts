@@ -92,6 +92,7 @@ test("health event export returns scoped filtered csv and audits access", async 
       details: { dbfs: -72, reason: "too quiet" },
       id: "health_visible",
       nodeId: "node_1",
+      openedAt: "2026-06-20T12:00:00.000Z",
       severity: "critical",
       status: "open",
       type: "watchdog.scheduled_low_signal",
@@ -104,8 +105,25 @@ test("health event export returns scoped filtered csv and audits access", async 
       type: "watchdog.node_offline",
     }),
     event({
+      id: "health_too_old",
+      nodeId: "node_1",
+      openedAt: "2026-06-19T23:59:59.999Z",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.scheduled_low_signal",
+    }),
+    event({
+      id: "health_too_new",
+      nodeId: "node_1",
+      openedAt: "2026-06-21T00:00:00.000Z",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.scheduled_low_signal",
+    }),
+    event({
       id: "health_hidden",
       nodeId: "node_hidden",
+      openedAt: "2026-06-20T14:00:00.000Z",
       severity: "critical",
       status: "open",
       type: "watchdog.scheduled_low_signal",
@@ -124,7 +142,7 @@ test("health event export returns scoped filtered csv and audits access", async 
   });
 
   const response = await app.request(
-    "/api/v1/health-events/export?severity=critical&type=watchdog.scheduled_low_signal",
+    "/api/v1/health-events/export?severity=critical&type=watchdog.scheduled_low_signal&openedFrom=2026-06-20T00:00:00.000Z&openedTo=2026-06-20T23:59:59.999Z",
   );
   const csv = await response.text();
   const [auditEvent] = await auditStore.list({ action: "health.events.export.succeeded" });
@@ -139,12 +157,16 @@ test("health event export returns scoped filtered csv and audits access", async 
   assert.match(csv, /"health_visible","watchdog\.scheduled_low_signal","critical","open"/);
   assert.match(csv, /"\{""dbfs"":-72,""reason"":""too quiet""\}"/);
   assert.doesNotMatch(csv, /health_filtered/);
+  assert.doesNotMatch(csv, /health_too_old/);
+  assert.doesNotMatch(csv, /health_too_new/);
   assert.doesNotMatch(csv, /health_hidden/);
   assert.equal(auditEvent?.permission, "health:read");
   assert.equal(auditEvent?.details.exportedCount, 1);
   assert.deepEqual(auditEvent?.details.filters, {
     limit: undefined,
     nodeId: undefined,
+    openedFrom: new Date("2026-06-20T00:00:00.000Z"),
+    openedTo: new Date("2026-06-20T23:59:59.999Z"),
     recordingId: undefined,
     scheduleId: undefined,
     severity: "critical",
