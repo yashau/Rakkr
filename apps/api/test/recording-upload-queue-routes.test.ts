@@ -26,7 +26,8 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(routeRoot, "upload-queue.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
-const { enqueueRecordingUpload, retryUploadQueueItem } = await import("../src/upload-queue.js");
+const { enqueueRecordingUpload, listUploadQueueItems, retryUploadQueueItem } =
+  await import("../src/upload-queue.js");
 const { registerRecordingUploadQueueRoutes } =
   await import("../src/recording-upload-queue-routes.js");
 
@@ -62,6 +63,37 @@ test("single recording upload queue enqueues cached recordings after route extra
   assert.equal(body.data.recordingId, "rec_single_upload_queue");
   assert.equal(body.data.lastError, "manual_route_test");
   assert.equal(event?.target.id, "rec_single_upload_queue");
+});
+
+test("single recording upload queue only operates on scoped recordings", async () => {
+  const auditStore = createAuditStore("");
+  const hidden = recording({ id: "rec_single_upload_hidden" });
+  const recordingStore = memoryRecordingStore([
+    recording({ id: "rec_single_upload_visible" }),
+    hidden,
+  ]);
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore,
+    visibleRecordingIds: ["rec_single_upload_visible"],
+  });
+
+  const response = await app.request(`/api/v1/recordings/${hidden.id}/upload-queue`, {
+    body: JSON.stringify({ reason: "hidden_single_upload" }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const queuedItems = await listUploadQueueItems();
+  const [event] = await auditStore.list({ action: "recordings.upload_queue.enqueue.failed" });
+
+  assert.equal(response.status, 404);
+  assert.equal(
+    queuedItems.some((item) => item.recordingId === hidden.id),
+    false,
+  );
+  assert.equal(event?.reason, "recording_not_found");
+  assert.equal(event?.target.id, hidden.id);
 });
 
 test("bulk upload queue enqueues visible cached recordings and audits collection", async () => {

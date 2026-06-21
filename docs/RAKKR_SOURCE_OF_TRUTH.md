@@ -495,6 +495,7 @@ Current implementation baseline:
 - Recording library UI exposes RBAC-mirrored delete controls for terminal recordings.
 - Recording library UI can bulk-delete selected terminal recordings.
 - Recording library API supports audited bulk delete with scoped visibility checks.
+- Single-recording upload queue APIs operate only on scoped visible recordings.
 - Recording library can bulk-queue selected cached recordings for upload with scoped visibility checks.
 - Recording library playback panel shows browser audio controls with session metadata and explicit close/cleanup.
 - Recording card waveform previews show peak bars plus sample/channel/source metadata.
@@ -894,6 +895,7 @@ Current implementation baseline:
 266. ✅ Scope single-recording action APIs.
 267. ✅ Scope node management, meter, and live-listen action APIs.
 268. ✅ Scope health lifecycle action APIs.
+269. ✅ Scope single-recording upload queue API.
 
 ## Open Questions
 

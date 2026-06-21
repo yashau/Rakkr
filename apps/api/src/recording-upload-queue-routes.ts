@@ -190,8 +190,9 @@ export function registerRecordingUploadQueueRoutes({
 
       const result = await enqueueOne(c, recordingId, body.data, {
         currentAuth,
+        currentUser,
         recordAuditEvent,
-        recordingStore,
+        scopedRecordings,
       });
 
       if (!result.ok) {
@@ -515,14 +516,17 @@ async function enqueueOne(
   body: z.infer<typeof uploadQueueRequestSchema>,
   {
     currentAuth,
+    currentUser,
     recordAuditEvent,
-    recordingStore,
+    scopedRecordings,
   }: Pick<
     RecordingUploadQueueRouteDependencies,
-    "currentAuth" | "recordAuditEvent" | "recordingStore"
+    "currentAuth" | "currentUser" | "recordAuditEvent" | "scopedRecordings"
   >,
 ) {
-  const recording = await recordingStore.find(recordingId);
+  const recording = (await scopedRecordings(currentUser(c))).find(
+    (candidate) => candidate.id === recordingId,
+  );
 
   if (!recording || !recordingHasCachedFile(recording)) {
     await recordUploadQueueFailure(c, {
