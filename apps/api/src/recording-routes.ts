@@ -118,7 +118,7 @@ export function registerRecordingRoutes({
     disposition: "attachment" | "inline",
     permission: Permission,
   ) {
-    const recording = await recordingStore.find(recordingId);
+    const recording = await findScopedRecording(c, recordingId);
     const action =
       disposition === "attachment" ? "recordings.download.file" : "recordings.playback.stream";
 
@@ -384,7 +384,7 @@ export function registerRecordingRoutes({
     })),
     async (c) => {
       const recordingId = c.req.param("recordingId");
-      const recording = await recordingStore.find(recordingId);
+      const recording = await findScopedRecording(c, recordingId);
 
       if (!recording || !recordingHasCachedFile(recording)) {
         await recordRecordingFileFailure(c, {
@@ -446,7 +446,7 @@ export function registerRecordingRoutes({
     })),
     async (c) => {
       const recordingId = c.req.param("recordingId");
-      const recording = await recordingStore.find(recordingId);
+      const recording = await findScopedRecording(c, recordingId);
 
       if (!recording || !recordingHasCachedFile(recording)) {
         await recordRecordingFileFailure(c, {
@@ -634,7 +634,7 @@ export function registerRecordingRoutes({
         return c.json({ error: "Invalid recording metadata", issues: body.error.issues }, 400);
       }
 
-      const recording = await recordingStore.find(recordingId);
+      const recording = await findScopedRecording(c, recordingId);
 
       if (!recording) {
         await recordAuditEvent(c, {
@@ -684,7 +684,14 @@ export function registerRecordingRoutes({
       id: c.req.param("recordingId"),
       type: "recording",
     })),
-    async (c) => deleteRecording(c, { currentAuth, recordAuditEvent, recordingStore }),
+    async (c) =>
+      deleteRecording(c, {
+        currentAuth,
+        currentUser,
+        recordAuditEvent,
+        recordingStore,
+        scopedRecordings,
+      }),
   );
 
   app.post(
@@ -794,7 +801,7 @@ export function registerRecordingRoutes({
     })),
     async (c) => {
       const recordingId = c.req.param("recordingId");
-      const recording = await recordingStore.find(recordingId);
+      const recording = await findScopedRecording(c, recordingId);
 
       if (!recording) {
         await recordAuditEvent(c, {
@@ -906,6 +913,12 @@ export function registerRecordingRoutes({
         type: "recording_collection",
       },
     });
+  }
+
+  async function findScopedRecording(c: Context<AppBindings>, recordingId: string) {
+    return (await scopedRecordings(currentUser(c))).find(
+      (recording) => recording.id === recordingId,
+    );
   }
 }
 

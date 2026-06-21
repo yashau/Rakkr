@@ -485,6 +485,7 @@ Current implementation baseline:
 - Recording metadata supports searchable transcript snippets with audit snapshots and manifest export; generation remains deferred.
 - Recording card action readiness uses tested cached/terminal recording predicates.
 - Recording library API exposes scoped detail reads for visible recordings.
+- Single-recording playback, download, file, metadata, stop, and delete APIs operate only on scoped visible recordings.
 - Recording library API exposes scoped action summaries with job, cache, permission, upload queue, and lifecycle readiness.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
@@ -888,6 +889,7 @@ Current implementation baseline:
 263. ✅ Add audit event facet summary API.
 264. ✅ Add expanded scoped aggregate status API.
 265. ✅ Scope schedule occurrence and lifecycle APIs.
+266. ✅ Scope single-recording action APIs.
 
 ## Open Questions
 

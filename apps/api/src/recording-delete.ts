@@ -10,14 +10,13 @@ import type { RecordingSummary } from "@rakkr/shared";
 
 interface DeleteRecordingDependencies {
   currentAuth: (c: Context<AppBindings>) => AuthResult;
+  currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
-}
-
-interface DeleteRecordingsDependencies extends DeleteRecordingDependencies {
-  currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
+
+type DeleteRecordingsDependencies = DeleteRecordingDependencies;
 
 const bulkDeleteRequestSchema = z
   .object({
@@ -27,10 +26,18 @@ const bulkDeleteRequestSchema = z
 
 export async function deleteRecording(
   c: Context<AppBindings>,
-  { currentAuth, recordAuditEvent, recordingStore }: DeleteRecordingDependencies,
+  {
+    currentAuth,
+    currentUser,
+    recordAuditEvent,
+    recordingStore,
+    scopedRecordings,
+  }: DeleteRecordingDependencies,
 ) {
   const recordingId = c.req.param("recordingId") ?? "";
-  const recording = await recordingStore.find(recordingId);
+  const recording = (await scopedRecordings(currentUser(c))).find(
+    (candidate) => candidate.id === recordingId,
+  );
 
   async function recordFailure(reason: string, targetName?: string) {
     await recordAuditEvent(c, {
