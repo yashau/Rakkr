@@ -53,10 +53,10 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     staleTime: 30_000,
   });
   const pagePermissions = scheduleDetailPagePermissions(currentUserQuery.data?.data);
-  const schedulesQuery = useQuery({
+  const scheduleQuery = useQuery({
     enabled: pagePermissions.canReadSchedule,
-    queryFn: () => api.schedules(),
-    queryKey: ["schedules"],
+    queryFn: () => api.schedule(scheduleId),
+    queryKey: ["schedule", scheduleId],
   });
   const recordingsQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
@@ -94,7 +94,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     queryKey: ["nodes"],
   });
 
-  const schedule = schedulesQuery.data?.data.find((candidate) => candidate.id === scheduleId);
+  const schedule = scheduleQuery.data?.data;
   const recordings = useMemo(() => recordingsQuery.data?.data ?? [], [recordingsQuery.data?.data]);
   const recordingIds = useMemo(
     () => new Set(recordings.map((recording) => recording.id)),
@@ -227,7 +227,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     );
   }
 
-  if (schedulesQuery.isPending) {
+  if (scheduleQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading schedule.</p>;
   }
 

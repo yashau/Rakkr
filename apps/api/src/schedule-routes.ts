@@ -59,6 +59,26 @@ export function registerScheduleRoutes({
   );
 
   app.get(
+    "/api/v1/schedules/:scheduleId",
+    requirePermission("schedule:read", "schedules.detail.read", (c) => ({
+      id: c.req.param("scheduleId"),
+      type: "schedule",
+    })),
+    async (c) => {
+      const scheduleId = c.req.param("scheduleId");
+      const schedule = (await scopedSchedules(currentUser(c))).find(
+        (candidate) => candidate.id === scheduleId,
+      );
+
+      if (!schedule) {
+        return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      return c.json({ data: schedule });
+    },
+  );
+
+  app.get(
     "/api/v1/schedules/:scheduleId/occurrences",
     requirePermission("schedule:read", "schedules.occurrences.read", (c) => ({
       id: c.req.param("scheduleId"),

@@ -13,7 +13,7 @@ Status: MVP baseline checked.
 - Scheduled recordings own filename, folder, tags, profile, node target, optional capture backend/interface selection, watchdog policy, upload policy, and retention policy.
 - Long scheduled windows split into ordered track jobs when the recording profile has a maximum track length.
 - Due schedule execution runs as `system:scheduler` and writes audit events.
-- Schedule read/manage APIs are RBAC-gated and successful create, update, run-now, and skip-next actions are audited.
+- Schedule list/detail/read/manage APIs are RBAC-gated and successful create, update, run-now, and skip-next actions are audited.
 
 ## Operator Workflow
 

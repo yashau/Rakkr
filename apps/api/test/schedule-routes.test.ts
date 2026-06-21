@@ -49,6 +49,7 @@ test("schedule routes deny users without required permissions", async () => {
 
   const responses = await Promise.all([
     app.request("/api/v1/schedules"),
+    app.request(`/api/v1/schedules/${schedule().id}`),
     app.request(`/api/v1/schedules/${schedule().id}/occurrences`),
     requestJson(app, "/api/v1/schedules", "POST", {
       enabled: true,
@@ -68,7 +69,7 @@ test("schedule routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "schedule:manage:schedules.create",
@@ -76,6 +77,7 @@ test("schedule routes deny users without required permissions", async () => {
     "schedule:manage:schedules.run_now",
     "schedule:manage:schedules.skip_next",
     "schedule:manage:schedules.update",
+    "schedule:read:schedules.detail.read",
     "schedule:read:schedules.occurrences.read",
     "schedule:read:schedules.read",
   ]);
@@ -157,6 +159,37 @@ test("schedule list route filters scoped schedules", async () => {
     byInterface.map((candidate) => candidate.id),
     ["sched_council"],
   );
+});
+
+test("schedule detail route returns scoped schedules only", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:read"]);
+  const visible = schedule({ id: "sched_visible", name: "Visible Detail" });
+  const hidden = schedule({ id: "sched_hidden", name: "Hidden Detail" });
+  const store = scheduleStore([visible, hidden]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: async () => [visible],
+    settingsStore: createSettingsStore(),
+  });
+
+  const visibleResponse = await app.request(`/api/v1/schedules/${visible.id}`);
+  const hiddenResponse = await app.request(`/api/v1/schedules/${hidden.id}`);
+  const missingResponse = await app.request("/api/v1/schedules/sched_missing");
+  const visibleBody = (await visibleResponse.json()) as { data: ScheduleSummary };
+
+  assert.equal(visibleResponse.status, 200);
+  assert.equal(visibleBody.data.id, visible.id);
+  assert.equal(hiddenResponse.status, 404);
+  assert.equal(missingResponse.status, 404);
 });
 
 test("schedule routes create update run-now and skip-next with audit events", async () => {

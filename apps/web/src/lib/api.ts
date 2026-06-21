@@ -47,7 +47,6 @@ import type {
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
-
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 const authTokenKey = "rakkr.authToken";
 
@@ -854,6 +853,8 @@ export const api = {
     fetchJson<{ data: ScheduleOccurrencePreview[] }>(
       withQuery(`/api/v1/schedules/${scheduleId}/occurrences`, { limit }),
     ),
+  schedule: (scheduleId: string) =>
+    fetchJson<{ data: ScheduleSummary }>(`/api/v1/schedules/${scheduleId}`),
   schedules: (filters: ScheduleFilters = {}) =>
     fetchJson<{ data: ScheduleSummary[] }>(withQuery("/api/v1/schedules", filters)),
   startPlayback: (recordingId: string) =>
