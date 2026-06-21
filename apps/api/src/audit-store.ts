@@ -8,6 +8,7 @@ import {
   ilike,
   lte,
   or,
+  sql,
   type SQL,
 } from "@rakkr/db";
 import {
@@ -26,6 +27,7 @@ export interface AuditEventFilters {
   action?: string;
   actor?: string;
   from?: Date;
+  id?: string;
   limit?: number;
   outcome?: AuditOutcome;
   permission?: Permission;
@@ -36,6 +38,7 @@ export interface AuditEventFilters {
 
 export interface AuditStore {
   append(event: AuditEvent): Promise<void>;
+  find(eventId: string): Promise<AuditEvent | undefined>;
   list(filters?: AuditEventFilters): Promise<AuditEvent[]>;
 }
 
@@ -59,6 +62,10 @@ class MemoryAuditStore implements AuditStore {
     if (this.events.length > this.maxEvents) {
       this.events.length = this.maxEvents;
     }
+  }
+
+  async find(eventId: string) {
+    return this.events.find((event) => event.id === eventId);
   }
 
   async list(filters: AuditEventFilters = {}) {
@@ -111,6 +118,30 @@ class PostgresAuditStore implements AuditStore {
     }
   }
 
+  async find(eventId: string) {
+    if (!this.dbAvailable) {
+      return this.memory.find(eventId);
+    }
+
+    if (!isUuid(eventId)) {
+      return undefined;
+    }
+
+    try {
+      const [row] = await this.db
+        .select()
+        .from(auditEventsTable)
+        .where(eq(auditEventsTable.id, eventId))
+        .limit(1);
+
+      return row ? auditEventFromRow(row) : undefined;
+    } catch (error) {
+      this.dbAvailable = false;
+      console.warn("audit event detail query unavailable; using memory store", error);
+      return this.memory.find(eventId);
+    }
+  }
+
   async list(filters: AuditEventFilters = {}) {
     if (!this.dbAvailable) {
       return this.memory.list(filters);
@@ -143,6 +174,10 @@ class PostgresAuditStore implements AuditStore {
 
 function auditConditions(filters: AuditEventFilters): SQL[] {
   const conditions: SQL[] = [];
+
+  if (filters.id) {
+    conditions.push(isUuid(filters.id) ? eq(auditEventsTable.id, filters.id) : sql`false`);
+  }
 
   if (filters.action) {
     conditions.push(ilike(auditEventsTable.action, contains(filters.action)));
@@ -192,6 +227,7 @@ function auditConditions(filters: AuditEventFilters): SQL[] {
 
 function matchesAuditFilters(event: AuditEvent, filters: AuditEventFilters) {
   return (
+    (!filters.id || event.id === filters.id) &&
     includesFilter(event.action, filters.action) &&
     includesFilter(`${event.actor.id} ${event.actor.name}`, filters.actor) &&
     includesFilter(
@@ -216,6 +252,10 @@ function contains(value: string) {
 
 function limit(filters: AuditEventFilters) {
   return Math.min(Math.max(filters.limit ?? 100, 1), 500);
+}
+
+function isUuid(value: string) {
+  return /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
 }
 
 function auditEventFromRow(row: AuditEventRow): AuditEvent {

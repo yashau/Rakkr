@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { Hono } from "hono";
-import { auditOutcomeSchema, permissionSchema, type AuditEvent } from "@rakkr/shared";
+import {
+  auditOutcomeSchema,
+  permissionSchema,
+  type AuditEvent,
+  type Permission,
+} from "@rakkr/shared";
 
 import type { AuditEventFilters, AuditStore } from "./audit-store.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
@@ -9,6 +14,14 @@ interface AuditRouteDependencies {
   app: Hono<AppBindings>;
   auditStore: AuditStore;
   requirePermission: RequirePermission;
+}
+
+interface AuditActionState {
+  enabled: boolean;
+  href?: string;
+  method: "GET";
+  permission: Permission;
+  reason?: string;
 }
 
 const optionalTextFilterSchema = z.preprocess(
@@ -23,6 +36,7 @@ const auditEventsQuerySchema = z.object({
   action: optionalTextFilterSchema,
   actor: optionalTextFilterSchema,
   from: optionalDateFilterSchema,
+  id: optionalTextFilterSchema,
   limit: z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.coerce.number().int().min(1).max(500).optional(),
@@ -65,6 +79,42 @@ export function registerAuditRoutes({
   );
 
   app.get(
+    "/api/v1/audit-events/:eventId/actions",
+    requirePermission("audit:read", "audit.events.actions.read", () => ({ type: "controller" })),
+    async (c) => {
+      const event = await auditStore.find(c.req.param("eventId"));
+
+      return event
+        ? c.json({
+            data: {
+              actions: auditEventActions(event),
+              event,
+              links: auditEventLinks(event),
+            },
+          })
+        : c.json({ error: "Audit event not found" }, 404);
+    },
+  );
+
+  app.get(
+    "/api/v1/audit-events/:eventId",
+    requirePermission("audit:read", "audit.events.detail.read", () => ({ type: "controller" })),
+    async (c) => {
+      const event = await auditStore.find(c.req.param("eventId"));
+
+      return event
+        ? c.json({
+            data: {
+              actions: auditEventActions(event),
+              event,
+              links: auditEventLinks(event),
+            },
+          })
+        : c.json({ error: "Audit event not found" }, 404);
+    },
+  );
+
+  app.get(
     "/api/v1/audit-events",
     requirePermission("audit:read", "audit.events.read"),
     async (c) => {
@@ -84,12 +134,54 @@ function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEvent
     action: input.action,
     actor: input.actor,
     from: input.from ? new Date(input.from) : undefined,
+    id: input.id,
     limit: input.limit,
     outcome: input.outcome,
     permission: input.permission,
     reason: input.reason,
     target: input.target,
     to: input.to ? new Date(input.to) : undefined,
+  };
+}
+
+function auditEventActions(event: AuditEvent) {
+  return {
+    detail: actionState({
+      href: `/api/v1/audit-events/${encodeURIComponent(event.id)}`,
+      method: "GET",
+      permission: "audit:read",
+      ready: true,
+    }),
+    export: actionState({
+      href: `/api/v1/audit-events/export?id=${encodeURIComponent(event.id)}`,
+      method: "GET",
+      permission: "audit:read",
+      ready: true,
+    }),
+  };
+}
+
+function actionState({
+  href,
+  method,
+  permission,
+  ready,
+}: {
+  href: string;
+  method: AuditActionState["method"];
+  permission: Permission;
+  ready: boolean;
+}): AuditActionState {
+  return ready
+    ? { enabled: true, href, method, permission }
+    : { enabled: false, method, permission, reason: "audit_event_unavailable" };
+}
+
+function auditEventLinks(event: AuditEvent) {
+  return {
+    actions: `/api/v1/audit-events/${encodeURIComponent(event.id)}/actions`,
+    detail: `/api/v1/audit-events/${encodeURIComponent(event.id)}`,
+    export: `/api/v1/audit-events/export?id=${encodeURIComponent(event.id)}`,
   };
 }
 

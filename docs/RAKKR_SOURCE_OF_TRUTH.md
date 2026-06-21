@@ -401,10 +401,10 @@ Current implementation baseline:
 - Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
-- Audit API/UI filters by actor, action, target, outcome, time, and result limit with removable active chips; CSV export is RBAC-gated.
+- Audit API/UI filters by id, actor, action, target, outcome, time, and result limit with removable active chips; CSV export is RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
 - Audit page reads and exports are hidden unless the user has `audit:read`.
-- Audit read/export routes have missing-permission deny coverage.
+- Audit read/detail/action/export routes have missing-permission deny coverage.
 - Audit UI exposes event reasons, correlation IDs, details, and before/after snapshots.
 - User, access, password, node credential, schedule, watchdog, health, and recording metadata actions are audited.
 - Recording delete is RBAC-gated and audited, with active-recording protection.
@@ -882,6 +882,7 @@ Current implementation baseline:
 257. ✅ Add settings resource action summary APIs.
 258. ✅ Add upload queue item and runner action summary APIs.
 259. ✅ Add auth management detail and action summary APIs.
+260. ✅ Add audit event detail and action summary APIs.
 
 ## Open Questions
 
