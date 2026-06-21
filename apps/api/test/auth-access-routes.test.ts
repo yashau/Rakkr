@@ -523,7 +523,7 @@ test("schedule resource denies hide schedules and block run-now control", async 
   }
 });
 
-test("node resource denies hide health events and block alert acknowledgement", async () => {
+test("node resource denies hide health events and block alert detail and acknowledgement", async () => {
   const token = await loginToken();
   const nodeId = "node_x32_test";
   const createResponse = await app.request("/api/v1/health-events", {
@@ -557,6 +557,9 @@ test("node resource denies hide health events and block alert acknowledgement", 
       headers: { authorization: `Bearer ${token}` },
     });
     const listBody = (await listResponse.json()) as { data: HealthEvent[] };
+    const detailResponse = await app.request(`/api/v1/health-events/${eventId}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
     const acknowledgeResponse = await app.request(`/api/v1/health-events/${eventId}/acknowledge`, {
       body: JSON.stringify({ note: "blocked" }),
       headers: {
@@ -577,8 +580,22 @@ test("node resource denies hide health events and block alert acknowledgement", 
         headers: { authorization: `Bearer ${token}` },
       },
     );
+    const detailEventsResponse = await app.request(
+      [
+        "/api/v1/audit-events",
+        "?action=health.events.detail.read",
+        "&outcome=denied",
+        "&permission=health%3Aread",
+        `&target=${eventId}`,
+      ].join(""),
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
     const eventsBody = (await eventsResponse.json()) as { data: AuditEvent[] };
+    const detailEventsBody = (await detailEventsResponse.json()) as { data: AuditEvent[] };
     const [event] = eventsBody.data;
+    const [detailEvent] = detailEventsBody.data;
 
     assert.equal(createResponse.status, 201);
     assert.equal(listResponse.status, 200);
@@ -586,6 +603,11 @@ test("node resource denies hide health events and block alert acknowledgement", 
       listBody.data.some((healthEvent) => healthEvent.id === eventId),
       false,
     );
+    assert.equal(detailResponse.status, 403);
+    assert.equal(detailEvent?.permission, "health:read");
+    assert.equal(detailEvent?.reason, "access_policy_denied");
+    assert.equal(detailEvent?.target.id, eventId);
+    assert.equal(detailEvent?.target.type, "health_event");
     assert.equal(acknowledgeResponse.status, 403);
     assert.equal(event?.permission, "health:acknowledge");
     assert.equal(event?.reason, "missing_resource_scope");

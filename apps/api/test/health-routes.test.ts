@@ -9,7 +9,12 @@ import type {
   Permission,
   RecordingSummary,
 } from "@rakkr/shared";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "../src/http-types.js";
 import type { RecordingStore } from "../src/recording-store.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
@@ -35,6 +40,7 @@ test("health routes deny users without required permissions", async () => {
   const responses = await Promise.all([
     app.request("/api/v1/health-events"),
     app.request("/api/v1/health-events/export"),
+    app.request("/api/v1/health-events/health_denied"),
     requestJson(app, "/api/v1/health-events/export", "POST", {
       eventIds: ["health_denied"],
     }),
@@ -66,7 +72,7 @@ test("health routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "health:acknowledge:health.events.acknowledge",
@@ -75,12 +81,65 @@ test("health routes deny users without required permissions", async () => {
     "health:acknowledge:health.events.reopen",
     "health:acknowledge:health.events.resolve",
     "health:acknowledge:health.events.suppress",
+    "health:read:health.events.detail.read",
     "health:read:health.events.export",
     "health:read:health.events.export_selected",
     "health:read:health.events.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
   assert.ok(deniedEvents.every((event) => event.actor.id === currentUser.id));
+});
+
+test("health event detail returns only visible scoped events", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:read"]);
+  const visible = event({
+    details: { rmsDbfs: -41 },
+    id: "health_visible_detail",
+    nodeId: "node_1",
+    severity: "critical",
+    type: "watchdog.scheduled_low_signal",
+  });
+  const hidden = event({ id: "health_hidden_detail", nodeId: "node_hidden" });
+  const permissionCalls: PermissionCall[] = [];
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async (_user, target) => target.id !== "node_hidden",
+    healthEventStore: createHealthEventStore("", [visible, hidden]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermissionWithCalls(permissionCalls),
+  });
+
+  const visibleResponse = await app.request(`/api/v1/health-events/${visible.id}`);
+  const hiddenResponse = await app.request(`/api/v1/health-events/${hidden.id}`);
+  const missingResponse = await app.request("/api/v1/health-events/health_missing_detail");
+  const visibleBody = (await visibleResponse.json()) as { data: HealthEvent };
+
+  assert.equal(visibleResponse.status, 200);
+  assert.equal(visibleBody.data.id, visible.id);
+  assert.equal(visibleBody.data.details.rmsDbfs, -41);
+  assert.equal(hiddenResponse.status, 404);
+  assert.equal(missingResponse.status, 404);
+  assert.deepEqual(permissionCalls.at(-3), {
+    action: "health.events.detail.read",
+    permission: "health:read",
+    target: { id: visible.id, type: "health_event" },
+  });
+  assert.deepEqual(permissionCalls.at(-2), {
+    action: "health.events.detail.read",
+    permission: "health:read",
+    target: { id: hidden.id, type: "health_event" },
+  });
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "health.events.detail.read",
+    permission: "health:read",
+    target: { id: "health_missing_detail", type: "health_event" },
+  });
 });
 
 test("health event export returns scoped filtered csv and audits access", async () => {
@@ -353,6 +412,29 @@ function denyMissingPermission(
 const allowPermission: RequirePermission = () => async (_c, next) => {
   await next();
 };
+
+interface PermissionCall {
+  action: string;
+  permission: Permission;
+  target?: AuditTarget;
+}
+
+function allowPermissionWithCalls(permissionCalls: PermissionCall[]): RequirePermission {
+  return (permission, action, target) => async (c, next) => {
+    const call: PermissionCall = {
+      action,
+      permission,
+    };
+
+    if (target) {
+      call.target = await target(c);
+    }
+
+    permissionCalls.push(call);
+
+    await next();
+  };
+}
 
 function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
   return async (_c, input) => {

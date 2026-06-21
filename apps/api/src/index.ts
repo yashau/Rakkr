@@ -296,6 +296,20 @@ async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]>
     addNodeScopeTargets(targets, target.id, knownNodes);
   }
 
+  if (target.type === "health_event" && target.id) {
+    const event = await healthEventStore.find(target.id);
+    if (event?.recordingId) targets.push({ id: event.recordingId, type: "recording" });
+    const recording = event?.recordingId ? await recordingStore.find(event.recordingId) : undefined;
+    for (const scheduleId of [recording?.scheduleId, event?.scheduleId]) {
+      if (!scheduleId) continue;
+      await addScheduleScopeTargets(targets, scheduleId, knownNodes);
+    }
+    for (const nodeId of [recording?.nodeId, event?.nodeId]) {
+      if (!nodeId) continue;
+      addNodeScopeTargets(targets, nodeId, knownNodes);
+    }
+  }
+
   if (target.type === "interface" && target.id) {
     addInterfaceScopeTargets(targets, target.id, knownNodes);
   }

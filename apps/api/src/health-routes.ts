@@ -238,6 +238,24 @@ export function registerHealthRoutes({
     },
   );
 
+  app.get(
+    "/api/v1/health-events/:eventId",
+    requirePermission("health:read", "health.events.detail.read", (c) => ({
+      id: c.req.param("eventId"),
+      type: "health_event",
+    })),
+    async (c) => {
+      const eventId = c.req.param("eventId");
+      const event = await healthEventStore.find(eventId);
+
+      if (!event || !(await visibleHealthEvent(currentUser(c), event, hasResourceScope))) {
+        return c.json({ error: "Health event not found" }, 404);
+      }
+
+      return c.json({ data: event });
+    },
+  );
+
   app.post(
     "/api/v1/health-events",
     requirePermission("health:acknowledge", "health.events.create", () => ({ type: "health" })),
