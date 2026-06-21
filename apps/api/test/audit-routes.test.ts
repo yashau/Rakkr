@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser, Permission } from "@rakkr/shared";
-import type { AppBindings, RequirePermission } from "../src/http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 
 const { registerAuditRoutes } = await import("../src/audit-routes.js");
 const { createAuditStore } = await import("../src/audit-store.js");
@@ -118,6 +118,54 @@ test("audit routes export filtered events as csv", async () => {
   assert.match(body, /"{""count"":2,""level"":""critical""}"/);
 });
 
+test("audit selected export preserves requested order and audits outcomes", async () => {
+  const auditStore = createAuditStore("");
+  const first = auditEvent("recordings.tag.succeeded", "succeeded", {
+    targetName: "Room 101",
+  });
+  const second = auditEvent("recordings.delete.denied", "denied", {
+    reason: "access_policy_denied",
+    targetName: "Room 202",
+  });
+
+  await auditStore.append(first);
+  await auditStore.append(second);
+
+  const permissions: string[] = [];
+  const app = auditApp(auditStore, permissions);
+  const response = await app.request("/api/v1/audit-events/export", {
+    body: JSON.stringify({ eventIds: [second.id, first.id, second.id] }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const csv = await response.text();
+  const missingResponse = await app.request("/api/v1/audit-events/export", {
+    body: JSON.stringify({ eventIds: [first.id, "audit_missing"] }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const successEvents = await auditStore.list({ action: "audit.events.export_selected.succeeded" });
+  const failedEvents = await auditStore.list({ action: "audit.events.export_selected.failed" });
+
+  assert.equal(response.status, 200);
+  assert.ok(permissions.includes("audit:read:audit.events.export_selected"));
+  assert.match(response.headers.get("content-disposition") ?? "", /rakkr-audit-events-/);
+  assert.equal(
+    csv.split("\n").filter((row) => row.includes('"recordings.delete.denied"')).length,
+    1,
+  );
+  assert.equal(
+    csv.split("\n").filter((row) => row.includes('"recordings.tag.succeeded"')).length,
+    1,
+  );
+  assert.ok(csv.indexOf("recordings.delete.denied") < csv.indexOf("recordings.tag.succeeded"));
+  assert.equal(missingResponse.status, 404);
+  assert.equal((await missingResponse.json()).eventId, "audit_missing");
+  assert.equal(successEvents[0]?.details.exportedCount, 2);
+  assert.equal(successEvents[0]?.details.requestedCount, 3);
+  assert.equal(failedEvents[0]?.reason, "audit_event_not_found");
+});
+
 test("audit routes deny users without audit read", async () => {
   const auditStore = createAuditStore("");
   const currentUser = user([]);
@@ -126,12 +174,19 @@ test("audit routes deny users without audit read", async () => {
   registerAuditRoutes({
     app,
     auditStore,
+    currentAuth: () => ({ user: currentUser }),
+    recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyMissingPermission(auditStore, currentUser),
   });
 
   const responses = await Promise.all([
     app.request("/api/v1/audit-events"),
     app.request("/api/v1/audit-events/export"),
+    app.request("/api/v1/audit-events/export", {
+      body: JSON.stringify({ eventIds: ["audit_denied_event"] }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
     app.request("/api/v1/audit-events/audit_denied_event"),
     app.request("/api/v1/audit-events/audit_denied_event/actions"),
   ]);
@@ -139,12 +194,13 @@ test("audit routes deny users without audit read", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403],
+    [403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
     "audit.events.actions.read",
     "audit.events.detail.read",
     "audit.events.export",
+    "audit.events.export_selected",
     "audit.events.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
@@ -158,10 +214,41 @@ function auditApp(auditStore: ReturnType<typeof createAuditStore>, calls: string
   registerAuditRoutes({
     app,
     auditStore,
+    currentAuth: () => ({ user: user(["audit:read"]) }),
+    recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: requirePermission(calls),
   });
 
   return app;
+}
+
+function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
+  return async (_c, input) => {
+    const event: AuditEvent = {
+      action: input.action,
+      actor: {
+        id: input.auth?.user?.id ?? "user_audit_test",
+        name: input.auth?.user?.name ?? "Audit Test",
+        roles: input.auth?.user?.roles ?? [],
+        type: "user",
+      },
+      actorContext: {},
+      after: input.after,
+      before: input.before,
+      correlationIds: input.correlationIds,
+      createdAt: new Date().toISOString(),
+      details: input.details ?? {},
+      id: `audit_${randomUUID()}`,
+      outcome: input.outcome,
+      permission: input.permission,
+      reason: input.reason,
+      target: input.target,
+    };
+
+    await auditStore.append(event);
+
+    return event;
+  };
 }
 
 interface AuditDetailResponse {

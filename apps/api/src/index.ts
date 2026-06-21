@@ -640,6 +640,8 @@ registerAuthLifecycleRoutes({
 registerAuditRoutes({
   app,
   auditStore,
+  currentAuth,
+  recordAuditEvent,
   requirePermission,
 });
 

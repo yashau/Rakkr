@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import {
   auditOutcomeSchema,
   permissionSchema,
@@ -7,12 +7,15 @@ import {
   type Permission,
 } from "@rakkr/shared";
 
+import type { AuthResult } from "./auth-service.js";
 import type { AuditEventFilters, AuditStore } from "./audit-store.js";
-import type { AppBindings, RequirePermission } from "./http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 
 interface AuditRouteDependencies {
   app: Hono<AppBindings>;
   auditStore: AuditStore;
+  currentAuth: (c: Context<AppBindings>) => AuthResult;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
 }
 
@@ -53,10 +56,17 @@ const auditEventsQuerySchema = z.object({
   target: optionalTextFilterSchema,
   to: optionalDateFilterSchema,
 });
+const selectedAuditExportSchema = z
+  .object({
+    eventIds: z.array(z.string().trim().min(1).max(160)).min(1).max(500),
+  })
+  .strict();
 
 export function registerAuditRoutes({
   app,
   auditStore,
+  currentAuth,
+  recordAuditEvent,
   requirePermission,
 }: AuditRouteDependencies) {
   app.get(
@@ -70,6 +80,60 @@ export function registerAuditRoutes({
       }
 
       const events = await auditStore.list(auditFilters(query.data));
+
+      return c.text(auditEventsCsv(events), 200, {
+        "Content-Disposition": `attachment; filename="${auditExportFileName()}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+      });
+    },
+  );
+
+  app.post(
+    "/api/v1/audit-events/export",
+    requirePermission("audit:read", "audit.events.export_selected", () => ({
+      type: "controller",
+    })),
+    async (c) => {
+      const body = selectedAuditExportSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSelectedAuditExportFailure(c, "invalid_request");
+        return c.json({ error: "Invalid audit export request", issues: body.error.issues }, 400);
+      }
+
+      const eventIds = uniqueAuditEventIds(body.data.eventIds);
+      const events: AuditEvent[] = [];
+
+      for (const eventId of eventIds) {
+        const event = await auditStore.find(eventId);
+
+        if (!event) {
+          await recordSelectedAuditExportFailure(c, "audit_event_not_found", {
+            eventIds,
+            missingId: eventId,
+          });
+          return c.json({ error: "Audit event not found", eventId }, 404);
+        }
+
+        events.push(event);
+      }
+
+      await recordAuditEvent(c, {
+        action: "audit.events.export_selected.succeeded",
+        auth: currentAuth(c),
+        correlationIds: Object.fromEntries(
+          eventIds.map((eventId, index) => [`auditEventId${index + 1}`, eventId]),
+        ),
+        details: {
+          exportedCount: events.length,
+          requestedCount: body.data.eventIds.length,
+        },
+        outcome: "succeeded",
+        permission: "audit:read",
+        target: {
+          type: "controller",
+        },
+      });
 
       return c.text(auditEventsCsv(events), 200, {
         "Content-Disposition": `attachment; filename="${auditExportFileName()}"`,
@@ -127,6 +191,24 @@ export function registerAuditRoutes({
       return c.json({ data: await auditStore.list(auditFilters(query.data)) });
     },
   );
+
+  async function recordSelectedAuditExportFailure(
+    c: Context<AppBindings>,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action: "audit.events.export_selected.failed",
+      auth: currentAuth(c),
+      details,
+      outcome: "failed",
+      permission: "audit:read",
+      reason,
+      target: {
+        type: "controller",
+      },
+    });
+  }
 }
 
 function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEventFilters {
@@ -183,6 +265,10 @@ function auditEventLinks(event: AuditEvent) {
     detail: `/api/v1/audit-events/${encodeURIComponent(event.id)}`,
     export: `/api/v1/audit-events/export?id=${encodeURIComponent(event.id)}`,
   };
+}
+
+function uniqueAuditEventIds(eventIds: string[]) {
+  return [...new Set(eventIds.map((eventId) => eventId.trim()))];
 }
 
 function auditEventsCsv(events: AuditEvent[]) {

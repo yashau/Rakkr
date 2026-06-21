@@ -7,7 +7,7 @@ Status: MVP baseline checked.
 - Recording organization supports search, facets, filters, folder/tag edits, operator notes, bulk organization, manifest CSV export, cache state, upload queue state, playback, download, and delete controls.
 - Settings templates cover recording profiles, watchdog policies, upload providers, upload policies, channel map templates, channel map assignments, revision promotion, and rollback.
 - Operational settings routes are RBAC-gated and audit before/after snapshots for successful changes plus denials for missing permissions.
-- Audit routes support filtered search by action, actor, target, outcome, permission, reason, and date range, plus filtered CSV export.
+- Audit routes support filtered search by action, actor, target, outcome, permission, reason, and date range, plus filtered and selected CSV export.
 - Upload operations support stub, mounted-share SMB, and S3 provider configuration, provider readiness, policy templates, auto/manual queueing, retries, run-now, metrics, and cache-retention behavior.
 - UI pages mirror granular RBAC for recording organization, Settings templates, upload runner controls, and Audit read/export.
 - This baseline is controller-local; external SSO, non-stub storage hardening, and real test-rig validation are tracked separately.
