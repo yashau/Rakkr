@@ -118,6 +118,60 @@ test("audit routes export filtered events as csv", async () => {
   assert.match(body, /"{""count"":2,""level"":""critical""}"/);
 });
 
+test("audit facets summarize filtered investigation dimensions", async () => {
+  const auditStore = createAuditStore("");
+
+  await auditStore.append(
+    auditEvent("recordings.delete.denied", "denied", {
+      permission: "recording:delete",
+      reason: "missing_permission",
+      targetName: "Room 101",
+    }),
+  );
+  await auditStore.append(
+    auditEvent("recordings.download.denied", "denied", {
+      permission: "recording:download",
+      reason: "missing_permission",
+      targetName: "Room 202",
+    }),
+  );
+  await auditStore.append(
+    auditEvent("recordings.download.succeeded", "succeeded", {
+      permission: "recording:download",
+      targetName: "Room 202",
+    }),
+  );
+
+  const permissions: string[] = [];
+  const app = auditApp(auditStore, permissions);
+  const response = await app.request("/api/v1/audit-events/facets?outcome=denied");
+  const body = (await response.json()) as {
+    data: {
+      actions: Array<{ count: number; value: string }>;
+      actorTypes: Array<{ count: number; value: string }>;
+      outcomes: Array<{ count: number; value: string }>;
+      permissions: Array<{ count: number; value: string }>;
+      reasons: Array<{ count: number; value: string }>;
+      targetTypes: Array<{ count: number; value: string }>;
+      total: number;
+    };
+  };
+  const invalidResponse = await app.request("/api/v1/audit-events/facets?permission=unknown");
+
+  assert.equal(response.status, 200);
+  assert.ok(permissions.includes("audit:read:audit.events.facets.read"));
+  assert.equal(body.data.total, 2);
+  assert.deepEqual(body.data.outcomes, [{ count: 2, value: "denied" }]);
+  assert.deepEqual(body.data.permissions, [
+    { count: 1, value: "recording:delete" },
+    { count: 1, value: "recording:download" },
+  ]);
+  assert.deepEqual(body.data.reasons, [{ count: 2, value: "missing_permission" }]);
+  assert.deepEqual(body.data.actorTypes, [{ count: 2, value: "user" }]);
+  assert.deepEqual(body.data.targetTypes, [{ count: 2, value: "room" }]);
+  assert.equal(invalidResponse.status, 400);
+});
+
 test("audit selected export preserves requested order and audits outcomes", async () => {
   const auditStore = createAuditStore("");
   const first = auditEvent("recordings.tag.succeeded", "succeeded", {
@@ -182,6 +236,7 @@ test("audit routes deny users without audit read", async () => {
   const responses = await Promise.all([
     app.request("/api/v1/audit-events"),
     app.request("/api/v1/audit-events/export"),
+    app.request("/api/v1/audit-events/facets"),
     app.request("/api/v1/audit-events/export", {
       body: JSON.stringify({ eventIds: ["audit_denied_event"] }),
       headers: { "Content-Type": "application/json" },
@@ -194,13 +249,14 @@ test("audit routes deny users without audit read", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
     "audit.events.actions.read",
     "audit.events.detail.read",
     "audit.events.export",
     "audit.events.export_selected",
+    "audit.events.facets.read",
     "audit.events.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));

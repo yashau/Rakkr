@@ -60,7 +60,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth/OIDC detail/action summaries, RBAC, audit selected exports, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, upload queue detail/action summaries and runner actions, metrics |
+| Controller API | 🟨 | Auth/OIDC detail/action summaries, RBAC, audit selected exports/facets, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, upload queue detail/action summaries and runner actions, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -401,7 +401,7 @@ Current implementation baseline:
 - Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
 - Disabled/deleted/password-reset users lose active sessions.
-- Audit API/UI filters by id, actor, action, target, outcome, time, and result limit with removable active chips; filtered and selected CSV export is RBAC-gated.
+- Audit API/UI filters by id, actor, action, target, outcome, time, and result limit with removable active chips; filtered/selected CSV export and server-side filter facets are RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
 - Audit page reads and exports are hidden unless the user has `audit:read`.
 - Audit read/detail/action/export routes have missing-permission deny coverage.
@@ -885,6 +885,7 @@ Current implementation baseline:
 260. ✅ Add audit event detail and action summary APIs.
 261. ✅ Add OIDC login and discovery action summary APIs.
 262. ✅ Add selected audit event CSV export API.
+263. ✅ Add audit event facet summary API.
 
 ## Open Questions
 

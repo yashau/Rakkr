@@ -27,6 +27,11 @@ interface AuditActionState {
   reason?: string;
 }
 
+interface AuditFacetCount {
+  count: number;
+  value: string;
+}
+
 const optionalTextFilterSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
   z.string().trim().max(160).optional(),
@@ -139,6 +144,27 @@ export function registerAuditRoutes({
         "Content-Disposition": `attachment; filename="${auditExportFileName()}"`,
         "Content-Type": "text/csv; charset=utf-8",
       });
+    },
+  );
+
+  app.get(
+    "/api/v1/audit-events/facets",
+    requirePermission("audit:read", "audit.events.facets.read", () => ({
+      type: "controller",
+    })),
+    async (c) => {
+      const query = auditEventsQuerySchema.safeParse(c.req.query());
+
+      if (!query.success) {
+        return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
+      }
+
+      const events = await auditStore.list({
+        ...auditFilters(query.data),
+        limit: query.data.limit ?? 500,
+      });
+
+      return c.json({ data: auditEventFacets(events) });
     },
   );
 
@@ -269,6 +295,32 @@ function auditEventLinks(event: AuditEvent) {
 
 function uniqueAuditEventIds(eventIds: string[]) {
   return [...new Set(eventIds.map((eventId) => eventId.trim()))];
+}
+
+function auditEventFacets(events: AuditEvent[]) {
+  return {
+    actions: facetCounts(events.map((event) => event.action)),
+    actorTypes: facetCounts(events.map((event) => event.actor.type)),
+    outcomes: facetCounts(events.map((event) => event.outcome)),
+    permissions: facetCounts(events.map((event) => event.permission)),
+    reasons: facetCounts(events.map((event) => event.reason)),
+    targetTypes: facetCounts(events.map((event) => event.target.type)),
+    total: events.length,
+  };
+}
+
+function facetCounts(values: Array<string | undefined>): AuditFacetCount[] {
+  const counts = new Map<string, number>();
+
+  for (const value of values) {
+    if (value) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+  }
+
+  return Array.from(counts.entries())
+    .map(([value, count]) => ({ count, value }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
 function auditEventsCsv(events: AuditEvent[]) {

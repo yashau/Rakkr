@@ -15,7 +15,7 @@ Status: MVP baseline checked.
 
 | Permission | Protected Surface | Primary Evidence |
 | ---------- | ----------------- | ---------------- |
-| `audit:read` | Audit trail reads, detail/action summaries, and filtered/selected CSV export | `apps/api/src/audit-routes.ts`, `apps/web/src/lib/audit-page-helpers.ts` |
+| `audit:read` | Audit trail reads, detail/action summaries, filter facets, and filtered/selected CSV export | `apps/api/src/audit-routes.ts`, `apps/web/src/lib/audit-page-helpers.ts` |
 | `auth:manage` | Users, groups, access policies, OIDC discovery/actions | `apps/api/src/index.ts`, `apps/api/src/auth-lifecycle-routes.ts`, `apps/api/src/auth-oidc-routes.ts` |
 | `health:acknowledge` | Health event create, acknowledge, suppress, resolve, reopen | `apps/api/src/health-routes.ts`, `apps/api/src/watchdog-runner.ts` |
 | `health:read` | Health event timelines, filtered and selected CSV export, and node health panels | `apps/api/src/health-routes.ts`, `apps/web/src/lib/schedule-detail-page-helpers.ts` |
