@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, HardDrive, Radio, ShieldCheck } from "lucide-react";
 
@@ -5,11 +6,12 @@ import { MeterBank } from "@/components/meter-bank";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { dashboardPagePermissions } from "@/lib/dashboard-page-helpers";
+import { dashboardPagePermissions, dashboardSelectedNodeId } from "@/lib/dashboard-page-helpers";
 import { formatDateTime } from "@/lib/dates";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 export function DashboardPage() {
+  const [selectedNodeId, setSelectedNodeId] = useState("");
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -29,17 +31,24 @@ export function DashboardPage() {
     refetchInterval: 5000,
   });
 
-  const firstNodeId = nodesQuery.data?.data[0]?.id;
+  const nodes = nodesQuery.data?.data ?? [];
+  const visibleSelectedNodeId = dashboardSelectedNodeId(selectedNodeId, nodes);
+  const node = nodes.find((candidate) => candidate.id === visibleSelectedNodeId);
   const meterQuery = useQuery({
-    enabled: pagePermissions.canReadMeters && Boolean(firstNodeId),
-    queryFn: () => api.meterFrame(firstNodeId!),
-    queryKey: ["meters", firstNodeId],
+    enabled: pagePermissions.canReadMeters && Boolean(visibleSelectedNodeId),
+    queryFn: () => api.meterFrame(visibleSelectedNodeId),
+    queryKey: ["meters", visibleSelectedNodeId],
     refetchInterval: 1000,
   });
 
   const status = statusQuery.data;
-  const node = nodesQuery.data?.data[0];
   const levels = meterQuery.data?.data.levels ?? [];
+
+  useEffect(() => {
+    if (visibleSelectedNodeId !== selectedNodeId) {
+      setSelectedNodeId(visibleSelectedNodeId);
+    }
+  }, [selectedNodeId, visibleSelectedNodeId]);
 
   if (currentUserQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading dashboard.</p>;
@@ -104,7 +113,31 @@ export function DashboardPage() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <MeterBank levels={levels} title={node?.interfaces[0]?.alias ?? "Meters"} />
+        <section className="grid gap-3">
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-panel p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">Meter Source</h2>
+              <p className="text-xs text-muted-foreground">
+                {nodes.length} visible recorder {nodes.length === 1 ? "node" : "nodes"}
+              </p>
+            </div>
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm md:min-w-64"
+              disabled={nodes.length === 0}
+              onChange={(event) => setSelectedNodeId(event.target.value)}
+              value={visibleSelectedNodeId}
+            >
+              {nodes.length === 0 ? <option value="">No visible nodes</option> : null}
+              {nodes.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.alias} / {candidate.location.room || candidate.hostname}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <MeterBank levels={levels} title={node ? `${node.alias} Meters` : "Meters"} />
+        </section>
 
         <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
