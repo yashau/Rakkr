@@ -113,7 +113,7 @@ export function RecordingsPage() {
   });
   const schedulesQuery = useQuery({
     enabled: pagePermissions.canReadSchedules,
-    queryFn: api.schedules,
+    queryFn: () => api.schedules(),
     queryKey: ["schedules"],
   });
   const uploadPoliciesQuery = useQuery({

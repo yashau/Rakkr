@@ -1,5 +1,23 @@
 import type { Permission, ScheduleSummary } from "@rakkr/shared";
 
+import type { ScheduleFilters } from "@/lib/api";
+
+export type ScheduleFilterKey = keyof ScheduleFilters;
+
+export interface ActiveScheduleFilterChip {
+  key: ScheduleFilterKey;
+  label: string;
+  value: string;
+}
+
+export interface SchedulePageFilterDraft {
+  captureBackend: "" | NonNullable<ScheduleSummary["captureBackend"]>;
+  captureInterfaceId: string;
+  enabled: "" | "false" | "true";
+  nodeId: string;
+  search: string;
+}
+
 export interface SchedulePageActionPermissions {
   canRead: boolean;
   canReadAudit: boolean;
@@ -13,6 +31,14 @@ export interface ScheduleActionState {
   canRunNow: boolean;
   canSkipNext: boolean;
 }
+
+export const emptySchedulePageFilters: SchedulePageFilterDraft = {
+  captureBackend: "",
+  captureInterfaceId: "",
+  enabled: "",
+  nodeId: "",
+  search: "",
+};
 
 export function schedulePageActionPermissions(permissions: readonly Permission[]) {
   return {
@@ -34,3 +60,57 @@ export function scheduleActionState(
     canSkipNext: permissions.canManage && schedule.enabled && Boolean(schedule.nextRunAt),
   };
 }
+
+export function scheduleFiltersFromDraft(draft: SchedulePageFilterDraft): ScheduleFilters {
+  return {
+    captureBackend: draft.captureBackend || undefined,
+    captureInterfaceId: trimmed(draft.captureInterfaceId),
+    enabled: draft.enabled || undefined,
+    nodeId: trimmed(draft.nodeId),
+    search: trimmed(draft.search),
+  };
+}
+
+export function scheduleFilterChips(filters: ScheduleFilters): ActiveScheduleFilterChip[] {
+  return scheduleFilterOrder.flatMap((key) => {
+    const value = filters[key];
+
+    if (!value) {
+      return [];
+    }
+
+    return [
+      {
+        key,
+        label: scheduleFilterLabels[key],
+        value: scheduleFilterValue(key, value),
+      },
+    ];
+  });
+}
+
+function trimmed(value: string) {
+  const next = value.trim();
+
+  return next || undefined;
+}
+
+function scheduleFilterValue(key: ScheduleFilterKey, value: string) {
+  return key === "enabled" ? (value === "true" ? "enabled" : "disabled") : value;
+}
+
+const scheduleFilterOrder: ScheduleFilterKey[] = [
+  "search",
+  "enabled",
+  "nodeId",
+  "captureBackend",
+  "captureInterfaceId",
+];
+
+const scheduleFilterLabels: Record<ScheduleFilterKey, string> = {
+  captureBackend: "backend",
+  captureInterfaceId: "interface",
+  enabled: "state",
+  nodeId: "node",
+  search: "search",
+};

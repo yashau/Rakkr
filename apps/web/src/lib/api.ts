@@ -86,8 +86,6 @@ export interface NodeFilters {
   status?: NodeStatus;
 }
 
-export type NodeSelectedExportInput = { nodeIds: string[] };
-
 export interface RecordingDownloadTicket {
   downloadId: string;
   expiresAt: string;
@@ -142,8 +140,6 @@ export interface RecordingBulkMetadataUpdate {
 
 export type RecordingBulkDeleteInput = { recordingIds: string[] };
 
-export type RecordingSelectedExportInput = { recordingIds: string[] };
-
 export interface RecordingBulkUploadQueueInput extends UploadQueueInput {
   recordingIds: string[];
 }
@@ -192,11 +188,9 @@ export interface WatchdogCalibrationResult {
   warnings: string[];
 }
 
-export interface UploadQueueFilters {
-  provider?: UploadProvider;
-  recordingId?: string;
-  status?: UploadQueueItem["status"];
-}
+export type UploadQueueFilters = Partial<
+  Pick<UploadQueueItem, "provider" | "recordingId" | "status">
+>;
 
 export interface RecordingFilters {
   cacheState?: RecordingCacheState;
@@ -238,6 +232,10 @@ export interface RecordingJobFilters {
   search?: string;
   status?: RecordingJob["status"];
 }
+
+export type ScheduleFilters = Partial<
+  Pick<ScheduleSummary, "captureBackend" | "captureInterfaceId" | "nodeId">
+> & { enabled?: "false" | "true"; search?: string };
 
 export interface RecordingJobBulkActionInput {
   jobIds: string[];
@@ -575,7 +573,7 @@ export const api = {
   nodes: (filters: NodeFilters = {}) =>
     fetchJson<{ data: RecorderNode[] }>(withQuery("/api/v1/nodes", filters)),
   nodesExport: (filters: NodeFilters = {}) => fetchBlob(withQuery("/api/v1/nodes/export", filters)),
-  nodesExportSelected: (input: NodeSelectedExportInput) =>
+  nodesExportSelected: (input: { nodeIds: string[] }) =>
     fetchBlob("/api/v1/nodes/export", {
       body: JSON.stringify(input),
       headers: {
@@ -782,7 +780,7 @@ export const api = {
     fetchJson<RecordingListResponse>(withQuery("/api/v1/recordings", filters)),
   exportRecordingManifest: (filters: RecordingFilters = {}) =>
     fetchBlob(withQuery("/api/v1/recordings/export", filters)),
-  exportSelectedRecordingManifest: (input: RecordingSelectedExportInput) =>
+  exportSelectedRecordingManifest: (input: { recordingIds: string[] }) =>
     fetchBlob("/api/v1/recordings/export", {
       body: JSON.stringify(input),
       headers: {
@@ -856,7 +854,8 @@ export const api = {
     fetchJson<{ data: ScheduleOccurrencePreview[] }>(
       withQuery(`/api/v1/schedules/${scheduleId}/occurrences`, { limit }),
     ),
-  schedules: () => fetchJson<{ data: ScheduleSummary[] }>("/api/v1/schedules"),
+  schedules: (filters: ScheduleFilters = {}) =>
+    fetchJson<{ data: ScheduleSummary[] }>(withQuery("/api/v1/schedules", filters)),
   startPlayback: (recordingId: string) =>
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
       method: "POST",

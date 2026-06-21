@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ScheduleSummary } from "@rakkr/shared";
 
-import { scheduleActionState, schedulePageActionPermissions } from "./schedule-page-helpers";
+import {
+  emptySchedulePageFilters,
+  scheduleActionState,
+  scheduleFilterChips,
+  scheduleFiltersFromDraft,
+  schedulePageActionPermissions,
+} from "./schedule-page-helpers";
 
 test("schedule page permissions require schedule manage for write actions", () => {
   assert.deepEqual(schedulePageActionPermissions(["schedule:read"]), {
@@ -79,6 +85,32 @@ test("schedule action state mirrors enabled and next-run readiness", () => {
       canSkipNext: false,
     },
   );
+});
+
+test("schedule filters trim API filters and expose active chips", () => {
+  const filters = scheduleFiltersFromDraft({
+    ...emptySchedulePageFilters,
+    captureBackend: "pipewire",
+    captureInterfaceId: " iface_pipewire ",
+    enabled: "true",
+    nodeId: " node_1 ",
+    search: " council ",
+  });
+
+  assert.deepEqual(filters, {
+    captureBackend: "pipewire",
+    captureInterfaceId: "iface_pipewire",
+    enabled: "true",
+    nodeId: "node_1",
+    search: "council",
+  });
+  assert.deepEqual(scheduleFilterChips(filters), [
+    { key: "search", label: "search", value: "council" },
+    { key: "enabled", label: "state", value: "enabled" },
+    { key: "nodeId", label: "node", value: "node_1" },
+    { key: "captureBackend", label: "backend", value: "pipewire" },
+    { key: "captureInterfaceId", label: "interface", value: "iface_pipewire" },
+  ]);
 });
 
 function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {

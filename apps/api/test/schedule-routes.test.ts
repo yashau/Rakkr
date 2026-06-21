@@ -83,6 +83,82 @@ test("schedule routes deny users without required permissions", async () => {
   assert.ok(deniedEvents.every((event) => event.actor.id === deniedUser.id));
 });
 
+test("schedule list route filters scoped schedules", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:read"]);
+  const schedules = [
+    schedule({
+      captureBackend: "jack",
+      captureInterfaceId: "iface_jack",
+      enabled: true,
+      id: "sched_council",
+      name: "Council Sessions",
+      nodeId: "node_council",
+      room: "Council Chamber",
+      tags: ["voice", "public"],
+    }),
+    schedule({
+      captureBackend: "pipewire",
+      captureInterfaceId: "iface_pipewire",
+      enabled: false,
+      id: "sched_archive",
+      name: "Archive Transfer",
+      nodeId: "node_archive",
+      room: "Records",
+      tags: ["archive"],
+    }),
+    schedule({
+      enabled: true,
+      id: "sched_budget",
+      name: "Budget Workshop",
+      nodeId: "node_council",
+      room: "Finance",
+      tags: ["finance"],
+    }),
+  ];
+  const store = scheduleStore(schedules);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: () => store.list(),
+    settingsStore: createSettingsStore(),
+  });
+
+  const bySearch = await scheduleList(app, "?search=public");
+  const byState = await scheduleList(app, "?enabled=false");
+  const byNode = await scheduleList(app, "?nodeId=node_council");
+  const byBackend = await scheduleList(app, "?captureBackend=pipewire");
+  const byInterface = await scheduleList(app, "?captureInterfaceId=iface_jack");
+
+  assert.deepEqual(
+    bySearch.map((candidate) => candidate.id),
+    ["sched_council"],
+  );
+  assert.deepEqual(
+    byState.map((candidate) => candidate.id),
+    ["sched_archive"],
+  );
+  assert.deepEqual(
+    byNode.map((candidate) => candidate.id),
+    ["sched_council", "sched_budget"],
+  );
+  assert.deepEqual(
+    byBackend.map((candidate) => candidate.id),
+    ["sched_archive"],
+  );
+  assert.deepEqual(
+    byInterface.map((candidate) => candidate.id),
+    ["sched_council"],
+  );
+});
+
 test("schedule routes create update run-now and skip-next with audit events", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
@@ -240,6 +316,15 @@ function requestJson(
     headers: { "content-type": "application/json" },
     method,
   });
+}
+
+async function scheduleList(app: Hono<AppBindings>, query = "") {
+  const response = await app.request(`/api/v1/schedules${query}`);
+  const body = (await response.json()) as { data: ScheduleSummary[] };
+
+  assert.equal(response.status, 200);
+
+  return body.data;
 }
 
 function allowPermission(): RequirePermission {

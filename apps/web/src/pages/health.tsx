@@ -87,7 +87,7 @@ export function HealthPage() {
   });
   const schedulesQuery = useQuery({
     enabled: permissions.canReadSchedules,
-    queryFn: api.schedules,
+    queryFn: () => api.schedules(),
     queryKey: ["schedules"],
   });
   const recordingsQuery = useQuery({

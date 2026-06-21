@@ -24,6 +24,7 @@ import {
 } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
+import { ScheduleFiltersPanel } from "@/components/schedule-filters";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
-import { scheduleActionState, schedulePageActionPermissions } from "@/lib/schedule-page-helpers";
+import {
+  emptySchedulePageFilters,
+  scheduleActionState,
+  scheduleFiltersFromDraft,
+  schedulePageActionPermissions,
+  type SchedulePageFilterDraft,
+} from "@/lib/schedule-page-helpers";
 import {
   addPauseRangeToDraft,
   applyNaturalLanguageSchedule,
@@ -56,6 +63,8 @@ export function SchedulesPage() {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string>();
   const [draft, setDraft] = useState<ScheduleDraft>(() => defaultDraft());
+  const [scheduleFilterDraft, setScheduleFilterDraft] =
+    useState<SchedulePageFilterDraft>(emptySchedulePageFilters);
   const [quickRecurrence, setQuickRecurrence] = useState("");
   const [quickRecurrenceError, setQuickRecurrenceError] = useState(false);
   const currentUserQuery = useQuery({
@@ -66,10 +75,14 @@ export function SchedulesPage() {
   const actionPermissions = schedulePageActionPermissions(
     currentUserQuery.data?.data.permissions ?? [],
   );
+  const scheduleFilters = useMemo(
+    () => scheduleFiltersFromDraft(scheduleFilterDraft),
+    [scheduleFilterDraft],
+  );
   const schedulesQuery = useQuery({
     enabled: actionPermissions.canRead,
-    queryFn: api.schedules,
-    queryKey: ["schedules"],
+    queryFn: () => api.schedules(scheduleFilters),
+    queryKey: ["schedules", scheduleFilters],
   });
   const schedules = useMemo(() => schedulesQuery.data?.data ?? [], [schedulesQuery.data?.data]);
   const occurrenceQueries = useQueries({
@@ -98,7 +111,7 @@ export function SchedulesPage() {
   });
   const scheduleAuditEvents = scheduleAuditQuery.data?.data ?? [];
   const nodesQuery = useQuery({
-    enabled: actionPermissions.canManage && actionPermissions.canReadNodes,
+    enabled: actionPermissions.canReadNodes,
     queryFn: () => api.nodes(),
     queryKey: ["nodes"],
   });
@@ -645,6 +658,13 @@ export function SchedulesPage() {
         </Card>
       ) : null}
 
+      <ScheduleFiltersPanel
+        filters={scheduleFilterDraft}
+        nodes={nodes}
+        onChange={setScheduleFilterDraft}
+        shownCount={schedules.length}
+      />
+
       {schedules.map((schedule) => {
         const actions = scheduleActionState(schedule, actionPermissions);
         const occurrences = occurrencesBySchedule.get(schedule.id) ?? [];
@@ -817,6 +837,11 @@ export function SchedulesPage() {
 
       {schedulesQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading schedules.</p>
+      ) : null}
+      {!schedulesQuery.isLoading && schedules.length === 0 ? (
+        <Card className="rounded-lg p-4 text-sm text-muted-foreground shadow-sm">
+          No schedules match the current filters.
+        </Card>
       ) : null}
       {saveScheduleMutation.isError ? (
         <p className="text-sm text-destructive">Schedule save failed.</p>

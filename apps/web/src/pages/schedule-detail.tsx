@@ -55,7 +55,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   const pagePermissions = scheduleDetailPagePermissions(currentUserQuery.data?.data);
   const schedulesQuery = useQuery({
     enabled: pagePermissions.canReadSchedule,
-    queryFn: api.schedules,
+    queryFn: () => api.schedules(),
     queryKey: ["schedules"],
   });
   const recordingsQuery = useQuery({
