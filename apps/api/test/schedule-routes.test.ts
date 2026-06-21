@@ -54,6 +54,7 @@ test("schedule routes deny users without required permissions", async () => {
       scheduleIds: [schedule().id],
     }),
     app.request(`/api/v1/schedules/${schedule().id}`),
+    app.request(`/api/v1/schedules/${schedule().id}/actions`),
     app.request(`/api/v1/schedules/${schedule().id}/occurrences`),
     requestJson(app, "/api/v1/schedules", "POST", {
       enabled: true,
@@ -73,7 +74,7 @@ test("schedule routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "schedule:manage:schedules.create",
@@ -81,6 +82,7 @@ test("schedule routes deny users without required permissions", async () => {
     "schedule:manage:schedules.run_now",
     "schedule:manage:schedules.skip_next",
     "schedule:manage:schedules.update",
+    "schedule:read:schedules.actions.read",
     "schedule:read:schedules.detail.read",
     "schedule:read:schedules.export",
     "schedule:read:schedules.export_selected",
@@ -305,6 +307,114 @@ test("schedule detail route returns scoped schedules only", async () => {
   assert.equal(missingResponse.status, 404);
 });
 
+test("schedule action summary returns scoped readiness links and node context", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:read", "schedule:manage"]);
+  const visible = schedule({
+    id: `sched_actions_visible_${randomUUID()}`,
+    name: "Visible Actions",
+    nodeId: "node_schedule_actions",
+  });
+  const hidden = schedule({ id: `sched_actions_hidden_${randomUUID()}` });
+  const store = scheduleStore([visible, hidden]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node({ id: visible.nodeId })]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: async () => [visible],
+    settingsStore: createSettingsStore(),
+  });
+
+  const visibleResponse = await app.request(`/api/v1/schedules/${visible.id}/actions`);
+  const hiddenResponse = await app.request(`/api/v1/schedules/${hidden.id}/actions`);
+  const body = (await visibleResponse.json()) as ScheduleActionsResponse;
+
+  assert.equal(visibleResponse.status, 200);
+  assert.equal(hiddenResponse.status, 404);
+  assert.equal(body.data.schedule.id, visible.id);
+  assert.equal(body.data.node?.id, visible.nodeId);
+  assert.equal(body.data.actions.edit.enabled, true);
+  assert.equal(body.data.actions.delete.enabled, true);
+  assert.equal(body.data.actions.runNow.enabled, true);
+  assert.equal(body.data.actions.skipNext.enabled, true);
+  assert.equal(body.data.actions.occurrences.enabled, true);
+  assert.equal(body.data.links.runNow, `/api/v1/schedules/${visible.id}/run-now`);
+  assert.equal(body.data.links.occurrences, `/api/v1/schedules/${visible.id}/occurrences`);
+});
+
+test("schedule action summary reports lifecycle blockers for disabled schedules", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:read", "schedule:manage"]);
+  const disabled = schedule({
+    enabled: false,
+    id: `sched_actions_disabled_${randomUUID()}`,
+    name: "Disabled Actions",
+  });
+  const store = scheduleStore([disabled]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: async () => [disabled],
+    settingsStore: createSettingsStore(),
+  });
+
+  const response = await app.request(`/api/v1/schedules/${disabled.id}/actions`);
+  const body = (await response.json()) as ScheduleActionsResponse;
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.actions.runNow.enabled, false);
+  assert.equal(body.data.actions.runNow.reason, "schedule_disabled");
+  assert.equal(body.data.actions.skipNext.enabled, false);
+  assert.equal(body.data.actions.skipNext.reason, "schedule_disabled");
+});
+
+test("disabled schedule run-now is rejected and audited", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["schedule:manage", "schedule:read"]);
+  const disabled = schedule({
+    enabled: false,
+    id: `sched_disabled_run_${randomUUID()}`,
+    nodeId: node().id,
+  });
+  const store = scheduleStore([disabled]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedSchedules: async () => [disabled],
+    settingsStore: createSettingsStore(),
+  });
+
+  const response = await app.request(`/api/v1/schedules/${disabled.id}/run-now`, {
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "schedules.run_now.failed" });
+
+  assert.equal(response.status, 409);
+  assert.equal(event?.reason, "schedule_disabled");
+  assert.equal(event?.target.id, disabled.id);
+});
+
 test("schedule routes create update run-now and skip-next with audit events", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
@@ -471,6 +581,15 @@ async function scheduleList(app: Hono<AppBindings>, query = "") {
   assert.equal(response.status, 200);
 
   return body.data;
+}
+
+interface ScheduleActionsResponse {
+  data: {
+    actions: Record<string, { enabled: boolean; href?: string; reason?: string }>;
+    links: Record<string, string | undefined>;
+    node?: RecorderNode;
+    schedule: ScheduleSummary;
+  };
 }
 
 function allowPermission(): RequirePermission {

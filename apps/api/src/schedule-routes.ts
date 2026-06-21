@@ -15,6 +15,7 @@ import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
 import type { RecordingStore } from "./recording-store.js";
+import { registerScheduleActionRoutes } from "./schedule-action-routes.js";
 import {
   nextRunAtForRecurrence,
   previewScheduleOccurrences,
@@ -171,6 +172,15 @@ export function registerScheduleRoutes({
       return c.json({ data: schedule });
     },
   );
+
+  registerScheduleActionRoutes({
+    app,
+    currentUser,
+    nodeStore,
+    requirePermission,
+    scheduleStore,
+    scopedSchedules,
+  });
 
   app.get(
     "/api/v1/schedules/:scheduleId/occurrences",
@@ -362,6 +372,11 @@ export function registerScheduleRoutes({
       if (!schedule) {
         await recordScheduleRunFailure(c, scheduleId, "schedule_not_found");
         return c.json({ error: "Schedule not found" }, 404);
+      }
+
+      if (!schedule.enabled) {
+        await recordScheduleRunFailure(c, scheduleId, "schedule_disabled", schedule.name);
+        return c.json({ error: "Disabled schedules cannot be run now" }, 409);
       }
 
       const node = await nodeStore.find(schedule.nodeId);

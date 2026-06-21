@@ -60,7 +60,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, node detail/list with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/exports, jobs, lifecycle coverage, settings list/detail/update, searchable health filters/detail/bulk lifecycle controls/exports, recording-job detail/date/relationship/capture filters and controls/exports, metrics |
+| Controller API | 🟨 | Auth, RBAC, audit, node detail/list with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/update, searchable health filters/detail/bulk lifecycle controls/exports, recording-job detail/date/relationship/capture filters and controls/exports, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -249,6 +249,7 @@ Current implementation baseline:
 - Schedules can pin ALSA, JACK, or PipeWire capture backend selection and target audio interfaces for run-now and due-run jobs, or inherit node defaults.
 - Schedule list API and UI filter visible schedules by search, enabled state, node, backend, and interface with removable active chips.
 - Schedule detail API returns only scoped visible schedules for detail pages.
+- Schedule detail API exposes scoped action summaries with permission, node, enabled-state, next-occurrence, and lifecycle readiness.
 - Schedule detail can play and download linked cached recordings with RBAC-mirrored controls.
 - Schedules UI mirrors RBAC for create, edit, run-now, skip-next, and delete actions.
 - Schedules page reads, occurrences, audit timeline, and node lookup mirror granular RBAC.
@@ -872,6 +873,7 @@ Current implementation baseline:
 250. ✅ Add scoped schedule export API.
 251. ✅ Add Settings detail APIs.
 252. ✅ Add scoped recording action summary API.
+253. ✅ Add scoped schedule action summary API.
 
 ## Open Questions
 
