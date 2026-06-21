@@ -60,7 +60,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, metrics |
+| Controller API | 🟨 | Auth, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -164,6 +164,7 @@ Current checked baseline:
 - Channel map staged rollout plans require an explicit apply step before assignments change.
 - Upload policies cover provider selection, retry budget, trigger, and confirmed-upload cache retention.
 - Retention policy templates cover controller and recorder cache cleanup intent.
+- Settings resources expose detail and action-summary APIs for profiles, watchdog policies, channel maps, rollout plans, upload providers, upload policies, and retention policies.
 - Schedules and recordings carry retention policy assignment.
 - Retention runner executes controller-cache max-age and max-bytes cleanup with audit events.
 - Recorder-cache delete-after-upload policies are pinned to jobs and executed by the agent after successful controller attach.
@@ -878,6 +879,7 @@ Current implementation baseline:
 254. ✅ Add scoped node action summary API.
 255. ✅ Add scoped health event action summary API.
 256. ✅ Add scoped recording-job action summary API.
+257. ✅ Add settings resource action summary APIs.
 
 ## Open Questions
 

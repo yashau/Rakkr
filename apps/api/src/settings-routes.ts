@@ -30,6 +30,7 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-ty
 import type { SettingsStore } from "./settings-store.js";
 import { createUploadPolicy, listUploadPolicies, updateUploadPolicy } from "./upload-policies.js";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
+import { registerSettingsActionRoutes } from "./settings-action-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
 
 interface SettingsRouteDependencies {
@@ -110,6 +111,14 @@ export function registerSettingsRoutes({
   registerSettingsDetailRoutes({
     app,
     channelMapAssignmentPlanStore,
+    requirePermission,
+    settingsStore,
+    uploadProviderStore,
+  });
+  registerSettingsActionRoutes({
+    app,
+    channelMapAssignmentPlanStore,
+    currentAuth,
     requirePermission,
     settingsStore,
     uploadProviderStore,

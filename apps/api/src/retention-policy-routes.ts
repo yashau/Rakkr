@@ -39,6 +39,58 @@ export function registerRetentionPolicyRoutes({
     async (c) => c.json({ data: await listRetentionPolicies() }),
   );
 
+  app.get(
+    "/api/v1/settings/retention-policies/:policyId/actions",
+    requirePermission("settings:read", "settings.retention_policies.actions.read", async (c) => {
+      const policyId = c.req.param("policyId");
+      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+
+      return policy
+        ? retentionPolicyAuditTarget(policy)
+        : { id: policyId, type: "retention_policy" };
+    }),
+    async (c) => {
+      const policyId = c.req.param("policyId");
+      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+
+      return policy
+        ? c.json({
+            data: {
+              actions: retentionPolicyActions(
+                currentAuth(c).user?.permissions ?? [],
+                `/api/v1/settings/retention-policies/${policy.id}`,
+              ),
+              links: {
+                detail: `/api/v1/settings/retention-policies/${policy.id}`,
+                update: `/api/v1/settings/retention-policies/${policy.id}`,
+              },
+              policy,
+            },
+          })
+        : c.json({ error: "Retention policy not found" }, 404);
+    },
+  );
+
+  app.get(
+    "/api/v1/settings/retention-policies/:policyId",
+    requirePermission("settings:read", "settings.retention_policies.detail.read", async (c) => {
+      const policyId = c.req.param("policyId");
+      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+
+      return policy
+        ? retentionPolicyAuditTarget(policy)
+        : { id: policyId, type: "retention_policy" };
+    }),
+    async (c) => {
+      const policyId = c.req.param("policyId");
+      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+
+      return policy
+        ? c.json({ data: policy })
+        : c.json({ error: "Retention policy not found" }, 404);
+    },
+  );
+
   app.post(
     "/api/v1/settings/retention-policies",
     requirePermission("settings:manage", "settings.retention_policies.create", () => ({
@@ -123,6 +175,39 @@ export function registerRetentionPolicyRoutes({
       return c.json({ data: updated });
     },
   );
+}
+
+function retentionPolicyActions(permissions: readonly string[], href: string) {
+  return {
+    detail: retentionPolicyActionState({
+      href,
+      method: "GET",
+      permission: "settings:read",
+      permissions,
+    }),
+    update: retentionPolicyActionState({
+      href,
+      method: "PATCH",
+      permission: "settings:manage",
+      permissions,
+    }),
+  };
+}
+
+function retentionPolicyActionState({
+  href,
+  method,
+  permission,
+  permissions,
+}: {
+  href: string;
+  method: "GET" | "PATCH";
+  permission: "settings:read" | "settings:manage";
+  permissions: readonly string[];
+}) {
+  return permissions.includes(permission)
+    ? { enabled: true, href, method, permission }
+    : { enabled: false, method, permission, reason: "missing_permission" };
 }
 
 async function recordSettingsFailure(

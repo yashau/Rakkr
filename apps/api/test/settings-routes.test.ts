@@ -153,41 +153,61 @@ test("settings read routes deny users without settings read", async () => {
   const responses = await Promise.all([
     app.request("/api/v1/settings/recording-profiles"),
     app.request("/api/v1/settings/recording-profiles/voice-mp3-vbr"),
+    app.request("/api/v1/settings/recording-profiles/voice-mp3-vbr/actions"),
     app.request("/api/v1/settings/watchdog-policies"),
     app.request("/api/v1/settings/watchdog-policies/scheduled-voice-watchdog"),
+    app.request("/api/v1/settings/watchdog-policies/scheduled-voice-watchdog/actions"),
     app.request("/api/v1/settings/channel-map-templates"),
     app.request("/api/v1/settings/channel-map-templates/template_missing"),
+    app.request("/api/v1/settings/channel-map-templates/template_missing/actions"),
     app.request("/api/v1/settings/channel-map-assignments"),
     app.request("/api/v1/settings/channel-map-assignment-plans"),
     app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing"),
+    app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing/actions"),
     app.request("/api/v1/settings/upload-providers"),
     app.request("/api/v1/settings/upload-providers/stub"),
+    app.request("/api/v1/settings/upload-providers/stub/actions"),
     app.request("/api/v1/settings/upload-policies"),
     app.request("/api/v1/settings/upload-policies/upload-policy-stub"),
+    app.request("/api/v1/settings/upload-policies/upload-policy-stub/actions"),
   ]);
   const deniedEvents = await auditStore.list({ outcome: "denied", permission: "settings:read" });
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignment_plans.actions.read",
     "settings.channel_map_assignment_plans.detail.read",
     "settings.channel_map_assignment_plans.read",
     "settings.channel_map_assignments.read",
+    "settings.channel_map_templates.actions.read",
     "settings.channel_map_templates.detail.read",
     "settings.channel_map_templates.read",
+    "settings.recording_profiles.actions.read",
     "settings.recording_profiles.detail.read",
     "settings.recording_profiles.read",
+    "settings.upload_policies.actions.read",
     "settings.upload_policies.detail.read",
     "settings.upload_policies.read",
+    "settings.upload_providers.actions.read",
     "settings.upload_providers.detail.read",
     "settings.upload_providers.read",
+    "settings.watchdog_policies.actions.read",
     "settings.watchdog_policies.detail.read",
     "settings.watchdog_policies.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
-  assert.ok(deniedEvents.every((event) => event.target.type === "settings"));
+  assert.deepEqual([...new Set(deniedEvents.map((event) => event.target.type))].sort(), [
+    "channel_map_assignment_plan",
+    "channel_map_template",
+    "recording_profile",
+    "settings",
+    "upload_policy",
+    "upload_provider",
+    "watchdog_policy",
+  ]);
 });
 
 test("settings detail routes return individual settings resources", async () => {

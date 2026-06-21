@@ -32,6 +32,8 @@ test("retention policy routes deny users without settings permissions", async ()
 
   const responses = await Promise.all([
     app.request("/api/v1/settings/retention-policies"),
+    app.request("/api/v1/settings/retention-policies/retention-keep-controller-cache"),
+    app.request("/api/v1/settings/retention-policies/retention-keep-controller-cache/actions"),
     requestJson(app, "/api/v1/settings/retention-policies", "POST", {
       action: "delete_cache",
       maxAgeDays: 30,
@@ -49,16 +51,20 @@ test("retention policy routes deny users without settings permissions", async ()
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403],
+    [403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.retention_policies.actions.read",
     "settings.retention_policies.create",
+    "settings.retention_policies.detail.read",
     "settings.retention_policies.read",
     "settings.retention_policies.update",
   ]);
   assert.deepEqual(deniedEvents.map((event) => event.permission).sort(), [
     "settings:manage",
     "settings:manage",
+    "settings:read",
+    "settings:read",
     "settings:read",
   ]);
 });
@@ -95,16 +101,35 @@ test("retention policy routes create update and audit snapshots", async () => {
       name: "Recorder Cache Cleanup Paused",
     },
   );
+  const detailResponse = await app.request(
+    `/api/v1/settings/retention-policies/${created.data.id}`,
+  );
+  const actionsResponse = await app.request(
+    `/api/v1/settings/retention-policies/${created.data.id}/actions`,
+  );
   const listResponse = await app.request("/api/v1/settings/retention-policies");
   const updated = (await updateResponse.json()) as {
     data: { enabled: boolean; maxAgeDays: number; name: string };
+  };
+  const detail = (await detailResponse.json()) as { data: { id: string; name: string } };
+  const actionSummary = (await actionsResponse.json()) as {
+    data: { actions: { update: { enabled: boolean; href?: string } } };
   };
   const listed = (await listResponse.json()) as { data: { id: string }[] };
   const audits = await auditStore.list({ permission: "settings:manage" });
 
   assert.equal(createResponse.status, 201);
   assert.equal(updateResponse.status, 200);
+  assert.equal(detailResponse.status, 200);
+  assert.equal(actionsResponse.status, 200);
   assert.equal(listResponse.status, 200);
+  assert.equal(detail.data.id, created.data.id);
+  assert.equal(detail.data.name, "Recorder Cache Cleanup Paused");
+  assert.equal(actionSummary.data.actions.update.enabled, true);
+  assert.equal(
+    actionSummary.data.actions.update.href,
+    `/api/v1/settings/retention-policies/${created.data.id}`,
+  );
   assert.equal(updated.data.enabled, false);
   assert.equal(updated.data.maxAgeDays, 21);
   assert.equal(updated.data.name, "Recorder Cache Cleanup Paused");
