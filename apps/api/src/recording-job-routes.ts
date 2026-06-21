@@ -15,6 +15,8 @@ import {
   retryRecordingJob,
   stopRecordingJobById,
 } from "./recording-jobs.js";
+import { registerRecordingJobActionRoutes } from "./recording-job-action-routes.js";
+import { scopedRecordingJobs } from "./recording-job-scope.js";
 import type { RecordingStore } from "./recording-store.js";
 
 interface RecordingJobRouteDependencies {
@@ -79,6 +81,17 @@ export function registerRecordingJobRoutes({
   requirePermission,
   scopedRecordings,
 }: RecordingJobRouteDependencies) {
+  const scopedJobs = (user: NonNullable<AuthResult["user"]>) =>
+    scopedRecordingJobs(user, scopedRecordings);
+
+  registerRecordingJobActionRoutes({
+    app,
+    currentUser,
+    recordingStore,
+    requirePermission,
+    scopedRecordings,
+  });
+
   app.get(
     "/api/v1/recording-jobs",
     requirePermission("recording:read", "recording_jobs.read"),
@@ -90,7 +103,7 @@ export function registerRecordingJobRoutes({
       }
 
       return c.json({
-        data: filterRecordingJobsForExport(await scopedRecordingJobs(currentUser(c)), query.data),
+        data: filterRecordingJobsForExport(await scopedJobs(currentUser(c)), query.data),
       });
     },
   );
@@ -108,10 +121,7 @@ export function registerRecordingJobRoutes({
         return c.json({ error: "Invalid recording job filters", issues: query.error.issues }, 400);
       }
 
-      const jobs = filterRecordingJobsForExport(
-        await scopedRecordingJobs(currentUser(c)),
-        query.data,
-      );
+      const jobs = filterRecordingJobsForExport(await scopedJobs(currentUser(c)), query.data);
 
       await recordAuditEvent(c, {
         action: "recording_jobs.export.succeeded",
@@ -153,9 +163,7 @@ export function registerRecordingJobRoutes({
       }
 
       const jobIds = uniqueJobIds(body.data.jobIds);
-      const visibleJobMap = new Map(
-        (await scopedRecordingJobs(currentUser(c))).map((job) => [job.id, job]),
-      );
+      const visibleJobMap = new Map((await scopedJobs(currentUser(c))).map((job) => [job.id, job]));
       const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
 
       if (hiddenIds.length > 0) {
@@ -205,9 +213,7 @@ export function registerRecordingJobRoutes({
     }),
     async (c) => {
       const jobId = c.req.param("jobId") ?? "";
-      const job = (await scopedRecordingJobs(currentUser(c))).find(
-        (candidate) => candidate.id === jobId,
-      );
+      const job = (await scopedJobs(currentUser(c))).find((candidate) => candidate.id === jobId);
 
       if (!job) {
         return c.json({ error: "Recording job not found" }, 404);
@@ -235,7 +241,7 @@ export function registerRecordingJobRoutes({
       }
 
       const jobIds = uniqueJobIds(body.data.jobIds);
-      const visibleJobs = await scopedRecordingJobs(currentUser(c));
+      const visibleJobs = await scopedJobs(currentUser(c));
       const visibleJobMap = new Map(visibleJobs.map((job) => [job.id, job]));
       const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
 
@@ -387,7 +393,7 @@ export function registerRecordingJobRoutes({
       }
 
       const jobIds = uniqueJobIds(body.data.jobIds);
-      const visibleJobs = await scopedRecordingJobs(currentUser(c));
+      const visibleJobs = await scopedJobs(currentUser(c));
       const visibleJobMap = new Map(visibleJobs.map((job) => [job.id, job]));
       const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
 
@@ -516,7 +522,7 @@ export function registerRecordingJobRoutes({
     }),
     async (c) => {
       const jobId = c.req.param("jobId") ?? "";
-      const visibleJobs = await scopedRecordingJobs(currentUser(c));
+      const visibleJobs = await scopedJobs(currentUser(c));
       const visibleJob = visibleJobs.find((job) => job.id === jobId);
 
       if (!visibleJob) {
@@ -622,15 +628,6 @@ export function registerRecordingJobRoutes({
       return c.json({ data: result.job }, 201);
     },
   );
-
-  async function scopedRecordingJobs(user: NonNullable<AuthResult["user"]>) {
-    const visibleRecordingIds = new Set(
-      (await scopedRecordings(user)).map((recording) => recording.id),
-    );
-    const jobs = await listRecordingJobs();
-
-    return jobs.filter((job) => visibleRecordingIds.has(job.recordingId));
-  }
 
   async function recordBulkJobFailure(
     c: Context<AppBindings>,

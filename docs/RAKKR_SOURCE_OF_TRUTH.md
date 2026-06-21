@@ -60,7 +60,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/date/relationship/capture filters and controls/exports, metrics |
+| Controller API | 🟨 | Auth, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -500,7 +500,7 @@ Current implementation baseline:
 - Ad-hoc controller lifecycle coverage verifies start, node job claim, heartbeat, cache attach, auto-upload queue, playback, download, and file streaming.
 - Scheduled lifecycle coverage verifies due-run metadata ownership through node claim, cache attach, auto-upload queue, playback, download, and file streaming.
 - Stop-request lifecycle coverage verifies controller stop requests survive agent cancellation as completed recordings.
-- Recording jobs workbench shows server-scoped status/search/created-date/node/backend/interface filters with removable active chips, job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered and selected-job CSV export, RBAC-mirrored stop controls for active jobs, audited retry controls for failed/cancelled jobs, and audited selected-job bulk stop/retry controls.
+- Recording jobs workbench shows server-scoped status/search/created-date/node/backend/interface filters with removable active chips, job status, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered and selected-job CSV export, scoped action summaries, RBAC-mirrored stop controls for active jobs, audited retry controls for failed/cancelled jobs, and audited selected-job bulk stop/retry controls.
 - Terminal health sync coverage verifies failed jobs become critical, unexpected cancellations become warning, controller-requested stops remain healthy, and cached recordings refresh health.
 - `mise run check` includes fake-controller agent smoke coverage for job heartbeat/status polling, controller capacity override, bounded concurrent jobs, concurrent-safe local health log output, rendered MP3/VBR, recorder-cache delete-after-upload, recorder-cache max-bytes idle sweep, cache-upload failure handling, and controller stop requests without audio hardware.
 - `mise run check` includes fake-controller agent smoke coverage for recorder-cache min-free-disk idle sweep using deterministic disk-pressure input.
@@ -877,6 +877,7 @@ Current implementation baseline:
 253. ✅ Add scoped schedule action summary API.
 254. ✅ Add scoped node action summary API.
 255. ✅ Add scoped health event action summary API.
+256. ✅ Add scoped recording-job action summary API.
 
 ## Open Questions
 

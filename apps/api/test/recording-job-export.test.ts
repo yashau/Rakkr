@@ -223,6 +223,125 @@ test("recording job detail route lets controller bearer reads pass agent route",
   assert.equal(missingTokenEvents.length, 0);
 });
 
+test("recording job action summary returns readiness links and payloads", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const recording = recordingSummary({ id: `rec_job_actions_${randomUUID()}` });
+  const recordingStore = memoryRecordingStore([recording]);
+  const failedJob = await createRecordingJob(recording);
+
+  await failRecordingJob(failedJob.id, "capture_failed");
+
+  const app = recordingApp({
+    auditStore,
+    permissionCalls,
+    permissions: ["recording:control", "recording:read"],
+    recordingStore,
+  });
+
+  const response = await app.request(`/api/v1/recording-jobs/${failedJob.id}/actions`);
+  const body = (await response.json()) as RecordingJobActionsResponse;
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "recording_jobs.actions.read",
+    permission: "recording:read",
+    target: { id: recording.id, type: "recording" },
+  });
+  assert.equal(body.data.job.id, failedJob.id);
+  assert.equal(body.data.recording?.id, recording.id);
+  assert.equal(body.data.retryConflict, undefined);
+  assert.equal(body.data.actions.detail.enabled, true);
+  assert.equal(body.data.actions.exportSelected.enabled, true);
+  assert.deepEqual(body.data.actions.exportSelected.payload, { jobIds: [failedJob.id] });
+  assert.equal(body.data.actions.retry.enabled, true);
+  assert.equal(body.data.actions.retry.href, `/api/v1/recording-jobs/${failedJob.id}/retry`);
+  assert.equal(body.data.actions.stop.enabled, false);
+  assert.equal(body.data.actions.stop.reason, "recording_job_not_stoppable");
+  assert.deepEqual(body.data.actions.stop.payload, { jobIds: [failedJob.id] });
+});
+
+test("recording job action summary explains lifecycle and dependency blockers", async () => {
+  const auditStore = createAuditStore("");
+  const recording = recordingSummary({ id: `rec_job_blockers_${randomUUID()}` });
+  const recordingStore = memoryRecordingStore([recording]);
+  const queuedJob = await createRecordingJob(recording);
+  const failedJob = await createRecordingJob(recording);
+
+  await failRecordingJob(failedJob.id, "capture_failed");
+
+  const app = recordingApp({
+    auditStore,
+    permissionCalls: [],
+    permissions: ["recording:control", "recording:read"],
+    recordingStore,
+  });
+
+  const queuedResponse = await app.request(`/api/v1/recording-jobs/${queuedJob.id}/actions`);
+  const failedResponse = await app.request(`/api/v1/recording-jobs/${failedJob.id}/actions`);
+  const queuedBody = (await queuedResponse.json()) as RecordingJobActionsResponse;
+  const failedBody = (await failedResponse.json()) as RecordingJobActionsResponse;
+
+  assert.equal(queuedResponse.status, 200);
+  assert.equal(queuedBody.data.actions.stop.enabled, true);
+  assert.equal(queuedBody.data.actions.retry.enabled, false);
+  assert.equal(queuedBody.data.actions.retry.reason, "recording_job_not_retryable");
+  assert.equal(failedResponse.status, 200);
+  assert.equal(failedBody.data.actions.retry.enabled, false);
+  assert.equal(failedBody.data.actions.retry.reason, "active_job_exists");
+  assert.equal(failedBody.data.retryConflict?.id, queuedJob.id);
+});
+
+test("recording job action summary reports missing permission before lifecycle readiness", async () => {
+  const auditStore = createAuditStore("");
+  const recording = recordingSummary({ id: `rec_job_permission_${randomUUID()}` });
+  const recordingStore = memoryRecordingStore([recording]);
+  const failedJob = await createRecordingJob(recording);
+
+  await failRecordingJob(failedJob.id, "capture_failed");
+
+  const app = recordingApp({
+    auditStore,
+    permissionCalls: [],
+    permissions: ["recording:read"],
+    recordingStore,
+  });
+
+  const response = await app.request(`/api/v1/recording-jobs/${failedJob.id}/actions`);
+  const body = (await response.json()) as RecordingJobActionsResponse;
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.actions.detail.enabled, true);
+  assert.equal(body.data.actions.retry.enabled, false);
+  assert.equal(body.data.actions.retry.reason, "missing_permission");
+  assert.equal(body.data.actions.stop.enabled, false);
+  assert.equal(body.data.actions.stop.reason, "missing_permission");
+});
+
+test("recording job action summary hides jobs outside scoped visibility", async () => {
+  const auditStore = createAuditStore("");
+  const permissionCalls: PermissionCall[] = [];
+  const visible = recordingSummary({ id: `rec_job_action_visible_${randomUUID()}` });
+  const hidden = recordingSummary({ id: `rec_job_action_hidden_${randomUUID()}` });
+  const recordingStore = memoryRecordingStore([visible, hidden]);
+  const hiddenJob = await createRecordingJob(hidden);
+  const app = recordingApp({
+    auditStore,
+    permissionCalls,
+    recordingStore,
+    visibleRecordingIds: [visible.id],
+  });
+
+  const response = await app.request(`/api/v1/recording-jobs/${hiddenJob.id}/actions`);
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "recording_jobs.actions.read",
+    permission: "recording:read",
+    target: { id: hidden.id, type: "recording" },
+  });
+});
+
 test("recording job export route is RBAC-gated and audited", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
@@ -562,23 +681,38 @@ interface PermissionCall {
   target?: AuditTarget;
 }
 
+interface RecordingJobActionsResponse {
+  data: {
+    actions: Record<
+      string,
+      { enabled: boolean; href?: string; payload?: Record<string, unknown>; reason?: string }
+    >;
+    job: RecordingJob;
+    recording?: RecordingSummary;
+    retryConflict?: RecordingJob;
+  };
+}
+
 function recordingApp({
   auditStore,
   permissionCalls,
+  permissions,
   recordingStore,
   visibleRecordingIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
   permissionCalls: PermissionCall[];
+  permissions?: Permission[];
   recordingStore: RecordingStore;
   visibleRecordingIds?: string[];
 }) {
   const app = new Hono<AppBindings>();
+  const currentUser = user(permissions);
 
   registerRecordingRoutes({
     app,
-    currentAuth: () => ({ user: user() }),
-    currentUser: () => user(),
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
     nodeStore: memoryNodeStore(),
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
@@ -737,13 +871,13 @@ function memorySettingsStore(): SettingsStore {
   } as SettingsStore;
 }
 
-function user(): CurrentUser {
+function user(permissions: Permission[] = ["recording:read"]): CurrentUser {
   return {
     email: "recording-job-export@example.com",
     groups: [],
     id: "user_recording_job_export",
     name: "Recording Job Export User",
-    permissions: ["recording:read"],
+    permissions,
     provider: "local",
     resourceGrants: [],
     roles: ["operator"],
