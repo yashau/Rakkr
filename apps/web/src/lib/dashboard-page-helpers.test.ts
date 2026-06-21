@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CurrentUser, HealthEvent, Permission } from "@rakkr/shared";
+import type { CurrentUser, HealthEvent, Permission, RecordingJob } from "@rakkr/shared";
 
 import {
+  dashboardActiveRecordingJobs,
   dashboardActiveHealthEvents,
   dashboardIncidentActions,
   dashboardPagePermissions,
@@ -12,34 +13,104 @@ import {
 test("dashboard page reads and meters require node read permission", () => {
   assert.deepEqual(dashboardPagePermissions(undefined), {
     canAcknowledgeHealth: false,
+    canControlRecordings: false,
+    canCreateRecordings: false,
     canRead: false,
     canReadHealth: false,
     canReadMeters: false,
+    canReadRecordings: false,
+    canReadSettings: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["metrics:read"])), {
     canAcknowledgeHealth: false,
+    canControlRecordings: false,
+    canCreateRecordings: false,
     canRead: false,
     canReadHealth: false,
     canReadMeters: false,
+    canReadRecordings: false,
+    canReadSettings: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["node:read"])), {
     canAcknowledgeHealth: false,
+    canControlRecordings: false,
+    canCreateRecordings: false,
     canRead: true,
     canReadHealth: false,
     canReadMeters: true,
+    canReadRecordings: false,
+    canReadSettings: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["health:read"])), {
     canAcknowledgeHealth: false,
+    canControlRecordings: false,
+    canCreateRecordings: false,
     canRead: false,
     canReadHealth: true,
     canReadMeters: false,
+    canReadRecordings: false,
+    canReadSettings: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["health:acknowledge"])), {
     canAcknowledgeHealth: true,
+    canControlRecordings: false,
+    canCreateRecordings: false,
     canRead: false,
     canReadHealth: false,
     canReadMeters: false,
+    canReadRecordings: false,
+    canReadSettings: false,
   });
+  assert.deepEqual(
+    dashboardPagePermissions(
+      user(["recording:control", "recording:create", "recording:read", "settings:read"]),
+    ),
+    {
+      canAcknowledgeHealth: false,
+      canControlRecordings: true,
+      canCreateRecordings: true,
+      canRead: false,
+      canReadHealth: false,
+      canReadMeters: false,
+      canReadRecordings: true,
+      canReadSettings: true,
+    },
+  );
+});
+
+test("dashboard active recording jobs prefer running newest work", () => {
+  const jobs = [
+    recordingJob({
+      createdAt: "2026-06-21T10:00:00.000Z",
+      id: "job_queued_new",
+      status: "queued",
+    }),
+    recordingJob({
+      createdAt: "2026-06-21T12:00:00.000Z",
+      id: "job_completed",
+      status: "completed",
+    }),
+    recordingJob({
+      createdAt: "2026-06-21T09:00:00.000Z",
+      id: "job_running_old",
+      status: "running",
+    }),
+    recordingJob({
+      createdAt: "2026-06-21T11:00:00.000Z",
+      id: "job_running_new",
+      status: "running",
+    }),
+    recordingJob({
+      createdAt: "2026-06-21T13:00:00.000Z",
+      id: "job_stop_requested",
+      status: "stop_requested",
+    }),
+  ];
+
+  assert.deepEqual(
+    dashboardActiveRecordingJobs(jobs, 3).map((job) => job.id),
+    ["job_running_new", "job_running_old", "job_queued_new"],
+  );
 });
 
 test("dashboard selected node stays visible or falls back to first node", () => {
@@ -117,4 +188,41 @@ function healthEvent(input: Partial<HealthEvent> = {}) {
     type: "watchdog.node_offline",
     ...input,
   } satisfies HealthEvent;
+}
+
+function recordingJob(input: Partial<ReturnType<typeof baseRecordingJob>> = {}) {
+  return {
+    ...baseRecordingJob(),
+    ...input,
+  };
+}
+
+function baseRecordingJob(): RecordingJob {
+  return {
+    claimedBy: undefined,
+    command: {
+      captureBackend: "alsa",
+      captureChannels: 2,
+      captureDevice: "hw:0,0",
+      captureFormat: "S16_LE",
+      captureInterfaceId: undefined,
+      captureSampleRate: 48_000,
+      durationSeconds: 3600,
+      outputCodec: "mp3",
+      outputFileName: "test.mp3",
+      outputVbr: true,
+      type: "alsa_capture",
+    },
+    completedAt: undefined,
+    createdAt: "2026-06-21T09:00:00.000Z",
+    failureReason: undefined,
+    id: "job_1",
+    lastHeartbeatAt: undefined,
+    leaseExpiresAt: undefined,
+    nodeId: "node_1",
+    recordingId: "rec_1",
+    startedAt: undefined,
+    status: "queued",
+    stopRequestedAt: undefined,
+  };
 }

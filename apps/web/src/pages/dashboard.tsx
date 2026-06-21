@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, HardDrive, Radio, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, HardDrive, Radio, ShieldCheck, Square } from "lucide-react";
 
 import { MeterBank } from "@/components/meter-bank";
+import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import {
+  dashboardActiveRecordingJobs,
   dashboardActiveHealthEvents,
   dashboardIncidentActions,
   dashboardPagePermissions,
@@ -16,10 +18,12 @@ import {
 } from "@/lib/dashboard-page-helpers";
 import { formatDateTime } from "@/lib/dates";
 import { healthEventTargetLabel, readableHealthEventType } from "@/lib/health-page-helpers";
+import { recordingJobStatusClass, recordingJobStopActionState } from "@/lib/jobs-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
+  const [notice, setNotice] = useState<{ detail: string; title: string }>();
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -49,6 +53,12 @@ export function DashboardPage() {
   const nodes = nodesQuery.data?.data ?? [];
   const visibleSelectedNodeId = dashboardSelectedNodeId(selectedNodeId, nodes);
   const node = nodes.find((candidate) => candidate.id === visibleSelectedNodeId);
+  const recordingJobsQuery = useQuery({
+    enabled: pagePermissions.canReadRecordings && Boolean(visibleSelectedNodeId),
+    queryFn: () => api.recordingJobs({ nodeId: visibleSelectedNodeId }),
+    queryKey: ["recording-jobs", "dashboard", visibleSelectedNodeId],
+    refetchInterval: 3000,
+  });
   const meterQuery = useQuery({
     enabled: pagePermissions.canReadMeters && Boolean(visibleSelectedNodeId),
     queryFn: () => api.meterFrame(visibleSelectedNodeId),
@@ -65,10 +75,30 @@ export function DashboardPage() {
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
+  const stopRecordingMutation = useMutation({
+    mutationFn: api.stopRecording,
+    onError: () =>
+      setNotice({
+        detail: "The selected recording job could not be stopped.",
+        title: "Stop failed",
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      void queryClient.invalidateQueries({ queryKey: ["status"] });
+      setNotice({
+        detail: "A stop request was sent to the recorder node.",
+        title: "Stop requested",
+      });
+    },
+  });
 
   const status = statusQuery.data;
   const levels = meterQuery.data?.data.levels ?? [];
   const activeHealthEvents = dashboardActiveHealthEvents(healthEventsQuery.data?.data ?? []);
+  const activeRecordingJobs = dashboardActiveRecordingJobs(recordingJobsQuery.data?.data ?? []);
 
   useEffect(() => {
     if (visibleSelectedNodeId !== selectedNodeId) {
@@ -138,6 +168,22 @@ export function DashboardPage() {
         </Card>
       </div>
 
+      {notice ? (
+        <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="font-medium">{notice.title}</div>
+          <div className="text-emerald-700">{notice.detail}</div>
+        </section>
+      ) : null}
+
+      {pagePermissions.canCreateRecordings ? (
+        <RecordingStartPanel
+          canReadNodes={pagePermissions.canRead}
+          canReadSettings={pagePermissions.canReadSettings}
+          fixedNodeId={visibleSelectedNodeId}
+          onNotice={setNotice}
+        />
+      ) : null}
+
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <section className="grid gap-3">
           <div className="flex flex-col gap-2 rounded-lg border border-border bg-panel p-3 shadow-sm md:flex-row md:items-center md:justify-between">
@@ -199,6 +245,82 @@ export function DashboardPage() {
                 <dd>{status?.watchdogPolicy.name ?? "n/a"}</dd>
               </div>
             </dl>
+          </section>
+
+          <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Active Recording Jobs</h2>
+                <p className="text-xs text-muted-foreground">
+                  {pagePermissions.canReadRecordings
+                    ? `${activeRecordingJobs.length} on selected node`
+                    : "Recording jobs unavailable"}
+                </p>
+              </div>
+              <Radio className="size-5 text-teal-700" />
+            </div>
+
+            {!pagePermissions.canReadRecordings ? (
+              <p className="text-sm text-muted-foreground">Requires recording read permission.</p>
+            ) : activeRecordingJobs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active jobs for this node.</p>
+            ) : (
+              <div className="grid gap-2">
+                {activeRecordingJobs.map((job) => {
+                  const stopAction = recordingJobStopActionState(
+                    job,
+                    pagePermissions.canControlRecordings,
+                  );
+
+                  return (
+                    <div
+                      className="rounded-md border border-border bg-muted/20 p-2 text-sm"
+                      key={job.id}
+                    >
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <Badge className={recordingJobStatusClass(job.status)} variant="outline">
+                          {job.status}
+                        </Badge>
+                        <span className="truncate font-mono text-xs text-muted-foreground">
+                          {job.recordingId}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Created {formatDateTime(job.createdAt)}
+                      </div>
+                      {job.startedAt ? (
+                        <div className="text-xs text-muted-foreground">
+                          Started {formatDateTime(job.startedAt)}
+                        </div>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge className="bg-background" variant="outline">
+                          {job.command.captureBackend ?? "alsa"}
+                        </Badge>
+                        {job.command.captureInterfaceId ? (
+                          <Badge className="max-w-full bg-background" variant="outline">
+                            <span className="truncate">{job.command.captureInterfaceId}</span>
+                          </Badge>
+                        ) : null}
+                        {pagePermissions.canControlRecordings ? (
+                          <Button
+                            disabled={!stopAction.canStop || stopRecordingMutation.isPending}
+                            onClick={() => stopRecordingMutation.mutate(job.recordingId)}
+                            size="sm"
+                            title={stopAction.title}
+                            type="button"
+                            variant="outline"
+                          >
+                            <Square className="size-4" />
+                            Stop
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">

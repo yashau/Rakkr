@@ -1,4 +1,4 @@
-import type { CurrentUser, HealthEvent, RecorderNode } from "@rakkr/shared";
+import type { CurrentUser, HealthEvent, RecorderNode, RecordingJob } from "@rakkr/shared";
 
 export type DashboardIncidentAction = "acknowledge" | "resolve";
 
@@ -8,9 +8,13 @@ export function dashboardPagePermissions(user: CurrentUser | undefined) {
 
   return {
     canAcknowledgeHealth: permissions.includes("health:acknowledge"),
+    canControlRecordings: permissions.includes("recording:control"),
+    canCreateRecordings: permissions.includes("recording:create"),
     canRead,
     canReadHealth: permissions.includes("health:read"),
     canReadMeters: canRead,
+    canReadRecordings: permissions.includes("recording:read"),
+    canReadSettings: permissions.includes("settings:read"),
   };
 }
 
@@ -37,6 +41,22 @@ export function dashboardActiveHealthEvents(events: HealthEvent[], limit = 4) {
     .slice(0, limit);
 }
 
+export function dashboardActiveRecordingJobs(jobs: RecordingJob[], limit = 4) {
+  return jobs
+    .filter((job) => activeRecordingJobStatuses.includes(job.status))
+    .sort((left, right) => {
+      const statusDelta =
+        recordingJobStatusRank(right.status) - recordingJobStatusRank(left.status);
+
+      if (statusDelta !== 0) {
+        return statusDelta;
+      }
+
+      return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+    })
+    .slice(0, limit);
+}
+
 export function dashboardIncidentActions(status: HealthEvent["status"]): DashboardIncidentAction[] {
   if (status === "resolved") {
     return [];
@@ -47,6 +67,28 @@ export function dashboardIncidentActions(status: HealthEvent["status"]): Dashboa
   }
 
   return ["resolve"];
+}
+
+const activeRecordingJobStatuses: Array<RecordingJob["status"]> = [
+  "queued",
+  "running",
+  "stop_requested",
+];
+
+function recordingJobStatusRank(status: RecordingJob["status"]) {
+  if (status === "running") {
+    return 3;
+  }
+
+  if (status === "queued") {
+    return 2;
+  }
+
+  if (status === "stop_requested") {
+    return 1;
+  }
+
+  return 0;
 }
 
 function severityRank(severity: HealthEvent["severity"]) {

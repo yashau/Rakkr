@@ -17,6 +17,7 @@ import {
 interface RecordingStartPanelProps {
   canReadNodes: boolean;
   canReadSettings: boolean;
+  fixedNodeId?: string;
   onNotice: (notice: { detail: string; title: string }) => void;
 }
 
@@ -30,6 +31,7 @@ const selectClassName =
 export function RecordingStartPanel({
   canReadNodes,
   canReadSettings,
+  fixedNodeId = "",
   onNotice,
 }: RecordingStartPanelProps) {
   const queryClient = useQueryClient();
@@ -61,6 +63,7 @@ export function RecordingStartPanel({
       queryClient.invalidateQueries({ queryKey: ["recording-facets"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      queryClient.invalidateQueries({ queryKey: ["status"] });
       onNotice({
         detail: "The ad hoc recording job was queued.",
         title: "Recording started",
@@ -70,7 +73,8 @@ export function RecordingStartPanel({
   const nodes = nodesQuery.data?.data ?? emptyNodes;
   const recordingProfiles = recordingProfilesQuery.data?.data ?? emptyRecordingProfiles;
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
-  const selectedNodeId = draft.nodeId || nodes[0]?.id || "";
+  const fixedNode = nodes.find((node) => node.id === fixedNodeId);
+  const selectedNodeId = fixedNode?.id || draft.nodeId || nodes[0]?.id || "";
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedRecordingProfileId = draft.recordingProfileId || recordingProfiles[0]?.id || "";
   const selectedUploadPolicyId = draft.uploadPolicyId || uploadPolicies[0]?.id || "";
@@ -94,6 +98,7 @@ export function RecordingStartPanel({
         <Label htmlFor="recording-start-node">Node</Label>
         <select
           className={selectClassName}
+          disabled={Boolean(fixedNode)}
           id="recording-start-node"
           onChange={(event) => {
             const nextNode = nodes.find((node) => node.id === event.target.value);
