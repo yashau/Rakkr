@@ -1,10 +1,13 @@
 import type { CurrentUser, HealthEvent, RecorderNode } from "@rakkr/shared";
 
+export type DashboardIncidentAction = "acknowledge" | "resolve";
+
 export function dashboardPagePermissions(user: CurrentUser | undefined) {
   const permissions = user?.permissions ?? [];
   const canRead = permissions.includes("node:read");
 
   return {
+    canAcknowledgeHealth: permissions.includes("health:acknowledge"),
     canRead,
     canReadHealth: permissions.includes("health:read"),
     canReadMeters: canRead,
@@ -32,6 +35,18 @@ export function dashboardActiveHealthEvents(events: HealthEvent[], limit = 4) {
       return Date.parse(right.openedAt) - Date.parse(left.openedAt);
     })
     .slice(0, limit);
+}
+
+export function dashboardIncidentActions(status: HealthEvent["status"]): DashboardIncidentAction[] {
+  if (status === "resolved") {
+    return [];
+  }
+
+  if (status === "open") {
+    return ["acknowledge", "resolve"];
+  }
+
+  return ["resolve"];
 }
 
 function severityRank(severity: HealthEvent["severity"]) {

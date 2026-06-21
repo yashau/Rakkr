@@ -221,7 +221,7 @@ Current partial implementation:
 - RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank can select any visible recorder node and shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
-- Dashboard shows a compact RBAC-gated active incident panel from central health events.
+- Dashboard shows a compact RBAC-gated active incident panel from central health events with acknowledge/resolve controls.
 - Nodes UI mirrors RBAC for enrollment, token rotation, live listen, and inventory edits.
 
 ---
@@ -854,6 +854,7 @@ Current implementation baseline:
 237. ✅ Add upload queue workbench filters and retry controls.
 238. ✅ Add selectable dashboard meter source.
 239. ✅ Add dashboard active incident panel.
+240. ✅ Add dashboard incident lifecycle controls.
 
 ## Open Questions
 

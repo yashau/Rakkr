@@ -1,21 +1,25 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, HardDrive, Radio, ShieldCheck } from "lucide-react";
 
 import { MeterBank } from "@/components/meter-bank";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import {
   dashboardActiveHealthEvents,
+  dashboardIncidentActions,
   dashboardPagePermissions,
   dashboardSelectedNodeId,
+  type DashboardIncidentAction,
 } from "@/lib/dashboard-page-helpers";
 import { formatDateTime } from "@/lib/dates";
 import { healthEventTargetLabel, readableHealthEventType } from "@/lib/health-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 export function DashboardPage() {
+  const queryClient = useQueryClient();
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -50,6 +54,16 @@ export function DashboardPage() {
     queryFn: () => api.meterFrame(visibleSelectedNodeId),
     queryKey: ["meters", visibleSelectedNodeId],
     refetchInterval: 1000,
+  });
+  const incidentActionMutation = useMutation({
+    mutationFn: ({ action, eventId }: { action: DashboardIncidentAction; eventId: string }) =>
+      api.updateHealthEventLifecycle(eventId, action, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["health-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+    },
   });
 
   const status = statusQuery.data;
@@ -224,10 +238,31 @@ export function DashboardPage() {
                     <div className="text-xs text-muted-foreground">
                       Opened {formatDateTime(event.openedAt)}
                     </div>
+                    {pagePermissions.canAcknowledgeHealth ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {dashboardIncidentActions(event.status).map((action) => (
+                          <Button
+                            disabled={incidentActionMutation.isPending}
+                            key={action}
+                            onClick={() =>
+                              incidentActionMutation.mutate({ action, eventId: event.id })
+                            }
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            {incidentActionLabel(action)}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
             )}
+            {incidentActionMutation.isError ? (
+              <p className="mt-2 text-sm text-destructive">Incident update failed.</p>
+            ) : null}
           </section>
         </div>
       </div>
@@ -245,4 +280,8 @@ function healthSeverityClass(severity: "critical" | "info" | "warning") {
   }
 
   return "border-sky-200 bg-sky-50 text-sky-700";
+}
+
+function incidentActionLabel(action: DashboardIncidentAction) {
+  return action === "acknowledge" ? "Acknowledge" : "Resolve";
 }

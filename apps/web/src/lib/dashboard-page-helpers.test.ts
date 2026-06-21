@@ -4,29 +4,40 @@ import type { CurrentUser, HealthEvent, Permission } from "@rakkr/shared";
 
 import {
   dashboardActiveHealthEvents,
+  dashboardIncidentActions,
   dashboardPagePermissions,
   dashboardSelectedNodeId,
 } from "./dashboard-page-helpers";
 
 test("dashboard page reads and meters require node read permission", () => {
   assert.deepEqual(dashboardPagePermissions(undefined), {
+    canAcknowledgeHealth: false,
     canRead: false,
     canReadHealth: false,
     canReadMeters: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["metrics:read"])), {
+    canAcknowledgeHealth: false,
     canRead: false,
     canReadHealth: false,
     canReadMeters: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["node:read"])), {
+    canAcknowledgeHealth: false,
     canRead: true,
     canReadHealth: false,
     canReadMeters: true,
   });
   assert.deepEqual(dashboardPagePermissions(user(["health:read"])), {
+    canAcknowledgeHealth: false,
     canRead: false,
     canReadHealth: true,
+    canReadMeters: false,
+  });
+  assert.deepEqual(dashboardPagePermissions(user(["health:acknowledge"])), {
+    canAcknowledgeHealth: true,
+    canRead: false,
+    canReadHealth: false,
     canReadMeters: false,
   });
 });
@@ -70,6 +81,13 @@ test("dashboard active health events prefer unresolved critical recent incidents
     dashboardActiveHealthEvents(events, 2).map((event) => event.id),
     ["health_critical_new", "health_critical_old"],
   );
+});
+
+test("dashboard incident actions stay compact for active incident states", () => {
+  assert.deepEqual(dashboardIncidentActions("open"), ["acknowledge", "resolve"]);
+  assert.deepEqual(dashboardIncidentActions("acknowledged"), ["resolve"]);
+  assert.deepEqual(dashboardIncidentActions("suppressed"), ["resolve"]);
+  assert.deepEqual(dashboardIncidentActions("resolved"), []);
 });
 
 function user(permissions: Permission[]): CurrentUser {
