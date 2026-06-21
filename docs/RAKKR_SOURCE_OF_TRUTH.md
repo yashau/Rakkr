@@ -61,7 +61,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | 🟨 | Auth, RBAC, audit, nodes with location/backend/last-seen filters/exports, capacity, recordings, ad-hoc and scheduled backend/interface selection, schedule list filters, jobs, lifecycle coverage, settings, searchable health filters/bulk lifecycle controls/exports, recording-job date/relationship/capture filters and controls/exports, metrics |
-| Controller UI | 🟨 | Dashboard with selectable meter source, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
+| Controller UI | 🟨 | Dashboard with selectable meter source and active incidents, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
@@ -221,6 +221,7 @@ Current partial implementation:
 - RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank can select any visible recorder node and shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
+- Dashboard shows a compact RBAC-gated active incident panel from central health events.
 - Nodes UI mirrors RBAC for enrollment, token rotation, live listen, and inventory edits.
 
 ---
@@ -852,6 +853,7 @@ Current implementation baseline:
 236. ✅ Add active audit trail filter chips.
 237. ✅ Add upload queue workbench filters and retry controls.
 238. ✅ Add selectable dashboard meter source.
+239. ✅ Add dashboard active incident panel.
 
 ## Open Questions
 

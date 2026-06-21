@@ -1,21 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CurrentUser, Permission } from "@rakkr/shared";
+import type { CurrentUser, HealthEvent, Permission } from "@rakkr/shared";
 
-import { dashboardPagePermissions, dashboardSelectedNodeId } from "./dashboard-page-helpers";
+import {
+  dashboardActiveHealthEvents,
+  dashboardPagePermissions,
+  dashboardSelectedNodeId,
+} from "./dashboard-page-helpers";
 
 test("dashboard page reads and meters require node read permission", () => {
   assert.deepEqual(dashboardPagePermissions(undefined), {
     canRead: false,
+    canReadHealth: false,
     canReadMeters: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["metrics:read"])), {
     canRead: false,
+    canReadHealth: false,
     canReadMeters: false,
   });
   assert.deepEqual(dashboardPagePermissions(user(["node:read"])), {
     canRead: true,
+    canReadHealth: false,
     canReadMeters: true,
+  });
+  assert.deepEqual(dashboardPagePermissions(user(["health:read"])), {
+    canRead: false,
+    canReadHealth: true,
+    canReadMeters: false,
   });
 });
 
@@ -26,6 +38,38 @@ test("dashboard selected node stays visible or falls back to first node", () => 
   assert.equal(dashboardSelectedNodeId("node_missing", nodes), "node_a");
   assert.equal(dashboardSelectedNodeId("", nodes), "node_a");
   assert.equal(dashboardSelectedNodeId("node_missing", []), "");
+});
+
+test("dashboard active health events prefer unresolved critical recent incidents", () => {
+  const events = [
+    healthEvent({
+      id: "health_warning_new",
+      openedAt: "2026-06-21T10:00:00.000Z",
+      severity: "warning",
+    }),
+    healthEvent({
+      id: "health_resolved_critical",
+      openedAt: "2026-06-21T12:00:00.000Z",
+      resolvedAt: "2026-06-21T12:30:00.000Z",
+      severity: "critical",
+      status: "resolved",
+    }),
+    healthEvent({
+      id: "health_critical_old",
+      openedAt: "2026-06-21T08:00:00.000Z",
+      severity: "critical",
+    }),
+    healthEvent({
+      id: "health_critical_new",
+      openedAt: "2026-06-21T11:00:00.000Z",
+      severity: "critical",
+    }),
+  ];
+
+  assert.deepEqual(
+    dashboardActiveHealthEvents(events, 2).map((event) => event.id),
+    ["health_critical_new", "health_critical_old"],
+  );
 });
 
 function user(permissions: Permission[]): CurrentUser {
@@ -39,4 +83,20 @@ function user(permissions: Permission[]): CurrentUser {
     resourceGrants: [],
     roles: ["operator"],
   };
+}
+
+function healthEvent(input: Partial<HealthEvent> = {}) {
+  return {
+    acknowledgedAt: null,
+    details: {},
+    id: "health_1",
+    openedAt: "2026-06-21T09:00:00.000Z",
+    resolvedAt: null,
+    severity: "info",
+    status: "open",
+    suppressedAt: null,
+    suppressedUntil: null,
+    type: "watchdog.node_offline",
+    ...input,
+  } satisfies HealthEvent;
 }

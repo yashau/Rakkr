@@ -1,10 +1,12 @@
-import type { CurrentUser, RecorderNode } from "@rakkr/shared";
+import type { CurrentUser, HealthEvent, RecorderNode } from "@rakkr/shared";
 
 export function dashboardPagePermissions(user: CurrentUser | undefined) {
-  const canRead = user?.permissions.includes("node:read") ?? false;
+  const permissions = user?.permissions ?? [];
+  const canRead = permissions.includes("node:read");
 
   return {
     canRead,
+    canReadHealth: permissions.includes("health:read"),
     canReadMeters: canRead,
   };
 }
@@ -15,4 +17,31 @@ export function dashboardSelectedNodeId(selectedNodeId: string, nodes: Pick<Reco
   }
 
   return nodes[0]?.id ?? "";
+}
+
+export function dashboardActiveHealthEvents(events: HealthEvent[], limit = 4) {
+  return events
+    .filter((event) => event.status !== "resolved")
+    .sort((left, right) => {
+      const severityDelta = severityRank(right.severity) - severityRank(left.severity);
+
+      if (severityDelta !== 0) {
+        return severityDelta;
+      }
+
+      return Date.parse(right.openedAt) - Date.parse(left.openedAt);
+    })
+    .slice(0, limit);
+}
+
+function severityRank(severity: HealthEvent["severity"]) {
+  if (severity === "critical") {
+    return 3;
+  }
+
+  if (severity === "warning") {
+    return 2;
+  }
+
+  return 1;
 }

@@ -6,8 +6,13 @@ import { MeterBank } from "@/components/meter-bank";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { dashboardPagePermissions, dashboardSelectedNodeId } from "@/lib/dashboard-page-helpers";
+import {
+  dashboardActiveHealthEvents,
+  dashboardPagePermissions,
+  dashboardSelectedNodeId,
+} from "@/lib/dashboard-page-helpers";
 import { formatDateTime } from "@/lib/dates";
+import { healthEventTargetLabel, readableHealthEventType } from "@/lib/health-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 export function DashboardPage() {
@@ -30,6 +35,12 @@ export function DashboardPage() {
     queryKey: ["nodes"],
     refetchInterval: 5000,
   });
+  const healthEventsQuery = useQuery({
+    enabled: pagePermissions.canRead && pagePermissions.canReadHealth,
+    queryFn: () => api.healthEvents({ limit: 50 }),
+    queryKey: ["health-events", "dashboard"],
+    refetchInterval: 5000,
+  });
 
   const nodes = nodesQuery.data?.data ?? [];
   const visibleSelectedNodeId = dashboardSelectedNodeId(selectedNodeId, nodes);
@@ -43,6 +54,7 @@ export function DashboardPage() {
 
   const status = statusQuery.data;
   const levels = meterQuery.data?.data.levels ?? [];
+  const activeHealthEvents = dashboardActiveHealthEvents(healthEventsQuery.data?.data ?? []);
 
   useEffect(() => {
     if (visibleSelectedNodeId !== selectedNodeId) {
@@ -139,41 +151,98 @@ export function DashboardPage() {
           <MeterBank levels={levels} title={node ? `${node.alias} Meters` : "Meters"} />
         </section>
 
-        <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold">Node</h2>
-              <p className="text-xs text-muted-foreground">{node?.location.room ?? "No node"}</p>
+        <div className="grid gap-5">
+          <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold">Node</h2>
+                <p className="text-xs text-muted-foreground">{node?.location.room ?? "No node"}</p>
+              </div>
+              <Badge className={nodeStatusBadgeClass(node?.status)} variant="outline">
+                {node?.status ?? "offline"}
+              </Badge>
             </div>
-            <Badge className={nodeStatusBadgeClass(node?.status)} variant="outline">
-              {node?.status ?? "offline"}
-            </Badge>
-          </div>
 
-          <dl className="grid gap-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Alias</dt>
-              <dd className="font-medium">{node?.alias ?? "Unknown"}</dd>
+            <dl className="grid gap-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Alias</dt>
+                <dd className="font-medium">{node?.alias ?? "Unknown"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Address</dt>
+                <dd className="font-mono text-xs">{node?.ipAddresses.join(", ") ?? "n/a"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Last seen</dt>
+                <dd>{node ? formatDateTime(node.lastSeenAt) : "n/a"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Profile</dt>
+                <dd>{status?.recordingProfile.name ?? "n/a"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Watchdog</dt>
+                <dd>{status?.watchdogPolicy.name ?? "n/a"}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Active Incidents</h2>
+                <p className="text-xs text-muted-foreground">
+                  {pagePermissions.canReadHealth
+                    ? `${activeHealthEvents.length} highlighted`
+                    : "Health events unavailable"}
+                </p>
+              </div>
+              <AlertTriangle className="size-5 text-amber-600" />
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Address</dt>
-              <dd className="font-mono text-xs">{node?.ipAddresses.join(", ") ?? "n/a"}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Last seen</dt>
-              <dd>{node ? formatDateTime(node.lastSeenAt) : "n/a"}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Profile</dt>
-              <dd>{status?.recordingProfile.name ?? "n/a"}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Watchdog</dt>
-              <dd>{status?.watchdogPolicy.name ?? "n/a"}</dd>
-            </div>
-          </dl>
-        </section>
+
+            {!pagePermissions.canReadHealth ? (
+              <p className="text-sm text-muted-foreground">Requires health read permission.</p>
+            ) : activeHealthEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active health incidents.</p>
+            ) : (
+              <div className="grid gap-2">
+                {activeHealthEvents.map((event) => (
+                  <div
+                    className="rounded-md border border-border bg-muted/20 p-2 text-sm"
+                    key={event.id}
+                  >
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <Badge className={healthSeverityClass(event.severity)} variant="outline">
+                        {event.severity}
+                      </Badge>
+                      <Badge variant="secondary">{event.status}</Badge>
+                    </div>
+                    <div className="font-medium">{readableHealthEventType(event.type)}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {healthEventTargetLabel(event, { nodes }) || "Unscoped"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Opened {formatDateTime(event.openedAt)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );
+}
+
+function healthSeverityClass(severity: "critical" | "info" | "warning") {
+  if (severity === "critical") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+
+  if (severity === "warning") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-sky-200 bg-sky-50 text-sky-700";
 }
