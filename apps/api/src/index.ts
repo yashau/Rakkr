@@ -972,6 +972,7 @@ registerRecordingRoutes({
   app,
   currentAuth,
   currentUser,
+  healthEventStore,
   nodeStore,
   recordAuditEvent,
   recordingStore,

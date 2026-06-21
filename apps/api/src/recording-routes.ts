@@ -10,11 +10,12 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
+import type { HealthEventStore } from "./health-store.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
 import { registerRecordingJobRoutes } from "./recording-job-routes.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
-import { createRecordingJob, stopRecordingJob } from "./recording-jobs.js";
+import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
 import {
   filterRecordings,
   paginateRecordings,
@@ -38,11 +39,13 @@ import { registerRecordingUploadQueueRoutes } from "./recording-upload-queue-rou
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
 import { findUploadPolicy, uploadPolicyForQueue } from "./upload-policies.js";
+import { listUploadQueueItems } from "./upload-queue.js";
 
 interface RecordingRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  healthEventStore?: HealthEventStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
@@ -77,6 +80,7 @@ export function registerRecordingRoutes({
   app,
   currentAuth,
   currentUser,
+  healthEventStore,
   nodeStore,
   recordAuditEvent,
   recordingStore,
@@ -307,6 +311,39 @@ export function registerRecordingRoutes({
       }
 
       return c.json({ data: recording });
+    },
+  );
+
+  app.get(
+    "/api/v1/recordings/:recordingId/context",
+    requirePermission("recording:read", "recordings.context.read", (c) => ({
+      id: c.req.param("recordingId"),
+      type: "recording",
+    })),
+    async (c) => {
+      const recordingId = c.req.param("recordingId");
+      const recording = (await scopedRecordings(currentUser(c))).find(
+        (candidate) => candidate.id === recordingId,
+      );
+
+      if (!recording) {
+        return c.json({ error: "Recording not found" }, 404);
+      }
+
+      const [jobs, healthEvents, uploadQueueItems] = await Promise.all([
+        listRecordingJobs(),
+        healthEventStore?.list({ limit: 100, recordingId }) ?? [],
+        listUploadQueueItems(),
+      ]);
+
+      return c.json({
+        data: {
+          healthEvents,
+          jobs: jobs.filter((job) => job.recordingId === recording.id),
+          recording,
+          uploadQueueItems: uploadQueueItems.filter((item) => item.recordingId === recording.id),
+        },
+      });
     },
   );
 
