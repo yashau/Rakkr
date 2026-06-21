@@ -526,6 +526,7 @@ Current implementation baseline:
 - Upload provider and upload policy Settings UI reads/actions mirror `settings:read` and `settings:manage`.
 - Upload policies can delete controller cache after confirmed non-stub upload.
 - Upload queue reads can filter visible items by status, provider, and recording.
+- Settings exposes an upload queue workbench with status/provider/recording filters, active chips, and scoped retry controls.
 - Upload provider, policy, and queue persistence is Postgres-backed with JSON fallback.
 
 ## Observability
@@ -849,6 +850,7 @@ Current implementation baseline:
 234. ✅ Add active recording-job filter chips.
 235. ✅ Add server-backed schedule list filters.
 236. ✅ Add active audit trail filter chips.
+237. ✅ Add upload queue workbench filters and retry controls.
 
 ## Open Questions
 

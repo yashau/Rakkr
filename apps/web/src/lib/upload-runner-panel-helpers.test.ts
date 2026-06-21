@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CurrentUser, Permission } from "@rakkr/shared";
 
-import { uploadRunnerPanelPermissions } from "./upload-runner-panel-helpers";
+import {
+  emptyUploadQueueFilterDraft,
+  uploadQueueFilterChips,
+  uploadQueueFiltersFromDraft,
+  uploadRunnerPanelPermissions,
+} from "./upload-runner-panel-helpers";
 
 test("upload runner panel permissions are closed by default", () => {
   assert.deepEqual(uploadRunnerPanelPermissions(undefined), {
@@ -24,6 +29,26 @@ test("upload runner panel separates status read from run control", () => {
     canRead: true,
     canRun: true,
   });
+});
+
+test("upload queue filters trim recording ids and expose active chips", () => {
+  const filters = uploadQueueFiltersFromDraft({
+    ...emptyUploadQueueFilterDraft,
+    provider: "s3",
+    recordingId: " rec_upload_1 ",
+    status: "failed",
+  });
+
+  assert.deepEqual(filters, {
+    provider: "s3",
+    recordingId: "rec_upload_1",
+    status: "failed",
+  });
+  assert.deepEqual(uploadQueueFilterChips(filters), [
+    { key: "status", label: "status", value: "failed" },
+    { key: "provider", label: "provider", value: "s3" },
+    { key: "recordingId", label: "recording", value: "rec_upload_1" },
+  ]);
 });
 
 function user(permissions: Permission[]): CurrentUser {
