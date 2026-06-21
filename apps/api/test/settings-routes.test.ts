@@ -32,6 +32,7 @@ const { createChannelMapAssignmentPlanStore } =
   await import("../src/channel-map-assignment-plans.js");
 const { registerSettingsRoutes } = await import("../src/settings-routes.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
+const { createUploadPolicy } = await import("../src/upload-policies.js");
 const { createUploadProviderStore } = await import("../src/upload-providers.js");
 
 test.after(async () => {
@@ -151,30 +152,118 @@ test("settings read routes deny users without settings read", async () => {
 
   const responses = await Promise.all([
     app.request("/api/v1/settings/recording-profiles"),
+    app.request("/api/v1/settings/recording-profiles/voice-mp3-vbr"),
     app.request("/api/v1/settings/watchdog-policies"),
+    app.request("/api/v1/settings/watchdog-policies/scheduled-voice-watchdog"),
     app.request("/api/v1/settings/channel-map-templates"),
+    app.request("/api/v1/settings/channel-map-templates/template_missing"),
     app.request("/api/v1/settings/channel-map-assignments"),
     app.request("/api/v1/settings/channel-map-assignment-plans"),
+    app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing"),
     app.request("/api/v1/settings/upload-providers"),
+    app.request("/api/v1/settings/upload-providers/stub"),
     app.request("/api/v1/settings/upload-policies"),
+    app.request("/api/v1/settings/upload-policies/upload-policy-stub"),
   ]);
   const deniedEvents = await auditStore.list({ outcome: "denied", permission: "settings:read" });
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignment_plans.detail.read",
     "settings.channel_map_assignment_plans.read",
     "settings.channel_map_assignments.read",
+    "settings.channel_map_templates.detail.read",
     "settings.channel_map_templates.read",
+    "settings.recording_profiles.detail.read",
     "settings.recording_profiles.read",
+    "settings.upload_policies.detail.read",
     "settings.upload_policies.read",
+    "settings.upload_providers.detail.read",
     "settings.upload_providers.read",
+    "settings.watchdog_policies.detail.read",
     "settings.watchdog_policies.read",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
   assert.ok(deniedEvents.every((event) => event.target.type === "settings"));
+});
+
+test("settings detail routes return individual settings resources", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = viewer(["settings:read"]);
+  const settingsStore = createSettingsStore();
+  const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
+  const uploadProviderStore = createUploadProviderStore();
+  const template = await settingsStore.createChannelMapTemplate({
+    channelMode: "mono_to_stereo_mix",
+    entries: [
+      {
+        included: true,
+        label: "Detail Channel",
+        outputChannelIndex: 1,
+        sourceChannelIndex: 1,
+      },
+    ],
+    id: `channel_map_detail_${randomUUID()}`,
+    name: "Detail Channel Map",
+    tags: ["detail"],
+  });
+  const plan = await channelMapAssignmentPlanStore.create({
+    targets: [{ targetId: "node_detail", targetType: "node" }],
+    templateId: template.id,
+  });
+  const uploadPolicy = await createUploadPolicy({
+    enabled: true,
+    id: `upload-policy-detail-${randomUUID()}`,
+    maxAttempts: 3,
+    name: "Detail Upload Policy",
+    provider: "stub",
+    target: "stub://detail",
+    trigger: "manual",
+  });
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    channelMapAssignmentPlanStore,
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    requirePermission: allowPermission(),
+    settingsStore,
+    uploadProviderStore,
+  });
+
+  const profile = await jsonData(app, "/api/v1/settings/recording-profiles/voice-mp3-vbr");
+  const watchdog = await jsonData(
+    app,
+    "/api/v1/settings/watchdog-policies/scheduled-voice-watchdog",
+  );
+  const templateDetail = await jsonData(
+    app,
+    `/api/v1/settings/channel-map-templates/${template.id}`,
+  );
+  const planDetail = await jsonData(
+    app,
+    `/api/v1/settings/channel-map-assignment-plans/${plan.id}`,
+  );
+  const provider = await jsonData(app, "/api/v1/settings/upload-providers/stub");
+  const policy = await jsonData(app, `/api/v1/settings/upload-policies/${uploadPolicy.id}`);
+  const missingProfile = await app.request("/api/v1/settings/recording-profiles/profile_missing");
+  const missingTemplate = await app.request(
+    "/api/v1/settings/channel-map-templates/template_missing",
+  );
+  const missingProvider = await app.request("/api/v1/settings/upload-providers/not-a-provider");
+
+  assert.equal(profile.id, "voice-mp3-vbr");
+  assert.equal(watchdog.id, "scheduled-voice-watchdog");
+  assert.equal(templateDetail.id, template.id);
+  assert.equal(planDetail.id, plan.id);
+  assert.equal(provider.provider, "stub");
+  assert.equal(policy.id, uploadPolicy.id);
+  assert.equal(missingProfile.status, 404);
+  assert.equal(missingTemplate.status, 404);
+  assert.equal(missingProvider.status, 404);
 });
 
 test("settings manage routes update operational templates and audit snapshots", async () => {
@@ -478,6 +567,15 @@ function requestJson(
     headers: { "content-type": "application/json" },
     method,
   });
+}
+
+async function jsonData(app: Hono<AppBindings>, path: string) {
+  const response = await app.request(path);
+  const body = (await response.json()) as { data: Record<string, unknown> };
+
+  assert.equal(response.status, 200);
+
+  return body.data;
 }
 
 function allowPermission(): RequirePermission {

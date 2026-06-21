@@ -30,6 +30,7 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-ty
 import type { SettingsStore } from "./settings-store.js";
 import { createUploadPolicy, listUploadPolicies, updateUploadPolicy } from "./upload-policies.js";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
+import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
@@ -105,6 +106,14 @@ export function registerSettingsRoutes({
     })),
     async (c) => c.json({ data: await listUploadPolicies() }),
   );
+
+  registerSettingsDetailRoutes({
+    app,
+    channelMapAssignmentPlanStore,
+    requirePermission,
+    settingsStore,
+    uploadProviderStore,
+  });
 
   app.patch(
     "/api/v1/settings/recording-profiles/:profileId",
