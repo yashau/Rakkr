@@ -203,7 +203,7 @@ export function JobsPage() {
           <SummaryTile icon={AlertTriangle} label="Failed" tone="critical" value={summary.failed} />
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[180px_180px_220px_1fr]">
+        <div className="mt-4 grid gap-3 md:grid-cols-[160px_160px_220px_220px_1fr]">
           <Field label="Status">
             <select
               className={selectClassName}
@@ -239,6 +239,32 @@ export function JobsPage() {
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label="Node">
+            {permissions.canReadNodes && (nodesQuery.data?.data.length ?? 0) > 0 ? (
+              <select
+                className={selectClassName}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, nodeId: event.target.value }))
+                }
+                value={filters.nodeId}
+              >
+                <option value="">all nodes</option>
+                {nodesQuery.data?.data.map((recorderNode) => (
+                  <option key={recorderNode.id} value={recorderNode.id}>
+                    {recorderNode.alias}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, nodeId: event.target.value }))
+                }
+                placeholder="node id"
+                value={filters.nodeId}
+              />
+            )}
           </Field>
           <Field label="Interface">
             <Input
@@ -511,6 +537,7 @@ function recordingJobApiFilters(filters: JobsPageFilters) {
   return {
     captureBackend: filters.captureBackend || undefined,
     captureInterfaceId: filters.captureInterfaceId.trim() || undefined,
+    nodeId: filters.nodeId.trim() || undefined,
     search: filters.search.trim() || undefined,
     status: filters.status || undefined,
   };

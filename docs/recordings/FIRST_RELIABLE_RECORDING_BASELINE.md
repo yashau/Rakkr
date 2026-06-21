@@ -12,7 +12,7 @@ Status: MVP baseline checked.
 - Cached media supports playback sessions, download preparation, inline stream, and attachment file responses.
 - Stop requests survive agent cancellation without falsely marking the recording unhealthy.
 - Failed and unexpectedly cancelled jobs update recording health and create central health events.
-- Recording jobs workbench shows scoped job status, status/search/backend/interface filters, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export, RBAC-mirrored stop controls for active jobs, and audited retry controls for failed/cancelled jobs.
+- Recording jobs workbench shows scoped job status, status/search/node/backend/interface filters, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export, RBAC-mirrored stop controls for active jobs, and audited retry controls for failed/cancelled jobs.
 - Fake-controller smoke coverage proves agent job polling, controller capacity override, bounded concurrent jobs, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, and controller stop handling without hardware.
 
 ## Checked By

@@ -3,6 +3,7 @@ import type { RecordingJob, RecordingJobStatus } from "@rakkr/shared";
 export interface RecordingJobExportFilters {
   captureBackend?: RecordingJob["command"]["captureBackend"];
   captureInterfaceId?: string;
+  nodeId?: string;
   search?: string;
   status?: RecordingJobStatus;
 }
@@ -25,6 +26,10 @@ export function filterRecordingJobsForExport(
       filters.captureInterfaceId &&
       job.command.captureInterfaceId !== filters.captureInterfaceId
     ) {
+      return false;
+    }
+
+    if (filters.nodeId && job.nodeId !== filters.nodeId) {
       return false;
     }
 

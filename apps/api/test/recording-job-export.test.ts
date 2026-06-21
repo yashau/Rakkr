@@ -44,20 +44,24 @@ test("recording job export helpers filter and render csv", () => {
   const visibleJob = job({
     command: { ...job().command, captureBackend: "pipewire", captureDevice: "hw:EXPORT,0" },
     id: "job_export_visible",
+    nodeId: "node_export_visible",
     status: "queued",
   });
   const hiddenByStatus = job({
     command: { ...job().command, captureDevice: "hw:EXPORT,1" },
     id: "job_export_failed",
+    nodeId: "node_export_visible",
     status: "failed",
   });
   const hiddenBySearch = job({
     command: { ...job().command, captureDevice: "hw:OTHER,0" },
     id: "job_other",
+    nodeId: "node_export_hidden",
     status: "queued",
   });
 
   const filtered = filterRecordingJobsForExport([visibleJob, hiddenByStatus, hiddenBySearch], {
+    nodeId: "node_export_visible",
     search: "export",
     status: "queued",
   });
@@ -69,20 +73,20 @@ test("recording job export helpers filter and render csv", () => {
   );
   assert.match(csv, /^id,recordingId,nodeId,status,claimedBy/m);
   assert.match(csv, /captureBackend/);
-  assert.match(csv, /job_export_visible,rec_1,node_1,queued/);
+  assert.match(csv, /job_export_visible,rec_1,node_export_visible,queued/);
   assert.match(csv, /pipewire,"hw:EXPORT,0"/);
   assert.doesNotMatch(csv, /job_export_failed/);
   assert.doesNotMatch(csv, /job_other/);
 });
 
-test("recording job list route filters scoped jobs by status search and backend", async () => {
+test("recording job list route filters scoped jobs by status search node and backend", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const prefix = `filter_${randomUUID()}`;
   const recordings = [
-    recordingSummary({ id: `rec_${prefix}_jack` }),
-    recordingSummary({ id: `rec_${prefix}_pipewire` }),
-    recordingSummary({ id: `rec_${prefix}_failed` }),
+    recordingSummary({ id: `rec_${prefix}_jack`, nodeId: `${prefix}_node_jack` }),
+    recordingSummary({ id: `rec_${prefix}_pipewire`, nodeId: `${prefix}_node_pipewire` }),
+    recordingSummary({ id: `rec_${prefix}_failed`, nodeId: `${prefix}_node_failed` }),
   ];
   const recordingStore = memoryRecordingStore(recordings);
   const jackJob = await createRecordingJob(recordings[0] as RecordingSummary, {
@@ -110,7 +114,7 @@ test("recording job list route filters scoped jobs by status search and backend"
     recordingStore,
   });
   const response = await app.request(
-    `/api/v1/recording-jobs?search=${prefix}&status=queued&captureBackend=jack&captureInterfaceId=${prefix}_iface_jack`,
+    `/api/v1/recording-jobs?search=${prefix}&status=queued&nodeId=${prefix}_node_jack&captureBackend=jack&captureInterfaceId=${prefix}_iface_jack`,
   );
   const body = (await response.json()) as { data: RecordingJob[] };
 
@@ -133,7 +137,7 @@ test("recording job export route is RBAC-gated and audited", async () => {
   });
 
   const response = await app.request(
-    "/api/v1/recording-jobs/export?status=queued&search=room&captureBackend=jack&captureInterfaceId=iface_export_jack",
+    "/api/v1/recording-jobs/export?status=queued&nodeId=node_export_jack&search=room&captureBackend=jack&captureInterfaceId=iface_export_jack",
   );
   const csv = await response.text();
   const [event] = await auditStore.list({ action: "recording_jobs.export.succeeded" });
@@ -156,6 +160,7 @@ test("recording job export route is RBAC-gated and audited", async () => {
   assert.deepEqual(event?.details.filters, {
     captureBackend: "jack",
     captureInterfaceId: "iface_export_jack",
+    nodeId: "node_export_jack",
     search: "room",
     status: "queued",
   });

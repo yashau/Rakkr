@@ -82,6 +82,7 @@ test("recording job filters match status and searchable job fields", () => {
       command: { ...job().command, captureBackend: "pipewire", captureInterfaceId: "iface_pw" },
       claimedBy: "agent-node-2",
       failureReason: "encoder failed",
+      nodeId: "node_pipewire",
       status: "failed",
     }),
   ];
@@ -106,6 +107,9 @@ test("recording job filters match status and searchable job fields", () => {
     filterRecordingJobs(jobs, { ...emptyJobsPageFilters, captureInterfaceId: " iface_pw " }),
     [jobs[1]],
   );
+  assert.deepEqual(filterRecordingJobs(jobs, { ...emptyJobsPageFilters, nodeId: " node_1 " }), [
+    jobs[0],
+  ]);
 });
 
 test("recording job relationship labels prefer permitted friendly names", () => {

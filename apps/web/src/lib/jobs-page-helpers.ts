@@ -3,6 +3,7 @@ import type { CurrentUser, RecorderNode, RecordingJob, RecordingSummary } from "
 export interface JobsPageFilters {
   captureBackend: "" | NonNullable<RecordingJob["command"]["captureBackend"]>;
   captureInterfaceId: string;
+  nodeId: string;
   search: string;
   status: "" | RecordingJob["status"];
 }
@@ -10,6 +11,7 @@ export interface JobsPageFilters {
 export const emptyJobsPageFilters: JobsPageFilters = {
   captureBackend: "",
   captureInterfaceId: "",
+  nodeId: "",
   search: "",
   status: "",
 };
@@ -133,6 +135,7 @@ export function recordingJobSummary(jobs: RecordingJob[]) {
 }
 
 export function filterRecordingJobs(jobs: RecordingJob[], filters: JobsPageFilters) {
+  const nodeId = filters.nodeId.trim();
   const search = filters.search.trim().toLowerCase();
 
   return jobs.filter((job) => {
@@ -144,6 +147,10 @@ export function filterRecordingJobs(jobs: RecordingJob[], filters: JobsPageFilte
       filters.captureBackend &&
       (job.command.captureBackend ?? "alsa") !== filters.captureBackend
     ) {
+      return false;
+    }
+
+    if (nodeId && job.nodeId !== nodeId) {
       return false;
     }
 
