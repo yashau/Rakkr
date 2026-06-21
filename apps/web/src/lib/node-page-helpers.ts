@@ -1,7 +1,17 @@
 import type { HealthEventStatus, NodeRuntime, Permission } from "@rakkr/shared";
 
+import type { NodeFilters } from "@/lib/api";
+import { formatDateTime } from "@/lib/dates";
+
 export type ListenMonitorMode = "agent_audio_chunk" | "controller_meter_preview";
+export type NodeFilterKey = keyof NodeFilters;
 export type NodeHealthLifecycleAction = "acknowledge" | "reopen" | "resolve" | "suppress";
+
+export interface ActiveNodeFilterChip {
+  key: NodeFilterKey;
+  label: string;
+  value: string;
+}
 
 export interface NodePageActionPermissions {
   canRead: boolean;
@@ -74,6 +84,24 @@ export function nodeRuntimeSummary(runtime: NodeRuntime) {
     .join(" / ");
 }
 
+export function nodeFilterChips(filters: NodeFilters): ActiveNodeFilterChip[] {
+  return nodeFilterOrder.flatMap((key) => {
+    const value = filters[key];
+
+    if (!value) {
+      return [];
+    }
+
+    return [
+      {
+        key,
+        label: nodeFilterLabels[key],
+        value: nodeFilterValue(key, value),
+      },
+    ];
+  });
+}
+
 export function rotateNodeTokenTitle(canManage: boolean, isPersistedNode: boolean) {
   if (!canManage) {
     return "Requires node manage";
@@ -131,3 +159,35 @@ function nodeUptime(seconds: number) {
 
   return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
 }
+
+function nodeFilterValue(key: NodeFilterKey, value: string) {
+  if (key === "lastSeenFrom" || key === "lastSeenTo") {
+    return formatDateTime(value);
+  }
+
+  return value;
+}
+
+const nodeFilterOrder: NodeFilterKey[] = [
+  "q",
+  "status",
+  "backend",
+  "site",
+  "building",
+  "floor",
+  "room",
+  "lastSeenFrom",
+  "lastSeenTo",
+];
+
+const nodeFilterLabels: Record<NodeFilterKey, string> = {
+  backend: "backend",
+  building: "building",
+  floor: "floor",
+  lastSeenFrom: "last seen from",
+  lastSeenTo: "last seen to",
+  q: "search",
+  room: "room",
+  site: "site",
+  status: "status",
+};

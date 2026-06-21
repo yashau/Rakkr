@@ -6,6 +6,7 @@ import {
   defaultNodeHealthSuppressedUntil,
   listenMonitorModeLabel,
   listenMonitorPollInterval,
+  nodeFilterChips,
   nodeHealthLifecycleActions,
   nodeHealthLifecycleInput,
   nodeLocationSummary,
@@ -15,6 +16,7 @@ import {
   nextNodeSelection,
   rotateNodeTokenTitle,
 } from "./node-page-helpers";
+import { formatDateTime } from "./dates";
 
 test("node page action permissions split listen and management actions", () => {
   assert.deepEqual(nodePageActionPermissions(["node:read"]), {
@@ -85,6 +87,31 @@ test("node location and runtime summaries stay compact", () => {
       uptimeSeconds: 90_000,
     }),
     "Debian / kernel 6.8.0 / x64 / alsa, jack / uptime 1d 1h",
+  );
+});
+
+test("node filter chips expose active filters in operator order", () => {
+  assert.deepEqual(
+    nodeFilterChips({
+      backend: "alsa",
+      building: "Hall",
+      lastSeenFrom: "2026-06-20T00:00:00.000Z",
+      q: "council",
+      room: "Chamber",
+      status: "online",
+    }),
+    [
+      { key: "q", label: "search", value: "council" },
+      { key: "status", label: "status", value: "online" },
+      { key: "backend", label: "backend", value: "alsa" },
+      { key: "building", label: "building", value: "Hall" },
+      { key: "room", label: "room", value: "Chamber" },
+      {
+        key: "lastSeenFrom",
+        label: "last seen from",
+        value: formatDateTime("2026-06-20T00:00:00.000Z"),
+      },
+    ],
   );
 });
 

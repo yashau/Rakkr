@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   TrendingUp,
   WifiOff,
+  X,
 } from "lucide-react";
 
 import {
@@ -43,12 +44,14 @@ import {
 import { formatDateTime, localDateBoundaryIso, localIsoDate, startOfLocalDay } from "@/lib/dates";
 import {
   nextNodeSelection,
+  nodeFilterChips,
   nodeHealthLifecycleInput,
   nodeLocationSummary,
   nodePageActionPermissions,
   nodeRuntimeSummary,
   nodeSelectionState,
   rotateNodeTokenTitle,
+  type NodeFilterKey,
   type NodeHealthLifecycleAction,
 } from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
@@ -92,6 +95,18 @@ const emptyDraft: EnrollmentDraft = {
   site: "",
   systemName: "",
   tags: "",
+};
+
+const nodeFilterDraftKeys: Record<NodeFilterKey, keyof typeof emptyNodeInventoryFilters> = {
+  backend: "backend",
+  building: "building",
+  floor: "floor",
+  lastSeenFrom: "lastSeenFrom",
+  lastSeenTo: "lastSeenTo",
+  q: "search",
+  room: "room",
+  site: "site",
+  status: "status",
 };
 
 export function NodesPage() {
@@ -187,6 +202,7 @@ export function NodesPage() {
   });
 
   const nodes = nodesQuery.data?.data ?? [];
+  const activeFilterChips = nodeFilterChips(nodeFilters);
   const selection = nodeSelectionState(nodes, selectedNodeIds);
 
   if (currentUserQuery.isPending) {
@@ -398,6 +414,28 @@ export function NodesPage() {
           </div>
           <NodeInventoryFilters filters={nodeFilterDraft} onChange={setNodeFilterDraft} />
         </div>
+        {activeFilterChips.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {activeFilterChips.map((filter) => (
+              <Badge
+                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
+                key={filter.key}
+                variant="outline"
+              >
+                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
+                <span className="truncate font-mono">{filter.value}</span>
+                <button
+                  aria-label={`Clear ${filter.label} filter`}
+                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => clearNodeFilter(filter.key)}
+                  type="button"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {nodesQuery.isSuccess && nodes.length === 0 ? (
@@ -539,6 +577,10 @@ export function NodesPage() {
       })}
     </div>
   );
+
+  function clearNodeFilter(key: NodeFilterKey) {
+    setNodeFilterDraft((current) => ({ ...current, [nodeFilterDraftKeys[key]]: "" }));
+  }
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {
