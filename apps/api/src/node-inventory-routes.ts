@@ -154,6 +154,24 @@ export function registerNodeInventoryRoutes({
     },
   );
 
+  app.get(
+    "/api/v1/nodes/:nodeId",
+    requirePermission("node:read", "nodes.detail.read", (c) => ({
+      id: c.req.param("nodeId"),
+      type: "node",
+    })),
+    async (c) => {
+      const nodeId = c.req.param("nodeId");
+      const node = (await scopedNodes(currentUser(c))).find((candidate) => candidate.id === nodeId);
+
+      if (!node) {
+        return c.json({ error: "Node not found" }, 404);
+      }
+
+      return c.json({ data: node });
+    },
+  );
+
   async function recordSelectedNodeExportFailure(
     c: Context<AppBindings>,
     reason: string,

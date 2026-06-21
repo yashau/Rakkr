@@ -49,7 +49,6 @@ import type {
 } from "@rakkr/shared";
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 const authTokenKey = "rakkr.authToken";
-
 export interface ControllerStatus {
   activeRecordings: number;
   cachedRecordings: number;
@@ -569,6 +568,7 @@ export const api = {
       },
       method: "POST",
     }),
+  node: (nodeId: string) => fetchJson<{ data: RecorderNode }>(`/api/v1/nodes/${nodeId}`),
   nodes: (filters: NodeFilters = {}) =>
     fetchJson<{ data: RecorderNode[] }>(withQuery("/api/v1/nodes", filters)),
   nodesExport: (filters: NodeFilters = {}) => fetchBlob(withQuery("/api/v1/nodes/export", filters)),

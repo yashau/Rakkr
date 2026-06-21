@@ -346,6 +346,33 @@ test("node selected export rejects hidden nodes before exporting", async () => {
   assert.deepEqual(event?.details.nodeIds, ["node_visible", "node_hidden"]);
 });
 
+test("node detail route returns scoped nodes only", async () => {
+  const permissionCalls: PermissionCall[] = [];
+  const visible = nodeWithInterface({ id: "node_visible_detail" });
+  const app = nodeInventoryApp({
+    nodes: [visible],
+    permissionCalls,
+  });
+
+  const visibleResponse = await app.request(`/api/v1/nodes/${visible.id}`);
+  const hiddenResponse = await app.request("/api/v1/nodes/node_hidden_detail");
+  const visibleBody = (await visibleResponse.json()) as { data: RecorderNode };
+
+  assert.equal(visibleResponse.status, 200);
+  assert.equal(visibleBody.data.id, visible.id);
+  assert.equal(hiddenResponse.status, 404);
+  assert.deepEqual(permissionCalls.at(-2), {
+    action: "nodes.detail.read",
+    permission: "node:read",
+    target: { id: visible.id, type: "node" },
+  });
+  assert.deepEqual(permissionCalls.at(-1), {
+    action: "nodes.detail.read",
+    permission: "node:read",
+    target: { id: "node_hidden_detail", type: "node" },
+  });
+});
+
 interface PermissionCall {
   action: string;
   permission: Permission;

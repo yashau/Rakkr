@@ -88,13 +88,12 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     queryKey: ["schedule-occurrences", scheduleId],
     refetchInterval: 5000,
   });
-  const nodesQuery = useQuery({
-    enabled: pagePermissions.canReadNodes,
-    queryFn: () => api.nodes(),
-    queryKey: ["nodes"],
-  });
-
   const schedule = scheduleQuery.data?.data;
+  const nodeQuery = useQuery({
+    enabled: pagePermissions.canReadNodes && Boolean(schedule?.nodeId),
+    queryFn: () => api.node(schedule?.nodeId ?? ""),
+    queryKey: ["node", schedule?.nodeId],
+  });
   const recordings = useMemo(() => recordingsQuery.data?.data ?? [], [recordingsQuery.data?.data]);
   const recordingIds = useMemo(
     () => new Set(recordings.map((recording) => recording.id)),
@@ -106,7 +105,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   );
   const healthEvents = healthQuery.data?.data ?? [];
   const auditEvents = auditQuery.data?.data ?? [];
-  const node = nodesQuery.data?.data.find((candidate) => candidate.id === schedule?.nodeId);
+  const node = nodeQuery.data?.data;
   const canDownloadRecordings = pagePermissions.canDownloadRecordings;
   const canPlaybackRecordings = pagePermissions.canPlaybackRecordings;
   const canManageHealth = pagePermissions.canAcknowledgeHealth;
