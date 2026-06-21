@@ -60,7 +60,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Product scope | ✅ | Requirements and technical direction captured |
 | Monorepo | ✅ | `mise`, Docker Compose, CI, LF normalization, LOC guard |
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
-| Controller API | 🟨 | Auth, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/update, searchable health filters/detail/bulk lifecycle controls/exports, recording-job detail/date/relationship/capture filters and controls/exports, metrics |
+| Controller API | 🟨 | Auth, RBAC, audit, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/date/relationship/capture filters and controls/exports, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
 | Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
@@ -292,7 +292,7 @@ Current partial implementation:
 - Agent capture jobs fail and log health events for too-small/stalled output, render failures, cache upload failures, and terminal recording state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Health event APIs can search, filter, and detail by scoped incident, opened/resolved date range, event type, node, recording, schedule, severity, and status, and export scoped filtered CSV incident lists.
-- Node health summaries, central health workbench with active filter chips, recent events, trends, scoped and selected CSV exports, RBAC-mirrored single and bulk lifecycle actions, and recording/schedule quality timelines.
+- Node health summaries, central health workbench with active filter chips, recent events, trends, scoped and selected CSV exports, RBAC-mirrored single and bulk lifecycle actions, scoped action summaries, and recording/schedule quality timelines.
 - Quality timelines show event-specific signal, speech, channel-correlation, clipping, flatline, quality anomaly, and upload-failure evidence.
 - RBAC/audited watchdog calibration route recommends and can apply thresholds from recent room meter history.
 - Settings UI can apply watchdog calibration from visible node meter history with RBAC-mirrored controls.
@@ -876,6 +876,7 @@ Current implementation baseline:
 252. ✅ Add scoped recording action summary API.
 253. ✅ Add scoped schedule action summary API.
 254. ✅ Add scoped node action summary API.
+255. ✅ Add scoped health event action summary API.
 
 ## Open Questions
 

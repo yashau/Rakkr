@@ -10,6 +10,8 @@ import type {
   HealthEventStore,
 } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
+import { registerHealthActionRoutes } from "./health-action-routes.js";
+import { healthEventTargets, visibleHealthEvent } from "./health-visibility.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -118,6 +120,14 @@ export function registerHealthRoutes({
   recordingStore,
   requirePermission,
 }: HealthRouteDependencies) {
+  registerHealthActionRoutes({
+    app,
+    currentUser,
+    hasResourceScope,
+    healthEventStore,
+    requirePermission,
+  });
+
   app.get(
     "/api/v1/health-events/export",
     requirePermission("health:read", "health.events.export", healthReadTarget),
@@ -573,26 +583,6 @@ function healthFilters(input: z.infer<typeof healthEventsQuerySchema>): HealthEv
   };
 }
 
-async function visibleHealthEvent(
-  user: NonNullable<AuthResult["user"]>,
-  event: HealthEvent,
-  hasResourceScope: HealthRouteDependencies["hasResourceScope"],
-) {
-  const targets = healthEventTargets(event);
-
-  if (targets.length === 0) {
-    return true;
-  }
-
-  for (const target of targets) {
-    if (await hasResourceScope(user, target)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 async function visibleHealthEvents(
   user: NonNullable<AuthResult["user"]>,
   filters: HealthEventFilters,
@@ -608,24 +598,6 @@ async function visibleHealthEvents(
   }
 
   return visibleEvents;
-}
-
-function healthEventTargets(event: HealthEvent | HealthEventCreateInput): AuditTarget[] {
-  const targets: AuditTarget[] = [];
-
-  if (event.recordingId) {
-    targets.push({ id: event.recordingId, type: "recording" });
-  }
-
-  if (event.scheduleId) {
-    targets.push({ id: event.scheduleId, type: "schedule" });
-  }
-
-  if (event.nodeId) {
-    targets.push({ id: event.nodeId, type: "node" });
-  }
-
-  return targets;
 }
 
 function healthCreateInput(input: z.infer<typeof healthEventCreateSchema>): HealthEventCreateInput {

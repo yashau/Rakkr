@@ -41,6 +41,7 @@ test("health routes deny users without required permissions", async () => {
     app.request("/api/v1/health-events"),
     app.request("/api/v1/health-events/export"),
     app.request("/api/v1/health-events/health_denied"),
+    app.request("/api/v1/health-events/health_denied/actions"),
     requestJson(app, "/api/v1/health-events/export", "POST", {
       eventIds: ["health_denied"],
     }),
@@ -72,7 +73,7 @@ test("health routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => `${event.permission}:${event.action}`).sort(), [
     "health:acknowledge:health.events.acknowledge",
@@ -81,6 +82,7 @@ test("health routes deny users without required permissions", async () => {
     "health:acknowledge:health.events.reopen",
     "health:acknowledge:health.events.resolve",
     "health:acknowledge:health.events.suppress",
+    "health:read:health.events.actions.read",
     "health:read:health.events.detail.read",
     "health:read:health.events.export",
     "health:read:health.events.export_selected",
