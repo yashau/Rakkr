@@ -12,7 +12,12 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
 import type { RecordingStore } from "./recording-store.js";
 import { registerScheduleActionRoutes } from "./schedule-action-routes.js";
@@ -28,6 +33,7 @@ import {
   queueScheduledRecordings,
   scheduledRecordingSegmentSnapshot,
 } from "./scheduled-recordings.js";
+import { scheduleSettingsSelectionFailure } from "./schedule-settings-scope.js";
 import { ScheduleStoreError, type ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
 
@@ -35,6 +41,7 @@ interface ScheduleRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
@@ -55,6 +62,7 @@ export function registerScheduleRoutes({
   app,
   currentAuth,
   currentUser,
+  hasResourceScope = async () => true,
   recordAuditEvent,
   recordingStore,
   requirePermission,
@@ -233,6 +241,16 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule interface not found" }, 409);
       }
 
+      const settingsFailure = await recordScheduleSettingsFailure(
+        c,
+        "schedules.create.failed",
+        body.data,
+      );
+
+      if (settingsFailure) {
+        return settingsFailure;
+      }
+
       const schedule = buildSchedule(body.data);
 
       try {
@@ -324,6 +342,17 @@ export function registerScheduleRoutes({
           before,
         );
         return c.json({ error: "Schedule interface not found" }, 409);
+      }
+
+      const settingsFailure = await recordScheduleSettingsFailure(
+        c,
+        "schedules.update.failed",
+        body.data,
+        before,
+      );
+
+      if (settingsFailure) {
+        return settingsFailure;
       }
 
       const updated = await scheduleStore.update(
@@ -584,19 +613,39 @@ export function registerScheduleRoutes({
     action: string,
     reason: string,
     schedule?: Partial<ScheduleSummary>,
+    target?: AuditTarget,
   ) {
     await recordAuditEvent(c, {
       action,
       auth: currentAuth(c),
-      outcome: "failed",
+      outcome: reason === "missing_resource_scope" ? "denied" : "failed",
       permission: "schedule:manage",
       reason,
-      target: {
+      target: target ?? {
         id: schedule?.id,
         name: schedule?.name,
         type: "schedule",
       },
     });
+  }
+
+  async function recordScheduleSettingsFailure(
+    c: Context<AppBindings>,
+    action: string,
+    selection: Parameters<typeof scheduleSettingsSelectionFailure>[1],
+    schedule?: Partial<ScheduleSummary>,
+  ) {
+    const failure = await scheduleSettingsSelectionFailure(currentUser(c), selection, {
+      hasResourceScope,
+      settingsStore,
+    });
+
+    if (!failure) {
+      return undefined;
+    }
+
+    await recordScheduleWriteFailure(c, action, failure.reason, schedule, failure.target);
+    return c.json({ error: failure.error, permission: "schedule:manage" }, failure.status);
   }
 
   async function recordSelectedScheduleExportFailure(

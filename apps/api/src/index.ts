@@ -666,6 +666,7 @@ registerScheduleRoutes({
   app,
   currentAuth,
   currentUser,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
   nodeStore,
   recordAuditEvent,
   recordingStore,
