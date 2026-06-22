@@ -927,6 +927,7 @@ Current implementation baseline:
 296. ✅ Scope health-event audit metrics.
 297. ✅ Scope settings-resource audit metrics.
 298. ✅ Scope audit event reads and exports.
+299. ✅ Scope agent health-event schedule sync.
 
 ## Open Questions
 

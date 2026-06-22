@@ -12,6 +12,7 @@ import {
   nodeHeartbeatSnapshot,
   recordingFileSnapshot,
 } from "./agent-route-helpers.js";
+import { nodeHealthEventScopeFailure } from "./agent-health-event-scope.js";
 import { bearerToken } from "./auth-utils.js";
 import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
 import type { HealthEventStore } from "./health-store.js";
@@ -31,6 +32,7 @@ import {
 } from "./recording-jobs.js";
 import { storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
+import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
 import { uploadPolicyForCachedRecording, uploadQueueInputForPolicy } from "./upload-policies.js";
 import { enqueueRecordingUpload } from "./upload-queue.js";
@@ -42,6 +44,7 @@ interface AgentRouteDependencies {
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
+  scheduleStore?: ScheduleStore;
   settingsStore: SettingsStore;
 }
 
@@ -57,6 +60,7 @@ export function registerAgentRoutes({
   nodeStore,
   recordAuditEvent,
   recordingStore,
+  scheduleStore,
   settingsStore,
 }: AgentRouteDependencies) {
   registerAgentNodeConfigRoute({
@@ -294,36 +298,19 @@ export function registerAgentRoutes({
       return c.json({ error: "Invalid node health event", issues: body.error.issues }, 400);
     }
 
-    if (body.data.recordingId) {
-      const recording = await recordingStore.find(body.data.recordingId);
+    const scopeFailure = await nodeHealthEventScopeFailure(body.data, {
+      credential: auth.credential,
+      recordingStore,
+      scheduleStore,
+    });
 
-      if (!recording) {
-        await recordNodeCredentialFailure(
-          c,
-          "nodes.health_events.sync.failed",
-          "recording_not_found",
-          {
-            actor: auth.credential,
-            permission: "health:acknowledge",
-            target: { id: body.data.recordingId, type: "recording" },
-          },
-        );
-        return c.json({ error: "Recording not found" }, 404);
-      }
-
-      if (recording.nodeId !== auth.credential.nodeId) {
-        await recordNodeCredentialFailure(
-          c,
-          "nodes.health_events.sync.failed",
-          "node_scope_denied",
-          {
-            actor: auth.credential,
-            permission: "health:acknowledge",
-            target: { id: body.data.recordingId, type: "recording" },
-          },
-        );
-        return c.json({ error: "Node credential cannot access this recording" }, 403);
-      }
+    if (scopeFailure) {
+      await recordNodeCredentialFailure(c, "nodes.health_events.sync.failed", scopeFailure.reason, {
+        actor: auth.credential,
+        permission: "health:acknowledge",
+        target: scopeFailure.target,
+      });
+      return c.json({ error: scopeFailure.error }, scopeFailure.status);
     }
 
     const event = await healthEventStore.create({

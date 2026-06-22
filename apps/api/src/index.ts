@@ -692,6 +692,7 @@ registerAgentRoutes({
   nodeStore,
   recordAuditEvent,
   recordingStore,
+  scheduleStore,
   settingsStore,
 });
 
