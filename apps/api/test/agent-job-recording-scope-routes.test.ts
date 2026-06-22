@@ -73,6 +73,51 @@ test("agent job mutations validate recording ownership", async () => {
   );
 });
 
+test("agent cache attach validates recording job ownership", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const routeNode = node();
+  const visibleRecording = recording({
+    id: `rec_agent_cache_job_${randomUUID()}`,
+    nodeId: routeNode.id,
+    status: "queued",
+  });
+  const recordingStore = memoryRecordingStore([visibleRecording]);
+  const hiddenJob = await createRecordingJob({ ...visibleRecording, nodeId: "node_agent_other" });
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore([routeNode]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(`/api/v1/recordings/${visibleRecording.id}/cache-file`, {
+    body: new Uint8Array([82, 73, 70, 70]),
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "audio/wav",
+      "x-rakkr-recording-job-id": hiddenJob.id,
+    },
+    method: "PUT",
+  });
+  const storedRecording = await recordingStore.find(visibleRecording.id);
+  const storedJob = await recordingJob(hiddenJob.id);
+  const [failedAudit] = await auditStore.list({ action: "recordings.cache_file.attach.failed" });
+
+  assert.equal(response.status, 403);
+  assert.equal(storedRecording?.cached, false);
+  assert.equal(storedRecording?.status, "queued");
+  assert.equal(storedRecording?.cachePath, undefined);
+  assert.equal(storedJob?.status, "queued");
+  assert.equal(failedAudit?.reason, "node_scope_denied");
+  assert.equal(failedAudit?.target.id, hiddenJob.id);
+  assert.equal(failedAudit?.target.type, "recording_job");
+});
+
 function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
   return {
     async authenticateCredential(token) {

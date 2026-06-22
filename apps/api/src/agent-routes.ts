@@ -29,7 +29,7 @@ import {
   nextRecordingJob,
   recordingJob,
 } from "./recording-jobs.js";
-import { agentJobRecordingScope } from "./agent-job-recording-scope.js";
+import { agentCacheFileJobScope, agentJobRecordingScope } from "./agent-job-recording-scope.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
 import { storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
@@ -568,6 +568,23 @@ export function registerAgentRoutes({
     }
 
     const jobId = c.req.header("x-rakkr-recording-job-id");
+    const scopedJob = await agentCacheFileJobScope(
+      { jobId },
+      { credential: auth.credential, recording },
+    );
+
+    if (!scopedJob.ok) {
+      await recordRecordingFileFailure(c, {
+        actor: auth.credential,
+        jobId,
+        reason: scopedJob.reason,
+        recordingId,
+        target: scopedJob.target,
+        targetName: recording.name,
+      });
+      return c.json({ error: scopedJob.error }, scopedJob.status);
+    }
+
     const bytes = Buffer.from(await c.req.arrayBuffer());
 
     if (bytes.byteLength === 0) {
@@ -624,7 +641,9 @@ export function registerAgentRoutes({
     recording.status = "cached";
     recording.waveformPreview = stored.waveformPreview;
     await recordingStore.save(recording);
-    const job = await completeRecordingJob(recording.id, jobId);
+    const job = scopedJob.job
+      ? await completeRecordingJob(recording.id, scopedJob.job.id)
+      : undefined;
     const uploadQueueItem = await queueCachedRecordingUpload(c, auth.credential, recording);
     const syncedRecording = await syncAndFindRecording(recording);
 
@@ -837,6 +856,7 @@ export function registerAgentRoutes({
       reason: string;
       recordingId: string;
       severity?: "critical" | "warning";
+      target?: AuditTarget;
       targetName?: string;
     },
   ) {
@@ -865,7 +885,7 @@ export function registerAgentRoutes({
       outcome: "failed",
       permission: "recording:control",
       reason: input.reason,
-      target: {
+      target: input.target ?? {
         id: input.recordingId,
         name: input.targetName,
         type: "recording",
