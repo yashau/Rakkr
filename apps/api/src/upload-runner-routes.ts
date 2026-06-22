@@ -40,7 +40,11 @@ export function registerUploadRunnerRoutes({
     requirePermission("recording:read", "recordings.upload_runner.read", () => ({
       type: "upload_runner",
     })),
-    (c) => c.json({ data: uploadRunner.status() }),
+    async (c) => {
+      const visibleRecordingIds = await uploadRunnerRecordingIds(c, currentAuth, scopedRecordings);
+
+      return c.json({ data: scopedUploadRunnerStatus(uploadRunner.status(), visibleRecordingIds) });
+    },
   );
 
   app.get(
@@ -48,8 +52,9 @@ export function registerUploadRunnerRoutes({
     requirePermission("recording:read", "recordings.upload_runner.actions.read", () => ({
       type: "upload_runner",
     })),
-    (c) => {
-      const status = uploadRunner.status();
+    async (c) => {
+      const visibleRecordingIds = await uploadRunnerRecordingIds(c, currentAuth, scopedRecordings);
+      const status = scopedUploadRunnerStatus(uploadRunner.status(), visibleRecordingIds);
 
       return c.json({
         data: {
@@ -105,6 +110,28 @@ export function registerUploadRunnerRoutes({
       }
     },
   );
+}
+
+function scopedUploadRunnerStatus(
+  status: UploadRunnerStatus,
+  recordingIds: ReadonlySet<string> | undefined,
+): UploadRunnerStatus {
+  if (!status.lastSummary || !recordingIds) {
+    return status;
+  }
+
+  const items = status.lastSummary.items.filter((item) => recordingIds.has(item.recordingId));
+
+  return {
+    ...status,
+    lastSummary: {
+      attempted: items.length,
+      deferred: items.filter((item) => item.status === "retrying").length,
+      failed: items.filter((item) => item.status === "failed").length,
+      items,
+      succeeded: items.filter((item) => item.status === "succeeded").length,
+    },
+  };
 }
 
 function uploadRunnerActions(status: UploadRunnerStatus, permissions: readonly Permission[]) {

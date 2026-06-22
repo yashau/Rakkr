@@ -919,6 +919,7 @@ Current implementation baseline:
 288. ✅ Scope channel-map assignment targets to resource denies.
 289. ✅ Scope watchdog calibration meter-history node access.
 290. ✅ Scope manual upload-runner passes to visible recordings.
+291. ✅ Scope upload-runner status summaries to visible recordings.
 
 ## Open Questions
 

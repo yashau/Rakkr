@@ -254,6 +254,55 @@ test("upload runner run route only processes queue items for scoped recordings",
   );
 });
 
+test("upload runner status routes hide last-summary items outside scoped recordings", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const providerStore = createUploadProviderStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const visible = recording(`rec_upload_status_visible_${randomUUID()}`);
+  const hidden = recording(`rec_upload_status_hidden_${randomUUID()}`);
+
+  await enqueueRecordingUpload(visible, {
+    provider: "stub",
+    target: "stub://visible",
+  });
+  await enqueueRecordingUpload(hidden, {
+    provider: "stub",
+    target: "stub://hidden",
+  });
+  await runner.runOnce();
+
+  registerUploadRunnerRoutes({
+    app,
+    currentAuth: () => ({ user: user() }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allow,
+    scopedRecordings: async () => [visible],
+    uploadRunner: runner,
+  });
+
+  const statusResponse = await app.request("/api/v1/upload-runner");
+  const actionsResponse = await app.request("/api/v1/upload-runner/actions");
+  const statusBody = (await statusResponse.json()) as {
+    data: { lastSummary?: { attempted: number; items: Array<{ recordingId: string }> } };
+  };
+  const actionsBody = (await actionsResponse.json()) as {
+    data: {
+      status: { lastSummary?: { attempted: number; items: Array<{ recordingId: string }> } };
+    };
+  };
+
+  assert.equal(statusResponse.status, 200);
+  assert.equal(actionsResponse.status, 200);
+  assert.ok((runner.status().lastSummary?.attempted ?? 0) > 1);
+  assert.equal(statusBody.data.lastSummary?.attempted, 1);
+  assert.deepEqual(
+    statusBody.data.lastSummary?.items.map((item) => item.recordingId),
+    [visible.id],
+  );
+  assert.deepEqual(actionsBody.data.status.lastSummary, statusBody.data.lastSummary);
+});
+
 test("upload runner routes deny users without required permissions", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
