@@ -156,6 +156,63 @@ test("recording metadata update saves and clears transcript snippets with audit 
   );
 });
 
+test("bulk recording metadata update uses scoped recording context for snapshots", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore([
+    recording({
+      folder: "Raw Hidden Folder",
+      id: "rec_scoped_bulk",
+      tags: ["raw-hidden"],
+    }),
+  ]);
+  const scopedRecording = recording({
+    folder: "Scoped Folder",
+    id: "rec_scoped_bulk",
+    tags: ["scoped-visible"],
+  });
+  const app = new Hono<AppBindings>();
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser() }),
+    currentUser,
+    nodeStore: {},
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission([]),
+    scopedNodes: async () => [],
+    scopedRecordings: async () => [scopedRecording],
+    settingsStore: {},
+  });
+
+  const response = await app.request("/api/v1/recordings/bulk-metadata", {
+    body: JSON.stringify({
+      addTags: ["reviewed"],
+      folder: "Scoped Updated",
+      recordingIds: ["rec_scoped_bulk"],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const body = (await response.json()) as { data: RecordingSummary[] };
+  const stored = await recordingStore.find("rec_scoped_bulk");
+  const [event] = await auditStore.list({ action: "recordings.metadata.bulk_update.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data[0]?.folder, "Scoped Updated");
+  assert.deepEqual(body.data[0]?.tags, ["scoped-visible", "reviewed"]);
+  assert.equal(stored?.folder, "Scoped Updated");
+  assert.deepEqual(stored?.tags, ["scoped-visible", "reviewed"]);
+  assert.equal(
+    (event?.before?.recordings as Array<{ folder: string; id: string }> | undefined)?.[0]?.folder,
+    "Scoped Folder",
+  );
+  assert.deepEqual(
+    (event?.before?.recordings as Array<{ tags: string[] }> | undefined)?.[0]?.tags,
+    ["scoped-visible"],
+  );
+});
+
 interface PermissionCall {
   action: string;
   permission: Permission;

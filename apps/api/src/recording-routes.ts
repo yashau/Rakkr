@@ -536,10 +536,10 @@ export function registerRecordingRoutes({
       }
 
       const recordingIds = uniqueRecordingIds(body.data.recordingIds);
-      const visibleIds = new Set(
-        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
+      const visibleRecordingMap = new Map(
+        (await scopedRecordings(currentUser(c))).map((recording) => [recording.id, recording]),
       );
-      const hiddenIds = recordingIds.filter((recordingId) => !visibleIds.has(recordingId));
+      const hiddenIds = recordingIds.filter((recordingId) => !visibleRecordingMap.has(recordingId));
 
       if (hiddenIds.length > 0) {
         await recordBulkMetadataFailure(c, "recording_not_visible", { hiddenIds, recordingIds });
@@ -551,12 +551,7 @@ export function registerRecordingRoutes({
       const after = [];
 
       for (const recordingId of recordingIds) {
-        const recording = await recordingStore.find(recordingId);
-
-        if (!recording) {
-          await recordBulkMetadataFailure(c, "recording_not_found", { recordingIds });
-          return c.json({ error: "One or more recordings were not found" }, 404);
-        }
+        const recording = visibleRecordingMap.get(recordingId)!;
 
         const updated = applyRecordingBulkMetadataUpdate(recording, body.data);
 

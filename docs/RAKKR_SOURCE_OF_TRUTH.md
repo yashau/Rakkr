@@ -906,6 +906,7 @@ Current implementation baseline:
 275. ✅ Scope recording-job action summary context APIs.
 276. ✅ Scope recording-job metrics to visible recordings.
 277. ✅ Scope recording-job control recording context.
+278. ✅ Scope bulk recording metadata context.
 
 ## Open Questions
 
