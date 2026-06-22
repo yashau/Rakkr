@@ -925,6 +925,7 @@ Current implementation baseline:
 294. ✅ Scope schedule settings resource selection.
 295. ✅ Scope aggregate status settings summaries.
 296. ✅ Scope health-event audit metrics.
+297. ✅ Scope settings-resource audit metrics.
 
 ## Open Questions
 

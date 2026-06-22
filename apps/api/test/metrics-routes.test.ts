@@ -115,6 +115,59 @@ test("metrics audit totals respect health event resource scope", async () => {
   assert.doesNotMatch(output, /health\.events\.hidden\.succeeded/);
 });
 
+test("metrics audit totals respect settings resource scope", async () => {
+  const auditStore = createAuditStore("");
+  const settingsTargets: AuditTarget["type"][] = [
+    "channel_map_assignment_plan",
+    "channel_map_template",
+    "recording_profile",
+    "retention_policy",
+    "upload_policy",
+    "upload_provider",
+    "watchdog_policy",
+  ];
+
+  for (const targetType of settingsTargets) {
+    await auditStore.append(
+      auditEvent(`settings.${targetType}.visible`, "succeeded", "settings:manage", {
+        id: `${targetType}_visible`,
+        type: targetType,
+      }),
+    );
+    await auditStore.append(
+      auditEvent(`settings.${targetType}.hidden`, "succeeded", "settings:manage", {
+        id: `${targetType}_hidden`,
+        type: targetType,
+      }),
+    );
+  }
+
+  const app = new Hono<AppBindings>();
+  registerMetricsRoutes({
+    app,
+    auditStore,
+    currentUser: () => user(["metrics:read"]),
+    hasResourceScope: async (_user, target) => target.id?.endsWith("_visible") ?? false,
+    healthEventStore: createHealthEventStore("", []),
+    listenMonitorStore: createListenMonitorStore(),
+    meterFrameStore: createMeterFrameStore(),
+    nodeStore: createNodeStore([]),
+    recordingStore: memoryRecordingStore([]),
+    requirePermission: allowPermission,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/metrics");
+  const output = await response.text();
+
+  assert.equal(response.status, 200);
+
+  for (const targetType of settingsTargets) {
+    assert.match(output, new RegExp(`settings\\.${targetType}\\.visible`));
+    assert.doesNotMatch(output, new RegExp(`settings\\.${targetType}\\.hidden`));
+  }
+});
+
 test("metrics expose listen monitor chunks only for visible nodes", async () => {
   const listenMonitorStore = createListenMonitorStore();
 
