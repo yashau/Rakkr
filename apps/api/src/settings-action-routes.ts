@@ -6,7 +6,6 @@ import type {
   RecordingProfile,
   UploadPolicy,
   UploadProviderRuntimeStatus,
-  WatchdogPolicy,
 } from "@rakkr/shared";
 import { uploadProviderSchema } from "@rakkr/shared";
 
@@ -14,6 +13,7 @@ import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-pla
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
+import { watchdogSettingsTarget } from "./settings-scope.js";
 import { listUploadPolicies } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
 
@@ -75,7 +75,7 @@ export function registerSettingsActionRoutes({
       const policyId = c.req.param("policyId") ?? "";
       const policy = await settingsStore.findWatchdogPolicy(policyId);
 
-      return policy ? watchdogTarget(policy) : watchdogTarget({ id: policyId });
+      return policy ? watchdogSettingsTarget(policy) : { id: policyId, type: "watchdog_policy" };
     }),
     async (c) => {
       const policy = await settingsStore.findWatchdogPolicy(c.req.param("policyId") ?? "");
@@ -338,12 +338,6 @@ function profileTarget(
   profile: Pick<RecordingProfile, "id"> & Partial<Pick<RecordingProfile, "name">>,
 ) {
   return { id: profile.id, name: profile.name, type: "recording_profile" };
-}
-
-function watchdogTarget(
-  policy: Pick<WatchdogPolicy, "id"> & Partial<Pick<WatchdogPolicy, "name">>,
-) {
-  return { id: policy.id, name: policy.name, type: "watchdog_policy" };
 }
 
 function channelMapTarget(

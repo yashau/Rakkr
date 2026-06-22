@@ -3,7 +3,7 @@ import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
-import { profileSettingsTarget } from "./settings-scope.js";
+import { profileSettingsTarget, watchdogSettingsTarget } from "./settings-scope.js";
 import type { SettingsStore } from "./settings-store.js";
 import { listUploadPolicies } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
@@ -47,7 +47,12 @@ export function registerSettingsDetailRoutes({
 
   app.get(
     "/api/v1/settings/watchdog-policies/:policyId",
-    settingsRead("settings.watchdog_policies.detail.read"),
+    requirePermission("settings:read", "settings.watchdog_policies.detail.read", async (c) => {
+      const policyId = c.req.param("policyId") ?? "";
+      const policy = await settingsStore.findWatchdogPolicy(policyId);
+
+      return policy ? watchdogSettingsTarget(policy) : { id: policyId, type: "watchdog_policy" };
+    }),
     async (c) => {
       const policy = await settingsStore.findWatchdogPolicy(c.req.param("policyId"));
 

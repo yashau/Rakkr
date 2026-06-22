@@ -143,9 +143,18 @@ test("settings write routes deny users without settings manage", async () => {
       .type,
     "recording_profile",
   );
+  assert.equal(
+    deniedEvents.find((event) => event.action === "settings.watchdog_policies.update")?.target.type,
+    "watchdog_policy",
+  );
   assert.ok(
     deniedEvents
-      .filter((event) => event.action !== "settings.recording_profiles.update")
+      .filter(
+        (event) =>
+          !["settings.recording_profiles.update", "settings.watchdog_policies.update"].includes(
+            event.action,
+          ),
+      )
       .every((event) => event.target.type === "settings"),
   );
 });
@@ -287,6 +296,71 @@ test("recording profile routes honor resource-scope denies", async () => {
         event.reason === "access_policy_denied" &&
         event.target.id === hiddenProfileId &&
         event.target.type === "recording_profile",
+    ),
+  );
+});
+
+test("watchdog policy routes honor resource-scope denies", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer(["settings:read", "settings:manage"]);
+  const settingsStore = createSettingsStore();
+  const hiddenPolicyId = "scheduled-voice-watchdog";
+  const isVisibleTarget = (target: AuditTarget) =>
+    !(target.type === "watchdog_policy" && target.id === hiddenPolicyId);
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async (_user, target) => isVisibleTarget(target),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
+    settingsStore,
+    uploadProviderStore: createUploadProviderStore(),
+  });
+
+  const listResponse = await app.request("/api/v1/settings/watchdog-policies");
+  const listBody = (await listResponse.json()) as { data: Array<{ id: string }> };
+  const detailResponse = await app.request(`/api/v1/settings/watchdog-policies/${hiddenPolicyId}`);
+  const actionsResponse = await app.request(
+    `/api/v1/settings/watchdog-policies/${hiddenPolicyId}/actions`,
+  );
+  const updateResponse = await requestJson(
+    app,
+    `/api/v1/settings/watchdog-policies/${hiddenPolicyId}`,
+    "PATCH",
+    { name: "Hidden Watchdog Update", thresholdDbfs: -12 },
+  );
+  const deniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:read",
+  });
+  const manageDeniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:manage",
+  });
+  const storedPolicy = await settingsStore.findWatchdogPolicy(hiddenPolicyId);
+
+  assert.equal(listResponse.status, 200);
+  assert.equal(
+    listBody.data.some((policy) => policy.id === hiddenPolicyId),
+    false,
+  );
+  assert.equal(detailResponse.status, 403);
+  assert.equal(actionsResponse.status, 403);
+  assert.equal(updateResponse.status, 403);
+  assert.equal(storedPolicy?.name, "Scheduled Voice Watchdog");
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.watchdog_policies.actions.read",
+    "settings.watchdog_policies.detail.read",
+  ]);
+  assert.equal(manageDeniedEvents[0]?.action, "settings.watchdog_policies.update");
+  assert.ok(
+    [...deniedEvents, ...manageDeniedEvents].every(
+      (event) =>
+        event.reason === "access_policy_denied" &&
+        event.target.id === hiddenPolicyId &&
+        event.target.type === "watchdog_policy",
     ),
   );
 });

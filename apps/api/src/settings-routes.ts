@@ -37,7 +37,12 @@ import { createUploadPolicy, listUploadPolicies, updateUploadPolicy } from "./up
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 import { registerSettingsActionRoutes } from "./settings-action-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
-import { profileSettingsTarget, scopedRecordingProfiles } from "./settings-scope.js";
+import {
+  profileSettingsTarget,
+  scopedRecordingProfiles,
+  scopedWatchdogPolicies,
+  watchdogSettingsTarget,
+} from "./settings-scope.js";
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
@@ -79,7 +84,10 @@ export function registerSettingsRoutes({
     requirePermission("settings:read", "settings.watchdog_policies.read", () => ({
       type: "settings",
     })),
-    async (c) => c.json({ data: await settingsStore.listWatchdogPolicies() }),
+    async (c) =>
+      c.json({
+        data: await scopedWatchdogPolicies(currentAuth(c).user, settingsStore, hasResourceScope),
+      }),
   );
 
   app.get(
@@ -200,9 +208,12 @@ export function registerSettingsRoutes({
 
   app.patch(
     "/api/v1/settings/watchdog-policies/:policyId",
-    requirePermission("settings:manage", "settings.watchdog_policies.update", () => ({
-      type: "settings",
-    })),
+    requirePermission("settings:manage", "settings.watchdog_policies.update", async (c) => {
+      const policyId = c.req.param("policyId") ?? "";
+      const policy = await settingsStore.findWatchdogPolicy(policyId);
+
+      return policy ? watchdogSettingsTarget(policy) : { id: policyId, type: "watchdog_policy" };
+    }),
     async (c) => {
       const policyId = c.req.param("policyId");
       const before = await settingsStore.findWatchdogPolicy(policyId);
@@ -222,7 +233,7 @@ export function registerSettingsRoutes({
           c,
           "settings.watchdog_policies.update.failed",
           "invalid_request",
-          watchdogAuditTarget(before),
+          watchdogSettingsTarget(before),
         );
         return c.json({ error: "Invalid watchdog policy", issues: body.error.issues }, 400);
       }
@@ -234,7 +245,7 @@ export function registerSettingsRoutes({
           c,
           "settings.watchdog_policies.update.failed",
           "not_found",
-          watchdogAuditTarget(before),
+          watchdogSettingsTarget(before),
         );
         return c.json({ error: "Watchdog policy not found" }, 404);
       }
@@ -246,7 +257,7 @@ export function registerSettingsRoutes({
         before: watchdogSnapshot(before),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: watchdogAuditTarget(updated),
+        target: watchdogSettingsTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -906,14 +917,6 @@ function profileSnapshot(profile: RecordingProfile) {
     silenceDetectionEnabled: profile.silenceDetectionEnabled,
     silenceSkipEnabled: profile.silenceSkipEnabled,
     vbr: profile.vbr,
-  };
-}
-
-function watchdogAuditTarget(policy: WatchdogPolicy) {
-  return {
-    id: policy.id,
-    name: policy.name,
-    type: "watchdog_policy",
   };
 }
 

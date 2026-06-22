@@ -911,6 +911,7 @@ Current implementation baseline:
 280. ✅ Honor aggregate health-event resource denies.
 281. ✅ Scope aggregate health metrics and status to health-event denies.
 282. ✅ Scope recording-profile settings routes to resource denies.
+283. ✅ Scope watchdog-policy settings routes to resource denies.
 
 ## Open Questions
 
