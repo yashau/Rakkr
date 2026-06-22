@@ -11,7 +11,12 @@ import {
 
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
 import { registerRecordingActionRoutes } from "./recording-action-routes.js";
 import { registerRecordingJobRoutes } from "./recording-job-routes.js";
@@ -39,6 +44,7 @@ import {
 import { registerRecordingUploadQueueRoutes } from "./recording-upload-queue-routes.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { SettingsStore } from "./settings-store.js";
+import { profileSettingsTarget } from "./settings-scope.js";
 import { findUploadPolicy, uploadPolicyForQueue } from "./upload-policies.js";
 import { listUploadQueueItems } from "./upload-queue.js";
 
@@ -46,6 +52,7 @@ interface RecordingRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
   healthEventStore?: HealthEventStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
@@ -82,6 +89,7 @@ export function registerRecordingRoutes({
   app,
   currentAuth,
   currentUser,
+  hasResourceScope = async () => true,
   healthEventStore,
   recordAuditEvent,
   recordingStore,
@@ -722,6 +730,20 @@ export function registerRecordingRoutes({
         return c.json({ error: "Recording profile not found" }, 404);
       }
 
+      if (
+        body.data.recordingProfileId &&
+        !(await hasResourceScope(currentUser(c), profileSettingsTarget(profile)))
+      ) {
+        await recordRecordingStartFailure(
+          c,
+          "missing_resource_scope",
+          node.id,
+          node.alias,
+          profileSettingsTarget(profile),
+        );
+        return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+      }
+
       const uploadPolicy = body.data.uploadPolicyId
         ? await findUploadPolicy(body.data.uploadPolicyId)
         : await uploadPolicyForQueue(undefined);
@@ -858,14 +880,15 @@ export function registerRecordingRoutes({
     reason: string,
     nodeId?: string,
     nodeName?: string,
+    target?: AuditTarget,
   ) {
     await recordAuditEvent(c, {
       action: "recordings.start.failed",
       auth: currentAuth(c),
-      outcome: "failed",
+      outcome: reason === "missing_resource_scope" ? "denied" : "failed",
       permission: "recording:create",
       reason,
-      target: {
+      target: target ?? {
         id: nodeId,
         name: nodeName,
         type: "node",

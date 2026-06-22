@@ -920,6 +920,7 @@ Current implementation baseline:
 289. ✅ Scope watchdog calibration meter-history node access.
 290. ✅ Scope manual upload-runner passes to visible recordings.
 291. ✅ Scope upload-runner status summaries to visible recordings.
+292. ✅ Scope ad-hoc recording profile selection.
 
 ## Open Questions
 

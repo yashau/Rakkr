@@ -147,6 +147,39 @@ test("ad hoc recording start only operates on scoped visible nodes", async () =>
   assert.equal(recordings.length, 0);
 });
 
+test("ad hoc recording start rejects recording profiles outside scoped visibility", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const hiddenProfile = flacProfile({ id: "profile_hidden_start" });
+  const node = recorderNode();
+  const app = recordingApp({
+    auditStore,
+    hasResourceScope: async (_user, target) => target.id !== hiddenProfile.id,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile, hiddenProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      nodeId: node.id,
+      recordingProfileId: hiddenProfile.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "recordings.start.failed" });
+  const recordings = await recordingStore.list();
+
+  assert.equal(response.status, 403);
+  assert.equal(event?.outcome, "denied");
+  assert.equal(event?.reason, "missing_resource_scope");
+  assert.equal(event?.target.id, hiddenProfile.id);
+  assert.equal(event?.target.type, "recording_profile");
+  assert.equal(recordings.length, 0);
+});
+
 interface PermissionCall {
   action: string;
   permission: Permission;
@@ -155,6 +188,7 @@ interface PermissionCall {
 
 function recordingApp({
   auditStore,
+  hasResourceScope,
   nodes,
   permissionCalls,
   profiles,
@@ -162,6 +196,7 @@ function recordingApp({
   scopedNodeIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
+  hasResourceScope?: (user: CurrentUser, target: AuditTarget) => Promise<boolean>;
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
   profiles: RecordingProfile[];
@@ -174,6 +209,7 @@ function recordingApp({
     app,
     currentAuth: () => auth(),
     currentUser: () => user(),
+    hasResourceScope,
     nodeStore: memoryNodeStore(nodes),
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
@@ -391,7 +427,7 @@ function recorderNode(overrides: Partial<RecorderNode> = {}): RecorderNode {
   };
 }
 
-function flacProfile(): RecordingProfile {
+function flacProfile(overrides: Partial<RecordingProfile> = {}): RecordingProfile {
   return {
     bitrateKbps: 256,
     channelMode: "stereo",
@@ -401,5 +437,6 @@ function flacProfile(): RecordingProfile {
     silenceDetectionEnabled: false,
     silenceSkipEnabled: false,
     vbr: false,
+    ...overrides,
   };
 }
