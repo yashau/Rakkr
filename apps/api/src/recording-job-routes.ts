@@ -240,7 +240,12 @@ export function registerRecordingJobRoutes({
       }
 
       const jobIds = uniqueJobIds(body.data.jobIds);
-      const visibleJobs = await scopedJobs(currentUser(c));
+      const user = currentUser(c);
+      const visibleRecordings = await scopedRecordings(user);
+      const visibleRecordingMap = new Map(
+        visibleRecordings.map((recording) => [recording.id, recording]),
+      );
+      const visibleJobs = await scopedRecordingJobs(user, async () => visibleRecordings);
       const visibleJobMap = new Map(visibleJobs.map((job) => [job.id, job]));
       const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
 
@@ -290,22 +295,6 @@ export function registerRecordingJobRoutes({
         return c.json({ error: "Only one retry job per recording can be created at once" }, 409);
       }
 
-      const recordings = new Map<string, RecordingSummary>();
-
-      for (const job of sourceJobs) {
-        const recording = await recordingStore.find(job.recordingId);
-
-        if (!recording) {
-          await recordBulkJobFailure(c, "recording_jobs.bulk_retry.failed", "recording_not_found", {
-            jobIds,
-            recordingId: job.recordingId,
-          });
-          return c.json({ error: "One or more recordings were not found" }, 404);
-        }
-
-        recordings.set(recording.id, recording);
-      }
-
       const selectedJobIds = new Set(jobIds);
       const activeConflicts = (await listRecordingJobs()).filter(
         (job) =>
@@ -340,7 +329,7 @@ export function registerRecordingJobRoutes({
           );
         }
 
-        const recording = recordings.get(sourceJob.recordingId)!;
+        const recording = visibleRecordingMap.get(sourceJob.recordingId)!;
         const updated = recordingForRetriedJob(recording, result.job.createdAt);
 
         await recordingStore.save(updated);
@@ -392,7 +381,12 @@ export function registerRecordingJobRoutes({
       }
 
       const jobIds = uniqueJobIds(body.data.jobIds);
-      const visibleJobs = await scopedJobs(currentUser(c));
+      const user = currentUser(c);
+      const visibleRecordings = await scopedRecordings(user);
+      const visibleRecordingMap = new Map(
+        visibleRecordings.map((recording) => [recording.id, recording]),
+      );
+      const visibleJobs = await scopedRecordingJobs(user, async () => visibleRecordings);
       const visibleJobMap = new Map(visibleJobs.map((job) => [job.id, job]));
       const hiddenIds = jobIds.filter((jobId) => !visibleJobMap.has(jobId));
 
@@ -427,27 +421,12 @@ export function registerRecordingJobRoutes({
         return c.json({ error: "One or more recording jobs cannot be stopped" }, 409);
       }
 
-      const recordings = new Map<string, RecordingSummary>();
-
-      for (const job of sourceJobs) {
-        const recording = await recordingStore.find(job.recordingId);
-
-        if (!recording) {
-          await recordBulkJobFailure(c, "recording_jobs.bulk_stop.failed", "recording_not_found", {
-            jobIds,
-            recordingId: job.recordingId,
-          });
-          return c.json({ error: "One or more recordings were not found" }, 404);
-        }
-
-        recordings.set(recording.id, recording);
-      }
-
       const stoppedJobs = [];
       const before = [];
       const after = [];
 
       for (const sourceJob of sourceJobs) {
+        const beforeJobStatus = sourceJob.status;
         const stopped = await stopRecordingJobById(sourceJob.id);
 
         if (!stopped) {
@@ -463,7 +442,7 @@ export function registerRecordingJobRoutes({
           return c.json({ error: "Recording jobs could not all be stopped" }, 409);
         }
 
-        const recording = recordings.get(sourceJob.recordingId)!;
+        const recording = visibleRecordingMap.get(sourceJob.recordingId)!;
         const beforeRecordingStatus = recording.status;
 
         recording.durationSeconds = Math.max(recording.durationSeconds, 1);
@@ -475,7 +454,7 @@ export function registerRecordingJobRoutes({
           jobId: sourceJob.id,
           recordingId: recording.id,
           recordingStatus: beforeRecordingStatus,
-          status: sourceJob.status,
+          status: beforeJobStatus,
         });
         after.push({
           jobId: stopped.id,
@@ -521,7 +500,12 @@ export function registerRecordingJobRoutes({
     }),
     async (c) => {
       const jobId = c.req.param("jobId") ?? "";
-      const visibleJobs = await scopedJobs(currentUser(c));
+      const user = currentUser(c);
+      const visibleRecordings = await scopedRecordings(user);
+      const visibleRecordingMap = new Map(
+        visibleRecordings.map((recording) => [recording.id, recording]),
+      );
+      const visibleJobs = await scopedRecordingJobs(user, async () => visibleRecordings);
       const visibleJob = visibleJobs.find((job) => job.id === jobId);
 
       if (!visibleJob) {
@@ -540,23 +524,7 @@ export function registerRecordingJobRoutes({
         return c.json({ error: "Recording job not found" }, 404);
       }
 
-      const recording = await recordingStore.find(visibleJob.recordingId);
-
-      if (!recording) {
-        await recordAuditEvent(c, {
-          action: "recording_jobs.retry.failed",
-          auth: currentAuth(c),
-          outcome: "failed",
-          permission: "recording:control",
-          reason: "recording_not_found",
-          target: {
-            id: visibleJob.recordingId,
-            type: "recording",
-          },
-        });
-
-        return c.json({ error: "Recording not found" }, 404);
-      }
+      const recording = visibleRecordingMap.get(visibleJob.recordingId)!;
 
       const result = await retryRecordingJob(jobId);
 
