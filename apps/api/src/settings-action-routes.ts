@@ -1,10 +1,5 @@
 import type { Context, Hono } from "hono";
-import type {
-  ChannelMapAssignmentPlan,
-  Permission,
-  RecordingProfile,
-  UploadPolicy,
-} from "@rakkr/shared";
+import type { ChannelMapAssignmentPlan, Permission, RecordingProfile } from "@rakkr/shared";
 import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
@@ -13,10 +8,11 @@ import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.j
 import type { SettingsStore } from "./settings-store.js";
 import {
   channelMapTemplateSettingsTarget,
+  uploadPolicySettingsTarget,
   uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
-import { listUploadPolicies } from "./upload-policies.js";
+import { findUploadPolicy } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
 
 interface SettingsActionRouteDependencies {
@@ -254,13 +250,15 @@ export function registerSettingsActionRoutes({
     "/api/v1/settings/upload-policies/:policyId/actions",
     settingsRead("settings.upload_policies.actions.read", requirePermission, async (c) => {
       const policyId = c.req.param("policyId") ?? "";
-      const policy = (await listUploadPolicies()).find((candidate) => candidate.id === policyId);
+      const policy = await findUploadPolicy(policyId);
 
-      return policy ? uploadPolicyTarget(policy) : uploadPolicyTarget({ id: policyId });
+      return policy
+        ? uploadPolicySettingsTarget(policy)
+        : uploadPolicySettingsTarget({ id: policyId });
     }),
     async (c) => {
       const policyId = c.req.param("policyId") ?? "";
-      const policy = (await listUploadPolicies()).find((candidate) => candidate.id === policyId);
+      const policy = await findUploadPolicy(policyId);
 
       return policy
         ? c.json({
@@ -349,10 +347,4 @@ function planTarget(
     Partial<Pick<ChannelMapAssignmentPlan, "templateId">>,
 ) {
   return { id: plan.id, name: plan.templateId, type: "channel_map_assignment_plan" };
-}
-
-function uploadPolicyTarget(
-  policy: Pick<UploadPolicy, "id"> & Partial<Pick<UploadPolicy, "name">>,
-) {
-  return { id: policy.id, name: policy.name, type: "upload_policy" };
 }

@@ -6,11 +6,12 @@ import type { AppBindings, RequirePermission } from "./http-types.js";
 import {
   channelMapTemplateSettingsTarget,
   profileSettingsTarget,
+  uploadPolicySettingsTarget,
   uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
 import type { SettingsStore } from "./settings-store.js";
-import { listUploadPolicies } from "./upload-policies.js";
+import { findUploadPolicy } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
 
 interface SettingsDetailRouteDependencies {
@@ -124,10 +125,15 @@ export function registerSettingsDetailRoutes({
 
   app.get(
     "/api/v1/settings/upload-policies/:policyId",
-    settingsRead("settings.upload_policies.detail.read"),
+    requirePermission("settings:read", "settings.upload_policies.detail.read", async (c) => {
+      const policyId = c.req.param("policyId") ?? "";
+      const policy = await findUploadPolicy(policyId);
+
+      return policy ? uploadPolicySettingsTarget(policy) : { id: policyId, type: "upload_policy" };
+    }),
     async (c) => {
       const policyId = c.req.param("policyId");
-      const policy = (await listUploadPolicies()).find((candidate) => candidate.id === policyId);
+      const policy = await findUploadPolicy(policyId);
 
       return policy ? c.json({ data: policy }) : c.json({ error: "Upload policy not found" }, 404);
     },

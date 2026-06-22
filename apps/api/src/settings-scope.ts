@@ -1,6 +1,7 @@
 import type {
   ChannelMapTemplate,
   RecordingProfile,
+  UploadPolicy,
   UploadProviderRuntimeStatus,
   WatchdogPolicy,
 } from "@rakkr/shared";
@@ -41,6 +42,16 @@ export function uploadProviderSettingsTarget(provider?: UploadProviderRuntimeSta
     id: provider?.provider,
     name: provider?.displayName,
     type: "upload_provider",
+  };
+}
+
+export function uploadPolicySettingsTarget(
+  policy: Pick<UploadPolicy, "id"> & Partial<Pick<UploadPolicy, "name">>,
+) {
+  return {
+    id: policy.id,
+    name: policy.name,
+    type: "upload_policy",
   };
 }
 
@@ -137,4 +148,27 @@ export async function scopedUploadProviders(
   }
 
   return visibleProviders;
+}
+
+export async function scopedUploadPolicies(
+  user: AuthResult["user"],
+  policies: UploadPolicy[],
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>,
+) {
+  if (!user) {
+    return [];
+  }
+
+  const visiblePolicies: UploadPolicy[] = [];
+
+  for (const policy of policies) {
+    if (await hasResourceScope(user, uploadPolicySettingsTarget(policy))) {
+      visiblePolicies.push(policy);
+    }
+  }
+
+  return visiblePolicies;
 }
