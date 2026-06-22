@@ -518,6 +518,7 @@ registerWatchdogCalibrationRoutes({
 registerRetentionPolicyRoutes({
   app,
   currentAuth,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
   recordAuditEvent,
   requirePermission,
 });

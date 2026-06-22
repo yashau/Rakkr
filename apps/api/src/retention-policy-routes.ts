@@ -14,13 +14,16 @@ import type {
 } from "./http-types.js";
 import {
   createRetentionPolicy,
+  findRetentionPolicy,
   listRetentionPolicies,
   updateRetentionPolicy,
 } from "./retention-policies.js";
+import { retentionPolicySettingsTarget, scopedRetentionPolicies } from "./settings-scope.js";
 
 interface RetentionPolicyRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
+  hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
 }
@@ -28,6 +31,7 @@ interface RetentionPolicyRouteDependencies {
 export function registerRetentionPolicyRoutes({
   app,
   currentAuth,
+  hasResourceScope = async () => true,
   recordAuditEvent,
   requirePermission,
 }: RetentionPolicyRouteDependencies) {
@@ -36,22 +40,29 @@ export function registerRetentionPolicyRoutes({
     requirePermission("settings:read", "settings.retention_policies.read", () => ({
       type: "settings",
     })),
-    async (c) => c.json({ data: await listRetentionPolicies() }),
+    async (c) =>
+      c.json({
+        data: await scopedRetentionPolicies(
+          currentAuth(c).user,
+          await listRetentionPolicies(),
+          hasResourceScope,
+        ),
+      }),
   );
 
   app.get(
     "/api/v1/settings/retention-policies/:policyId/actions",
     requirePermission("settings:read", "settings.retention_policies.actions.read", async (c) => {
       const policyId = c.req.param("policyId");
-      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+      const policy = await findRetentionPolicy(policyId);
 
       return policy
-        ? retentionPolicyAuditTarget(policy)
+        ? retentionPolicySettingsTarget(policy)
         : { id: policyId, type: "retention_policy" };
     }),
     async (c) => {
       const policyId = c.req.param("policyId");
-      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+      const policy = await findRetentionPolicy(policyId);
 
       return policy
         ? c.json({
@@ -75,15 +86,15 @@ export function registerRetentionPolicyRoutes({
     "/api/v1/settings/retention-policies/:policyId",
     requirePermission("settings:read", "settings.retention_policies.detail.read", async (c) => {
       const policyId = c.req.param("policyId");
-      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+      const policy = await findRetentionPolicy(policyId);
 
       return policy
-        ? retentionPolicyAuditTarget(policy)
+        ? retentionPolicySettingsTarget(policy)
         : { id: policyId, type: "retention_policy" };
     }),
     async (c) => {
       const policyId = c.req.param("policyId");
-      const policy = (await listRetentionPolicies()).find((candidate) => candidate.id === policyId);
+      const policy = await findRetentionPolicy(policyId);
 
       return policy
         ? c.json({ data: policy })
@@ -115,7 +126,7 @@ export function registerRetentionPolicyRoutes({
         auth: currentAuth(c),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: retentionPolicyAuditTarget(created),
+        target: retentionPolicySettingsTarget(created),
       });
 
       return c.json({ data: created }, 201);
@@ -124,12 +135,17 @@ export function registerRetentionPolicyRoutes({
 
   app.patch(
     "/api/v1/settings/retention-policies/:policyId",
-    requirePermission("settings:manage", "settings.retention_policies.update", () => ({
-      type: "settings",
-    })),
+    requirePermission("settings:manage", "settings.retention_policies.update", async (c) => {
+      const policyId = c.req.param("policyId");
+      const policy = await findRetentionPolicy(policyId);
+
+      return policy
+        ? retentionPolicySettingsTarget(policy)
+        : { id: policyId, type: "retention_policy" };
+    }),
     async (c) => {
       const policyId = c.req.param("policyId");
-      const before = (await listRetentionPolicies()).find((policy) => policy.id === policyId);
+      const before = await findRetentionPolicy(policyId);
 
       if (!before) {
         await recordSettingsFailure(c, "settings.retention_policies.update.failed", {
@@ -146,7 +162,7 @@ export function registerRetentionPolicyRoutes({
         await recordSettingsFailure(c, "settings.retention_policies.update.failed", {
           details: { reason: "invalid_request" },
           recordAuditEvent,
-          target: retentionPolicyAuditTarget(before),
+          target: retentionPolicySettingsTarget(before),
         });
         return c.json({ error: "Invalid retention policy", issues: body.error.issues }, 400);
       }
@@ -157,7 +173,7 @@ export function registerRetentionPolicyRoutes({
         await recordSettingsFailure(c, "settings.retention_policies.update.failed", {
           details: { reason: "not_found" },
           recordAuditEvent,
-          target: retentionPolicyAuditTarget(before),
+          target: retentionPolicySettingsTarget(before),
         });
         return c.json({ error: "Retention policy not found" }, 404);
       }
@@ -169,7 +185,7 @@ export function registerRetentionPolicyRoutes({
         before: retentionPolicySnapshot(before),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: retentionPolicyAuditTarget(updated),
+        target: retentionPolicySettingsTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -230,14 +246,6 @@ async function recordSettingsFailure(
     reason: details.reason,
     target,
   });
-}
-
-function retentionPolicyAuditTarget(policy: RetentionPolicy) {
-  return {
-    id: policy.id,
-    name: policy.name,
-    type: "retention_policy",
-  };
 }
 
 function retentionPolicySnapshot(policy: RetentionPolicy) {

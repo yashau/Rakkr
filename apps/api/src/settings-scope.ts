@@ -1,6 +1,7 @@
 import type {
   ChannelMapTemplate,
   RecordingProfile,
+  RetentionPolicy,
   UploadPolicy,
   UploadProviderRuntimeStatus,
   WatchdogPolicy,
@@ -52,6 +53,14 @@ export function uploadPolicySettingsTarget(
     id: policy.id,
     name: policy.name,
     type: "upload_policy",
+  };
+}
+
+export function retentionPolicySettingsTarget(policy: Pick<RetentionPolicy, "id" | "name">) {
+  return {
+    id: policy.id,
+    name: policy.name,
+    type: "retention_policy",
   };
 }
 
@@ -166,6 +175,29 @@ export async function scopedUploadPolicies(
 
   for (const policy of policies) {
     if (await hasResourceScope(user, uploadPolicySettingsTarget(policy))) {
+      visiblePolicies.push(policy);
+    }
+  }
+
+  return visiblePolicies;
+}
+
+export async function scopedRetentionPolicies(
+  user: AuthResult["user"],
+  policies: RetentionPolicy[],
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>,
+) {
+  if (!user) {
+    return [];
+  }
+
+  const visiblePolicies: RetentionPolicy[] = [];
+
+  for (const policy of policies) {
+    if (await hasResourceScope(user, retentionPolicySettingsTarget(policy))) {
       visiblePolicies.push(policy);
     }
   }

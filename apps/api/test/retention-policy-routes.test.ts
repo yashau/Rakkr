@@ -6,13 +6,19 @@ import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser } from "@rakkr/shared";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "../src/http-types.js";
 
 const retentionRoot = await mkdtemp(path.join(tmpdir(), "rakkr-retention-policies-"));
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(retentionRoot, "policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerRetentionPolicyRoutes } = await import("../src/retention-policy-routes.js");
+const { createRetentionPolicy, findRetentionPolicy } = await import("../src/retention-policies.js");
 
 test.after(async () => {
   await rm(retentionRoot, { force: true, recursive: true });
@@ -148,6 +154,73 @@ test("retention policy routes create update and audit snapshots", async () => {
   assert.equal(updateAudit?.target.type, "retention_policy");
 });
 
+test("retention policy routes honor resource-scope denies", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer(["settings:read", "settings:manage"]);
+  const hiddenPolicy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: true,
+    maxAgeDays: 30,
+    name: `Hidden Retention Policy ${randomUUID()}`,
+    scope: "controller_cache",
+  });
+  const hiddenPolicyId = hiddenPolicy.id;
+  const isVisibleTarget = (target: AuditTarget) =>
+    !(target.type === "retention_policy" && target.id === hiddenPolicyId);
+
+  registerRetentionPolicyRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async (_user, target) => isVisibleTarget(target),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
+  });
+
+  const listResponse = await app.request("/api/v1/settings/retention-policies");
+  const listBody = (await listResponse.json()) as { data: Array<{ id: string }> };
+  const detailResponse = await app.request(`/api/v1/settings/retention-policies/${hiddenPolicyId}`);
+  const actionsResponse = await app.request(
+    `/api/v1/settings/retention-policies/${hiddenPolicyId}/actions`,
+  );
+  const updateResponse = await requestJson(
+    app,
+    `/api/v1/settings/retention-policies/${hiddenPolicyId}`,
+    "PATCH",
+    { maxAgeDays: 90, name: "Hidden Retention Policy Update" },
+  );
+  const deniedEvents = await auditStore.list({ outcome: "denied", permission: "settings:read" });
+  const manageDeniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:manage",
+  });
+  const storedPolicy = await findRetentionPolicy(hiddenPolicyId);
+
+  assert.equal(listResponse.status, 200);
+  assert.equal(
+    listBody.data.some((policy) => policy.id === hiddenPolicyId),
+    false,
+  );
+  assert.equal(detailResponse.status, 403);
+  assert.equal(actionsResponse.status, 403);
+  assert.equal(updateResponse.status, 403);
+  assert.equal(storedPolicy?.name, hiddenPolicy.name);
+  assert.equal(storedPolicy?.maxAgeDays, hiddenPolicy.maxAgeDays);
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.retention_policies.actions.read",
+    "settings.retention_policies.detail.read",
+  ]);
+  assert.equal(manageDeniedEvents[0]?.action, "settings.retention_policies.update");
+  assert.ok(
+    [...deniedEvents, ...manageDeniedEvents].every(
+      (event) =>
+        event.reason === "access_policy_denied" &&
+        event.target.id === hiddenPolicyId &&
+        event.target.type === "retention_policy",
+    ),
+  );
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   targetPath: string,
@@ -184,6 +257,37 @@ function denyMissingPermission(
     });
 
     return c.json({ error: "Forbidden", permission }, 403);
+  };
+}
+
+function denyResourceScope(
+  auditStore: ReturnType<typeof createAuditStore>,
+  currentUser: CurrentUser,
+  isVisibleTarget: (target: AuditTarget) => boolean,
+): RequirePermission {
+  return (permission, action, target) => async (c, next) => {
+    const auditTarget = target ? await target(c) : { type: "controller" as const };
+    const allowed = currentUser.permissions.includes(permission) && isVisibleTarget(auditTarget);
+
+    await recordAuditEvent(auditStore)(c, {
+      action,
+      auth: { user: currentUser },
+      details: {
+        requiredPermission: permission,
+        resourceScope: auditTarget,
+        roles: currentUser.roles,
+      },
+      outcome: allowed ? "allowed" : "denied",
+      permission,
+      reason: allowed ? undefined : "access_policy_denied",
+      target: auditTarget,
+    });
+
+    if (!allowed) {
+      return c.json({ error: "Forbidden", permission }, 403);
+    }
+
+    await next();
   };
 }
 
