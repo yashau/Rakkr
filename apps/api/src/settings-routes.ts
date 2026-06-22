@@ -26,16 +26,26 @@ import {
   type ChannelMapAssignmentPlanStore,
 } from "./channel-map-assignment-plans.js";
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
 import { createUploadPolicy, listUploadPolicies, updateUploadPolicy } from "./upload-policies.js";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 import { registerSettingsActionRoutes } from "./settings-action-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
+import { profileSettingsTarget, scopedRecordingProfiles } from "./settings-scope.js";
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
+  hasResourceScope?: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
@@ -47,6 +57,7 @@ export function registerSettingsRoutes({
   app,
   currentAuth,
   channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore(),
+  hasResourceScope = async () => true,
   recordAuditEvent,
   requirePermission,
   settingsStore,
@@ -57,7 +68,10 @@ export function registerSettingsRoutes({
     requirePermission("settings:read", "settings.recording_profiles.read", () => ({
       type: "settings",
     })),
-    async (c) => c.json({ data: await settingsStore.listRecordingProfiles() }),
+    async (c) =>
+      c.json({
+        data: await scopedRecordingProfiles(currentAuth(c).user, settingsStore, hasResourceScope),
+      }),
   );
 
   app.get(
@@ -126,9 +140,14 @@ export function registerSettingsRoutes({
 
   app.patch(
     "/api/v1/settings/recording-profiles/:profileId",
-    requirePermission("settings:manage", "settings.recording_profiles.update", () => ({
-      type: "settings",
-    })),
+    requirePermission("settings:manage", "settings.recording_profiles.update", async (c) => {
+      const profileId = c.req.param("profileId") ?? "";
+      const profile = await settingsStore.findRecordingProfile(profileId);
+
+      return profile
+        ? profileSettingsTarget(profile)
+        : { id: profileId, type: "recording_profile" };
+    }),
     async (c) => {
       const profileId = c.req.param("profileId");
       const before = await settingsStore.findRecordingProfile(profileId);
@@ -148,7 +167,7 @@ export function registerSettingsRoutes({
           c,
           "settings.recording_profiles.update.failed",
           "invalid_request",
-          profileAuditTarget(before),
+          profileSettingsTarget(before),
         );
         return c.json({ error: "Invalid recording profile", issues: body.error.issues }, 400);
       }
@@ -160,7 +179,7 @@ export function registerSettingsRoutes({
           c,
           "settings.recording_profiles.update.failed",
           "not_found",
-          profileAuditTarget(before),
+          profileSettingsTarget(before),
         );
         return c.json({ error: "Recording profile not found" }, 404);
       }
@@ -172,7 +191,7 @@ export function registerSettingsRoutes({
         before: profileSnapshot(before),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: profileAuditTarget(updated),
+        target: profileSettingsTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -794,14 +813,6 @@ export function registerSettingsRoutes({
       target,
     });
   }
-}
-
-function profileAuditTarget(profile: RecordingProfile) {
-  return {
-    id: profile.id,
-    name: profile.name,
-    type: "recording_profile",
-  };
 }
 
 function channelMapAuditTarget(template: ChannelMapTemplate) {

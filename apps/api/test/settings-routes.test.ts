@@ -6,7 +6,12 @@ import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser } from "@rakkr/shared";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "../src/http-types.js";
 
 const settingsRoot = await mkdtemp(path.join(tmpdir(), "rakkr-settings-routes-"));
 process.env.DATABASE_URL = "";
@@ -133,7 +138,16 @@ test("settings write routes deny users without settings manage", async () => {
     "settings.watchdog_policies.update",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
-  assert.ok(deniedEvents.every((event) => event.target.type === "settings"));
+  assert.equal(
+    deniedEvents.find((event) => event.action === "settings.recording_profiles.update")?.target
+      .type,
+    "recording_profile",
+  );
+  assert.ok(
+    deniedEvents
+      .filter((event) => event.action !== "settings.recording_profiles.update")
+      .every((event) => event.target.type === "settings"),
+  );
 });
 
 test("settings read routes deny users without settings read", async () => {
@@ -208,6 +222,73 @@ test("settings read routes deny users without settings read", async () => {
     "upload_provider",
     "watchdog_policy",
   ]);
+});
+
+test("recording profile routes honor resource-scope denies", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer(["settings:read", "settings:manage"]);
+  const settingsStore = createSettingsStore();
+  const hiddenProfileId = "voice-mp3-vbr";
+  const isVisibleTarget = (target: AuditTarget) =>
+    !(target.type === "recording_profile" && target.id === hiddenProfileId);
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async (_user, target) => isVisibleTarget(target),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
+    settingsStore,
+    uploadProviderStore: createUploadProviderStore(),
+  });
+
+  const listResponse = await app.request("/api/v1/settings/recording-profiles");
+  const listBody = (await listResponse.json()) as { data: Array<{ id: string }> };
+  const detailResponse = await app.request(
+    `/api/v1/settings/recording-profiles/${hiddenProfileId}`,
+  );
+  const actionsResponse = await app.request(
+    `/api/v1/settings/recording-profiles/${hiddenProfileId}/actions`,
+  );
+  const updateResponse = await requestJson(
+    app,
+    `/api/v1/settings/recording-profiles/${hiddenProfileId}`,
+    "PATCH",
+    { name: "Hidden Profile Update" },
+  );
+  const deniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:read",
+  });
+  const manageDeniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:manage",
+  });
+  const storedProfile = await settingsStore.findRecordingProfile(hiddenProfileId);
+
+  assert.equal(listResponse.status, 200);
+  assert.equal(
+    listBody.data.some((profile) => profile.id === hiddenProfileId),
+    false,
+  );
+  assert.equal(detailResponse.status, 403);
+  assert.equal(actionsResponse.status, 403);
+  assert.equal(updateResponse.status, 403);
+  assert.equal(storedProfile?.name, "Voice MP3 VBR");
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.recording_profiles.actions.read",
+    "settings.recording_profiles.detail.read",
+  ]);
+  assert.equal(manageDeniedEvents[0]?.action, "settings.recording_profiles.update");
+  assert.ok(
+    [...deniedEvents, ...manageDeniedEvents].every(
+      (event) =>
+        event.reason === "access_policy_denied" &&
+        event.target.id === hiddenProfileId &&
+        event.target.type === "recording_profile",
+    ),
+  );
 });
 
 test("settings detail routes return individual settings resources", async () => {
@@ -626,6 +707,38 @@ function denyMissingPermission(
     });
 
     return c.json({ error: "Forbidden", permission }, 403);
+  };
+}
+
+function denyResourceScope(
+  auditStore: ReturnType<typeof createAuditStore>,
+  currentUser: CurrentUser,
+  isVisibleTarget: (target: AuditTarget) => boolean,
+): RequirePermission {
+  return (permission, action, target) => async (c, next) => {
+    const auditTarget = target ? await target(c) : { type: "controller" as const };
+    const hasPermission = currentUser.permissions.includes(permission);
+    const allowed = hasPermission && isVisibleTarget(auditTarget);
+
+    await recordAuditEvent(auditStore)(c, {
+      action,
+      auth: { user: currentUser },
+      details: {
+        requiredPermission: permission,
+        resourceScope: auditTarget,
+        roles: currentUser.roles,
+      },
+      outcome: allowed ? "allowed" : "denied",
+      permission,
+      reason: hasPermission ? "access_policy_denied" : "missing_permission",
+      target: auditTarget,
+    });
+
+    if (!allowed) {
+      return c.json({ error: "Forbidden", permission }, 403);
+    }
+
+    await next();
   };
 }
 

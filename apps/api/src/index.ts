@@ -500,6 +500,7 @@ registerStatusRoutes({
 registerSettingsRoutes({
   app,
   currentAuth,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
   recordAuditEvent,
   requirePermission,
   settingsStore,

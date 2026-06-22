@@ -3,6 +3,7 @@ import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
+import { profileSettingsTarget } from "./settings-scope.js";
 import type { SettingsStore } from "./settings-store.js";
 import { listUploadPolicies } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
@@ -27,7 +28,14 @@ export function registerSettingsDetailRoutes({
 
   app.get(
     "/api/v1/settings/recording-profiles/:profileId",
-    settingsRead("settings.recording_profiles.detail.read"),
+    requirePermission("settings:read", "settings.recording_profiles.detail.read", async (c) => {
+      const profileId = c.req.param("profileId") ?? "";
+      const profile = await settingsStore.findRecordingProfile(profileId);
+
+      return profile
+        ? profileSettingsTarget(profile)
+        : { id: profileId, type: "recording_profile" };
+    }),
     async (c) => {
       const profile = await settingsStore.findRecordingProfile(c.req.param("profileId"));
 
