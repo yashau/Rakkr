@@ -644,6 +644,7 @@ registerAuditRoutes({
   app,
   auditStore,
   currentAuth,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
   recordAuditEvent,
   requirePermission,
 });

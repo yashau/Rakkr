@@ -926,6 +926,7 @@ Current implementation baseline:
 295. ✅ Scope aggregate status settings summaries.
 296. ✅ Scope health-event audit metrics.
 297. ✅ Scope settings-resource audit metrics.
+298. ✅ Scope audit event reads and exports.
 
 ## Open Questions
 

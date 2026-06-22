@@ -8,13 +8,23 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
+import { canReadAuditEvent } from "./audit-scope.js";
 import type { AuditEventFilters, AuditStore } from "./audit-store.js";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 
 interface AuditRouteDependencies {
   app: Hono<AppBindings>;
   auditStore: AuditStore;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
 }
@@ -71,6 +81,7 @@ export function registerAuditRoutes({
   app,
   auditStore,
   currentAuth,
+  hasResourceScope,
   recordAuditEvent,
   requirePermission,
 }: AuditRouteDependencies) {
@@ -84,7 +95,10 @@ export function registerAuditRoutes({
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
-      const events = await auditStore.list(auditFilters(query.data));
+      const events = await scopedAuditEvents(
+        currentUser(c, currentAuth),
+        await auditStore.list(auditFilters(query.data)),
+      );
 
       return c.text(auditEventsCsv(events), 200, {
         "Content-Disposition": `attachment; filename="${auditExportFileName()}"`,
@@ -113,6 +127,19 @@ export function registerAuditRoutes({
         const event = await auditStore.find(eventId);
 
         if (!event) {
+          await recordSelectedAuditExportFailure(c, "audit_event_not_found", {
+            eventIds,
+            missingId: eventId,
+          });
+          return c.json({ error: "Audit event not found", eventId }, 404);
+        }
+
+        if (
+          !(await canReadAuditEvent(currentUser(c, currentAuth), event, {
+            allowActorSelf: true,
+            hasResourceScope,
+          }))
+        ) {
           await recordSelectedAuditExportFailure(c, "audit_event_not_found", {
             eventIds,
             missingId: eventId,
@@ -159,10 +186,13 @@ export function registerAuditRoutes({
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
-      const events = await auditStore.list({
-        ...auditFilters(query.data),
-        limit: query.data.limit ?? 500,
-      });
+      const events = await scopedAuditEvents(
+        currentUser(c, currentAuth),
+        await auditStore.list({
+          ...auditFilters(query.data),
+          limit: query.data.limit ?? 500,
+        }),
+      );
 
       return c.json({ data: auditEventFacets(events) });
     },
@@ -174,7 +204,11 @@ export function registerAuditRoutes({
     async (c) => {
       const event = await auditStore.find(c.req.param("eventId"));
 
-      return event
+      return event &&
+        (await canReadAuditEvent(currentUser(c, currentAuth), event, {
+          allowActorSelf: true,
+          hasResourceScope,
+        }))
         ? c.json({
             data: {
               actions: auditEventActions(event),
@@ -192,7 +226,11 @@ export function registerAuditRoutes({
     async (c) => {
       const event = await auditStore.find(c.req.param("eventId"));
 
-      return event
+      return event &&
+        (await canReadAuditEvent(currentUser(c, currentAuth), event, {
+          allowActorSelf: true,
+          hasResourceScope,
+        }))
         ? c.json({
             data: {
               actions: auditEventActions(event),
@@ -214,9 +252,26 @@ export function registerAuditRoutes({
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
-      return c.json({ data: await auditStore.list(auditFilters(query.data)) });
+      return c.json({
+        data: await scopedAuditEvents(
+          currentUser(c, currentAuth),
+          await auditStore.list(auditFilters(query.data)),
+        ),
+      });
     },
   );
+
+  async function scopedAuditEvents(user: NonNullable<AuthResult["user"]>, events: AuditEvent[]) {
+    const scopedEvents: AuditEvent[] = [];
+
+    for (const event of events) {
+      if (await canReadAuditEvent(user, event, { allowActorSelf: true, hasResourceScope })) {
+        scopedEvents.push(event);
+      }
+    }
+
+    return scopedEvents;
+  }
 
   async function recordSelectedAuditExportFailure(
     c: Context<AppBindings>,
@@ -250,6 +305,19 @@ function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEvent
     target: input.target,
     to: input.to ? new Date(input.to) : undefined,
   };
+}
+
+function currentUser(
+  c: Context<AppBindings>,
+  currentAuth: (c: Context<AppBindings>) => AuthResult,
+) {
+  const user = currentAuth(c).user;
+
+  if (!user) {
+    throw new Error("Authenticated route reached without a user");
+  }
+
+  return user;
 }
 
 function auditEventActions(event: AuditEvent) {

@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser, Permission } from "@rakkr/shared";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "../src/http-types.js";
 
 const { registerAuditRoutes } = await import("../src/audit-routes.js");
 const { createAuditStore } = await import("../src/audit-store.js");
@@ -172,6 +177,64 @@ test("audit facets summarize filtered investigation dimensions", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("audit routes hide resource-scoped events outside visibility", async () => {
+  const auditStore = createAuditStore("");
+  const visible = auditEvent("recordings.visible.succeeded", "succeeded", {
+    targetId: "room_visible",
+    targetName: "Visible Room",
+  });
+  const hidden = auditEvent("recordings.hidden.succeeded", "succeeded", {
+    targetId: "room_hidden",
+    targetName: "Hidden Room",
+  });
+
+  await auditStore.append(visible);
+  await auditStore.append(hidden);
+
+  const app = auditApp(auditStore, [], {
+    hasResourceScope: async (_user, target) => target.id !== hidden.target.id,
+  });
+  const [
+    listResponse,
+    exportResponse,
+    facetsResponse,
+    hiddenDetailResponse,
+    hiddenActionsResponse,
+  ] = await Promise.all([
+    app.request("/api/v1/audit-events"),
+    app.request("/api/v1/audit-events/export"),
+    app.request("/api/v1/audit-events/facets"),
+    app.request(`/api/v1/audit-events/${hidden.id}`),
+    app.request(`/api/v1/audit-events/${hidden.id}/actions`),
+  ]);
+  const listBody = (await listResponse.json()) as { data: AuditEvent[] };
+  const exportCsv = await exportResponse.text();
+  const facetsBody = (await facetsResponse.json()) as {
+    data: { targetTypes: Array<{ count: number; value: string }>; total: number };
+  };
+  const selectedResponse = await app.request("/api/v1/audit-events/export", {
+    body: JSON.stringify({ eventIds: [visible.id, hidden.id] }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+
+  assert.equal(listResponse.status, 200);
+  assert.deepEqual(
+    listBody.data.map((event) => event.id),
+    [visible.id],
+  );
+  assert.equal(exportResponse.status, 200);
+  assert.match(exportCsv, /recordings\.visible\.succeeded/);
+  assert.doesNotMatch(exportCsv, /recordings\.hidden\.succeeded/);
+  assert.equal(facetsResponse.status, 200);
+  assert.equal(facetsBody.data.total, 1);
+  assert.deepEqual(facetsBody.data.targetTypes, [{ count: 1, value: "room" }]);
+  assert.equal(hiddenDetailResponse.status, 404);
+  assert.equal(hiddenActionsResponse.status, 404);
+  assert.equal(selectedResponse.status, 404);
+  assert.equal((await selectedResponse.json()).eventId, hidden.id);
+});
+
 test("audit selected export preserves requested order and audits outcomes", async () => {
   const auditStore = createAuditStore("");
   const first = auditEvent("recordings.tag.succeeded", "succeeded", {
@@ -229,6 +292,7 @@ test("audit routes deny users without audit read", async () => {
     app,
     auditStore,
     currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async () => true,
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyMissingPermission(auditStore, currentUser),
   });
@@ -264,13 +328,20 @@ test("audit routes deny users without audit read", async () => {
   assert.ok(deniedEvents.every((event) => event.target.type === "controller"));
 });
 
-function auditApp(auditStore: ReturnType<typeof createAuditStore>, calls: string[]) {
+function auditApp(
+  auditStore: ReturnType<typeof createAuditStore>,
+  calls: string[],
+  options: {
+    hasResourceScope?: (user: CurrentUser, target: AuditTarget) => Promise<boolean>;
+  } = {},
+) {
   const app = new Hono<AppBindings>();
 
   registerAuditRoutes({
     app,
     auditStore,
     currentAuth: () => ({ user: user(["audit:read"]) }),
+    hasResourceScope: options.hasResourceScope ?? (async () => true),
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: requirePermission(calls),
   });
@@ -378,7 +449,9 @@ function auditEvent(
     details?: Record<string, unknown>;
     permission?: Permission;
     reason?: string;
+    targetId?: string;
     targetName?: string;
+    targetType?: AuditEvent["target"]["type"];
   } = {},
 ): AuditEvent {
   return {
@@ -398,9 +471,9 @@ function auditEvent(
     permission: options.permission ?? "audit:read",
     reason: options.reason,
     target: {
-      id: "room_101",
+      id: options.targetId ?? "room_101",
       name: options.targetName ?? "Room 101",
-      type: "room",
+      type: options.targetType ?? "room",
     },
   };
 }

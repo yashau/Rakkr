@@ -10,6 +10,7 @@ import type {
 } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
+import { canReadAuditEvent } from "./audit-scope.js";
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
@@ -212,38 +213,4 @@ async function recordingCacheByteMap(recordings: RecordingSummary[]) {
   );
 
   return Object.fromEntries(entries);
-}
-
-async function canReadAuditEvent(
-  user: NonNullable<AuthResult["user"]>,
-  event: AuditEvent,
-  dependencies: Pick<MetricsScopeDependencies, "hasResourceScope">,
-) {
-  if (!isResourceScopedAuditTarget(event.target)) {
-    return true;
-  }
-
-  return dependencies.hasResourceScope(user, event.target);
-}
-
-function isResourceScopedAuditTarget(target: AuditTarget) {
-  return Boolean(
-    target.id &&
-    [
-      "channel",
-      "channel_map_assignment_plan",
-      "channel_map_template",
-      "health_event",
-      "interface",
-      "node",
-      "recording",
-      "recording_profile",
-      "retention_policy",
-      "room",
-      "schedule",
-      "upload_policy",
-      "upload_provider",
-      "watchdog_policy",
-    ].includes(target.type),
-  );
 }
