@@ -37,12 +37,16 @@ import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
 import { registerSettingsUploadPolicyRoutes } from "./settings-upload-policy-routes.js";
 import {
   channelMapTemplateSettingsTarget,
+  firstHiddenChannelMapAssignmentTarget,
   profileSettingsTarget,
+  scopedChannelMapAssignmentPlans,
+  scopedChannelMapAssignments,
   scopedChannelMapTemplates,
   scopedRecordingProfiles,
   scopedUploadPolicies,
   scopedUploadProviders,
   scopedWatchdogPolicies,
+  uniqueChannelMapAssignmentTargets,
   uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
@@ -106,7 +110,14 @@ export function registerSettingsRoutes({
     requirePermission("settings:read", "settings.channel_map_assignments.read", () => ({
       type: "settings",
     })),
-    async (c) => c.json({ data: await settingsStore.listChannelMapAssignments() }),
+    async (c) =>
+      c.json({
+        data: await scopedChannelMapAssignments(
+          currentAuth(c).user,
+          await settingsStore.listChannelMapAssignments(),
+          hasResourceScope,
+        ),
+      }),
   );
 
   app.get(
@@ -114,7 +125,14 @@ export function registerSettingsRoutes({
     requirePermission("settings:read", "settings.channel_map_assignment_plans.read", () => ({
       type: "settings",
     })),
-    async (c) => c.json({ data: await channelMapAssignmentPlanStore.list() }),
+    async (c) =>
+      c.json({
+        data: await scopedChannelMapAssignmentPlans(
+          currentAuth(c).user,
+          await channelMapAssignmentPlanStore.list(),
+          hasResourceScope,
+        ),
+      }),
   );
 
   app.get(
@@ -150,6 +168,8 @@ export function registerSettingsRoutes({
   registerSettingsDetailRoutes({
     app,
     channelMapAssignmentPlanStore,
+    currentAuth,
+    hasResourceScope,
     requirePermission,
     settingsStore,
     uploadProviderStore,
@@ -158,6 +178,7 @@ export function registerSettingsRoutes({
     app,
     channelMapAssignmentPlanStore,
     currentAuth,
+    hasResourceScope,
     requirePermission,
     settingsStore,
     uploadProviderStore,
@@ -464,6 +485,16 @@ export function registerSettingsRoutes({
         return c.json({ error: "Invalid channel map assignment", issues: body.error.issues }, 400);
       }
 
+      const scopeDenied = await denyHiddenAssignmentTargets(
+        c,
+        "settings.channel_map_assignments.update.failed",
+        [{ targetId: body.data.targetId, targetType: body.data.targetType }],
+      );
+
+      if (scopeDenied) {
+        return scopeDenied;
+      }
+
       const template = await settingsStore.findChannelMapTemplate(body.data.templateId);
 
       if (!template) {
@@ -516,6 +547,17 @@ export function registerSettingsRoutes({
         return c.json({ error: "Invalid channel map assignments", issues: body.error.issues }, 400);
       }
 
+      const targets = uniqueChannelMapAssignmentTargets(body.data.targets);
+      const scopeDenied = await denyHiddenAssignmentTargets(
+        c,
+        "settings.channel_map_assignments.bulk_update.failed",
+        targets,
+      );
+
+      if (scopeDenied) {
+        return scopeDenied;
+      }
+
       const template = await settingsStore.findChannelMapTemplate(body.data.templateId);
 
       if (!template) {
@@ -533,7 +575,7 @@ export function registerSettingsRoutes({
 
       const assignments: ChannelMapTemplateAssignment[] = [];
 
-      for (const target of uniqueAssignmentTargets(body.data.targets)) {
+      for (const target of targets) {
         assignments.push(
           await settingsStore.assignChannelMapTemplate(
             {
@@ -589,6 +631,17 @@ export function registerSettingsRoutes({
         );
       }
 
+      const targets = uniqueChannelMapAssignmentTargets(body.data.targets);
+      const scopeDenied = await denyHiddenAssignmentTargets(
+        c,
+        "settings.channel_map_assignment_plans.create.failed",
+        targets,
+      );
+
+      if (scopeDenied) {
+        return scopeDenied;
+      }
+
       const template = await settingsStore.findChannelMapTemplate(body.data.templateId);
 
       if (!template) {
@@ -604,7 +657,10 @@ export function registerSettingsRoutes({
         return c.json({ error: "Channel map template not found" }, 404);
       }
 
-      const plan = await channelMapAssignmentPlanStore.create(body.data, currentAuth(c).user?.id);
+      const plan = await channelMapAssignmentPlanStore.create(
+        { ...body.data, targets },
+        currentAuth(c).user?.id,
+      );
 
       await recordAuditEvent(c, {
         action: "settings.channel_map_assignment_plans.create.succeeded",
@@ -621,9 +677,26 @@ export function registerSettingsRoutes({
 
   app.post(
     "/api/v1/settings/channel-map-assignment-plans/:planId/apply",
-    requirePermission("settings:manage", "settings.channel_map_assignment_plans.apply", () => ({
-      type: "settings",
-    })),
+    requirePermission(
+      "settings:manage",
+      "settings.channel_map_assignment_plans.apply",
+      async (c) => {
+        const planId = c.req.param("planId") ?? "";
+        const plan = await channelMapAssignmentPlanStore.find(planId);
+        const hiddenTarget = plan
+          ? await firstHiddenChannelMapAssignmentTarget(
+              currentAuth(c).user,
+              plan.targets,
+              hasResourceScope,
+            )
+          : undefined;
+
+        return (
+          hiddenTarget ??
+          (plan ? planAuditTarget(plan) : { id: planId, type: "channel_map_assignment_plan" })
+        );
+      },
+    ),
     async (c) => {
       const planId = c.req.param("planId");
       const before = await channelMapAssignmentPlanStore.find(planId);
@@ -720,6 +793,16 @@ export function registerSettingsRoutes({
         return c.json({ error: "Invalid channel map rollback", issues: body.error.issues }, 400);
       }
 
+      const scopeDenied = await denyHiddenAssignmentTargets(
+        c,
+        "settings.channel_map_assignments.rollback.failed",
+        [{ targetId: body.data.targetId, targetType: body.data.targetType }],
+      );
+
+      if (scopeDenied) {
+        return scopeDenied;
+      }
+
       const before = (await settingsStore.listChannelMapAssignments()).find(
         (assignment) =>
           assignment.targetType === body.data.targetType &&
@@ -757,6 +840,26 @@ export function registerSettingsRoutes({
       return c.json({ data: rolledBack });
     },
   );
+
+  async function denyHiddenAssignmentTargets(
+    c: Context<AppBindings>,
+    action: string,
+    targets: Array<Pick<ChannelMapTemplateAssignment, "targetId" | "targetType">>,
+  ) {
+    const hiddenTarget = await firstHiddenChannelMapAssignmentTarget(
+      currentAuth(c).user,
+      targets,
+      hasResourceScope,
+    );
+
+    if (!hiddenTarget) {
+      return undefined;
+    }
+
+    await recordSettingsFailure(c, action, "missing_resource_scope", hiddenTarget);
+
+    return c.json({ error: "Forbidden", permission: "settings:manage" }, 403);
+  }
 
   async function recordSettingsFailure(
     c: Context<AppBindings>,
@@ -825,26 +928,6 @@ function planSnapshot(plan: ChannelMapAssignmentPlan) {
     targets: plan.targets,
     templateId: plan.templateId,
   };
-}
-
-function uniqueAssignmentTargets(
-  targets: Array<{
-    targetId: string;
-    targetType: ChannelMapTemplateAssignment["targetType"];
-  }>,
-) {
-  const seen = new Set<string>();
-
-  return targets.filter((target) => {
-    const key = `${target.targetType}:${target.targetId}`;
-
-    if (seen.has(key)) {
-      return false;
-    }
-
-    seen.add(key);
-    return true;
-  });
 }
 
 function profileSnapshot(profile: RecordingProfile) {

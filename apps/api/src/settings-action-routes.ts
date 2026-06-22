@@ -8,6 +8,7 @@ import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.j
 import type { SettingsStore } from "./settings-store.js";
 import {
   channelMapTemplateSettingsTarget,
+  firstHiddenChannelMapAssignmentTarget,
   uploadPolicySettingsTarget,
   uploadProviderSettingsTarget,
   watchdogSettingsTarget,
@@ -19,6 +20,10 @@ interface SettingsActionRouteDependencies {
   app: Hono<AppBindings>;
   channelMapAssignmentPlanStore: ChannelMapAssignmentPlanStore;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
   uploadProviderStore: UploadProviderStore;
@@ -37,6 +42,7 @@ export function registerSettingsActionRoutes({
   app,
   channelMapAssignmentPlanStore,
   currentAuth,
+  hasResourceScope,
   requirePermission,
   settingsStore,
   uploadProviderStore,
@@ -173,8 +179,15 @@ export function registerSettingsActionRoutes({
       async (c) => {
         const planId = c.req.param("planId") ?? "";
         const plan = await channelMapAssignmentPlanStore.find(planId);
+        const hiddenTarget = plan
+          ? await firstHiddenChannelMapAssignmentTarget(
+              currentAuth(c).user,
+              plan.targets,
+              hasResourceScope,
+            )
+          : undefined;
 
-        return plan ? planTarget(plan) : planTarget({ id: planId });
+        return hiddenTarget ?? (plan ? planTarget(plan) : planTarget({ id: planId }));
       },
     ),
     async (c) => {

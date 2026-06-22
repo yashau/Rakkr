@@ -160,11 +160,17 @@ test("settings write routes deny users without settings manage", async () => {
     deniedEvents.find((event) => event.action === "settings.upload_policies.update")?.target.type,
     "upload_policy",
   );
+  assert.equal(
+    deniedEvents.find((event) => event.action === "settings.channel_map_assignment_plans.apply")
+      ?.target.type,
+    "channel_map_assignment_plan",
+  );
   assert.ok(
     deniedEvents
       .filter(
         (event) =>
           ![
+            "settings.channel_map_assignment_plans.apply",
             "settings.channel_map_templates.update",
             "settings.recording_profiles.update",
             "settings.upload_policies.update",

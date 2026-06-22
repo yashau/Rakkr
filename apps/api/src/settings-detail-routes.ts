@@ -1,10 +1,12 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
-import type { AppBindings, RequirePermission } from "./http-types.js";
+import type { AuthResult } from "./auth-service.js";
+import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
 import {
   channelMapTemplateSettingsTarget,
+  firstHiddenChannelMapAssignmentTarget,
   profileSettingsTarget,
   uploadPolicySettingsTarget,
   uploadProviderSettingsTarget,
@@ -17,6 +19,11 @@ import type { UploadProviderStore } from "./upload-providers.js";
 interface SettingsDetailRouteDependencies {
   app: Hono<AppBindings>;
   channelMapAssignmentPlanStore: ChannelMapAssignmentPlanStore;
+  currentAuth: (c: Context<AppBindings>) => AuthResult;
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
   uploadProviderStore: UploadProviderStore;
@@ -25,13 +32,12 @@ interface SettingsDetailRouteDependencies {
 export function registerSettingsDetailRoutes({
   app,
   channelMapAssignmentPlanStore,
+  currentAuth,
+  hasResourceScope,
   requirePermission,
   settingsStore,
   uploadProviderStore,
 }: SettingsDetailRouteDependencies) {
-  const settingsRead = (action: string) =>
-    requirePermission("settings:read", action, () => ({ type: "settings" }));
-
   app.get(
     "/api/v1/settings/recording-profiles/:profileId",
     requirePermission("settings:read", "settings.recording_profiles.detail.read", async (c) => {
@@ -89,9 +95,25 @@ export function registerSettingsDetailRoutes({
 
   app.get(
     "/api/v1/settings/channel-map-assignment-plans/:planId",
-    settingsRead("settings.channel_map_assignment_plans.detail.read"),
+    requirePermission(
+      "settings:read",
+      "settings.channel_map_assignment_plans.detail.read",
+      async (c) => {
+        const planId = c.req.param("planId") ?? "";
+        const plan = await channelMapAssignmentPlanStore.find(planId);
+        const hiddenTarget = plan
+          ? await firstHiddenChannelMapAssignmentTarget(
+              currentAuth(c).user,
+              plan.targets,
+              hasResourceScope,
+            )
+          : undefined;
+
+        return hiddenTarget ?? (plan ? planTarget(plan) : planTarget({ id: planId }));
+      },
+    ),
     async (c) => {
-      const plan = await channelMapAssignmentPlanStore.find(c.req.param("planId"));
+      const plan = await channelMapAssignmentPlanStore.find(c.req.param("planId") ?? "");
 
       return plan
         ? c.json({ data: plan })
@@ -138,4 +160,8 @@ export function registerSettingsDetailRoutes({
       return policy ? c.json({ data: policy }) : c.json({ error: "Upload policy not found" }, 404);
     },
   );
+}
+
+function planTarget(plan: { id: string; templateId?: string }) {
+  return { id: plan.id, name: plan.templateId, type: "channel_map_assignment_plan" };
 }

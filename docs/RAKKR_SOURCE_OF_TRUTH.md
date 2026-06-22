@@ -916,6 +916,7 @@ Current implementation baseline:
 285. ✅ Scope upload-provider settings routes to resource denies.
 286. ✅ Scope upload-policy settings routes to resource denies.
 287. ✅ Scope retention-policy settings routes to resource denies.
+288. ✅ Scope channel-map assignment targets to resource denies.
 
 ## Open Questions
 

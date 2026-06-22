@@ -1,5 +1,7 @@
 import type {
+  ChannelMapAssignmentPlan,
   ChannelMapTemplate,
+  ChannelMapTemplateAssignment,
   RecordingProfile,
   RetentionPolicy,
   UploadPolicy,
@@ -36,6 +38,32 @@ export function channelMapTemplateSettingsTarget(
     name: template.name,
     type: "channel_map_template",
   };
+}
+
+export function channelMapAssignmentTarget(
+  target: Pick<ChannelMapTemplateAssignment, "targetId" | "targetType">,
+) {
+  return {
+    id: target.targetId,
+    type: target.targetType,
+  };
+}
+
+export function uniqueChannelMapAssignmentTargets(
+  targets: Array<Pick<ChannelMapTemplateAssignment, "targetId" | "targetType">>,
+) {
+  const seen = new Set<string>();
+
+  return targets.filter((target) => {
+    const key = `${target.targetType}:${target.targetId}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
 
 export function uploadProviderSettingsTarget(provider?: UploadProviderRuntimeStatus) {
@@ -134,6 +162,75 @@ export async function scopedChannelMapTemplates(
   }
 
   return visibleTemplates;
+}
+
+export async function scopedChannelMapAssignments(
+  user: AuthResult["user"],
+  assignments: ChannelMapTemplateAssignment[],
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>,
+) {
+  if (!user) {
+    return [];
+  }
+
+  const visibleAssignments: ChannelMapTemplateAssignment[] = [];
+
+  for (const assignment of assignments) {
+    if (await hasResourceScope(user, channelMapAssignmentTarget(assignment))) {
+      visibleAssignments.push(assignment);
+    }
+  }
+
+  return visibleAssignments;
+}
+
+export async function firstHiddenChannelMapAssignmentTarget(
+  user: AuthResult["user"],
+  targets: Array<Pick<ChannelMapTemplateAssignment, "targetId" | "targetType">>,
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>,
+) {
+  if (!user) {
+    return targets[0] ? channelMapAssignmentTarget(targets[0]) : undefined;
+  }
+
+  for (const target of targets) {
+    const auditTarget = channelMapAssignmentTarget(target);
+
+    if (!(await hasResourceScope(user, auditTarget))) {
+      return auditTarget;
+    }
+  }
+
+  return undefined;
+}
+
+export async function scopedChannelMapAssignmentPlans(
+  user: AuthResult["user"],
+  plans: ChannelMapAssignmentPlan[],
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>,
+) {
+  if (!user) {
+    return [];
+  }
+
+  const visiblePlans: ChannelMapAssignmentPlan[] = [];
+
+  for (const plan of plans) {
+    if (!(await firstHiddenChannelMapAssignmentTarget(user, plan.targets, hasResourceScope))) {
+      visiblePlans.push(plan);
+    }
+  }
+
+  return visiblePlans;
 }
 
 export async function scopedUploadProviders(
