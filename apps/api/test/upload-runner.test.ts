@@ -20,7 +20,7 @@ const { createUploadPolicy } = await import("../src/upload-policies.js");
 const { createUploadProviderStore } = await import("../src/upload-providers.js");
 const { registerUploadRunnerRoutes } = await import("../src/upload-runner-routes.js");
 const { createUploadRunner } = await import("../src/upload-runner.js");
-const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
+const { enqueueRecordingUpload, listUploadQueueItems } = await import("../src/upload-queue.js");
 
 test.after(async () => {
   await rm(runnerRoot, { force: true, recursive: true });
@@ -200,6 +200,58 @@ test("upload runner routes expose status and run-now control", async () => {
   assert.equal(payload.data.lastSummary.succeeded, 1);
   assert.equal(events.length, 1);
   assert.equal(events[0]?.actor.id, "user_upload_runner_test");
+});
+
+test("upload runner run route only processes queue items for scoped recordings", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const providerStore = createUploadProviderStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const visible = recording(`rec_upload_visible_${randomUUID()}`);
+  const hidden = recording(`rec_upload_hidden_${randomUUID()}`);
+  const visibleItem = await enqueueRecordingUpload(visible, {
+    provider: "stub",
+    target: "stub://visible",
+  });
+  const hiddenItem = await enqueueRecordingUpload(hidden, {
+    provider: "stub",
+    target: "stub://hidden",
+  });
+
+  registerUploadRunnerRoutes({
+    app,
+    currentAuth: () => ({ user: user() }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allow,
+    scopedRecordings: async () => [visible],
+    uploadRunner: runner,
+  });
+
+  const response = await app.request("/api/v1/upload-runner/run", { method: "POST" });
+  const body = (await response.json()) as {
+    summary: { attempted: number; items: Array<{ recordingId: string }>; succeeded: number };
+  };
+  const items = await listUploadQueueItems();
+  const storedVisible = items.find((item) => item.id === visibleItem.id);
+  const storedHidden = items.find((item) => item.id === hiddenItem.id);
+  const itemEvents = await auditStore.list({
+    action: "recordings.upload_queue.runner_item.succeeded",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(body.summary.attempted, 1);
+  assert.equal(body.summary.succeeded, 1);
+  assert.deepEqual(
+    body.summary.items.map((item) => item.recordingId),
+    [visible.id],
+  );
+  assert.equal(storedVisible?.status, "succeeded");
+  assert.equal(storedHidden?.status, "queued");
+  assert.equal(storedHidden?.attemptCount, 0);
+  assert.deepEqual(
+    itemEvents.map((event) => event.target.id),
+    [visible.id],
+  );
 });
 
 test("upload runner routes deny users without required permissions", async () => {

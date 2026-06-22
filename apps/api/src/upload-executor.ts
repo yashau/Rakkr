@@ -23,6 +23,7 @@ interface UploadExecutorOptions {
   limit?: number;
   now?: Date;
   providerStore?: UploadProviderStore;
+  recordingIds?: ReadonlySet<string>;
   s3Client?: S3Sender;
 }
 
@@ -41,7 +42,9 @@ export async function runUploadQueueOnce(
 ): Promise<UploadQueueRunSummary> {
   const limit = Math.max(0, options.limit ?? 10);
   const providerStore = options.providerStore ?? createUploadProviderStore();
-  const dueItems = (await listDueUploadQueueItems(options.now)).slice(0, limit);
+  const dueItems = (await listDueUploadQueueItems(options.now))
+    .filter((item) => !options.recordingIds || options.recordingIds.has(item.recordingId))
+    .slice(0, limit);
   const items: UploadQueueRunItem[] = [];
 
   for (const dueItem of dueItems) {

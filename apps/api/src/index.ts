@@ -723,6 +723,7 @@ registerUploadRunnerRoutes({
   currentAuth,
   recordAuditEvent,
   requirePermission,
+  scopedRecordings,
   uploadRunner,
 });
 

@@ -1,5 +1,10 @@
 import type { Context, Hono } from "hono";
-import type { Permission, UploadQueueRunSummary, UploadRunnerStatus } from "@rakkr/shared";
+import type {
+  Permission,
+  RecordingSummary,
+  UploadQueueRunSummary,
+  UploadRunnerStatus,
+} from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
@@ -10,6 +15,7 @@ interface UploadRunnerRouteDependencies {
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
+  scopedRecordings?: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
   uploadRunner: UploadRunner;
 }
 
@@ -26,6 +32,7 @@ export function registerUploadRunnerRoutes({
   currentAuth,
   recordAuditEvent,
   requirePermission,
+  scopedRecordings,
   uploadRunner,
 }: UploadRunnerRouteDependencies) {
   app.get(
@@ -61,9 +68,12 @@ export function registerUploadRunnerRoutes({
     })),
     async (c) => {
       const before = uploadRunner.status();
+      const visibleRecordingIds = await uploadRunnerRecordingIds(c, currentAuth, scopedRecordings);
 
       try {
-        const summary = await uploadRunner.runOnce();
+        const summary = await uploadRunner.runOnce(new Date(), {
+          recordingIds: visibleRecordingIds,
+        });
         const after = uploadRunner.status();
 
         await recordAuditEvent(c, {
@@ -146,6 +156,20 @@ function uploadRunnerLinks() {
     run: "/api/v1/upload-runner/run",
     status: "/api/v1/upload-runner",
   };
+}
+
+async function uploadRunnerRecordingIds(
+  c: Context<AppBindings>,
+  currentAuth: (c: Context<AppBindings>) => AuthResult,
+  scopedRecordings?: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>,
+) {
+  const user = currentAuth(c).user;
+
+  if (!user || !scopedRecordings) {
+    return undefined;
+  }
+
+  return new Set((await scopedRecordings(user)).map((recording) => recording.id));
 }
 
 function statusSnapshot(status: UploadRunnerStatus) {

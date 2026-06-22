@@ -21,7 +21,12 @@ interface UploadRunnerDependencies {
   healthEventStore?: HealthEventStore;
   limit?: number;
   providerStore: UploadProviderStore;
+  recordingIds?: ReadonlySet<string>;
   recordingStore?: RecordingStore;
+}
+
+export interface UploadRunnerRunOptions {
+  recordingIds?: ReadonlySet<string>;
 }
 
 interface UploadRetentionResult {
@@ -39,7 +44,7 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
   let running = false;
   let timer: NodeJS.Timeout | undefined;
 
-  async function tick(now = new Date()) {
+  async function tick(now = new Date(), options: UploadRunnerRunOptions = {}) {
     if (running) {
       return emptySummary();
     }
@@ -47,7 +52,14 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
     running = true;
 
     try {
-      const summary = await runUploadQueuePass({ ...dependencies, limit: batchSize }, now);
+      const summary = await runUploadQueuePass(
+        {
+          ...dependencies,
+          limit: batchSize,
+          recordingIds: options.recordingIds ?? dependencies.recordingIds,
+        },
+        now,
+      );
 
       lastRunAt = new Date().toISOString();
       lastSummary = summary;
@@ -59,8 +71,8 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
   }
 
   return {
-    async runOnce(now = new Date()) {
-      return tick(now);
+    async runOnce(now = new Date(), options: UploadRunnerRunOptions = {}) {
+      return tick(now, options);
     },
     start(nextIntervalMs = uploadRunnerIntervalMs()) {
       if (timer) {
@@ -100,11 +112,12 @@ export async function runUploadQueuePass(
     healthEventStore,
     limit = uploadRunnerBatchSize(),
     providerStore,
+    recordingIds,
     recordingStore,
   }: UploadRunnerDependencies,
   now = new Date(),
 ) {
-  const summary = await runUploadQueueOnce({ limit, now, providerStore });
+  const summary = await runUploadQueueOnce({ limit, now, providerStore, recordingIds });
 
   if (summary.attempted === 0) {
     return summary;
