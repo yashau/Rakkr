@@ -235,6 +235,60 @@ test("audit routes hide resource-scoped events outside visibility", async () => 
   assert.equal((await selectedResponse.json()).eventId, hidden.id);
 });
 
+test("audit routes scope recording-job audit targets", async () => {
+  const auditStore = createAuditStore("");
+  const visible = auditEvent("recording_jobs.visible.failed", "failed", {
+    reason: "agent_reported_failure",
+    targetId: "job_visible",
+    targetName: "Visible Job",
+    targetType: "recording_job",
+  });
+  const hidden = auditEvent("recording_jobs.hidden.failed", "failed", {
+    reason: "node_scope_denied",
+    targetId: "job_hidden",
+    targetName: "Hidden Job",
+    targetType: "recording_job",
+  });
+
+  await auditStore.append(visible);
+  await auditStore.append(hidden);
+
+  const app = auditApp(auditStore, [], {
+    hasResourceScope: async (_user, target) => target.id !== hidden.target.id,
+  });
+  const [listResponse, exportResponse, facetsResponse, hiddenDetailResponse] = await Promise.all([
+    app.request("/api/v1/audit-events"),
+    app.request("/api/v1/audit-events/export"),
+    app.request("/api/v1/audit-events/facets"),
+    app.request(`/api/v1/audit-events/${hidden.id}`),
+  ]);
+  const listBody = (await listResponse.json()) as { data: AuditEvent[] };
+  const exportCsv = await exportResponse.text();
+  const facetsBody = (await facetsResponse.json()) as {
+    data: { targetTypes: Array<{ count: number; value: string }>; total: number };
+  };
+  const selectedResponse = await app.request("/api/v1/audit-events/export", {
+    body: JSON.stringify({ eventIds: [visible.id, hidden.id] }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+
+  assert.equal(listResponse.status, 200);
+  assert.deepEqual(
+    listBody.data.map((event) => event.id),
+    [visible.id],
+  );
+  assert.equal(exportResponse.status, 200);
+  assert.match(exportCsv, /recording_jobs\.visible\.failed/);
+  assert.doesNotMatch(exportCsv, /recording_jobs\.hidden\.failed/);
+  assert.equal(facetsResponse.status, 200);
+  assert.equal(facetsBody.data.total, 1);
+  assert.deepEqual(facetsBody.data.targetTypes, [{ count: 1, value: "recording_job" }]);
+  assert.equal(hiddenDetailResponse.status, 404);
+  assert.equal(selectedResponse.status, 404);
+  assert.equal((await selectedResponse.json()).eventId, hidden.id);
+});
+
 test("audit selected export preserves requested order and audits outcomes", async () => {
   const auditStore = createAuditStore("");
   const first = auditEvent("recordings.tag.succeeded", "succeeded", {

@@ -19,6 +19,7 @@ const RESOURCE_SCOPED_AUDIT_TARGET_TYPES = new Set([
   "interface",
   "node",
   "recording",
+  "recording_job",
   "recording_profile",
   "retention_policy",
   "room",

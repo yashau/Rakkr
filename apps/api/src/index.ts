@@ -32,6 +32,7 @@ import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
+import { recordingJob } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
@@ -254,14 +255,15 @@ async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]>
   const knownNodes = await nodeStore.list();
 
   if (target.type === "recording" && target.id) {
-    const recording = await recordingStore.find(target.id);
+    await addRecordingScopeTargets(targets, target.id, knownNodes);
+  }
 
-    if (recording?.scheduleId) {
-      await addScheduleScopeTargets(targets, recording.scheduleId, knownNodes);
-    }
+  if (target.type === "recording_job" && target.id) {
+    const job = await recordingJob(target.id);
 
-    if (recording?.nodeId) {
-      addNodeScopeTargets(targets, recording.nodeId, knownNodes);
+    if (job) {
+      await addRecordingScopeTargets(targets, job.recordingId, knownNodes);
+      addNodeScopeTargets(targets, job.nodeId, knownNodes);
     }
   }
 
@@ -302,6 +304,28 @@ async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]>
         (other) => other.type === candidate.type && other.id === candidate.id,
       ) === index,
   );
+}
+
+async function addRecordingScopeTargets(
+  targets: AuditTarget[],
+  recordingId: string,
+  knownNodes: NodeRecord[],
+) {
+  const recording = await recordingStore.find(recordingId);
+
+  if (!recording) {
+    return;
+  }
+
+  targets.push({ id: recording.id, type: "recording" });
+
+  if (recording.scheduleId) {
+    await addScheduleScopeTargets(targets, recording.scheduleId, knownNodes);
+  }
+
+  if (recording.nodeId) {
+    addNodeScopeTargets(targets, recording.nodeId, knownNodes);
+  }
 }
 
 async function addScheduleScopeTargets(

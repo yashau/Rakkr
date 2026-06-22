@@ -930,6 +930,7 @@ Current implementation baseline:
 299. ✅ Scope agent health-event schedule sync.
 300. ✅ Scope agent job recording mutations.
 301. ✅ Scope agent cache-file job completion.
+302. ✅ Scope recording-job audit targets.
 
 ## Open Questions
 
