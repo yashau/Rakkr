@@ -55,7 +55,6 @@ export function registerScheduleRoutes({
   app,
   currentAuth,
   currentUser,
-  nodeStore,
   recordAuditEvent,
   recordingStore,
   requirePermission,
@@ -178,9 +177,8 @@ export function registerScheduleRoutes({
   registerScheduleActionRoutes({
     app,
     currentUser,
-    nodeStore,
     requirePermission,
-    scheduleStore,
+    scopedNodes,
     scopedSchedules,
   });
 

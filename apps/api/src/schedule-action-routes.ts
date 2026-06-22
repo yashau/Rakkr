@@ -1,18 +1,15 @@
 import type { Context, Hono } from "hono";
-import type { Permission, ScheduleSummary } from "@rakkr/shared";
+import type { Permission, RecorderNode, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
-import type { NodeStore } from "./node-store.js";
 import { skipNextScheduleOccurrence } from "./schedule-engine.js";
-import type { ScheduleStore } from "./schedule-store.js";
 
 interface ScheduleActionRouteDependencies {
   app: Hono<AppBindings>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
-  nodeStore: NodeStore;
   requirePermission: RequirePermission;
-  scheduleStore: ScheduleStore;
+  scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
   scopedSchedules: (user: NonNullable<AuthResult["user"]>) => Promise<ScheduleSummary[]>;
 }
 
@@ -27,9 +24,8 @@ interface ScheduleActionState {
 export function registerScheduleActionRoutes({
   app,
   currentUser,
-  nodeStore,
   requirePermission,
-  scheduleStore,
+  scopedNodes,
   scopedSchedules,
 }: ScheduleActionRouteDependencies) {
   app.get(
@@ -41,20 +37,15 @@ export function registerScheduleActionRoutes({
     async (c) => {
       const scheduleId = c.req.param("scheduleId");
       const user = currentUser(c);
-      const visible = (await scopedSchedules(user)).find((schedule) => schedule.id === scheduleId);
-
-      if (!visible) {
-        return c.json({ error: "Schedule not found" }, 404);
-      }
-
-      const [schedule, node] = await Promise.all([
-        scheduleStore.find(scheduleId),
-        nodeStore.find(visible.nodeId),
-      ]);
+      const schedule = (await scopedSchedules(user)).find(
+        (candidate) => candidate.id === scheduleId,
+      );
 
       if (!schedule) {
         return c.json({ error: "Schedule not found" }, 404);
       }
+
+      const node = (await scopedNodes(user)).find((candidate) => candidate.id === schedule.nodeId);
 
       return c.json({
         data: {

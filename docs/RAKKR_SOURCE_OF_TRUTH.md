@@ -900,6 +900,7 @@ Current implementation baseline:
 269. ✅ Scope single-recording upload queue API.
 270. ✅ Scope ad-hoc recording start API.
 271. ✅ Scope schedule work creation APIs.
+272. ✅ Scope schedule action node readiness.
 
 ## Open Questions
 

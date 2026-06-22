@@ -438,6 +438,43 @@ test("schedule action summary reports lifecycle blockers for disabled schedules"
   assert.equal(body.data.actions.skipNext.reason, "schedule_disabled");
 });
 
+test("schedule action summary hides out-of-scope node context and readiness", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:read", "schedule:manage"]);
+  const visibleNode = node({ id: "node_schedule_action_visible" });
+  const hiddenNode = node({ id: "node_schedule_action_hidden" });
+  const scheduleOnHiddenNode = schedule({
+    id: "sched_action_hidden_node",
+    name: "Hidden Node Action Summary",
+    nodeId: hiddenNode.id,
+  });
+  const store = scheduleStore([scheduleOnHiddenNode]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([visibleNode, hiddenNode]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedNodes: async () => [visibleNode],
+    scopedSchedules: async () => [scheduleOnHiddenNode],
+    settingsStore: createSettingsStore(),
+  });
+
+  const response = await app.request(`/api/v1/schedules/${scheduleOnHiddenNode.id}/actions`);
+  const body = (await response.json()) as ScheduleActionsResponse;
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.schedule.id, scheduleOnHiddenNode.id);
+  assert.equal(body.data.node, undefined);
+  assert.equal(body.data.actions.runNow.enabled, false);
+  assert.equal(body.data.actions.runNow.reason, "schedule_node_not_found");
+  assert.equal(body.data.actions.skipNext.enabled, true);
+});
+
 test("disabled schedule run-now is rejected and audited", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
