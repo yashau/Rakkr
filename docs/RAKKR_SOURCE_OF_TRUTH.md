@@ -904,6 +904,7 @@ Current implementation baseline:
 273. ✅ Scope upload queue recording context APIs.
 274. ✅ Scope recording action summary context APIs.
 275. ✅ Scope recording-job action summary context APIs.
+276. ✅ Scope recording-job metrics to visible recordings.
 
 ## Open Questions
 

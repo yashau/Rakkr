@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, CurrentUser, Permission, RecorderNode } from "@rakkr/shared";
+import type {
+  AuditEvent,
+  CurrentUser,
+  Permission,
+  RecorderNode,
+  RecordingSummary,
+} from "@rakkr/shared";
 import type { AppBindings, AuditTarget, RequirePermission } from "../src/http-types.js";
+
+const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-metrics-routes-"));
+process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
+process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(routeRoot, "retention-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
@@ -10,7 +23,12 @@ const { createListenMonitorStore } = await import("../src/listen-monitor-store.j
 const { createMeterFrameStore } = await import("../src/meter-store.js");
 const { registerMetricsRoutes } = await import("../src/metrics-routes.js");
 const { createNodeStore } = await import("../src/node-store.js");
+const { createRecordingJob } = await import("../src/recording-jobs.js");
 const { createRecordingStore } = await import("../src/recording-store.js");
+
+test.after(async () => {
+  await rm(routeRoot, { force: true, recursive: true });
+});
 
 test("metrics audit totals respect resource scope", async () => {
   const auditStore = createAuditStore("");
@@ -98,6 +116,36 @@ test("metrics expose listen monitor chunks only for visible nodes", async () => 
   assert.doesNotMatch(output, /node_hidden/);
 });
 
+test("metrics recording job totals require visible recording context", async () => {
+  const visibleRecording = recording("rec_metrics_visible", "node_metrics_jobs");
+  const hiddenRecording = recording("rec_metrics_hidden", "node_metrics_jobs");
+
+  await createRecordingJob(visibleRecording);
+  await createRecordingJob(hiddenRecording);
+
+  const app = new Hono<AppBindings>();
+  registerMetricsRoutes({
+    app,
+    auditStore: createAuditStore(""),
+    currentUser: () => user(["metrics:read"]),
+    hasResourceScope: async (_user, target) =>
+      target.id === "node_metrics_jobs" || target.id === visibleRecording.id,
+    healthEventStore: createHealthEventStore("", []),
+    listenMonitorStore: createListenMonitorStore(),
+    meterFrameStore: createMeterFrameStore(),
+    nodeStore: createNodeStore([node("node_metrics_jobs")]),
+    recordingStore: createRecordingStore([visibleRecording]),
+    requirePermission: allowPermission,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/metrics");
+  const output = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(output, /rakkr_recording_jobs\{node_id="node_metrics_jobs",status="queued"\} 1/);
+});
+
 const allowPermission: RequirePermission = () => async (_c, next) => {
   await next();
 };
@@ -150,6 +198,22 @@ function node(id: string): RecorderNode {
     lastSeenAt: "2026-06-18T12:00:00.000Z",
     location: {},
     status: "online",
+    tags: [],
+  };
+}
+
+function recording(id: string, nodeId: string): RecordingSummary {
+  return {
+    cached: false,
+    durationSeconds: 0,
+    folder: "metrics",
+    healthStatus: "unknown",
+    id,
+    name: id,
+    nodeId,
+    recordedAt: "2026-06-18T12:00:00.000Z",
+    source: "ad_hoc",
+    status: "recording",
     tags: [],
   };
 }

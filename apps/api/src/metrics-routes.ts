@@ -148,18 +148,16 @@ async function scopedRecordingJobs(
   dependencies: MetricsScopeDependencies,
 ) {
   const result: RecordingJob[] = [];
+  const visibleRecordingIds = new Set(
+    (await scopedRecordings(user, dependencies)).map((recording) => recording.id),
+  );
 
   for (const job of await listRecordingJobs()) {
     if (!(await dependencies.hasResourceScope(user, { id: job.nodeId, type: "node" }))) {
       continue;
     }
 
-    const recording = await dependencies.recordingStore.find(job.recordingId);
-
-    if (
-      recording &&
-      !(await dependencies.hasResourceScope(user, { id: recording.id, type: "recording" }))
-    ) {
+    if (!visibleRecordingIds.has(job.recordingId)) {
       continue;
     }
 
