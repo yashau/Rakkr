@@ -12,6 +12,7 @@ import type {
   RecordingSummary,
   WatchdogPolicy,
 } from "@rakkr/shared";
+import { defaultScheduledVoiceWatchdogPolicy, defaultVoiceRecordingProfile } from "@rakkr/shared";
 import type { AppBindings, RequirePermission } from "../src/http-types.js";
 import type { SettingsStore } from "../src/settings-store.js";
 
@@ -61,6 +62,47 @@ test("status health counts honor aggregate health event denies", async () => {
   assert.equal(body.unresolvedAlerts, 0);
 });
 
+test("status embedded settings summaries honor resource-scope denies", async () => {
+  const visibleProfile: RecordingProfile = {
+    ...defaultVoiceRecordingProfile,
+    id: "profile_status_visible",
+    name: "Visible Status Profile",
+  };
+  const visibleWatchdog: WatchdogPolicy = {
+    ...defaultScheduledVoiceWatchdogPolicy,
+    id: "watchdog_status_visible",
+    name: "Visible Status Watchdog",
+  };
+  const app = new Hono<AppBindings>();
+
+  registerStatusRoutes({
+    app,
+    currentUser: () => user(["node:read", "settings:read"]),
+    hasResourceScope: async (_user, target) =>
+      target.id !== defaultVoiceRecordingProfile.id &&
+      target.id !== defaultScheduledVoiceWatchdogPolicy.id,
+    healthEventStore: createHealthEventStore("", []),
+    requirePermission: allowPermission,
+    scopedNodes: async () => [],
+    scopedRecordings: async () => [],
+    settingsStore: settingsStore(
+      [defaultVoiceRecordingProfile, visibleProfile],
+      [defaultScheduledVoiceWatchdogPolicy, visibleWatchdog],
+    ),
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/api/v1/status");
+  const body = (await response.json()) as {
+    recordingProfile?: RecordingProfile;
+    watchdogPolicy?: WatchdogPolicy;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.recordingProfile?.id, visibleProfile.id);
+  assert.equal(body.watchdogPolicy?.id, visibleWatchdog.id);
+});
+
 const allowPermission: RequirePermission = () => async (_c, next) => {
   await next();
 };
@@ -106,6 +148,27 @@ const emptySettingsStore: SettingsStore = {
     return undefined;
   },
 };
+
+function settingsStore(
+  profiles: RecordingProfile[],
+  watchdogPolicies: WatchdogPolicy[],
+): SettingsStore {
+  return {
+    ...emptySettingsStore,
+    async findRecordingProfile(profileId) {
+      return profiles.find((profile) => profile.id === profileId);
+    },
+    async findWatchdogPolicy(policyId) {
+      return watchdogPolicies.find((policy) => policy.id === policyId);
+    },
+    async listRecordingProfiles() {
+      return profiles;
+    },
+    async listWatchdogPolicies() {
+      return watchdogPolicies;
+    },
+  };
+}
 
 function user(permissions: Permission[]): CurrentUser {
   return {

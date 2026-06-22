@@ -923,6 +923,7 @@ Current implementation baseline:
 292. ✅ Scope ad-hoc recording profile selection.
 293. ✅ Scope ad-hoc recording policy selection.
 294. ✅ Scope schedule settings resource selection.
+295. ✅ Scope aggregate status settings summaries.
 
 ## Open Questions
 

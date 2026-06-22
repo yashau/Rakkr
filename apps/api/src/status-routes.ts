@@ -11,6 +11,12 @@ import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
 import { scopedHealthEvents } from "./metrics-routes.js";
+import {
+  profileSettingsTarget,
+  scopedRecordingProfiles,
+  scopedWatchdogPolicies,
+  watchdogSettingsTarget,
+} from "./settings-scope.js";
 import type { SettingsStore } from "./settings-store.js";
 
 interface StatusRouteDependencies {
@@ -50,10 +56,10 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
       });
       const canReadSettings = user.permissions.includes("settings:read");
       const recordingProfile = canReadSettings
-        ? await defaultRecordingProfile(dependencies.settingsStore)
+        ? await defaultRecordingProfile(user, dependencies)
         : undefined;
       const watchdogPolicy = canReadSettings
-        ? await defaultWatchdogPolicy(dependencies.settingsStore)
+        ? await defaultWatchdogPolicy(user, dependencies)
         : undefined;
 
       return c.json({
@@ -101,22 +107,46 @@ function recordingStatusCount(recordings: RecordingSummary[], status: RecordingS
   return recordings.filter((recording) => recording.status === status).length;
 }
 
-async function defaultRecordingProfile(settingsStore: SettingsStore) {
-  const profiles = await settingsStore.listRecordingProfiles();
+async function defaultRecordingProfile(
+  user: NonNullable<AuthResult["user"]>,
+  dependencies: Pick<StatusRouteDependencies, "hasResourceScope" | "settingsStore">,
+) {
+  const profiles = await scopedRecordingProfiles(
+    user,
+    dependencies.settingsStore,
+    dependencies.hasResourceScope,
+  );
 
   return (
     profiles.find((profile) => profile.id === defaultVoiceRecordingProfile.id) ??
     profiles[0] ??
-    defaultVoiceRecordingProfile
+    ((await dependencies.hasResourceScope(
+      user,
+      profileSettingsTarget(defaultVoiceRecordingProfile),
+    ))
+      ? defaultVoiceRecordingProfile
+      : undefined)
   );
 }
 
-async function defaultWatchdogPolicy(settingsStore: SettingsStore) {
-  const watchdogPolicies = await settingsStore.listWatchdogPolicies();
+async function defaultWatchdogPolicy(
+  user: NonNullable<AuthResult["user"]>,
+  dependencies: Pick<StatusRouteDependencies, "hasResourceScope" | "settingsStore">,
+) {
+  const watchdogPolicies = await scopedWatchdogPolicies(
+    user,
+    dependencies.settingsStore,
+    dependencies.hasResourceScope,
+  );
 
   return (
     watchdogPolicies.find((policy) => policy.id === defaultScheduledVoiceWatchdogPolicy.id) ??
     watchdogPolicies[0] ??
-    defaultScheduledVoiceWatchdogPolicy
+    ((await dependencies.hasResourceScope(
+      user,
+      watchdogSettingsTarget(defaultScheduledVoiceWatchdogPolicy),
+    ))
+      ? defaultScheduledVoiceWatchdogPolicy
+      : undefined)
   );
 }
