@@ -11,6 +11,7 @@ const sourceFiles = [
   "apps/api/test/schedule-engine.test.ts",
   "apps/api/test/schedule-runner.test.ts",
   "apps/api/src/recording-routes.ts",
+  "apps/api/src/recording-start-targets.ts",
   "apps/api/src/audit-routes.ts",
 ];
 const requiredBaselinePhrases = [

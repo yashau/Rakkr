@@ -29,6 +29,13 @@ import {
   recordingFacets,
   recordingsQuerySchema,
 } from "./recording-listing.js";
+import {
+  defaultAdHocFolder,
+  defaultAdHocName,
+  recordingExportFileName,
+  recordingStartTarget,
+  requestedInterfaceBelongsToNode,
+} from "./recording-start-targets.js";
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import { deleteRecording, deleteRecordings } from "./recording-delete.js";
 import {
@@ -43,8 +50,13 @@ import {
 } from "./recording-metadata.js";
 import { registerRecordingUploadQueueRoutes } from "./recording-upload-queue-routes.js";
 import type { RecordingStore } from "./recording-store.js";
+import { findRetentionPolicy } from "./retention-policies.js";
 import type { SettingsStore } from "./settings-store.js";
-import { profileSettingsTarget } from "./settings-scope.js";
+import {
+  profileSettingsTarget,
+  retentionPolicySettingsTarget,
+  uploadPolicySettingsTarget,
+} from "./settings-scope.js";
 import { findUploadPolicy, uploadPolicyForQueue } from "./upload-policies.js";
 import { listUploadQueueItems } from "./upload-queue.js";
 
@@ -76,9 +88,6 @@ const recordingStartRequestSchema = z
     uploadPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
-const recordingStartTargetSchema = z.object({
-  nodeId: z.string().trim().min(1).max(160),
-});
 const recordingSelectedExportSchema = z
   .object({
     recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
@@ -753,6 +762,45 @@ export function registerRecordingRoutes({
         return c.json({ error: "Upload policy not found" }, 404);
       }
 
+      if (
+        body.data.uploadPolicyId &&
+        !(await hasResourceScope(currentUser(c), uploadPolicySettingsTarget(uploadPolicy)))
+      ) {
+        await recordRecordingStartFailure(
+          c,
+          "missing_resource_scope",
+          node.id,
+          node.alias,
+          uploadPolicySettingsTarget(uploadPolicy),
+        );
+        return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+      }
+
+      const retentionPolicyId =
+        body.data.retentionPolicyId ?? defaultKeepControllerCacheRetentionPolicy.id;
+      const retentionPolicy = body.data.retentionPolicyId
+        ? await findRetentionPolicy(body.data.retentionPolicyId)
+        : defaultKeepControllerCacheRetentionPolicy;
+
+      if (!retentionPolicy) {
+        await recordRecordingStartFailure(c, "retention_policy_not_found", node.id, node.alias);
+        return c.json({ error: "Retention policy not found" }, 404);
+      }
+
+      if (
+        body.data.retentionPolicyId &&
+        !(await hasResourceScope(currentUser(c), retentionPolicySettingsTarget(retentionPolicy)))
+      ) {
+        await recordRecordingStartFailure(
+          c,
+          "missing_resource_scope",
+          node.id,
+          node.alias,
+          retentionPolicySettingsTarget(retentionPolicy),
+        );
+        return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+      }
+
       const recording: RecordingSummary = {
         cached: false,
         durationSeconds: 0,
@@ -763,8 +811,7 @@ export function registerRecordingRoutes({
         nodeId: node.id,
         recordedAt: now.toISOString(),
         recordingProfileId,
-        retentionPolicyId:
-          body.data.retentionPolicyId ?? defaultKeepControllerCacheRetentionPolicy.id,
+        retentionPolicyId,
         source: "ad_hoc",
         status: "recording",
         tags: uniqueTags(body.data.tags ?? ["ad-hoc", "voice"]),
@@ -939,39 +986,4 @@ export function registerRecordingRoutes({
       (recording) => recording.id === recordingId,
     );
   }
-}
-
-async function recordingStartTarget(c: Context<AppBindings>) {
-  const body = recordingStartTargetSchema.safeParse(
-    await c.req.raw
-      .clone()
-      .json()
-      .catch(() => ({})),
-  );
-
-  return {
-    id: body.success ? body.data.nodeId : "__invalid_node__",
-    type: "node" as const,
-  };
-}
-
-function defaultAdHocFolder(now: Date, node: RecorderNode) {
-  return `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${node.location.room}`;
-}
-
-function defaultAdHocName(now: Date, node: RecorderNode) {
-  return `${now.toISOString().slice(0, 16).replace("T", "_")}_Ad Hoc_${node.alias}`;
-}
-
-function recordingExportFileName(now: Date) {
-  return `rakkr-recordings-${now.toISOString().replaceAll(":", "-").replace(".", "-")}.csv`;
-}
-
-function requestedInterfaceBelongsToNode(
-  node: RecorderNode,
-  captureInterfaceId: string | undefined,
-) {
-  return (
-    !captureInterfaceId || node.interfaces.some((candidate) => candidate.id === captureInterfaceId)
-  );
 }

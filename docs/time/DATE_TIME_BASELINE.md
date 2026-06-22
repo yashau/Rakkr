@@ -19,7 +19,7 @@ Rakkr stores exact times as UTC ISO 8601 strings and displays operator-facing da
 | Web helpers | `apps/web/src/lib/dates.ts`, `apps/web/src/lib/dates.test.ts` |
 | Schedule timezone/rendering | `apps/api/src/schedule-engine.ts`, `apps/api/test/schedule-engine.test.ts`, `apps/api/test/schedule-runner.test.ts` |
 | Schedule UI controls | `apps/web/src/lib/schedule-draft.ts`, `apps/web/src/lib/schedule-draft.test.ts` |
-| Recording filters/exports | `apps/web/src/lib/recording-page-helpers.ts`, `apps/api/src/recording-routes.ts` |
+| Recording filters/exports | `apps/web/src/lib/recording-page-helpers.ts`, `apps/api/src/recording-routes.ts`, `apps/api/src/recording-start-targets.ts` |
 | Audit exports | `apps/api/src/audit-routes.ts` |
 
 ## Verification

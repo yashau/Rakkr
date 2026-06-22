@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
-import { defaultVoiceRecordingProfile } from "@rakkr/shared";
+import {
+  defaultKeepControllerCacheRetentionPolicy,
+  defaultStubUploadPolicy,
+  defaultVoiceRecordingProfile,
+} from "@rakkr/shared";
 import type {
   AuditEvent,
   CurrentUser,
@@ -177,6 +181,71 @@ test("ad hoc recording start rejects recording profiles outside scoped visibilit
   assert.equal(event?.reason, "missing_resource_scope");
   assert.equal(event?.target.id, hiddenProfile.id);
   assert.equal(event?.target.type, "recording_profile");
+  assert.equal(recordings.length, 0);
+});
+
+test("ad hoc recording start rejects upload policies outside scoped visibility", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode();
+  const app = recordingApp({
+    auditStore,
+    hasResourceScope: async (_user, target) => target.id !== defaultStubUploadPolicy.id,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      nodeId: node.id,
+      uploadPolicyId: defaultStubUploadPolicy.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "recordings.start.failed" });
+  const recordings = await recordingStore.list();
+
+  assert.equal(response.status, 403);
+  assert.equal(event?.outcome, "denied");
+  assert.equal(event?.reason, "missing_resource_scope");
+  assert.equal(event?.target.id, defaultStubUploadPolicy.id);
+  assert.equal(event?.target.type, "upload_policy");
+  assert.equal(recordings.length, 0);
+});
+
+test("ad hoc recording start rejects retention policies outside scoped visibility", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode();
+  const app = recordingApp({
+    auditStore,
+    hasResourceScope: async (_user, target) =>
+      target.id !== defaultKeepControllerCacheRetentionPolicy.id,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      nodeId: node.id,
+      retentionPolicyId: defaultKeepControllerCacheRetentionPolicy.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "recordings.start.failed" });
+  const recordings = await recordingStore.list();
+
+  assert.equal(response.status, 403);
+  assert.equal(event?.outcome, "denied");
+  assert.equal(event?.reason, "missing_resource_scope");
+  assert.equal(event?.target.id, defaultKeepControllerCacheRetentionPolicy.id);
+  assert.equal(event?.target.type, "retention_policy");
   assert.equal(recordings.length, 0);
 });
 
