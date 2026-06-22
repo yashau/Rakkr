@@ -22,7 +22,6 @@ import type { MeterFrameStore } from "./meter-store.js";
 import { NodeStoreError, type NodeCredentialAuth, type NodeStore } from "./node-store.js";
 import {
   cancelRecordingJob,
-  claimNextRecordingJob,
   claimRecordingJob,
   completeRecordingJob,
   failRecordingJob,
@@ -30,6 +29,8 @@ import {
   nextRecordingJob,
   recordingJob,
 } from "./recording-jobs.js";
+import { agentJobRecordingScope } from "./agent-job-recording-scope.js";
+import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
 import { storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { ScheduleStore } from "./schedule-store.js";
@@ -51,6 +52,9 @@ interface AgentRouteDependencies {
 type AuthenticatedNode =
   | { credential: NodeCredentialAuth; response?: never }
   | { credential?: never; response: Response };
+type AuthorizedJobRecording =
+  | { recording: RecordingSummary; response?: never }
+  | { recording?: never; response: Response };
 type NodeServicePermission = "health:acknowledge" | "node:control" | "recording:control";
 
 export function registerAgentRoutes({
@@ -390,22 +394,36 @@ export function registerAgentRoutes({
       return c.json({ error: "Node credential cannot access this node" }, 403);
     }
 
-    const job = await claimNextRecordingJob(nodeId, auth.credential.nodeId);
+    while (true) {
+      const nextJob = await nextRecordingJob(nodeId);
 
-    if (!job) {
-      return c.body(null, 204);
+      if (!nextJob) {
+        return c.body(null, 204);
+      }
+
+      const nextRecording = await authorizeJobRecording(
+        c,
+        auth.credential,
+        nextJob,
+        "recording_jobs.claim_next",
+      );
+
+      if (nextRecording.response) {
+        return nextRecording.response;
+      }
+
+      const job = await claimRecordingJob(nextJob.id, auth.credential.nodeId);
+
+      if (!job) {
+        continue;
+      }
+
+      nextRecording.recording.status = "recording";
+      await recordingStore.save(nextRecording.recording);
+      await recordJobSuccess(c, "recording_jobs.claim_next.succeeded", auth.credential, job);
+
+      return c.json({ data: job });
     }
-
-    const recording = await recordingStore.find(job.recordingId);
-
-    if (recording) {
-      recording.status = "recording";
-      await recordingStore.save(recording);
-    }
-
-    await recordJobSuccess(c, "recording_jobs.claim_next.succeeded", auth.credential, job);
-
-    return c.json({ data: job });
   });
 
   app.post("/api/v1/recording-jobs/:jobId/claim", async (c) => {
@@ -425,6 +443,17 @@ export function registerAgentRoutes({
       return existing.response;
     }
 
+    const existingRecording = await authorizeJobRecording(
+      c,
+      auth.credential,
+      existing.job,
+      "recording_jobs.claim",
+    );
+
+    if (existingRecording.response) {
+      return existingRecording.response;
+    }
+
     const job = await claimRecordingJob(jobId, auth.credential.nodeId);
 
     if (!job) {
@@ -435,13 +464,8 @@ export function registerAgentRoutes({
       return c.json({ error: "Recording job is not claimable" }, 409);
     }
 
-    const recording = await recordingStore.find(job.recordingId);
-
-    if (recording) {
-      recording.status = "recording";
-      await recordingStore.save(recording);
-    }
-
+    existingRecording.recording.status = "recording";
+    await recordingStore.save(existingRecording.recording);
     await recordJobSuccess(c, "recording_jobs.claim.succeeded", auth.credential, job);
 
     return c.json({ data: job });
@@ -715,6 +739,17 @@ export function registerAgentRoutes({
       return existing.response;
     }
 
+    const existingRecording = await authorizeJobRecording(
+      c,
+      auth.credential,
+      existing.job,
+      `recording_jobs.${terminalState}`,
+    );
+
+    if (existingRecording.response) {
+      return existingRecording.response;
+    }
+
     const reason = c.req.header("x-rakkr-reason") ?? `agent_${terminalState}`;
     const job =
       terminalState === "cancelled"
@@ -725,11 +760,15 @@ export function registerAgentRoutes({
       return c.json({ error: "Recording job not found" }, 404);
     }
 
-    const recording = await markRecordingJobTerminalRecording(job.recordingId, {
-      jobId: job.id,
-      reason,
-      terminalState,
-    });
+    const recording = await markAgentJobTerminalRecording(
+      existingRecording.recording,
+      {
+        jobId: job.id,
+        reason,
+        terminalState,
+      },
+      { healthEventStore, recordingStore },
+    );
 
     await recordJobSuccess(c, `recording_jobs.${terminalState}.succeeded`, auth.credential, job, {
       healthEventId: recording?.healthEventId,
@@ -740,81 +779,29 @@ export function registerAgentRoutes({
     return c.json({ data: job });
   }
 
-  async function markRecordingJobTerminalRecording(
-    recordingId: string,
-    input: {
-      jobId: string;
-      reason: string;
-      terminalState: "cancelled" | "failed";
-    },
-  ) {
-    const recording = await recordingStore.find(recordingId);
+  async function authorizeJobRecording(
+    c: Context<AppBindings>,
+    credential: NodeCredentialAuth,
+    job: { id: string; recordingId: string },
+    action: string,
+  ): Promise<AuthorizedJobRecording> {
+    const result = await agentJobRecordingScope(job, { credential, recordingStore });
 
-    if (!recording) {
-      return undefined;
+    if (result.ok) {
+      return { recording: result.recording };
     }
 
-    const healthEvent = await createTerminalHealthEvent(recording, input);
-    const updated = {
-      ...recording,
-      status: terminalRecordingStatus(recording, input.terminalState),
-    };
-
-    await recordingStore.save(updated);
-    await syncRecordingHealth(healthEventStore, recordingStore, recordingId);
-    const synced = (await recordingStore.find(recordingId)) ?? updated;
-
-    return {
-      ...synced,
-      healthEventId: healthEvent?.id,
-      terminalState: input.terminalState,
-    };
+    await recordNodeCredentialFailure(c, `${action}.failed`, result.reason, {
+      actor: credential,
+      target: result.target,
+    });
+    return { response: c.json({ error: result.error }, result.status) };
   }
 
   async function syncAndFindRecording(recording: RecordingSummary) {
     await syncRecordingHealth(healthEventStore, recordingStore, recording.id);
 
     return (await recordingStore.find(recording.id)) ?? recording;
-  }
-
-  async function createTerminalHealthEvent(
-    recording: RecordingSummary,
-    input: {
-      jobId: string;
-      reason: string;
-      terminalState: "cancelled" | "failed";
-    },
-  ) {
-    if (input.terminalState === "cancelled" && input.reason === "controller_stop_requested") {
-      return undefined;
-    }
-
-    return healthEventStore.create({
-      details: {
-        jobId: input.jobId,
-        reason: input.reason,
-        source: "recording_job_terminal",
-        terminalState: input.terminalState,
-      },
-      nodeId: recording.nodeId,
-      recordingId: recording.id,
-      scheduleId: recording.scheduleId,
-      severity: input.terminalState === "failed" ? "critical" : "warning",
-      type: `controller.recording.job_${input.terminalState}`,
-    });
-  }
-
-  function terminalRecordingStatus(
-    recording: RecordingSummary,
-    terminalState: "cancelled" | "failed",
-  ): RecordingSummary["status"] {
-    if (terminalState === "failed") {
-      return "failed";
-    }
-
-    return recording.status === "cached" || recording.status === "uploaded"
-      ? recording.status
-      : "completed";
   }
 
   async function recordJobSuccess(

@@ -928,6 +928,7 @@ Current implementation baseline:
 297. ✅ Scope settings-resource audit metrics.
 298. ✅ Scope audit event reads and exports.
 299. ✅ Scope agent health-event schedule sync.
+300. ✅ Scope agent job recording mutations.
 
 ## Open Questions
 
