@@ -42,17 +42,16 @@ import {
   profileSettingsTarget,
   scopedChannelMapTemplates,
   scopedRecordingProfiles,
+  scopedUploadProviders,
   scopedWatchdogPolicies,
+  uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
-  hasResourceScope?: (
-    user: NonNullable<AuthResult["user"]>,
-    target: AuditTarget,
-  ) => Promise<boolean>;
+  hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
@@ -124,7 +123,14 @@ export function registerSettingsRoutes({
     requirePermission("settings:read", "settings.upload_providers.read", () => ({
       type: "settings",
     })),
-    async (c) => c.json({ data: await uploadProviderStore.listStatuses() }),
+    async (c) =>
+      c.json({
+        data: await scopedUploadProviders(
+          currentAuth(c).user,
+          uploadProviderStore,
+          hasResourceScope,
+        ),
+      }),
   );
 
   app.get(
@@ -271,9 +277,13 @@ export function registerSettingsRoutes({
 
   app.patch(
     "/api/v1/settings/upload-providers/:provider",
-    requirePermission("settings:manage", "settings.upload_providers.update", () => ({
-      type: "settings",
-    })),
+    requirePermission("settings:manage", "settings.upload_providers.update", async (c) => {
+      const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
+
+      return provider.success
+        ? uploadProviderSettingsTarget(await uploadProviderStore.findStatus(provider.data))
+        : { id: c.req.param("provider"), type: "upload_provider" };
+    }),
     async (c) => {
       const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
 
@@ -295,7 +305,7 @@ export function registerSettingsRoutes({
           c,
           "settings.upload_providers.update.failed",
           "invalid_request",
-          uploadProviderAuditTarget(before),
+          uploadProviderSettingsTarget(before),
         );
         return c.json({ error: "Invalid upload provider", issues: body.error.issues }, 400);
       }
@@ -307,7 +317,7 @@ export function registerSettingsRoutes({
           c,
           "settings.upload_providers.update.failed",
           "provider_not_found",
-          uploadProviderAuditTarget(before),
+          uploadProviderSettingsTarget(before),
         );
         return c.json({ error: "Upload provider not found" }, 404);
       }
@@ -319,7 +329,7 @@ export function registerSettingsRoutes({
         before: uploadProviderSnapshot(before),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: uploadProviderAuditTarget(updated),
+        target: uploadProviderSettingsTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -919,14 +929,6 @@ function profileSnapshot(profile: RecordingProfile) {
     silenceDetectionEnabled: profile.silenceDetectionEnabled,
     silenceSkipEnabled: profile.silenceSkipEnabled,
     vbr: profile.vbr,
-  };
-}
-
-function uploadProviderAuditTarget(provider: UploadProviderRuntimeStatus) {
-  return {
-    id: provider.provider,
-    name: provider.displayName,
-    type: "upload_provider",
   };
 }
 

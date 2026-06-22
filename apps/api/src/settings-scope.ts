@@ -1,8 +1,14 @@
-import type { ChannelMapTemplate, RecordingProfile, WatchdogPolicy } from "@rakkr/shared";
+import type {
+  ChannelMapTemplate,
+  RecordingProfile,
+  UploadProviderRuntimeStatus,
+  WatchdogPolicy,
+} from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AuditTarget } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
+import type { UploadProviderStore } from "./upload-providers.js";
 
 export function profileSettingsTarget(profile: Pick<RecordingProfile, "id" | "name">) {
   return {
@@ -27,6 +33,14 @@ export function channelMapTemplateSettingsTarget(
     id: template.id,
     name: template.name,
     type: "channel_map_template",
+  };
+}
+
+export function uploadProviderSettingsTarget(provider?: UploadProviderRuntimeStatus) {
+  return {
+    id: provider?.provider,
+    name: provider?.displayName,
+    type: "upload_provider",
   };
 }
 
@@ -100,4 +114,27 @@ export async function scopedChannelMapTemplates(
   }
 
   return visibleTemplates;
+}
+
+export async function scopedUploadProviders(
+  user: AuthResult["user"],
+  uploadProviderStore: UploadProviderStore,
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>,
+) {
+  if (!user) {
+    return [];
+  }
+
+  const visibleProviders: UploadProviderRuntimeStatus[] = [];
+
+  for (const provider of await uploadProviderStore.listStatuses()) {
+    if (await hasResourceScope(user, uploadProviderSettingsTarget(provider))) {
+      visibleProviders.push(provider);
+    }
+  }
+
+  return visibleProviders;
 }

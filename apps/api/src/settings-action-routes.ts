@@ -4,7 +4,6 @@ import type {
   Permission,
   RecordingProfile,
   UploadPolicy,
-  UploadProviderRuntimeStatus,
 } from "@rakkr/shared";
 import { uploadProviderSchema } from "@rakkr/shared";
 
@@ -12,7 +11,11 @@ import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-pla
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
-import { channelMapTemplateSettingsTarget, watchdogSettingsTarget } from "./settings-scope.js";
+import {
+  channelMapTemplateSettingsTarget,
+  uploadProviderSettingsTarget,
+  watchdogSettingsTarget,
+} from "./settings-scope.js";
 import { listUploadPolicies } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
 
@@ -220,7 +223,7 @@ export function registerSettingsActionRoutes({
       const provider = uploadProviderSchema.safeParse(providerId);
 
       return provider.success
-        ? uploadProviderTarget(await uploadProviderStore.findStatus(provider.data))
+        ? uploadProviderSettingsTarget(await uploadProviderStore.findStatus(provider.data))
         : { id: providerId, type: "upload_provider" };
     }),
     async (c) => {
@@ -346,14 +349,6 @@ function planTarget(
     Partial<Pick<ChannelMapAssignmentPlan, "templateId">>,
 ) {
   return { id: plan.id, name: plan.templateId, type: "channel_map_assignment_plan" };
-}
-
-function uploadProviderTarget(provider?: UploadProviderRuntimeStatus): AuditTarget {
-  return {
-    id: provider?.provider,
-    name: provider?.displayName,
-    type: "upload_provider",
-  };
 }
 
 function uploadPolicyTarget(

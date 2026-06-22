@@ -6,6 +6,7 @@ import type { AppBindings, RequirePermission } from "./http-types.js";
 import {
   channelMapTemplateSettingsTarget,
   profileSettingsTarget,
+  uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -99,7 +100,13 @@ export function registerSettingsDetailRoutes({
 
   app.get(
     "/api/v1/settings/upload-providers/:provider",
-    settingsRead("settings.upload_providers.detail.read"),
+    requirePermission("settings:read", "settings.upload_providers.detail.read", async (c) => {
+      const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
+
+      return provider.success
+        ? uploadProviderSettingsTarget(await uploadProviderStore.findStatus(provider.data))
+        : { id: c.req.param("provider"), type: "upload_provider" };
+    }),
     async (c) => {
       const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
 

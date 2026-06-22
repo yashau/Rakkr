@@ -913,6 +913,7 @@ Current implementation baseline:
 282. ✅ Scope recording-profile settings routes to resource denies.
 283. ✅ Scope watchdog-policy settings routes to resource denies.
 284. ✅ Scope channel-map template settings routes to resource denies.
+285. ✅ Scope upload-provider settings routes to resource denies.
 
 ## Open Questions
 

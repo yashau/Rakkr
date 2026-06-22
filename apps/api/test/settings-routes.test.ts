@@ -152,6 +152,10 @@ test("settings write routes deny users without settings manage", async () => {
       .type,
     "channel_map_template",
   );
+  assert.equal(
+    deniedEvents.find((event) => event.action === "settings.upload_providers.update")?.target.type,
+    "upload_provider",
+  );
   assert.ok(
     deniedEvents
       .filter(
@@ -159,6 +163,7 @@ test("settings write routes deny users without settings manage", async () => {
           ![
             "settings.channel_map_templates.update",
             "settings.recording_profiles.update",
+            "settings.upload_providers.update",
             "settings.watchdog_policies.update",
           ].includes(event.action),
       )
