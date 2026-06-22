@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import type {
   AuditEvent,
   CurrentUser,
+  HealthEvent,
   Permission,
   RecorderNode,
   RecordingSummary,
@@ -148,6 +149,42 @@ test("metrics recording job totals require visible recording context", async () 
   assert.match(output, /rakkr_recording_jobs\{node_id="node_metrics_jobs",status="queued"\} 1/);
 });
 
+test("metrics health totals honor aggregate health event denies", async () => {
+  const healthEventStore = createHealthEventStore("", [
+    healthEvent({
+      id: "health_metrics_hidden",
+      nodeId: "node_metrics_health",
+      recordingId: "rec_metrics_health",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.recording_quality",
+    }),
+  ]);
+
+  const app = new Hono<AppBindings>();
+  registerMetricsRoutes({
+    app,
+    auditStore: createAuditStore(""),
+    currentUser: () => user(["metrics:read"]),
+    hasResourceScope: async (_user, target) =>
+      target.id === "node_metrics_health" || target.id === "rec_metrics_health",
+    healthEventStore,
+    listenMonitorStore: createListenMonitorStore(),
+    meterFrameStore: createMeterFrameStore(),
+    nodeStore: createNodeStore([node("node_metrics_health")]),
+    recordingStore: memoryRecordingStore([recording("rec_metrics_health", "node_metrics_health")]),
+    requirePermission: allowPermission,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/metrics");
+  const output = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(output, /rakkr_health_events_active\{severity="critical",status="open"\} 0/);
+  assert.doesNotMatch(output, /watchdog\.recording_quality/);
+});
+
 const allowPermission: RequirePermission = () => async (_c, next) => {
   await next();
 };
@@ -201,6 +238,22 @@ function node(id: string): RecorderNode {
     location: {},
     status: "online",
     tags: [],
+  };
+}
+
+function healthEvent(input: Partial<HealthEvent> = {}): HealthEvent {
+  return {
+    acknowledgedAt: null,
+    details: {},
+    id: "health_metrics_test",
+    openedAt: "2026-06-18T12:00:00.000Z",
+    resolvedAt: null,
+    severity: "warning",
+    status: "open",
+    suppressedAt: null,
+    suppressedUntil: null,
+    type: "watchdog.node_offline",
+    ...input,
   };
 }
 

@@ -16,6 +16,7 @@ import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.j
 import type { ListenMonitorStore } from "./listen-monitor-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { renderPrometheusMetrics } from "./metrics.js";
+import { visibleHealthEvent } from "./health-visibility.js";
 import type { NodeStore } from "./node-store.js";
 import { recordingCacheFileSize } from "./recording-cache.js";
 import { listRecordingJobs } from "./recording-jobs.js";
@@ -60,7 +61,7 @@ export async function scopedHealthEvents(
   const result: HealthEvent[] = [];
 
   for (const event of await dependencies.healthEventStore.list({ limit: 500 })) {
-    if (await canReadHealthEvent(user, event, dependencies)) {
+    if (await visibleHealthEvent(user, event, dependencies.hasResourceScope)) {
       result.push(event);
     }
   }
@@ -213,26 +214,6 @@ async function recordingCacheByteMap(recordings: RecordingSummary[]) {
   return Object.fromEntries(entries);
 }
 
-async function canReadHealthEvent(
-  user: NonNullable<AuthResult["user"]>,
-  event: HealthEvent,
-  dependencies: Pick<MetricsScopeDependencies, "hasResourceScope">,
-) {
-  const targets = healthEventScopeTargets(event);
-
-  if (targets.length === 0) {
-    return true;
-  }
-
-  for (const target of targets) {
-    if (await dependencies.hasResourceScope(user, target)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 async function canReadAuditEvent(
   user: NonNullable<AuthResult["user"]>,
   event: AuditEvent,
@@ -243,24 +224,6 @@ async function canReadAuditEvent(
   }
 
   return dependencies.hasResourceScope(user, event.target);
-}
-
-function healthEventScopeTargets(event: HealthEvent) {
-  const targets: AuditTarget[] = [];
-
-  if (event.recordingId) {
-    targets.push({ id: event.recordingId, type: "recording" });
-  }
-
-  if (event.scheduleId) {
-    targets.push({ id: event.scheduleId, type: "schedule" });
-  }
-
-  if (event.nodeId) {
-    targets.push({ id: event.nodeId, type: "node" });
-  }
-
-  return targets;
 }
 
 function isResourceScopedAuditTarget(target: AuditTarget) {
