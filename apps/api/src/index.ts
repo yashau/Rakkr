@@ -509,6 +509,7 @@ registerSettingsRoutes({
 registerWatchdogCalibrationRoutes({
   app,
   currentAuth,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
   meterFrameStore,
   recordAuditEvent,
   requirePermission,

@@ -107,6 +107,58 @@ test("watchdog calibration applies recommended field threshold from recent meter
   assert.equal(event?.details.applied, true);
 });
 
+test("watchdog calibration denies hidden node meter history before applying policy updates", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const meterFrameStore = createMeterFrameStore();
+  const settingsStore = createSettingsStore();
+  const currentUser = viewer(["settings:manage"]);
+  let historyCalls = 0;
+  const originalHistory = meterFrameStore.history.bind(meterFrameStore);
+  const before = await settingsStore.findWatchdogPolicy("scheduled-voice-watchdog");
+
+  meterFrameStore.history = async (nodeId, limit) => {
+    historyCalls += 1;
+    return originalHistory(nodeId, limit);
+  };
+
+  for (const [index, rmsDbfs] of [-16, -14, -12].entries()) {
+    await meterFrameStore.save(meterFrame("node_hidden_field", rmsDbfs, index));
+  }
+
+  registerWatchdogCalibrationRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async (_user, target) =>
+      !(target.type === "node" && target.id === "node_hidden_field"),
+    meterFrameStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allowPermission(),
+    settingsStore,
+  });
+
+  const response = await requestCalibration(app, "scheduled-voice-watchdog", {
+    apply: true,
+    frameLimit: 3,
+    minFrames: 3,
+    nodeId: "node_hidden_field",
+    signalMarginDb: 4,
+  });
+  const after = await settingsStore.findWatchdogPolicy("scheduled-voice-watchdog");
+  const [event] = await auditStore.list({
+    action: "settings.watchdog_policies.calibrate.failed",
+    outcome: "denied",
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(historyCalls, 0);
+  assert.equal(after?.thresholdDbfs, before?.thresholdDbfs);
+  assert.equal(event?.reason, "missing_resource_scope");
+  assert.equal(event?.target.id, "node_hidden_field");
+  assert.equal(event?.target.type, "node");
+  assert.equal(event?.permission, "settings:manage");
+});
+
 test("watchdog calibration audits insufficient meter history", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");

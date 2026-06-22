@@ -2,7 +2,12 @@ import type { Context, Hono } from "hono";
 import type { WatchdogPolicy } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
@@ -14,6 +19,7 @@ import {
 interface WatchdogCalibrationRouteDependencies {
   app: Hono<AppBindings>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
+  hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
   meterFrameStore: MeterFrameStore;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
@@ -23,6 +29,7 @@ interface WatchdogCalibrationRouteDependencies {
 export function registerWatchdogCalibrationRoutes({
   app,
   currentAuth,
+  hasResourceScope = async () => true,
   meterFrameStore,
   recordAuditEvent,
   requirePermission,
@@ -51,6 +58,14 @@ export function registerWatchdogCalibrationRoutes({
       if (!body.success) {
         await recordCalibrationFailure(c, "invalid_request", watchdogAuditTarget(policy));
         return c.json({ error: "Invalid watchdog calibration", issues: body.error.issues }, 400);
+      }
+
+      const nodeTarget = { id: body.data.nodeId, type: "node" as const };
+      const auth = currentAuth(c);
+
+      if (!auth.user || !(await hasResourceScope(auth.user, nodeTarget))) {
+        await recordCalibrationFailure(c, "missing_resource_scope", nodeTarget);
+        return c.json({ error: "Forbidden", permission: "settings:manage" }, 403);
       }
 
       const frames = await meterFrameStore.history(body.data.nodeId, body.data.frameLimit);
@@ -99,7 +114,7 @@ export function registerWatchdogCalibrationRoutes({
     await recordAuditEvent(c, {
       action: "settings.watchdog_policies.calibrate.failed",
       auth: currentAuth(c),
-      outcome: "failed",
+      outcome: reason === "missing_resource_scope" ? "denied" : "failed",
       permission: "settings:manage",
       reason,
       target,
