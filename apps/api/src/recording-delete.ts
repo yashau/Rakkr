@@ -78,6 +78,11 @@ export async function deleteRecording(
     return c.json({ error: "Recording cache file could not be deleted" }, 409);
   }
 
+  if (!result.deleted) {
+    await recordFailure("recording_not_found", recording.name);
+    return c.json({ error: "Recording not found" }, 404);
+  }
+
   await recordAuditEvent(c, {
     action: "recordings.delete.succeeded",
     auth: currentAuth(c),
@@ -137,20 +142,17 @@ export async function deleteRecordings(
   }
 
   const recordingIds = uniqueRecordingIds(body.data.recordingIds);
-  const visibleIds = new Set((await scopedRecordings(currentUser(c))).map((item) => item.id));
-  const hiddenIds = recordingIds.filter((recordingId) => !visibleIds.has(recordingId));
+  const visibleRecordingMap = new Map(
+    (await scopedRecordings(currentUser(c))).map((recording) => [recording.id, recording]),
+  );
+  const hiddenIds = recordingIds.filter((recordingId) => !visibleRecordingMap.has(recordingId));
 
   if (hiddenIds.length > 0) {
     await recordFailure("recording_not_visible", { hiddenIds, recordingIds }, "denied");
     return c.json({ error: "One or more recordings are not visible" }, 404);
   }
 
-  const recordings = await recordingsById(recordingStore, recordingIds);
-
-  if (recordings.length !== recordingIds.length) {
-    await recordFailure("recording_not_found", { recordingIds });
-    return c.json({ error: "One or more recordings were not found" }, 404);
-  }
+  const recordings = recordingIds.map((recordingId) => visibleRecordingMap.get(recordingId)!);
 
   const activeIds = recordings
     .filter((recording) => recording.status === "queued" || recording.status === "recording")
@@ -167,6 +169,21 @@ export async function deleteRecordings(
   for (const recording of recordings) {
     try {
       const result = await deleteRecordingData(recordingStore, recording);
+
+      if (!result.deleted) {
+        await recordFailure(
+          "recording_not_found",
+          {
+            cacheDeletedCount,
+            deletedIds: deleted.map((item) => item.id),
+            failedRecordingId: recording.id,
+            recordingIds,
+          },
+          deleted.length > 0 ? "partial" : "failed",
+        );
+
+        return c.json({ error: "One or more recordings were not found" }, 404);
+      }
 
       deleted.push(recording);
       cacheDeletedCount += result.cacheDeleted ? 1 : 0;
@@ -209,20 +226,11 @@ export async function deleteRecordings(
   return c.json({ data: deleted, meta: { cacheDeletedCount, deletedCount: deleted.length } });
 }
 
-async function recordingsById(recordingStore: RecordingStore, recordingIds: string[]) {
-  const recordings = await Promise.all(
-    recordingIds.map((recordingId) => recordingStore.find(recordingId)),
-  );
-
-  return recordings.filter((recording): recording is RecordingSummary => Boolean(recording));
-}
-
 async function deleteRecordingData(recordingStore: RecordingStore, recording: RecordingSummary) {
   const cacheDeleted = recordingHasCachedFile(recording)
     ? await deleteRecordingCacheFile(recording)
     : false;
+  const deleted = await recordingStore.delete(recording.id);
 
-  await recordingStore.delete(recording.id);
-
-  return { cacheDeleted };
+  return { cacheDeleted, deleted: Boolean(deleted) };
 }
