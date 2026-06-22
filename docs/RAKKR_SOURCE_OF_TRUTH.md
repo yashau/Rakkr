@@ -908,6 +908,7 @@ Current implementation baseline:
 277. ✅ Scope recording-job control recording context.
 278. ✅ Scope bulk recording metadata context.
 279. ✅ Scope bulk recording delete context.
+280. ✅ Honor aggregate health-event resource denies.
 
 ## Open Questions
 

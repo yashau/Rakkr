@@ -12,6 +12,7 @@ import type {
   RecordingSummary,
 } from "@rakkr/shared";
 import type { AppBindings, AuditTarget, RequirePermission } from "../src/http-types.js";
+import type { RecordingStore } from "../src/recording-store.js";
 
 const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-metrics-routes-"));
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
@@ -24,7 +25,6 @@ const { createMeterFrameStore } = await import("../src/meter-store.js");
 const { registerMetricsRoutes } = await import("../src/metrics-routes.js");
 const { createNodeStore } = await import("../src/node-store.js");
 const { createRecordingJob } = await import("../src/recording-jobs.js");
-const { createRecordingStore } = await import("../src/recording-store.js");
 
 test.after(async () => {
   await rm(routeRoot, { force: true, recursive: true });
@@ -61,7 +61,7 @@ test("metrics audit totals respect resource scope", async () => {
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([]),
-    recordingStore: createRecordingStore([]),
+    recordingStore: memoryRecordingStore([]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
   });
@@ -103,7 +103,7 @@ test("metrics expose listen monitor chunks only for visible nodes", async () => 
     listenMonitorStore,
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([node("node_visible"), node("node_hidden")]),
-    recordingStore: createRecordingStore([]),
+    recordingStore: memoryRecordingStore([]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
   });
@@ -129,12 +129,14 @@ test("metrics recording job totals require visible recording context", async () 
     auditStore: createAuditStore(""),
     currentUser: () => user(["metrics:read"]),
     hasResourceScope: async (_user, target) =>
-      target.id === "node_metrics_jobs" || target.id === visibleRecording.id,
+      target.id === "node_metrics_jobs" ||
+      target.id === visibleRecording.id ||
+      (target.type === "health_event" && target.id?.startsWith("health_")),
     healthEventStore: createHealthEventStore("", []),
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([node("node_metrics_jobs")]),
-    recordingStore: createRecordingStore([visibleRecording]),
+    recordingStore: memoryRecordingStore([visibleRecording]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
   });
@@ -199,6 +201,38 @@ function node(id: string): RecorderNode {
     location: {},
     status: "online",
     tags: [],
+  };
+}
+
+function memoryRecordingStore(recordings: RecordingSummary[]): RecordingStore {
+  return {
+    async create(recording) {
+      recordings.unshift(recording);
+    },
+    async delete(recordingId) {
+      const index = recordings.findIndex((recording) => recording.id === recordingId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      const [deleted] = recordings.splice(index, 1);
+
+      return deleted;
+    },
+    async find(recordingId) {
+      return recordings.find((recording) => recording.id === recordingId);
+    },
+    async list() {
+      return recordings;
+    },
+    async save(recording) {
+      const index = recordings.findIndex((candidate) => candidate.id === recording.id);
+
+      if (index >= 0) {
+        recordings[index] = recording;
+      }
+    },
   };
 }
 

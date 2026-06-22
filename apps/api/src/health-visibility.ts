@@ -3,7 +3,8 @@ import type { HealthEvent } from "@rakkr/shared";
 import type { AuthResult } from "./auth-service.js";
 import type { AuditTarget } from "./http-types.js";
 
-type HealthScopedResource = Pick<HealthEvent, "nodeId" | "recordingId" | "scheduleId">;
+type HealthScopedResource = Pick<HealthEvent, "nodeId" | "recordingId" | "scheduleId"> &
+  Partial<Pick<HealthEvent, "id">>;
 
 export async function visibleHealthEvent(
   user: NonNullable<AuthResult["user"]>,
@@ -13,6 +14,16 @@ export async function visibleHealthEvent(
     target: AuditTarget,
   ) => Promise<boolean>,
 ) {
+  if (
+    event.id &&
+    !(await hasResourceScope(user, {
+      id: event.id,
+      type: "health_event",
+    }))
+  ) {
+    return false;
+  }
+
   const targets = healthEventTargets(event);
 
   if (targets.length === 0) {

@@ -16,6 +16,7 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_API_NO_LISTEN = "1";
 process.env.RAKKR_LOCAL_ACCESS_POLICIES = "";
 const authAccessRoot = await mkdtemp(path.join(tmpdir(), "rakkr-auth-access-routes-"));
+process.env.RAKKR_RECORDING_METADATA_STORE_PATH = path.join(authAccessRoot, "recordings.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(authAccessRoot, "upload-queue.json");
 
 const { app } = await import("../src/index.js");
@@ -613,6 +614,78 @@ test("node resource denies hide health events and block alert detail and acknowl
     assert.equal(event?.reason, "access_policy_denied");
     assert.equal(event?.target.id, eventId);
     assert.equal(event?.target.type, "health_event");
+  } finally {
+    await updateAccessPolicies(token, []);
+  }
+});
+
+test("recording resource denies hide mixed-target health events from lists and selected export", async () => {
+  const token = await loginToken();
+  const nodeId = "node_x32_test";
+  const recordingId = "rec_demo_001";
+  const createResponse = await app.request("/api/v1/health-events", {
+    body: JSON.stringify({
+      details: { source: "recording-rbac-test" },
+      nodeId,
+      recordingId,
+      severity: "warning",
+      type: "watchdog.recording_quality",
+    }),
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  const createBody = (await createResponse.json()) as { data: HealthEvent };
+  const eventId = createBody.data.id;
+
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "recording_sealed",
+      resourceId: recordingId,
+      resourceType: "recording",
+      subjectType: "everyone",
+    },
+  ]);
+
+  try {
+    const listResponse = await app.request("/api/v1/health-events", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const listBody = (await listResponse.json()) as { data: HealthEvent[] };
+    const exportResponse = await app.request("/api/v1/health-events/export", {
+      body: JSON.stringify({ eventIds: [eventId] }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const exportEventsResponse = await app.request(
+      "/api/v1/audit-events?action=health.events.export_selected.failed&outcome=denied&permission=health%3Aread",
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    const exportEventsBody = (await exportEventsResponse.json()) as { data: AuditEvent[] };
+    const exportEvent = exportEventsBody.data.find(
+      (event) =>
+        event.reason === "health_event_not_visible" &&
+        (event.details.eventIds as string[] | undefined)?.includes(eventId),
+    );
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(listResponse.status, 200);
+    assert.equal(exportEventsResponse.status, 200);
+    assert.equal(
+      listBody.data.some((healthEvent) => healthEvent.id === eventId),
+      false,
+    );
+    assert.equal(exportResponse.status, 404);
+    assert.equal(exportEvent?.reason, "health_event_not_visible");
+    assert.equal(exportEvent?.target.type, "health");
   } finally {
     await updateAccessPolicies(token, []);
   }
