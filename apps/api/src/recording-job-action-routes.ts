@@ -5,12 +5,10 @@ import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
 import { scopedRecordingJobs } from "./recording-job-scope.js";
 import { listRecordingJobs, recordingJob } from "./recording-jobs.js";
-import type { RecordingStore } from "./recording-store.js";
 
 interface RecordingJobActionRouteDependencies {
   app: Hono<AppBindings>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
-  recordingStore: RecordingStore;
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
@@ -31,7 +29,6 @@ const activeJobStatuses = new Set<RecordingJob["status"]>(["queued", "running", 
 export function registerRecordingJobActionRoutes({
   app,
   currentUser,
-  recordingStore,
   requirePermission,
   scopedRecordings,
 }: RecordingJobActionRouteDependencies) {
@@ -48,7 +45,11 @@ export function registerRecordingJobActionRoutes({
     async (c) => {
       const jobId = c.req.param("jobId") ?? "";
       const user = currentUser(c);
-      const visibleJob = (await scopedRecordingJobs(user, scopedRecordings)).find(
+      const visibleRecordings = await scopedRecordings(user);
+      const visibleRecordingMap = new Map(
+        visibleRecordings.map((recording) => [recording.id, recording]),
+      );
+      const visibleJob = (await scopedRecordingJobs(user, async () => visibleRecordings)).find(
         (job) => job.id === jobId,
       );
 
@@ -56,10 +57,8 @@ export function registerRecordingJobActionRoutes({
         return c.json({ error: "Recording job not found" }, 404);
       }
 
-      const [recording, jobs] = await Promise.all([
-        recordingStore.find(visibleJob.recordingId),
-        listRecordingJobs(),
-      ]);
+      const recording = visibleRecordingMap.get(visibleJob.recordingId);
+      const jobs = await listRecordingJobs();
       const activeConflict = jobs.find(
         (job) =>
           job.id !== visibleJob.id &&

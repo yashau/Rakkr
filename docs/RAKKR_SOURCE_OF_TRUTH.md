@@ -903,6 +903,7 @@ Current implementation baseline:
 272. ✅ Scope schedule action node readiness.
 273. ✅ Scope upload queue recording context APIs.
 274. ✅ Scope recording action summary context APIs.
+275. ✅ Scope recording-job action summary context APIs.
 
 ## Open Questions
 

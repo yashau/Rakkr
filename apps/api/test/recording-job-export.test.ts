@@ -262,6 +262,41 @@ test("recording job action summary returns readiness links and payloads", async 
   assert.deepEqual(body.data.actions.stop.payload, { jobIds: [failedJob.id] });
 });
 
+test("recording job action summary uses scoped recording context for readiness", async () => {
+  const auditStore = createAuditStore("");
+  const scopedRecording = recordingSummary({
+    id: `rec_job_scoped_context_${randomUUID()}`,
+    name: "Scoped Recording Context",
+  });
+  const rawRecording = recordingSummary({
+    id: scopedRecording.id,
+    name: "Raw Recording Context",
+  });
+  const recordingStore = memoryRecordingStore([rawRecording]);
+  const failedJob = await createRecordingJob(scopedRecording);
+
+  await failRecordingJob(failedJob.id, "capture_failed");
+
+  const app = recordingApp({
+    auditStore,
+    permissionCalls: [],
+    permissions: ["recording:control", "recording:read"],
+    recordingStore,
+    scopedRecordingSnapshots: [scopedRecording],
+  });
+
+  const response = await app.request(`/api/v1/recording-jobs/${failedJob.id}/actions`);
+  const body = (await response.json()) as RecordingJobActionsResponse;
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.job.id, failedJob.id);
+  assert.equal(body.data.recording?.id, scopedRecording.id);
+  assert.equal(body.data.recording?.name, "Scoped Recording Context");
+  assert.equal(body.data.actions.retry.enabled, true);
+  assert.equal(body.data.actions.stop.enabled, false);
+  assert.equal(body.data.actions.stop.reason, "recording_job_not_stoppable");
+});
+
 test("recording job action summary explains lifecycle and dependency blockers", async () => {
   const auditStore = createAuditStore("");
   const recording = recordingSummary({ id: `rec_job_blockers_${randomUUID()}` });
@@ -699,12 +734,14 @@ function recordingApp({
   permissionCalls,
   permissions,
   recordingStore,
+  scopedRecordingSnapshots,
   visibleRecordingIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
   permissionCalls: PermissionCall[];
   permissions?: Permission[];
   recordingStore: RecordingStore;
+  scopedRecordingSnapshots?: RecordingSummary[];
   visibleRecordingIds?: string[];
 }) {
   const app = new Hono<AppBindings>();
@@ -720,7 +757,7 @@ function recordingApp({
     requirePermission: requirePermission(permissionCalls),
     scopedNodes: async () => [],
     scopedRecordings: async () => {
-      const recordings = await recordingStore.list();
+      const recordings = scopedRecordingSnapshots ?? (await recordingStore.list());
 
       return visibleRecordingIds
         ? recordings.filter((recording) => visibleRecordingIds.includes(recording.id))
