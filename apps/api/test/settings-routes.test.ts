@@ -147,13 +147,20 @@ test("settings write routes deny users without settings manage", async () => {
     deniedEvents.find((event) => event.action === "settings.watchdog_policies.update")?.target.type,
     "watchdog_policy",
   );
+  assert.equal(
+    deniedEvents.find((event) => event.action === "settings.channel_map_templates.update")?.target
+      .type,
+    "channel_map_template",
+  );
   assert.ok(
     deniedEvents
       .filter(
         (event) =>
-          !["settings.recording_profiles.update", "settings.watchdog_policies.update"].includes(
-            event.action,
-          ),
+          ![
+            "settings.channel_map_templates.update",
+            "settings.recording_profiles.update",
+            "settings.watchdog_policies.update",
+          ].includes(event.action),
       )
       .every((event) => event.target.type === "settings"),
   );
@@ -361,6 +368,86 @@ test("watchdog policy routes honor resource-scope denies", async () => {
         event.reason === "access_policy_denied" &&
         event.target.id === hiddenPolicyId &&
         event.target.type === "watchdog_policy",
+    ),
+  );
+});
+
+test("channel map template routes honor resource-scope denies", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer(["settings:read", "settings:manage"]);
+  const settingsStore = createSettingsStore();
+  const hiddenTemplate = await settingsStore.createChannelMapTemplate({
+    channelMode: "mono_to_stereo_mix",
+    entries: [
+      {
+        included: true,
+        label: "Hidden Channel",
+        outputChannelIndex: 1,
+        sourceChannelIndex: 1,
+      },
+    ],
+    id: `channel_map_hidden_${randomUUID()}`,
+    name: "Hidden Channel Map",
+    tags: ["hidden"],
+  });
+  const isVisibleTarget = (target: AuditTarget) =>
+    !(target.type === "channel_map_template" && target.id === hiddenTemplate.id);
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async (_user, target) => isVisibleTarget(target),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
+    settingsStore,
+    uploadProviderStore: createUploadProviderStore(),
+  });
+
+  const listResponse = await app.request("/api/v1/settings/channel-map-templates");
+  const listBody = (await listResponse.json()) as { data: Array<{ id: string }> };
+  const detailResponse = await app.request(
+    `/api/v1/settings/channel-map-templates/${hiddenTemplate.id}`,
+  );
+  const actionsResponse = await app.request(
+    `/api/v1/settings/channel-map-templates/${hiddenTemplate.id}/actions`,
+  );
+  const updateResponse = await requestJson(
+    app,
+    `/api/v1/settings/channel-map-templates/${hiddenTemplate.id}`,
+    "PATCH",
+    { name: "Hidden Channel Map Update" },
+  );
+  const deniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:read",
+  });
+  const manageDeniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:manage",
+  });
+  const storedTemplate = await settingsStore.findChannelMapTemplate(hiddenTemplate.id);
+
+  assert.equal(listResponse.status, 200);
+  assert.equal(
+    listBody.data.some((template) => template.id === hiddenTemplate.id),
+    false,
+  );
+  assert.equal(detailResponse.status, 403);
+  assert.equal(actionsResponse.status, 403);
+  assert.equal(updateResponse.status, 403);
+  assert.equal(storedTemplate?.name, "Hidden Channel Map");
+  assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_templates.actions.read",
+    "settings.channel_map_templates.detail.read",
+  ]);
+  assert.equal(manageDeniedEvents[0]?.action, "settings.channel_map_templates.update");
+  assert.ok(
+    [...deniedEvents, ...manageDeniedEvents].every(
+      (event) =>
+        event.reason === "access_policy_denied" &&
+        event.target.id === hiddenTemplate.id &&
+        event.target.type === "channel_map_template",
     ),
   );
 });

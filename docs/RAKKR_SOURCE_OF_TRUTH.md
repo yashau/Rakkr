@@ -912,6 +912,7 @@ Current implementation baseline:
 281. ✅ Scope aggregate health metrics and status to health-event denies.
 282. ✅ Scope recording-profile settings routes to resource denies.
 283. ✅ Scope watchdog-policy settings routes to resource denies.
+284. ✅ Scope channel-map template settings routes to resource denies.
 
 ## Open Questions
 

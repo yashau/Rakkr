@@ -3,7 +3,11 @@ import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
-import { profileSettingsTarget, watchdogSettingsTarget } from "./settings-scope.js";
+import {
+  channelMapTemplateSettingsTarget,
+  profileSettingsTarget,
+  watchdogSettingsTarget,
+} from "./settings-scope.js";
 import type { SettingsStore } from "./settings-store.js";
 import { listUploadPolicies } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
@@ -64,7 +68,14 @@ export function registerSettingsDetailRoutes({
 
   app.get(
     "/api/v1/settings/channel-map-templates/:templateId",
-    settingsRead("settings.channel_map_templates.detail.read"),
+    requirePermission("settings:read", "settings.channel_map_templates.detail.read", async (c) => {
+      const templateId = c.req.param("templateId") ?? "";
+      const template = await settingsStore.findChannelMapTemplate(templateId);
+
+      return template
+        ? channelMapTemplateSettingsTarget(template)
+        : { id: templateId, type: "channel_map_template" };
+    }),
     async (c) => {
       const template = await settingsStore.findChannelMapTemplate(c.req.param("templateId"));
 

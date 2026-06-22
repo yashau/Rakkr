@@ -1,7 +1,6 @@
 import type { Context, Hono } from "hono";
 import type {
   ChannelMapAssignmentPlan,
-  ChannelMapTemplate,
   Permission,
   RecordingProfile,
   UploadPolicy,
@@ -13,7 +12,7 @@ import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-pla
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
-import { watchdogSettingsTarget } from "./settings-scope.js";
+import { channelMapTemplateSettingsTarget, watchdogSettingsTarget } from "./settings-scope.js";
 import { listUploadPolicies } from "./upload-policies.js";
 import type { UploadProviderStore } from "./upload-providers.js";
 
@@ -113,7 +112,9 @@ export function registerSettingsActionRoutes({
       const templateId = c.req.param("templateId") ?? "";
       const template = await settingsStore.findChannelMapTemplate(templateId);
 
-      return template ? channelMapTarget(template) : channelMapTarget({ id: templateId });
+      return template
+        ? channelMapTemplateSettingsTarget(template)
+        : { id: templateId, type: "channel_map_template" };
     }),
     async (c) => {
       const template = await settingsStore.findChannelMapTemplate(c.req.param("templateId") ?? "");
@@ -338,12 +339,6 @@ function profileTarget(
   profile: Pick<RecordingProfile, "id"> & Partial<Pick<RecordingProfile, "name">>,
 ) {
   return { id: profile.id, name: profile.name, type: "recording_profile" };
-}
-
-function channelMapTarget(
-  template: Pick<ChannelMapTemplate, "id"> & Partial<Pick<ChannelMapTemplate, "name">>,
-) {
-  return { id: template.id, name: template.name, type: "channel_map_template" };
 }
 
 function planTarget(

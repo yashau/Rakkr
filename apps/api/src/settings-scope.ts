@@ -1,4 +1,4 @@
-import type { RecordingProfile, WatchdogPolicy } from "@rakkr/shared";
+import type { ChannelMapTemplate, RecordingProfile, WatchdogPolicy } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AuditTarget } from "./http-types.js";
@@ -17,6 +17,16 @@ export function watchdogSettingsTarget(policy: Pick<WatchdogPolicy, "id" | "name
     id: policy.id,
     name: policy.name,
     type: "watchdog_policy",
+  };
+}
+
+export function channelMapTemplateSettingsTarget(
+  template: Pick<ChannelMapTemplate, "id" | "name">,
+) {
+  return {
+    id: template.id,
+    name: template.name,
+    type: "channel_map_template",
   };
 }
 
@@ -66,4 +76,28 @@ export async function scopedWatchdogPolicies(
   }
 
   return visiblePolicies;
+}
+
+export async function scopedChannelMapTemplates(
+  user: AuthResult["user"],
+  settingsStore: SettingsStore,
+  hasResourceScope: (
+    user: NonNullable<AuthResult["user"]>,
+    target: AuditTarget,
+  ) => Promise<boolean>,
+) {
+  if (!user) {
+    return [];
+  }
+
+  const templates = await settingsStore.listChannelMapTemplates();
+  const visibleTemplates: ChannelMapTemplate[] = [];
+
+  for (const template of templates) {
+    if (await hasResourceScope(user, channelMapTemplateSettingsTarget(template))) {
+      visibleTemplates.push(template);
+    }
+  }
+
+  return visibleTemplates;
 }

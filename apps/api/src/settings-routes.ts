@@ -38,7 +38,9 @@ import { createUploadProviderStore, type UploadProviderStore } from "./upload-pr
 import { registerSettingsActionRoutes } from "./settings-action-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
 import {
+  channelMapTemplateSettingsTarget,
   profileSettingsTarget,
+  scopedChannelMapTemplates,
   scopedRecordingProfiles,
   scopedWatchdogPolicies,
   watchdogSettingsTarget,
@@ -95,7 +97,10 @@ export function registerSettingsRoutes({
     requirePermission("settings:read", "settings.channel_map_templates.read", () => ({
       type: "settings",
     })),
-    async (c) => c.json({ data: await settingsStore.listChannelMapTemplates() }),
+    async (c) =>
+      c.json({
+        data: await scopedChannelMapTemplates(currentAuth(c).user, settingsStore, hasResourceScope),
+      }),
   );
 
   app.get(
@@ -429,7 +434,7 @@ export function registerSettingsRoutes({
         auth: currentAuth(c),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: channelMapAuditTarget(created),
+        target: channelMapTemplateSettingsTarget(created),
       });
 
       return c.json({ data: created }, 201);
@@ -438,9 +443,14 @@ export function registerSettingsRoutes({
 
   app.patch(
     "/api/v1/settings/channel-map-templates/:templateId",
-    requirePermission("settings:manage", "settings.channel_map_templates.update", () => ({
-      type: "settings",
-    })),
+    requirePermission("settings:manage", "settings.channel_map_templates.update", async (c) => {
+      const templateId = c.req.param("templateId") ?? "";
+      const template = await settingsStore.findChannelMapTemplate(templateId);
+
+      return template
+        ? channelMapTemplateSettingsTarget(template)
+        : { id: templateId, type: "channel_map_template" };
+    }),
     async (c) => {
       const templateId = c.req.param("templateId");
       const before = await settingsStore.findChannelMapTemplate(templateId);
@@ -465,7 +475,7 @@ export function registerSettingsRoutes({
           c,
           "settings.channel_map_templates.update.failed",
           "invalid_request",
-          channelMapAuditTarget(before),
+          channelMapTemplateSettingsTarget(before),
         );
         return c.json({ error: "Invalid channel map template", issues: body.error.issues }, 400);
       }
@@ -477,7 +487,7 @@ export function registerSettingsRoutes({
           c,
           "settings.channel_map_templates.update.failed",
           "not_found",
-          channelMapAuditTarget(before),
+          channelMapTemplateSettingsTarget(before),
         );
         return c.json({ error: "Channel map template not found" }, 404);
       }
@@ -489,7 +499,7 @@ export function registerSettingsRoutes({
         before: channelMapSnapshot(before),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: channelMapAuditTarget(updated),
+        target: channelMapTemplateSettingsTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -824,14 +834,6 @@ export function registerSettingsRoutes({
       target,
     });
   }
-}
-
-function channelMapAuditTarget(template: ChannelMapTemplate) {
-  return {
-    id: template.id,
-    name: template.name,
-    type: "channel_map_template",
-  };
 }
 
 function channelMapSnapshot(template: ChannelMapTemplate) {
