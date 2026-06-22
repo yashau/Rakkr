@@ -255,6 +255,65 @@ test("upload queue item detail returns scoped recording context", async () => {
   assert.equal(body.data.links.retry, `/api/v1/upload-queue/${queued.id}/retry`);
 });
 
+test("upload queue routes use scoped recording context for reads and controls", async () => {
+  const auditStore = createAuditStore("");
+  const scopedRecording = recording({
+    id: "rec_queue_scoped_context",
+    name: "Scoped Queue Recording",
+    uploadPolicyId: "upload-policy-stub",
+  });
+  const rawStoreRecording = recording({
+    cachePath: undefined,
+    cached: false,
+    id: scopedRecording.id,
+    name: "Raw Store Recording",
+    uploadPolicyId: "upload-policy-stub",
+  });
+  const failed = await enqueueRecordingUpload(scopedRecording, {
+    maxAttempts: 1,
+    provider: "s3",
+    reason: "scoped_context_failed",
+    target: "s3://rakkr-route-test/scoped-context",
+  });
+  await retryUploadQueueItem(failed.id);
+
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore: memoryRecordingStore([rawStoreRecording]),
+    scopedRecordingSnapshots: [scopedRecording],
+  });
+
+  const detailResponse = await app.request(`/api/v1/upload-queue/${failed.id}`);
+  const detailBody = (await detailResponse.json()) as {
+    data: { recording?: RecordingSummary };
+  };
+  const actionsResponse = await app.request(`/api/v1/upload-queue/${failed.id}/actions`);
+  const actionsBody = (await actionsResponse.json()) as UploadQueueActionsResponse;
+  const bulkResponse = await app.request("/api/v1/recordings/bulk-upload-queue", {
+    body: JSON.stringify({
+      reason: "scoped_bulk_upload",
+      recordingIds: [scopedRecording.id],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const retryResponse = await app.request(`/api/v1/upload-queue/${failed.id}/retry`, {
+    method: "POST",
+  });
+  const [retryEvent] = await auditStore.list({
+    action: "recordings.upload_queue.retry.succeeded",
+  });
+
+  assert.equal(detailResponse.status, 200);
+  assert.equal(detailBody.data.recording?.name, scopedRecording.name);
+  assert.equal(actionsResponse.status, 200);
+  assert.equal(actionsBody.data.actions.retry.enabled, true);
+  assert.equal(bulkResponse.status, 201);
+  assert.equal(retryResponse.status, 200);
+  assert.equal(retryEvent?.target.name, scopedRecording.name);
+});
+
 test("upload queue item action summary returns retry readiness", async () => {
   const auditStore = createAuditStore("");
   const failedRecording = recording({ id: "rec_queue_actions_failed" });
@@ -376,12 +435,14 @@ function recordingUploadQueueApp({
   permissionCalls,
   permissions,
   recordingStore,
+  scopedRecordingSnapshots,
   visibleRecordingIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
   permissionCalls: PermissionCall[];
   permissions?: Permission[];
   recordingStore: RecordingStore;
+  scopedRecordingSnapshots?: RecordingSummary[];
   visibleRecordingIds?: string[];
 }) {
   const app = new Hono<AppBindings>();
@@ -392,10 +453,9 @@ function recordingUploadQueueApp({
     currentAuth: () => auth(currentUser),
     currentUser: () => currentUser,
     recordAuditEvent: recordAuditEvent(auditStore),
-    recordingStore,
     requirePermission: requirePermission(permissionCalls),
     scopedRecordings: async () => {
-      const recordings = await recordingStore.list();
+      const recordings = scopedRecordingSnapshots ?? (await recordingStore.list());
 
       return visibleRecordingIds
         ? recordings.filter((recording) => visibleRecordingIds.includes(recording.id))

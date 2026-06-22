@@ -372,7 +372,6 @@ export function registerRecordingRoutes({
     currentAuth,
     currentUser,
     recordAuditEvent,
-    recordingStore,
     requirePermission,
     scopedRecordings,
   });

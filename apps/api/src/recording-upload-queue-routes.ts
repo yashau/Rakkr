@@ -12,7 +12,6 @@ import type { AuthResult } from "./auth-service.js";
 import { recordingHasCachedFile } from "./recording-cache.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { uniqueRecordingIds } from "./recording-metadata.js";
-import type { RecordingStore } from "./recording-store.js";
 import { uploadPolicyForQueue, uploadQueueInputForPolicy } from "./upload-policies.js";
 import {
   enqueueRecordingUpload,
@@ -26,7 +25,6 @@ interface RecordingUploadQueueRouteDependencies {
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   recordAuditEvent: RecordAuditEvent;
-  recordingStore: RecordingStore;
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
@@ -71,7 +69,6 @@ export function registerRecordingUploadQueueRoutes({
   currentAuth,
   currentUser,
   recordAuditEvent,
-  recordingStore,
   requirePermission,
   scopedRecordings,
 }: RecordingUploadQueueRouteDependencies) {
@@ -111,21 +108,21 @@ export function registerRecordingUploadQueueRoutes({
       };
     }),
     async (c) => {
-      const item = await visibleUploadQueueItem(c.req.param("itemId") ?? "", {
+      const context = await visibleUploadQueueContext(c.req.param("itemId") ?? "", {
         currentUser,
         c,
         scopedRecordings,
       });
 
-      if (!item) {
+      if (!context) {
         return c.json({ error: "Upload queue item not found" }, 404);
       }
 
       return c.json({
         data: {
-          item,
-          links: uploadQueueLinks(item.id),
-          recording: await recordingStore.find(item.recordingId),
+          item: context.item,
+          links: uploadQueueLinks(context.item.id),
+          recording: context.recording,
         },
       });
     },
@@ -143,24 +140,22 @@ export function registerRecordingUploadQueueRoutes({
       };
     }),
     async (c) => {
-      const item = await visibleUploadQueueItem(c.req.param("itemId") ?? "", {
+      const context = await visibleUploadQueueContext(c.req.param("itemId") ?? "", {
         currentUser,
         c,
         scopedRecordings,
       });
 
-      if (!item) {
+      if (!context) {
         return c.json({ error: "Upload queue item not found" }, 404);
       }
 
-      const recording = await recordingStore.find(item.recordingId);
-
       return c.json({
         data: {
-          actions: uploadQueueActions(item, currentUser(c).permissions, Boolean(recording)),
-          item,
-          links: uploadQueueLinks(item.id),
-          recording,
+          actions: uploadQueueActions(context.item, currentUser(c).permissions, true),
+          item: context.item,
+          links: uploadQueueLinks(context.item.id),
+          recording: context.recording,
         },
       });
     },
@@ -225,10 +220,10 @@ export function registerRecordingUploadQueueRoutes({
       }
 
       const recordingIds = uniqueRecordingIds(body.data.recordingIds);
-      const visibleIds = new Set(
-        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
+      const visibleRecordingMap = new Map(
+        (await scopedRecordings(currentUser(c))).map((recording) => [recording.id, recording]),
       );
-      const hiddenIds = recordingIds.filter((recordingId) => !visibleIds.has(recordingId));
+      const hiddenIds = recordingIds.filter((recordingId) => !visibleRecordingMap.has(recordingId));
 
       if (hiddenIds.length > 0) {
         await recordBulkUploadQueueFailure(c, "recording_not_visible", {
@@ -241,34 +236,14 @@ export function registerRecordingUploadQueueRoutes({
         return c.json({ error: "One or more recordings are not visible" }, 404);
       }
 
-      const recordings = await Promise.all(
-        recordingIds.map((recordingId) => recordingStore.find(recordingId)),
-      );
-      const missingIds = recordingIds.filter((_, index) => !recordings[index]);
-
-      if (missingIds.length > 0) {
-        await recordBulkUploadQueueFailure(c, "recording_not_found", {
-          currentAuth,
-          details: { missingIds, recordingIds },
-          recordAuditEvent,
-        });
-
-        return c.json({ error: "One or more recordings were not found" }, 404);
-      }
-
-      const cachedRecordings = recordings.filter(
-        (recording): recording is RecordingSummary =>
-          recording !== undefined && recordingHasCachedFile(recording),
-      );
+      const recordings = recordingIds.map((recordingId) => visibleRecordingMap.get(recordingId)!);
+      const cachedRecordings = recordings.filter(recordingHasCachedFile);
 
       if (cachedRecordings.length !== recordingIds.length) {
         const notCachedIds = recordingIds.filter((recordingId) => {
-          const recording = recordings.find(
-            (candidate): candidate is RecordingSummary =>
-              candidate !== undefined && candidate.id === recordingId,
-          );
+          const recording = visibleRecordingMap.get(recordingId)!;
 
-          return !recording || !recordingHasCachedFile(recording);
+          return !recordingHasCachedFile(recording);
         });
 
         await recordBulkUploadQueueFailure(c, "recording_not_cached", {
@@ -368,11 +343,12 @@ export function registerRecordingUploadQueueRoutes({
         return c.json({ error: "Upload queue item not found" }, 404);
       }
 
-      const visibleRecordingIds = new Set(
-        (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
+      const visibleRecordingMap = new Map(
+        (await scopedRecordings(currentUser(c))).map((recording) => [recording.id, recording]),
       );
+      const recording = visibleRecordingMap.get(item.recordingId);
 
-      if (!visibleRecordingIds.has(item.recordingId)) {
+      if (!recording) {
         await recordUploadQueueFailure(c, {
           action: "recordings.upload_queue.retry.failed",
           currentAuth,
@@ -400,8 +376,6 @@ export function registerRecordingUploadQueueRoutes({
         return c.json({ error: "Upload queue item not found" }, 404);
       }
 
-      const recording = await recordingStore.find(retried.recordingId);
-
       await recordAuditEvent(c, {
         action: "recordings.upload_queue.retry.succeeded",
         auth: currentAuth(c),
@@ -424,7 +398,7 @@ export function registerRecordingUploadQueueRoutes({
   );
 }
 
-async function visibleUploadQueueItem(
+async function visibleUploadQueueContext(
   itemId: string,
   {
     c,
@@ -440,11 +414,12 @@ async function visibleUploadQueueItem(
     return undefined;
   }
 
-  const visibleRecordingIds = new Set(
-    (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
+  const visibleRecordingMap = new Map(
+    (await scopedRecordings(currentUser(c))).map((recording) => [recording.id, recording]),
   );
+  const recording = visibleRecordingMap.get(item.recordingId);
 
-  return visibleRecordingIds.has(item.recordingId) ? item : undefined;
+  return recording ? { item, recording } : undefined;
 }
 
 function uploadQueueActions(
