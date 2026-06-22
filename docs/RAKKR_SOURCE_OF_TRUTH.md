@@ -924,6 +924,7 @@ Current implementation baseline:
 293. ✅ Scope ad-hoc recording policy selection.
 294. ✅ Scope schedule settings resource selection.
 295. ✅ Scope aggregate status settings summaries.
+296. ✅ Scope health-event audit metrics.
 
 ## Open Questions
 

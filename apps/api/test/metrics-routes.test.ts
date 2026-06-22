@@ -76,6 +76,45 @@ test("metrics audit totals respect resource scope", async () => {
   assert.doesNotMatch(output, /recordings\.delete\.succeeded/);
 });
 
+test("metrics audit totals respect health event resource scope", async () => {
+  const auditStore = createAuditStore("");
+
+  await auditStore.append(
+    auditEvent("health.events.visible.succeeded", "succeeded", "health:acknowledge", {
+      id: "health_audit_visible",
+      type: "health_event",
+    }),
+  );
+  await auditStore.append(
+    auditEvent("health.events.hidden.succeeded", "succeeded", "health:acknowledge", {
+      id: "health_audit_hidden",
+      type: "health_event",
+    }),
+  );
+
+  const app = new Hono<AppBindings>();
+  registerMetricsRoutes({
+    app,
+    auditStore,
+    currentUser: () => user(["metrics:read"]),
+    hasResourceScope: async (_user, target) => target.id === "health_audit_visible",
+    healthEventStore: createHealthEventStore("", []),
+    listenMonitorStore: createListenMonitorStore(),
+    meterFrameStore: createMeterFrameStore(),
+    nodeStore: createNodeStore([]),
+    recordingStore: memoryRecordingStore([]),
+    requirePermission: allowPermission,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/metrics");
+  const output = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(output, /health\.events\.visible\.succeeded/);
+  assert.doesNotMatch(output, /health\.events\.hidden\.succeeded/);
+});
+
 test("metrics expose listen monitor chunks only for visible nodes", async () => {
   const listenMonitorStore = createListenMonitorStore();
 

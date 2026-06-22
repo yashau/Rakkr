@@ -229,6 +229,8 @@ async function canReadAuditEvent(
 function isResourceScopedAuditTarget(target: AuditTarget) {
   return Boolean(
     target.id &&
-    ["channel", "interface", "node", "recording", "room", "schedule"].includes(target.type),
+    ["channel", "health_event", "interface", "node", "recording", "room", "schedule"].includes(
+      target.type,
+    ),
   );
 }
