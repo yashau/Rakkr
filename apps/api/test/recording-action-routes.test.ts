@@ -125,6 +125,45 @@ test("recording action summary reports active lifecycle blockers", async () => {
   assert.equal(body.data.actions.retryJob.reason, "active_job_exists");
 });
 
+test("recording action summary uses scoped recording context for readiness", async () => {
+  const scopedRecording = recordingSummary({
+    cachePath: "ad-hoc/rec_action_scoped.mp3",
+    cached: true,
+    id: `rec_action_scoped_${randomUUID()}`,
+    name: "Scoped Recording Action",
+    status: "cached",
+  });
+  const rawStoreRecording = recordingSummary({
+    cachePath: undefined,
+    cached: false,
+    id: scopedRecording.id,
+    name: "Raw Store Recording Action",
+    status: "completed",
+  });
+  const app = recordingActionsApp({
+    recordingStore: memoryRecordingStore([rawStoreRecording]),
+    scopedRecordingSnapshots: [scopedRecording],
+    user: currentUser([
+      "recording:control",
+      "recording:delete",
+      "recording:download",
+      "recording:edit",
+      "recording:playback",
+      "recording:read",
+    ]),
+    visibleRecordingIds: [scopedRecording.id],
+  });
+
+  const response = await app.request(`/api/v1/recordings/${scopedRecording.id}/actions`);
+  const body = (await response.json()) as RecordingActionsResponse;
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.recording.name, scopedRecording.name);
+  assert.equal(body.data.actions.playback.enabled, true);
+  assert.equal(body.data.actions.download.enabled, true);
+  assert.equal(body.data.actions.queueUpload.enabled, true);
+});
+
 test("recording action summary hides recordings outside scoped visibility", async () => {
   const recording = recordingSummary({ id: `rec_action_hidden_${randomUUID()}` });
   const permissionCalls: PermissionCall[] = [];
@@ -168,11 +207,13 @@ interface PermissionCall {
 function recordingActionsApp({
   permissionCalls = [],
   recordingStore,
+  scopedRecordingSnapshots,
   user,
   visibleRecordingIds,
 }: {
   permissionCalls?: PermissionCall[];
   recordingStore: RecordingStore;
+  scopedRecordingSnapshots?: RecordingSummary[];
   user: CurrentUser;
   visibleRecordingIds: string[];
 }) {
@@ -187,10 +228,11 @@ function recordingActionsApp({
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
     scopedNodes: async () => [],
-    scopedRecordings: async () =>
-      (await recordingStore.list()).filter((recording) =>
-        visibleRecordingIds.includes(recording.id),
-      ),
+    scopedRecordings: async () => {
+      const recordings = scopedRecordingSnapshots ?? (await recordingStore.list());
+
+      return recordings.filter((recording) => visibleRecordingIds.includes(recording.id));
+    },
     settingsStore: memorySettingsStore([defaultVoiceRecordingProfile]),
   });
 

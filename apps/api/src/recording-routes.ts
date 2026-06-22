@@ -352,7 +352,6 @@ export function registerRecordingRoutes({
   registerRecordingActionRoutes({
     app,
     currentUser,
-    recordingStore,
     requirePermission,
     scopedRecordings,
   });

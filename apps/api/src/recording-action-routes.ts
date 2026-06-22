@@ -5,13 +5,11 @@ import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
 import { recordingHasCachedFile } from "./recording-cache.js";
 import { listRecordingJobs } from "./recording-jobs.js";
-import type { RecordingStore } from "./recording-store.js";
 import { listUploadQueueItems } from "./upload-queue.js";
 
 interface RecordingActionRouteDependencies {
   app: Hono<AppBindings>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
-  recordingStore: RecordingStore;
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
@@ -31,7 +29,6 @@ const retryableJobStatuses = new Set<RecordingJob["status"]>(["cancelled", "fail
 export function registerRecordingActionRoutes({
   app,
   currentUser,
-  recordingStore,
   requirePermission,
   scopedRecordings,
 }: RecordingActionRouteDependencies) {
@@ -52,35 +49,32 @@ export function registerRecordingActionRoutes({
         return c.json({ error: "Recording not found" }, 404);
       }
 
-      const [recording, jobs, uploadQueueItems] = await Promise.all([
-        recordingStore.find(recordingId),
+      const [jobs, uploadQueueItems] = await Promise.all([
         listRecordingJobs(),
         listUploadQueueItems(),
       ]);
 
-      if (!recording) {
-        return c.json({ error: "Recording not found" }, 404);
-      }
-
       const recordingJobs = jobs
-        .filter((job) => job.recordingId === recording.id)
+        .filter((job) => job.recordingId === visibleRecording.id)
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
       const activeJob = recordingJobs.find((job) => activeJobStatuses.has(job.status));
       const retryableJob = activeJob
         ? undefined
         : recordingJobs.find((job) => retryableJobStatuses.has(job.status));
-      const queuedUploads = uploadQueueItems.filter((item) => item.recordingId === recording.id);
+      const queuedUploads = uploadQueueItems.filter(
+        (item) => item.recordingId === visibleRecording.id,
+      );
 
       return c.json({
         data: {
-          actions: recordingActions(recording, user.permissions, activeJob, retryableJob),
+          actions: recordingActions(visibleRecording, user.permissions, activeJob, retryableJob),
           jobs: {
             active: activeJob,
             latest: recordingJobs[0],
             retryable: retryableJob,
           },
-          links: recordingActionLinks(recording.id, retryableJob?.id),
-          recording,
+          links: recordingActionLinks(visibleRecording.id, retryableJob?.id),
+          recording: visibleRecording,
           uploadQueueItems: queuedUploads,
         },
       });
