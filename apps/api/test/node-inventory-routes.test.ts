@@ -15,7 +15,9 @@ const { createAuditStore } = await import("../src/audit-store.js");
 const { registerNodeInventoryRoutes } = await import("../src/node-inventory-routes.js");
 
 test("node list filters by status", async () => {
+  const auditStore = createAuditStore("");
   const app = nodeInventoryApp({
+    auditStore,
     nodes: [
       node({ alias: "Online Room", id: "node_online", status: "online" }),
       node({ alias: "Offline Room", id: "node_offline", status: "offline" }),
@@ -26,6 +28,8 @@ test("node list filters by status", async () => {
   const response = await app.request("/api/v1/nodes?status=offline");
   const body = (await response.json()) as { data: RecorderNode[] };
   const invalidResponse = await app.request("/api/v1/nodes?status=unknown");
+  const [successEvent] = await auditStore.list({ action: "nodes.read.succeeded" });
+  const [failedEvent] = await auditStore.list({ action: "nodes.read.failed" });
 
   assert.equal(response.status, 200);
   assert.deepEqual(
@@ -33,6 +37,14 @@ test("node list filters by status", async () => {
     ["node_offline"],
   );
   assert.equal(invalidResponse.status, 400);
+  assert.equal(successEvent?.permission, "node:read");
+  assert.equal(successEvent?.target.id, "node_collection");
+  assert.equal(successEvent?.details.returnedCount, 1);
+  assert.equal(successEvent?.details.filters.status, "offline");
+  assert.equal(failedEvent?.permission, "node:read");
+  assert.equal(failedEvent?.reason, "invalid_filters");
+  assert.equal(failedEvent?.target.id, "node_collection");
+  assert.equal(failedEvent?.details.issueCount, 1);
 });
 
 test("node list filters by audio backend", async () => {
@@ -347,9 +359,11 @@ test("node selected export rejects hidden nodes before exporting", async () => {
 });
 
 test("node detail route returns scoped nodes only", async () => {
+  const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const visible = nodeWithInterface({ id: "node_visible_detail" });
   const app = nodeInventoryApp({
+    auditStore,
     nodes: [visible],
     permissionCalls,
   });
@@ -357,6 +371,8 @@ test("node detail route returns scoped nodes only", async () => {
   const visibleResponse = await app.request(`/api/v1/nodes/${visible.id}`);
   const hiddenResponse = await app.request("/api/v1/nodes/node_hidden_detail");
   const visibleBody = (await visibleResponse.json()) as { data: RecorderNode };
+  const [successEvent] = await auditStore.list({ action: "nodes.detail.read.succeeded" });
+  const [failedEvent] = await auditStore.list({ action: "nodes.detail.read.failed" });
 
   assert.equal(visibleResponse.status, 200);
   assert.equal(visibleBody.data.id, visible.id);
@@ -371,6 +387,13 @@ test("node detail route returns scoped nodes only", async () => {
     permission: "node:read",
     target: { id: "node_hidden_detail", type: "node" },
   });
+  assert.equal(successEvent?.permission, "node:read");
+  assert.equal(successEvent?.target.id, visible.id);
+  assert.equal(successEvent?.target.name, visible.alias);
+  assert.equal(successEvent?.details.status, visible.status);
+  assert.equal(failedEvent?.permission, "node:read");
+  assert.equal(failedEvent?.reason, "node_not_found");
+  assert.equal(failedEvent?.target.id, "node_hidden_detail");
 });
 
 interface PermissionCall {

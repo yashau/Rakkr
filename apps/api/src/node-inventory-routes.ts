@@ -59,10 +59,28 @@ export function registerNodeInventoryRoutes({
     const filters = nodeListFilterSchema.safeParse(c.req.query());
 
     if (!filters.success) {
+      await recordNodeReadFailure(c, "nodes.read.failed", "invalid_filters", {
+        issueCount: filters.error.issues.length,
+      });
       return c.json({ error: "Invalid node filters", issues: filters.error.issues }, 400);
     }
 
     const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
+
+    await recordAuditEvent(c, {
+      action: "nodes.read.succeeded",
+      auth: currentAuth(c),
+      details: {
+        filters: filters.data,
+        returnedCount: filteredNodes.length,
+      },
+      outcome: "succeeded",
+      permission: "node:read",
+      target: {
+        id: "node_collection",
+        type: "node_collection",
+      },
+    });
 
     return c.json({ data: filteredNodes });
   });
@@ -165,12 +183,51 @@ export function registerNodeInventoryRoutes({
       const node = (await scopedNodes(currentUser(c))).find((candidate) => candidate.id === nodeId);
 
       if (!node) {
+        await recordNodeReadFailure(c, "nodes.detail.read.failed", "node_not_found", {
+          nodeId,
+        });
         return c.json({ error: "Node not found" }, 404);
       }
+
+      await recordAuditEvent(c, {
+        action: "nodes.detail.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          alias: node.alias,
+          status: node.status,
+        },
+        outcome: "succeeded",
+        permission: "node:read",
+        target: {
+          id: node.id,
+          name: node.alias,
+          type: "node",
+        },
+      });
 
       return c.json({ data: node });
     },
   );
+
+  async function recordNodeReadFailure(
+    c: Context<AppBindings>,
+    action: string,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      details,
+      outcome: "failed",
+      permission: "node:read",
+      reason,
+      target: {
+        id: details.nodeId === undefined ? "node_collection" : String(details.nodeId),
+        type: details.nodeId === undefined ? "node_collection" : "node",
+      },
+    });
+  }
 
   async function recordSelectedNodeExportFailure(
     c: Context<AppBindings>,
