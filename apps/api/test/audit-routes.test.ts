@@ -177,6 +177,106 @@ test("audit facets summarize filtered investigation dimensions", async () => {
   assert.equal(invalidResponse.status, 400);
 });
 
+test("audit read routes audit list export facets detail actions and failures", async () => {
+  const auditStore = createAuditStore("");
+  const event = auditEvent("recordings.audit_read.succeeded", "succeeded", {
+    details: { room: "Room 401" },
+    targetId: "room_401",
+    targetName: "Room 401",
+  });
+
+  await auditStore.append(event);
+
+  const permissions: string[] = [];
+  const app = auditApp(auditStore, permissions);
+
+  const listResponse = await app.request("/api/v1/audit-events?actor=Alice");
+  const listBody = (await listResponse.json()) as { data: AuditEvent[] };
+  const exportResponse = await app.request(`/api/v1/audit-events/export?id=${event.id}`);
+  const facetsResponse = await app.request("/api/v1/audit-events/facets?permission=audit%3Aread");
+  const detailResponse = await app.request(`/api/v1/audit-events/${event.id}`);
+  const actionsResponse = await app.request(`/api/v1/audit-events/${event.id}/actions`);
+  const missingDetailResponse = await app.request("/api/v1/audit-events/audit_missing_read");
+  const missingActionsResponse = await app.request(
+    "/api/v1/audit-events/audit_missing_actions/actions",
+  );
+  const invalidListResponse = await app.request("/api/v1/audit-events?permission=unknown");
+  const invalidExportResponse = await app.request("/api/v1/audit-events/export?permission=unknown");
+  const invalidFacetsResponse = await app.request("/api/v1/audit-events/facets?permission=unknown");
+  const successAudits = (
+    await auditStore.list({
+      outcome: "succeeded",
+      permission: "audit:read",
+    })
+  ).filter((candidate) => candidate.action.startsWith("audit.events."));
+  const failedAudits = await auditStore.list({
+    outcome: "failed",
+    permission: "audit:read",
+  });
+
+  assert.equal(listResponse.status, 200);
+  assert.deepEqual(
+    listBody.data.map((candidate) => candidate.id),
+    [event.id],
+  );
+  assert.equal(exportResponse.status, 200);
+  assert.equal(facetsResponse.status, 200);
+  assert.equal(detailResponse.status, 200);
+  assert.equal(actionsResponse.status, 200);
+  assert.equal(missingDetailResponse.status, 404);
+  assert.equal(missingActionsResponse.status, 404);
+  assert.equal(invalidListResponse.status, 400);
+  assert.equal(invalidExportResponse.status, 400);
+  assert.equal(invalidFacetsResponse.status, 400);
+  assert.deepEqual(successAudits.map((audit) => audit.action).sort(), [
+    "audit.events.actions.read.succeeded",
+    "audit.events.detail.read.succeeded",
+    "audit.events.export.succeeded",
+    "audit.events.facets.read.succeeded",
+    "audit.events.read.succeeded",
+  ]);
+  assert.equal(
+    successAudits.find((audit) => audit.action === "audit.events.read.succeeded")?.details
+      .returnedCount,
+    1,
+  );
+  assert.equal(
+    successAudits.find((audit) => audit.action === "audit.events.export.succeeded")?.details
+      .exportedCount,
+    1,
+  );
+  assert.equal(
+    successAudits.find((audit) => audit.action === "audit.events.facets.read.succeeded")?.details
+      .returnedCount,
+    3,
+  );
+  assert.equal(
+    successAudits.find((audit) => audit.action === "audit.events.detail.read.succeeded")?.details
+      .eventId,
+    event.id,
+  );
+  assert.equal(
+    successAudits.find((audit) => audit.action === "audit.events.actions.read.succeeded")?.details
+      .eventId,
+    event.id,
+  );
+  assert.deepEqual(failedAudits.map((audit) => [audit.action, audit.reason]).sort(), [
+    ["audit.events.actions.read.failed", "audit_event_not_found"],
+    ["audit.events.detail.read.failed", "audit_event_not_found"],
+    ["audit.events.export.failed", "invalid_filters"],
+    ["audit.events.facets.read.failed", "invalid_filters"],
+    ["audit.events.read.failed", "invalid_filters"],
+  ]);
+  assert.ok(
+    successAudits.concat(failedAudits).every((audit) => audit.target.type === "controller"),
+  );
+  assert.ok(permissions.includes("audit:read:audit.events.read"));
+  assert.ok(permissions.includes("audit:read:audit.events.export"));
+  assert.ok(permissions.includes("audit:read:audit.events.facets.read"));
+  assert.ok(permissions.includes("audit:read:audit.events.detail.read"));
+  assert.ok(permissions.includes("audit:read:audit.events.actions.read"));
+});
+
 test("audit routes hide resource-scoped events outside visibility", async () => {
   const auditStore = createAuditStore("");
   const visible = auditEvent("recordings.visible.succeeded", "succeeded", {

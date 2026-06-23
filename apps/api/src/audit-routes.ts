@@ -92,6 +92,10 @@ export function registerAuditRoutes({
       const query = auditEventsQuerySchema.safeParse(c.req.query());
 
       if (!query.success) {
+        await recordAuditRead(c, {
+          action: "audit.events.export.failed",
+          reason: "invalid_filters",
+        });
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
@@ -99,6 +103,13 @@ export function registerAuditRoutes({
         currentUser(c, currentAuth),
         await auditStore.list(auditFilters(query.data)),
       );
+
+      await recordAuditRead(c, {
+        action: "audit.events.export.succeeded",
+        details: {
+          exportedCount: events.length,
+        },
+      });
 
       return c.text(auditEventsCsv(events), 200, {
         "Content-Disposition": `attachment; filename="${auditExportFileName()}"`,
@@ -183,6 +194,10 @@ export function registerAuditRoutes({
       const query = auditEventsQuerySchema.safeParse(c.req.query());
 
       if (!query.success) {
+        await recordAuditRead(c, {
+          action: "audit.events.facets.read.failed",
+          reason: "invalid_filters",
+        });
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
@@ -194,6 +209,13 @@ export function registerAuditRoutes({
         }),
       );
 
+      await recordAuditRead(c, {
+        action: "audit.events.facets.read.succeeded",
+        details: {
+          returnedCount: events.length,
+        },
+      });
+
       return c.json({ data: auditEventFacets(events) });
     },
   );
@@ -202,21 +224,37 @@ export function registerAuditRoutes({
     "/api/v1/audit-events/:eventId/actions",
     requirePermission("audit:read", "audit.events.actions.read", () => ({ type: "controller" })),
     async (c) => {
-      const event = await auditStore.find(c.req.param("eventId"));
-
-      return event &&
+      const eventId = c.req.param("eventId");
+      const event = await auditStore.find(eventId);
+      const canRead =
+        event &&
         (await canReadAuditEvent(currentUser(c, currentAuth), event, {
           allowActorSelf: true,
           hasResourceScope,
-        }))
-        ? c.json({
-            data: {
-              actions: auditEventActions(event),
-              event,
-              links: auditEventLinks(event),
-            },
-          })
-        : c.json({ error: "Audit event not found" }, 404);
+        }));
+
+      if (!canRead) {
+        await recordAuditRead(c, {
+          action: "audit.events.actions.read.failed",
+          details: { eventId },
+          reason: "audit_event_not_found",
+        });
+
+        return c.json({ error: "Audit event not found" }, 404);
+      }
+
+      await recordAuditRead(c, {
+        action: "audit.events.actions.read.succeeded",
+        details: { eventId: event.id },
+      });
+
+      return c.json({
+        data: {
+          actions: auditEventActions(event),
+          event,
+          links: auditEventLinks(event),
+        },
+      });
     },
   );
 
@@ -224,21 +262,37 @@ export function registerAuditRoutes({
     "/api/v1/audit-events/:eventId",
     requirePermission("audit:read", "audit.events.detail.read", () => ({ type: "controller" })),
     async (c) => {
-      const event = await auditStore.find(c.req.param("eventId"));
-
-      return event &&
+      const eventId = c.req.param("eventId");
+      const event = await auditStore.find(eventId);
+      const canRead =
+        event &&
         (await canReadAuditEvent(currentUser(c, currentAuth), event, {
           allowActorSelf: true,
           hasResourceScope,
-        }))
-        ? c.json({
-            data: {
-              actions: auditEventActions(event),
-              event,
-              links: auditEventLinks(event),
-            },
-          })
-        : c.json({ error: "Audit event not found" }, 404);
+        }));
+
+      if (!canRead) {
+        await recordAuditRead(c, {
+          action: "audit.events.detail.read.failed",
+          details: { eventId },
+          reason: "audit_event_not_found",
+        });
+
+        return c.json({ error: "Audit event not found" }, 404);
+      }
+
+      await recordAuditRead(c, {
+        action: "audit.events.detail.read.succeeded",
+        details: { eventId: event.id },
+      });
+
+      return c.json({
+        data: {
+          actions: auditEventActions(event),
+          event,
+          links: auditEventLinks(event),
+        },
+      });
     },
   );
 
@@ -249,14 +303,27 @@ export function registerAuditRoutes({
       const query = auditEventsQuerySchema.safeParse(c.req.query());
 
       if (!query.success) {
+        await recordAuditRead(c, {
+          action: "audit.events.read.failed",
+          reason: "invalid_filters",
+        });
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
+      const events = await scopedAuditEvents(
+        currentUser(c, currentAuth),
+        await auditStore.list(auditFilters(query.data)),
+      );
+
+      await recordAuditRead(c, {
+        action: "audit.events.read.succeeded",
+        details: {
+          returnedCount: events.length,
+        },
+      });
+
       return c.json({
-        data: await scopedAuditEvents(
-          currentUser(c, currentAuth),
-          await auditStore.list(auditFilters(query.data)),
-        ),
+        data: events,
       });
     },
   );
@@ -283,6 +350,31 @@ export function registerAuditRoutes({
       auth: currentAuth(c),
       details,
       outcome: "failed",
+      permission: "audit:read",
+      reason,
+      target: {
+        type: "controller",
+      },
+    });
+  }
+
+  async function recordAuditRead(
+    c: Context<AppBindings>,
+    {
+      action,
+      details,
+      reason,
+    }: {
+      action: string;
+      details?: Record<string, unknown>;
+      reason?: string;
+    },
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      details,
+      outcome: reason ? "failed" : "succeeded",
       permission: "audit:read",
       reason,
       target: {
