@@ -213,6 +213,7 @@ test("upload queue list filters visible items by status provider and recording",
   const response = await app.request(`/api/v1/upload-queue?${params}`);
   const body = (await response.json()) as { data: UploadQueueItem[] };
   const invalidResponse = await app.request("/api/v1/upload-queue?status=stuck");
+  const [event] = await auditStore.list({ action: "recordings.upload_queue.read.succeeded" });
 
   assert.equal(response.status, 200);
   assert.deepEqual(
@@ -222,6 +223,12 @@ test("upload queue list filters visible items by status provider and recording",
   assert.equal(body.data[0]?.provider, "s3");
   assert.equal(body.data[0]?.status, "retrying");
   assert.equal(invalidResponse.status, 400);
+  assert.equal(event?.permission, "recording:read");
+  assert.equal(event?.target.type, "upload_queue");
+  assert.equal(event?.details.filteredCount, 1);
+  assert.equal(event?.details.provider, "s3");
+  assert.equal(event?.details.recordingId, visibleS3.id);
+  assert.equal(event?.details.status, "retrying");
 });
 
 test("upload queue item detail returns scoped recording context", async () => {
@@ -243,6 +250,9 @@ test("upload queue item detail returns scoped recording context", async () => {
   const body = (await response.json()) as {
     data: { item: UploadQueueItem; links: { retry: string }; recording?: RecordingSummary };
   };
+  const [event] = await auditStore.list({
+    action: "recordings.upload_queue.detail.read.succeeded",
+  });
 
   assert.equal(response.status, 200);
   assert.deepEqual(permissionCalls.at(-1), {
@@ -253,6 +263,39 @@ test("upload queue item detail returns scoped recording context", async () => {
   assert.equal(body.data.item.id, queued.id);
   assert.equal(body.data.recording?.id, visibleRecording.id);
   assert.equal(body.data.links.retry, `/api/v1/upload-queue/${queued.id}/retry`);
+  assert.equal(event?.permission, "recording:read");
+  assert.equal(event?.target.id, visibleRecording.id);
+  assert.equal(event?.target.type, "recording");
+  assert.equal(event?.correlationIds?.uploadQueueItemId, queued.id);
+  assert.equal(event?.details.status, "queued");
+});
+
+test("upload queue item detail audits hidden items as not found", async () => {
+  const auditStore = createAuditStore("");
+  const hiddenRecording = recording({ id: "rec_queue_detail_hidden" });
+  const hidden = await enqueueRecordingUpload(hiddenRecording, {
+    provider: "s3",
+    reason: "hidden_detail",
+    target: "s3://rakkr-route-test/hidden-detail",
+  });
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore: memoryRecordingStore([hiddenRecording]),
+    visibleRecordingIds: [],
+  });
+
+  const response = await app.request(`/api/v1/upload-queue/${hidden.id}`);
+  const [event] = await auditStore.list({
+    action: "recordings.upload_queue.detail.read.failed",
+  });
+
+  assert.equal(response.status, 404);
+  assert.equal(event?.outcome, "failed");
+  assert.equal(event?.permission, "recording:read");
+  assert.equal(event?.reason, "upload_queue_item_not_found");
+  assert.equal(event?.target.id, hidden.id);
+  assert.equal(event?.target.type, "upload_queue");
 });
 
 test("upload queue routes use scoped recording context for reads and controls", async () => {

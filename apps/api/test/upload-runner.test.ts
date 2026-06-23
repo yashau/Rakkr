@@ -189,6 +189,9 @@ test("upload runner routes expose status and run-now control", async () => {
     data: { actions: { run: { enabled: boolean; href?: string } } };
   };
   const payload = await run.json();
+  const readEvents = await auditStore.list({
+    action: "recordings.upload_runner.read.succeeded",
+  });
   const actionEvents = await auditStore.list({
     action: "recordings.upload_runner.actions.read.succeeded",
   });
@@ -201,6 +204,11 @@ test("upload runner routes expose status and run-now control", async () => {
   assert.equal(run.status, 200);
   assert.equal(payload.summary.succeeded, 1);
   assert.equal(payload.data.lastSummary.succeeded, 1);
+  assert.equal(readEvents.length, 1);
+  assert.equal(readEvents[0]?.permission, "recording:read");
+  assert.equal(readEvents[0]?.target.type, "upload_runner");
+  assert.equal(readEvents[0]?.details.started, false);
+  assert.equal(readEvents[0]?.details.lastSummaryAttempted, 0);
   assert.equal(actionEvents.length, 1);
   assert.equal(actionEvents[0]?.permission, "recording:read");
   assert.equal(actionEvents[0]?.target.type, "upload_runner");
@@ -299,6 +307,9 @@ test("upload runner status routes hide last-summary items outside scoped recordi
       status: { lastSummary?: { attempted: number; items: Array<{ recordingId: string }> } };
     };
   };
+  const [readEvent] = await auditStore.list({
+    action: "recordings.upload_runner.read.succeeded",
+  });
   const [actionEvent] = await auditStore.list({
     action: "recordings.upload_runner.actions.read.succeeded",
   });
@@ -312,6 +323,8 @@ test("upload runner status routes hide last-summary items outside scoped recordi
     [visible.id],
   );
   assert.deepEqual(actionsBody.data.status.lastSummary, statusBody.data.lastSummary);
+  assert.equal(readEvent?.details.lastSummaryAttempted, 1);
+  assert.equal(readEvent?.details.lastSummaryItemCount, 1);
   assert.equal(actionEvent?.details.lastSummaryAttempted, 1);
   assert.equal(actionEvent?.details.lastSummaryItemCount, 1);
 });

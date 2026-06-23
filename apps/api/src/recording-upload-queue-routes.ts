@@ -86,12 +86,27 @@ export function registerRecordingUploadQueueRoutes({
         (await scopedRecordings(currentUser(c))).map((recording) => recording.id),
       );
       const items = await listUploadQueueItems();
+      const visibleItems = items.filter(
+        (item) =>
+          visibleRecordingIds.has(item.recordingId) && uploadQueueItemMatches(item, query.data),
+      );
+
+      await recordAuditEvent(c, {
+        action: "recordings.upload_queue.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          filteredCount: visibleItems.length,
+          provider: query.data.provider,
+          recordingId: query.data.recordingId,
+          status: query.data.status,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: { type: "upload_queue" },
+      });
 
       return c.json({
-        data: items.filter(
-          (item) =>
-            visibleRecordingIds.has(item.recordingId) && uploadQueueItemMatches(item, query.data),
-        ),
+        data: visibleItems,
       });
     },
   );
@@ -115,8 +130,30 @@ export function registerRecordingUploadQueueRoutes({
       });
 
       if (!context) {
+        await recordAuditEvent(c, {
+          action: "recordings.upload_queue.detail.read.failed",
+          auth: currentAuth(c),
+          outcome: "failed",
+          permission: "recording:read",
+          reason: "upload_queue_item_not_found",
+          target: { id: c.req.param("itemId") ?? "", type: "upload_queue" },
+        });
+
         return c.json({ error: "Upload queue item not found" }, 404);
       }
+
+      await recordAuditEvent(c, {
+        action: "recordings.upload_queue.detail.read.succeeded",
+        auth: currentAuth(c),
+        correlationIds: {
+          recordingId: context.recording.id,
+          uploadQueueItemId: context.item.id,
+        },
+        details: uploadQueueAuditDetails(context.item),
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: { id: context.recording.id, name: context.recording.name, type: "recording" },
+      });
 
       return c.json({
         data: {
