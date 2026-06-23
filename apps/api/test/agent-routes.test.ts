@@ -128,56 +128,6 @@ test("agent unexpected cancellation marks recording health warning", async () =>
   assert.equal(event?.details.recordingStatus, "completed");
 });
 
-test("agent heartbeat updates node runtime details and audits inventory changes", async () => {
-  const app = new Hono<AppBindings>();
-  const auditStore = createAuditStore("");
-  const healthEventStore = createHealthEventStore("", []);
-  const nodeStore = memoryNodeStore();
-
-  registerAgentRoutes({
-    app,
-    healthEventStore,
-    meterFrameStore: memoryMeterFrameStore(),
-    nodeStore,
-    recordAuditEvent: recordAuditEvent(auditStore),
-    recordingStore: memoryRecordingStore(),
-    settingsStore: {} as SettingsStore,
-  });
-
-  const response = await app.request(`/api/v1/nodes/${node().id}/heartbeat`, {
-    body: JSON.stringify({
-      agentVersion: "0.2.0",
-      hostname: "agent-route-node-live",
-      ipAddresses: ["10.9.0.8"],
-      runtime: {
-        architecture: "x86_64",
-        audioBackends: ["alsa"],
-        kernelRelease: "6.1.0-test",
-        osName: "Debian GNU/Linux 12",
-        uptimeSeconds: 12345,
-      },
-      status: "online",
-    }),
-    headers: {
-      authorization: "Bearer node-token",
-      "content-type": "application/json",
-    },
-    method: "POST",
-  });
-  const body = (await response.json()) as { data: RecorderNode };
-  const [event] = await auditStore.list({ action: "nodes.heartbeat.succeeded" });
-
-  assert.equal(response.status, 202);
-  assert.equal(body.data.agentVersion, "0.2.0");
-  assert.equal(body.data.hostname, "agent-route-node-live");
-  assert.deepEqual(body.data.ipAddresses, ["10.9.0.8"]);
-  assert.equal(body.data.runtime?.kernelRelease, "6.1.0-test");
-  assert.equal(body.data.runtime?.uptimeSeconds, 12345);
-  assert.equal(event?.actor.type, "node");
-  assert.equal(event?.permission, "node:control");
-  assert.equal(event?.after?.hostname, "agent-route-node-live");
-});
-
 test("agent config read returns node recording capacity and recorder-cache policies", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");

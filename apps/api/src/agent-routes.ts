@@ -205,20 +205,19 @@ export function registerAgentRoutes({
       return c.json({ error: "Node not found" }, 404);
     }
 
-    if (nodeHeartbeatChanged(before, updated)) {
-      await recordAuditEvent(c, {
-        action: "nodes.heartbeat.succeeded",
-        actor: nodeActor(auth.credential),
-        after: nodeHeartbeatSnapshot(updated),
-        before: nodeHeartbeatSnapshot(before),
-        details: {
-          runtime: updated.runtime,
-        },
-        outcome: "succeeded",
-        permission: "node:control",
-        target: { id: updated.id, name: updated.alias, type: "node" },
-      });
-    }
+    const changed = nodeHeartbeatChanged(before, updated);
+
+    await recordAuditEvent(c, {
+      action: "nodes.heartbeat.succeeded",
+      actor: nodeActor(auth.credential),
+      ...(changed
+        ? { after: nodeHeartbeatSnapshot(updated), before: nodeHeartbeatSnapshot(before) }
+        : {}),
+      details: { changed, runtime: updated.runtime },
+      outcome: "succeeded",
+      permission: "node:control",
+      target: { id: updated.id, name: updated.alias, type: "node" },
+    });
 
     return c.json({ data: updated }, 202);
   });

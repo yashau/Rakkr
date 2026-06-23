@@ -969,6 +969,7 @@ Current implementation baseline:
 330. ✅ Audit agent meter-frame ingest route.
 331. ✅ Audit agent recording-job polling read routes.
 332. ✅ Audit agent claim-next empty control route.
+333. ✅ Audit agent heartbeat steady-state control route.
 
 ## Open Questions
 
