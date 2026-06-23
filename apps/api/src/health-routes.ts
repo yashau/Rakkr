@@ -236,13 +236,29 @@ export function registerHealthRoutes({
       const query = healthEventsQuerySchema.safeParse(c.req.query());
 
       if (!query.success) {
+        await recordHealthReadFailure(c, "health.events.read.failed", "invalid_filters", {
+          issues: query.error.issues.length,
+        });
         return c.json({ error: "Invalid health event filters", issues: query.error.issues }, 400);
       }
 
       const user = currentUser(c);
-      const visibleEvents = await visibleHealthEvents(user, healthFilters(query.data), {
+      const filters = healthFilters(query.data);
+      const visibleEvents = await visibleHealthEvents(user, filters, {
         hasResourceScope,
         healthEventStore,
+      });
+
+      await recordAuditEvent(c, {
+        action: "health.events.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          filters,
+          returnedCount: visibleEvents.length,
+        },
+        outcome: "succeeded",
+        permission: "health:read",
+        target: healthReadTarget(c),
       });
 
       return c.json({ data: visibleEvents });
@@ -260,8 +276,27 @@ export function registerHealthRoutes({
       const event = await healthEventStore.find(eventId);
 
       if (!event || !(await visibleHealthEvent(currentUser(c), event, hasResourceScope))) {
+        await recordHealthReadFailure(
+          c,
+          "health.events.detail.read.failed",
+          "health_event_not_found",
+          {},
+          {
+            id: eventId,
+            type: "health_event",
+          },
+        );
         return c.json({ error: "Health event not found" }, 404);
       }
+
+      await recordAuditEvent(c, {
+        action: "health.events.detail.read.succeeded",
+        auth: currentAuth(c),
+        details: healthEventReadDetails(event),
+        outcome: "succeeded",
+        permission: "health:read",
+        target: healthAuditTarget(event),
+      });
 
       return c.json({ data: event });
     },
@@ -553,6 +588,24 @@ export function registerHealthRoutes({
       },
     });
   }
+
+  async function recordHealthReadFailure(
+    c: Context<AppBindings>,
+    action: string,
+    reason: string,
+    details: Record<string, unknown> = {},
+    target: AuditTarget = healthReadTarget(c),
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      details,
+      outcome: "failed",
+      permission: "health:read",
+      reason,
+      target,
+    });
+  }
 }
 
 function healthReadTarget(c: Context<AppBindings>): AuditTarget {
@@ -687,6 +740,17 @@ function healthEventSnapshot(event: HealthEvent) {
     suppressedAt: event.suppressedAt,
     suppressedBy: event.suppressedBy,
     suppressedUntil: event.suppressedUntil,
+    type: event.type,
+  };
+}
+
+function healthEventReadDetails(event: HealthEvent) {
+  return {
+    hasNode: Boolean(event.nodeId),
+    hasRecording: Boolean(event.recordingId),
+    hasSchedule: Boolean(event.scheduleId),
+    severity: event.severity,
+    status: event.status,
     type: event.type,
   };
 }

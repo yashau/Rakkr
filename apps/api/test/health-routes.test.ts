@@ -121,6 +121,12 @@ test("health event detail returns only visible scoped events", async () => {
   const hiddenResponse = await app.request(`/api/v1/health-events/${hidden.id}`);
   const missingResponse = await app.request("/api/v1/health-events/health_missing_detail");
   const visibleBody = (await visibleResponse.json()) as { data: HealthEvent };
+  const successEvents = await auditStore.list({
+    action: "health.events.detail.read.succeeded",
+  });
+  const failedEvents = await auditStore.list({
+    action: "health.events.detail.read.failed",
+  });
 
   assert.equal(visibleResponse.status, 200);
   assert.equal(visibleBody.data.id, visible.id);
@@ -142,6 +148,104 @@ test("health event detail returns only visible scoped events", async () => {
     permission: "health:read",
     target: { id: "health_missing_detail", type: "health_event" },
   });
+  assert.equal(successEvents.length, 1);
+  assert.equal(successEvents[0]?.permission, "health:read");
+  assert.equal(successEvents[0]?.target.id, visible.id);
+  assert.deepEqual(successEvents[0]?.details, {
+    hasNode: true,
+    hasRecording: false,
+    hasSchedule: false,
+    severity: "critical",
+    status: "open",
+    type: "watchdog.scheduled_low_signal",
+  });
+  assert.deepEqual(
+    failedEvents.map((auditEvent) => auditEvent.reason),
+    ["health_event_not_found", "health_event_not_found"],
+  );
+  assert.deepEqual(failedEvents.map((auditEvent) => auditEvent.target.id).sort(), [
+    hidden.id,
+    "health_missing_detail",
+  ]);
+  assert.ok(failedEvents.every((auditEvent) => auditEvent.permission === "health:read"));
+});
+
+test("health event list returns scoped filtered events and audits access", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:read"]);
+  const healthEventStore = createHealthEventStore("", [
+    event({
+      id: "health_visible_list",
+      nodeId: "node_1",
+      openedAt: "2026-06-20T12:00:00.000Z",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.scheduled_low_signal",
+    }),
+    event({
+      id: "health_filtered_list",
+      nodeId: "node_1",
+      severity: "warning",
+      status: "open",
+      type: "watchdog.node_offline",
+    }),
+    event({
+      id: "health_hidden_list",
+      nodeId: "node_hidden",
+      severity: "critical",
+      status: "open",
+      type: "watchdog.scheduled_low_signal",
+    }),
+  ]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async (_user, target) => target.id !== "node_hidden",
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermission,
+  });
+
+  const response = await app.request(
+    "/api/v1/health-events?severity=critical&type=watchdog.scheduled_low_signal&openedFrom=2026-06-20T00:00:00.000Z&openedTo=2026-06-20T23:59:59.999Z",
+  );
+  const body = (await response.json()) as { data: HealthEvent[] };
+  const invalidResponse = await app.request("/api/v1/health-events?severity=catastrophic");
+  const [successEvent] = await auditStore.list({ action: "health.events.read.succeeded" });
+  const [failedEvent] = await auditStore.list({ action: "health.events.read.failed" });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.data.map((healthEvent) => healthEvent.id),
+    ["health_visible_list"],
+  );
+  assert.equal(invalidResponse.status, 400);
+  assert.equal(successEvent?.permission, "health:read");
+  assert.equal(successEvent?.target.type, "health");
+  assert.equal(successEvent?.details.returnedCount, 1);
+  assert.deepEqual(successEvent?.details.filters, {
+    limit: undefined,
+    nodeId: undefined,
+    openedFrom: new Date("2026-06-20T00:00:00.000Z"),
+    openedTo: new Date("2026-06-20T23:59:59.999Z"),
+    recordingId: undefined,
+    resolvedFrom: undefined,
+    resolvedTo: undefined,
+    scheduleId: undefined,
+    search: undefined,
+    severity: "critical",
+    status: undefined,
+    type: "watchdog.scheduled_low_signal",
+  });
+  assert.equal(failedEvent?.outcome, "failed");
+  assert.equal(failedEvent?.permission, "health:read");
+  assert.equal(failedEvent?.reason, "invalid_filters");
+  assert.equal(failedEvent?.target.type, "health");
+  assert.equal(failedEvent?.details.issues, 1);
 });
 
 test("health event export returns scoped filtered csv and audits access", async () => {
