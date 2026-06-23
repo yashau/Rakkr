@@ -133,6 +133,77 @@ test("listen start returns a monitor stream URL and audits access", async () => 
   assert.equal(event?.correlationIds?.listenSessionId, body.data.sessionId);
 });
 
+test("node meter read route audits successes and unavailable data", async () => {
+  const auditStore = createAuditStore("");
+  const visible = node({ id: "node_meter_visible" });
+  const hidden = node({ id: "node_meter_hidden" });
+  const app = nodeApp({
+    auditStore,
+    frames: [
+      meterFrame(visible.id),
+      {
+        ...meterFrame("node_meter_other"),
+        interfaceId: "iface_other",
+      },
+    ],
+    nodes: [visible, hidden],
+    permissionCalls: [],
+    scopedNodeIds: [visible.id],
+  });
+
+  const successResponse = await app.request(`/api/v1/nodes/${visible.id}/meters`);
+  const successBody = (await successResponse.json()) as { data: MeterFrame };
+  const hiddenResponse = await app.request(`/api/v1/nodes/${hidden.id}/meters`);
+  const mismatchResponse = await app.request(`/api/v1/nodes/node_meter_other/meters`);
+  const successAudits = await auditStore.list({
+    action: "meters.read.succeeded",
+    outcome: "succeeded",
+    permission: "node:read",
+  });
+  const failedAudits = await auditStore.list({
+    action: "meters.read.failed",
+    outcome: "failed",
+    permission: "node:read",
+  });
+
+  assert.equal(successResponse.status, 200);
+  assert.equal(successBody.data.nodeId, visible.id);
+  assert.equal(hiddenResponse.status, 404);
+  assert.equal(mismatchResponse.status, 404);
+  assert.equal(successAudits.length, 1);
+  assert.equal(successAudits[0]?.target.id, visible.id);
+  assert.deepEqual(successAudits[0]?.details, {
+    capturedAt: "2026-06-18T12:00:00.000Z",
+    interfaceId: "iface_monitor",
+    levelCount: 1,
+  });
+  assert.deepEqual(failedAudits.map((event) => [event.reason, event.target.id]).sort(), [
+    ["node_not_found", hidden.id],
+    ["node_not_found", "node_meter_other"],
+  ]);
+});
+
+test("node meter read route audits scoped meter-node mismatch", async () => {
+  const auditStore = createAuditStore("");
+  const recorder = node({ id: "node_meter_mismatch" });
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes: [recorder],
+    permissionCalls: [],
+  });
+
+  const response = await app.request(`/api/v1/nodes/${recorder.id}/meters`);
+  const [event] = await auditStore.list({ action: "meters.read.failed" });
+
+  assert.equal(response.status, 409);
+  assert.equal(event?.outcome, "failed");
+  assert.equal(event?.permission, "node:read");
+  assert.equal(event?.reason, "meter_node_mismatch");
+  assert.equal(event?.target.id, recorder.id);
+  assert.equal(event?.target.name, recorder.alias);
+});
+
 test("listen stream returns a short wav preview derived from meter levels", async () => {
   const auditStore = createAuditStore("");
   const app = nodeApp({
@@ -499,6 +570,7 @@ test("node action routes only operate on scoped visible nodes", async () => {
     "listen.monitor.start.failed:node_not_found",
     "listen.monitor.stop.failed:node_not_found",
     "listen.monitor.stream.failed:node_not_found",
+    "meters.read.failed:node_not_found",
     "nodes.credentials.rotate.failed:node_not_found",
     "nodes.interfaces.update.failed:node_not_found",
     "nodes.update.failed:node_not_found",
@@ -810,7 +882,7 @@ function nodeWithInterface(input: Partial<RecorderNode> = {}): RecorderNode {
   };
 }
 
-function meterFrame(): MeterFrame {
+function meterFrame(nodeId = node().id): MeterFrame {
   return {
     capturedAt: "2026-06-18T12:00:00.000Z",
     interfaceId: "iface_monitor",
@@ -823,7 +895,7 @@ function meterFrame(): MeterFrame {
         rmsDbfs: -24,
       },
     ],
-    nodeId: node().id,
+    nodeId,
   };
 }
 

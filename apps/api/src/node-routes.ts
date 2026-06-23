@@ -429,14 +429,39 @@ export function registerNodeRoutes({
       const node = await findScopedNode(c, nodeId);
 
       if (!node) {
+        await recordNodeFailure(c, "meters.read.failed", "node_not_found", nodeId, {
+          permission: "node:read",
+          targetId: nodeId,
+        });
         return c.json({ error: "Node not found" }, 404);
       }
 
       const frame = (await meterFrameStore.latest(node.id)) ?? buildMeterFrame();
 
       if (nodeId !== frame.nodeId) {
+        await recordNodeFailure(c, "meters.read.failed", "meter_node_mismatch", node.alias, {
+          permission: "node:read",
+          targetId: node.id,
+        });
         return c.json({ error: "Meter data unavailable" }, 409);
       }
+
+      await recordAuditEvent(c, {
+        action: "meters.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          capturedAt: frame.capturedAt,
+          interfaceId: frame.interfaceId,
+          levelCount: frame.levels.length,
+        },
+        outcome: "succeeded",
+        permission: "node:read",
+        target: {
+          id: node.id,
+          name: node.alias,
+          type: "node",
+        },
+      });
 
       return c.json({ data: frame });
     },
@@ -698,7 +723,7 @@ export function registerNodeRoutes({
     reason: string,
     name?: string,
     options: {
-      permission?: "listen:monitor" | "node:manage";
+      permission?: "listen:monitor" | "node:manage" | "node:read";
       targetId?: string;
       targetType?: string;
     } = {},
