@@ -83,6 +83,8 @@ test("recording context route returns scoped operational detail", async () => {
   const hiddenResponse = await app.request(`/api/v1/recordings/${hidden.id}/context`);
   const missingResponse = await app.request("/api/v1/recordings/rec_missing_context/context");
   const body = (await visibleResponse.json()) as { data: RecordingContext };
+  const [successEvent] = await auditStore.list({ action: "recordings.context.read.succeeded" });
+  const failedEvents = await auditStore.list({ action: "recordings.context.read.failed" });
 
   assert.equal(visibleResponse.status, 200);
   assert.equal(body.data.recording.id, visible.id);
@@ -127,6 +129,14 @@ test("recording context route returns scoped operational detail", async () => {
     permission: "recording:read",
     target: { id: "rec_missing_context", type: "recording" },
   });
+  assert.equal(successEvent?.target.id, visible.id);
+  assert.equal(successEvent?.details.jobCount, 1);
+  assert.equal(successEvent?.details.healthEventCount, 1);
+  assert.equal(successEvent?.details.uploadQueueItemCount, 1);
+  assert.deepEqual(failedEvents.map((event) => [event.target.id, event.reason]).sort(), [
+    [hidden.id, "recording_not_found"],
+    ["rec_missing_context", "recording_not_found"],
+  ]);
 });
 
 interface RecordingContext {

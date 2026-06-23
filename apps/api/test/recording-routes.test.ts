@@ -76,6 +76,7 @@ test("recording facets summarize visible library relationships", async () => {
   });
 
   const response = await app.request("/api/v1/recordings/facets");
+  const [event] = await auditStore.list({ action: "recordings.facets.read.succeeded" });
   const body = (await response.json()) as {
     data: {
       folders: Array<{ count: number; value: string }>;
@@ -110,14 +111,18 @@ test("recording facets summarize visible library relationships", async () => {
     { count: 2, value: "upload_b" },
     { count: 1, value: "upload_a" },
   ]);
+  assert.equal(event?.target.id, "recording_collection");
+  assert.equal(event?.details.recordingCount, 3);
+  assert.equal(event?.details.tagCount, 3);
 });
 
 test("recording detail route returns scoped recordings only", async () => {
+  const auditStore = createAuditStore("");
   const visible = recording({ id: "rec_visible_detail", name: "Visible Detail" });
   const hidden = recording({ id: "rec_hidden_detail", name: "Hidden Detail" });
   const permissionCalls: PermissionCall[] = [];
   const app = recordingApp({
-    auditStore: createAuditStore(""),
+    auditStore,
     nodes: [recorderNode()],
     permissionCalls,
     profiles: [defaultVoiceRecordingProfile],
@@ -129,6 +134,8 @@ test("recording detail route returns scoped recordings only", async () => {
   const hiddenResponse = await app.request(`/api/v1/recordings/${hidden.id}`);
   const missingResponse = await app.request("/api/v1/recordings/rec_missing_detail");
   const visibleBody = (await visibleResponse.json()) as { data: RecordingSummary };
+  const [successEvent] = await auditStore.list({ action: "recordings.detail.read.succeeded" });
+  const failedEvents = await auditStore.list({ action: "recordings.detail.read.failed" });
 
   assert.equal(visibleResponse.status, 200);
   assert.equal(visibleBody.data.id, visible.id);
@@ -149,6 +156,12 @@ test("recording detail route returns scoped recordings only", async () => {
     permission: "recording:read",
     target: { id: "rec_missing_detail", type: "recording" },
   });
+  assert.equal(successEvent?.target.id, visible.id);
+  assert.equal(successEvent?.details.status, visible.status);
+  assert.deepEqual(failedEvents.map((event) => [event.target.id, event.reason]).sort(), [
+    [hidden.id, "recording_not_found"],
+    ["rec_missing_detail", "recording_not_found"],
+  ]);
 });
 
 test("recording list filters by recorded date range", async () => {
@@ -172,6 +185,8 @@ test("recording list filters by recorded date range", async () => {
   const response = await app.request(`/api/v1/recordings?${params}`);
   const body = (await response.json()) as { data: RecordingSummary[] };
   const invalidResponse = await app.request("/api/v1/recordings?recordedFrom=not-a-date");
+  const [successEvent] = await auditStore.list({ action: "recordings.read.succeeded" });
+  const [failedEvent] = await auditStore.list({ action: "recordings.read.failed" });
 
   assert.equal(response.status, 200);
   assert.deepEqual(
@@ -179,6 +194,11 @@ test("recording list filters by recorded date range", async () => {
     ["rec_target"],
   );
   assert.equal(invalidResponse.status, 400);
+  assert.equal(successEvent?.target.id, "recording_collection");
+  assert.equal(successEvent?.details.returnedCount, 1);
+  assert.equal(successEvent?.details.totalCount, 1);
+  assert.equal(failedEvent?.reason, "invalid_filters");
+  assert.equal(failedEvent?.details.issueCount, 1);
 });
 
 test("recording list sorts by requested field and order", async () => {

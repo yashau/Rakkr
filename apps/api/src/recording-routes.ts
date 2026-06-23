@@ -4,7 +4,6 @@ import { z } from "zod";
 import {
   defaultKeepControllerCacheRetentionPolicy,
   defaultVoiceRecordingProfile,
-  type Permission,
   type RecorderNode,
   type RecordingSummary,
 } from "@rakkr/shared";
@@ -21,12 +20,10 @@ import type { NodeStore } from "./node-store.js";
 import { registerRecordingActionRoutes } from "./recording-action-routes.js";
 import { registerRecordingJobRoutes } from "./recording-job-routes.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
-import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
+import { createRecordingJob, stopRecordingJob } from "./recording-jobs.js";
 import {
   filterRecordings,
-  paginateRecordings,
   recordingManifestCsv,
-  recordingFacets,
   recordingsQuerySchema,
 } from "./recording-listing.js";
 import {
@@ -38,6 +35,8 @@ import {
 } from "./recording-start-targets.js";
 import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./recording-cache.js";
 import { deleteRecording, deleteRecordings } from "./recording-delete.js";
+import { registerRecordingReadRoutes } from "./recording-read-routes.js";
+import { createRecordingRouteAudit } from "./recording-route-audit.js";
 import {
   applyRecordingBulkMetadataUpdate,
   applyRecordingMetadataUpdate,
@@ -58,7 +57,6 @@ import {
   uploadPolicySettingsTarget,
 } from "./settings-scope.js";
 import { findUploadPolicy, uploadPolicyForQueue } from "./upload-policies.js";
-import { listUploadQueueItems } from "./upload-queue.js";
 
 interface RecordingRouteDependencies {
   app: Hono<AppBindings>;
@@ -107,41 +105,20 @@ export function registerRecordingRoutes({
   scopedRecordings,
   settingsStore,
 }: RecordingRouteDependencies) {
-  const recordRecordingFileFailure = async (
-    c: Context<AppBindings>,
-    input: {
-      action: string;
-      permission: Permission;
-      reason: string;
-      recordingId: string;
-      targetName?: string;
-    },
-  ) =>
-    recordAuditEvent(c, {
-      action: input.action,
-      auth: currentAuth(c),
-      outcome: "failed",
-      permission: input.permission,
-      reason: input.reason,
-      target: {
-        id: input.recordingId,
-        name: input.targetName,
-        type: "recording",
-      },
-    });
+  const recordingAudit = createRecordingRouteAudit({ currentAuth, recordAuditEvent });
 
   async function serveRecordingFile(
     c: Context<AppBindings>,
     recordingId: string,
     disposition: "attachment" | "inline",
-    permission: Permission,
+    permission: "recording:download" | "recording:playback",
   ) {
     const recording = await findScopedRecording(c, recordingId);
     const action =
       disposition === "attachment" ? "recordings.download.file" : "recordings.playback.stream";
 
     if (!recording || !recordingHasCachedFile(recording)) {
-      await recordRecordingFileFailure(c, {
+      await recordingAudit.fileFailure(c, {
         action: `${action}.failed`,
         permission,
         reason: recording ? "recording_not_cached" : "recording_not_found",
@@ -181,7 +158,7 @@ export function registerRecordingRoutes({
         "Content-Type": file.mimeType,
       });
     } catch (error) {
-      await recordRecordingFileFailure(c, {
+      await recordingAudit.fileFailure(c, {
         action: `${action}.failed`,
         permission,
         reason: error instanceof Error ? error.message : "recording_cache_read_failed",
@@ -192,29 +169,6 @@ export function registerRecordingRoutes({
       return c.json({ error: "Recording cache file is unavailable" }, 409);
     }
   }
-
-  app.get(
-    "/api/v1/recordings",
-    requirePermission("recording:read", "recordings.read"),
-    async (c) => {
-      const query = recordingsQuerySchema.safeParse(c.req.query());
-
-      if (!query.success) {
-        return c.json({ error: "Invalid recording filters", issues: query.error.issues }, 400);
-      }
-
-      const filtered = filterRecordings(await scopedRecordings(currentUser(c)), query.data);
-      const page = paginateRecordings(filtered, query.data);
-
-      return c.json(page);
-    },
-  );
-
-  app.get(
-    "/api/v1/recordings/facets",
-    requirePermission("recording:read", "recordings.facets.read"),
-    async (c) => c.json({ data: recordingFacets(await scopedRecordings(currentUser(c))) }),
-  );
 
   app.get(
     "/api/v1/recordings/export",
@@ -313,58 +267,15 @@ export function registerRecordingRoutes({
     },
   );
 
-  app.get(
-    "/api/v1/recordings/:recordingId",
-    requirePermission("recording:read", "recordings.detail.read", (c) => ({
-      id: c.req.param("recordingId"),
-      type: "recording",
-    })),
-    async (c) => {
-      const recordingId = c.req.param("recordingId");
-      const recording = (await scopedRecordings(currentUser(c))).find(
-        (candidate) => candidate.id === recordingId,
-      );
-
-      if (!recording) {
-        return c.json({ error: "Recording not found" }, 404);
-      }
-
-      return c.json({ data: recording });
-    },
-  );
-
-  app.get(
-    "/api/v1/recordings/:recordingId/context",
-    requirePermission("recording:read", "recordings.context.read", (c) => ({
-      id: c.req.param("recordingId"),
-      type: "recording",
-    })),
-    async (c) => {
-      const recordingId = c.req.param("recordingId");
-      const recording = (await scopedRecordings(currentUser(c))).find(
-        (candidate) => candidate.id === recordingId,
-      );
-
-      if (!recording) {
-        return c.json({ error: "Recording not found" }, 404);
-      }
-
-      const [jobs, healthEvents, uploadQueueItems] = await Promise.all([
-        listRecordingJobs(),
-        healthEventStore?.list({ limit: 100, recordingId }) ?? [],
-        listUploadQueueItems(),
-      ]);
-
-      return c.json({
-        data: {
-          healthEvents,
-          jobs: jobs.filter((job) => job.recordingId === recording.id),
-          recording,
-          uploadQueueItems: uploadQueueItems.filter((item) => item.recordingId === recording.id),
-        },
-      });
-    },
-  );
+  registerRecordingReadRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    healthEventStore,
+    recordAuditEvent,
+    requirePermission,
+    scopedRecordings,
+  });
 
   registerRecordingActionRoutes({
     app,
@@ -404,7 +315,7 @@ export function registerRecordingRoutes({
       const recording = await findScopedRecording(c, recordingId);
 
       if (!recording || !recordingHasCachedFile(recording)) {
-        await recordRecordingFileFailure(c, {
+        await recordingAudit.fileFailure(c, {
           action: "recordings.playback.failed",
           permission: "recording:playback",
           reason: recording ? "recording_not_cached" : "recording_not_found",
@@ -466,7 +377,7 @@ export function registerRecordingRoutes({
       const recording = await findScopedRecording(c, recordingId);
 
       if (!recording || !recordingHasCachedFile(recording)) {
-        await recordRecordingFileFailure(c, {
+        await recordingAudit.fileFailure(c, {
           action: "recordings.download.failed",
           permission: "recording:download",
           reason: recording ? "recording_not_cached" : "recording_not_found",
