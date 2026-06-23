@@ -30,22 +30,15 @@ import type {
   RequirePermission,
 } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
-import { listUploadPolicies } from "./upload-policies.js";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 import { registerSettingsActionRoutes } from "./settings-action-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
+import { registerSettingsReadRoutes } from "./settings-read-routes.js";
 import { registerSettingsUploadPolicyRoutes } from "./settings-upload-policy-routes.js";
 import {
   channelMapTemplateSettingsTarget,
   firstHiddenChannelMapAssignmentTarget,
   profileSettingsTarget,
-  scopedChannelMapAssignmentPlans,
-  scopedChannelMapAssignments,
-  scopedChannelMapTemplates,
-  scopedRecordingProfiles,
-  scopedUploadPolicies,
-  scopedUploadProviders,
-  scopedWatchdogPolicies,
   uniqueChannelMapAssignmentTargets,
   uploadProviderSettingsTarget,
   watchdogSettingsTarget,
@@ -72,104 +65,22 @@ export function registerSettingsRoutes({
   settingsStore,
   uploadProviderStore = createUploadProviderStore(),
 }: SettingsRouteDependencies) {
-  app.get(
-    "/api/v1/settings/recording-profiles",
-    requirePermission("settings:read", "settings.recording_profiles.read", () => ({
-      type: "settings",
-    })),
-    async (c) =>
-      c.json({
-        data: await scopedRecordingProfiles(currentAuth(c).user, settingsStore, hasResourceScope),
-      }),
-  );
-
-  app.get(
-    "/api/v1/settings/watchdog-policies",
-    requirePermission("settings:read", "settings.watchdog_policies.read", () => ({
-      type: "settings",
-    })),
-    async (c) =>
-      c.json({
-        data: await scopedWatchdogPolicies(currentAuth(c).user, settingsStore, hasResourceScope),
-      }),
-  );
-
-  app.get(
-    "/api/v1/settings/channel-map-templates",
-    requirePermission("settings:read", "settings.channel_map_templates.read", () => ({
-      type: "settings",
-    })),
-    async (c) =>
-      c.json({
-        data: await scopedChannelMapTemplates(currentAuth(c).user, settingsStore, hasResourceScope),
-      }),
-  );
-
-  app.get(
-    "/api/v1/settings/channel-map-assignments",
-    requirePermission("settings:read", "settings.channel_map_assignments.read", () => ({
-      type: "settings",
-    })),
-    async (c) =>
-      c.json({
-        data: await scopedChannelMapAssignments(
-          currentAuth(c).user,
-          await settingsStore.listChannelMapAssignments(),
-          hasResourceScope,
-        ),
-      }),
-  );
-
-  app.get(
-    "/api/v1/settings/channel-map-assignment-plans",
-    requirePermission("settings:read", "settings.channel_map_assignment_plans.read", () => ({
-      type: "settings",
-    })),
-    async (c) =>
-      c.json({
-        data: await scopedChannelMapAssignmentPlans(
-          currentAuth(c).user,
-          await channelMapAssignmentPlanStore.list(),
-          hasResourceScope,
-        ),
-      }),
-  );
-
-  app.get(
-    "/api/v1/settings/upload-providers",
-    requirePermission("settings:read", "settings.upload_providers.read", () => ({
-      type: "settings",
-    })),
-    async (c) =>
-      c.json({
-        data: await scopedUploadProviders(
-          currentAuth(c).user,
-          uploadProviderStore,
-          hasResourceScope,
-        ),
-      }),
-  );
-
-  app.get(
-    "/api/v1/settings/upload-policies",
-    requirePermission("settings:read", "settings.upload_policies.read", () => ({
-      type: "settings",
-    })),
-    async (c) =>
-      c.json({
-        data: await scopedUploadPolicies(
-          currentAuth(c).user,
-          await listUploadPolicies(),
-          hasResourceScope,
-        ),
-      }),
-  );
-
+  registerSettingsReadRoutes({
+    app,
+    channelMapAssignmentPlanStore,
+    currentAuth,
+    hasResourceScope,
+    recordAuditEvent,
+    requirePermission,
+    settingsStore,
+    uploadProviderStore,
+  });
   registerSettingsDetailRoutes({
     app,
     channelMapAssignmentPlanStore,
     currentAuth,
     hasResourceScope,
+    recordAuditEvent,
     requirePermission,
     settingsStore,
     uploadProviderStore,

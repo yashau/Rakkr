@@ -3,7 +3,12 @@ import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import {
   channelMapTemplateSettingsTarget,
   firstHiddenChannelMapAssignmentTarget,
@@ -24,6 +29,7 @@ interface SettingsDetailRouteDependencies {
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
   ) => Promise<boolean>;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
   uploadProviderStore: UploadProviderStore;
@@ -34,6 +40,7 @@ export function registerSettingsDetailRoutes({
   channelMapAssignmentPlanStore,
   currentAuth,
   hasResourceScope,
+  recordAuditEvent,
   requirePermission,
   settingsStore,
   uploadProviderStore,
@@ -49,11 +56,24 @@ export function registerSettingsDetailRoutes({
         : { id: profileId, type: "recording_profile" };
     }),
     async (c) => {
-      const profile = await settingsStore.findRecordingProfile(c.req.param("profileId"));
+      const profileId = c.req.param("profileId");
+      const profile = await settingsStore.findRecordingProfile(profileId);
 
-      return profile
-        ? c.json({ data: profile })
-        : c.json({ error: "Recording profile not found" }, 404);
+      if (!profile) {
+        await recordSettingsDetailFailure(c, "settings.recording_profiles.detail.read.failed", {
+          id: profileId,
+          type: "recording_profile",
+        });
+        return c.json({ error: "Recording profile not found" }, 404);
+      }
+
+      await recordSettingsDetailSuccess(
+        c,
+        "settings.recording_profiles.detail.read.succeeded",
+        profileSettingsTarget(profile),
+      );
+
+      return c.json({ data: profile });
     },
   );
 
@@ -66,11 +86,24 @@ export function registerSettingsDetailRoutes({
       return policy ? watchdogSettingsTarget(policy) : { id: policyId, type: "watchdog_policy" };
     }),
     async (c) => {
-      const policy = await settingsStore.findWatchdogPolicy(c.req.param("policyId"));
+      const policyId = c.req.param("policyId");
+      const policy = await settingsStore.findWatchdogPolicy(policyId);
 
-      return policy
-        ? c.json({ data: policy })
-        : c.json({ error: "Watchdog policy not found" }, 404);
+      if (!policy) {
+        await recordSettingsDetailFailure(c, "settings.watchdog_policies.detail.read.failed", {
+          id: policyId,
+          type: "watchdog_policy",
+        });
+        return c.json({ error: "Watchdog policy not found" }, 404);
+      }
+
+      await recordSettingsDetailSuccess(
+        c,
+        "settings.watchdog_policies.detail.read.succeeded",
+        watchdogSettingsTarget(policy),
+      );
+
+      return c.json({ data: policy });
     },
   );
 
@@ -85,11 +118,24 @@ export function registerSettingsDetailRoutes({
         : { id: templateId, type: "channel_map_template" };
     }),
     async (c) => {
-      const template = await settingsStore.findChannelMapTemplate(c.req.param("templateId"));
+      const templateId = c.req.param("templateId");
+      const template = await settingsStore.findChannelMapTemplate(templateId);
 
-      return template
-        ? c.json({ data: template })
-        : c.json({ error: "Channel map template not found" }, 404);
+      if (!template) {
+        await recordSettingsDetailFailure(c, "settings.channel_map_templates.detail.read.failed", {
+          id: templateId,
+          type: "channel_map_template",
+        });
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      await recordSettingsDetailSuccess(
+        c,
+        "settings.channel_map_templates.detail.read.succeeded",
+        channelMapTemplateSettingsTarget(template),
+      );
+
+      return c.json({ data: template });
     },
   );
 
@@ -113,11 +159,28 @@ export function registerSettingsDetailRoutes({
       },
     ),
     async (c) => {
-      const plan = await channelMapAssignmentPlanStore.find(c.req.param("planId") ?? "");
+      const planId = c.req.param("planId") ?? "";
+      const plan = await channelMapAssignmentPlanStore.find(planId);
 
-      return plan
-        ? c.json({ data: plan })
-        : c.json({ error: "Channel map assignment plan not found" }, 404);
+      if (!plan) {
+        await recordSettingsDetailFailure(
+          c,
+          "settings.channel_map_assignment_plans.detail.read.failed",
+          {
+            id: planId,
+            type: "channel_map_assignment_plan",
+          },
+        );
+        return c.json({ error: "Channel map assignment plan not found" }, 404);
+      }
+
+      await recordSettingsDetailSuccess(
+        c,
+        "settings.channel_map_assignment_plans.detail.read.succeeded",
+        planTarget(plan),
+      );
+
+      return c.json({ data: plan });
     },
   );
 
@@ -134,14 +197,30 @@ export function registerSettingsDetailRoutes({
       const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
 
       if (!provider.success) {
+        await recordSettingsDetailFailure(c, "settings.upload_providers.detail.read.failed", {
+          id: c.req.param("provider"),
+          type: "upload_provider",
+        });
         return c.json({ error: "Upload provider not found" }, 404);
       }
 
       const status = await uploadProviderStore.findStatus(provider.data);
 
-      return status
-        ? c.json({ data: status })
-        : c.json({ error: "Upload provider not found" }, 404);
+      if (!status) {
+        await recordSettingsDetailFailure(c, "settings.upload_providers.detail.read.failed", {
+          id: provider.data,
+          type: "upload_provider",
+        });
+        return c.json({ error: "Upload provider not found" }, 404);
+      }
+
+      await recordSettingsDetailSuccess(
+        c,
+        "settings.upload_providers.detail.read.succeeded",
+        uploadProviderSettingsTarget(status),
+      );
+
+      return c.json({ data: status });
     },
   );
 
@@ -157,11 +236,54 @@ export function registerSettingsDetailRoutes({
       const policyId = c.req.param("policyId");
       const policy = await findUploadPolicy(policyId);
 
-      return policy ? c.json({ data: policy }) : c.json({ error: "Upload policy not found" }, 404);
+      if (!policy) {
+        await recordSettingsDetailFailure(c, "settings.upload_policies.detail.read.failed", {
+          id: policyId,
+          type: "upload_policy",
+        });
+        return c.json({ error: "Upload policy not found" }, 404);
+      }
+
+      await recordSettingsDetailSuccess(
+        c,
+        "settings.upload_policies.detail.read.succeeded",
+        uploadPolicySettingsTarget(policy),
+      );
+
+      return c.json({ data: policy });
     },
   );
+
+  async function recordSettingsDetailSuccess(
+    c: Context<AppBindings>,
+    action: string,
+    target: AuditTarget,
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      outcome: "succeeded",
+      permission: "settings:read",
+      target,
+    });
+  }
+
+  async function recordSettingsDetailFailure(
+    c: Context<AppBindings>,
+    action: string,
+    target: AuditTarget,
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      outcome: "failed",
+      permission: "settings:read",
+      reason: "not_found",
+      target,
+    });
+  }
 }
 
-function planTarget(plan: { id: string; templateId?: string }) {
+function planTarget(plan: { id: string; templateId?: string }): AuditTarget {
   return { id: plan.id, name: plan.templateId, type: "channel_map_assignment_plan" };
 }
