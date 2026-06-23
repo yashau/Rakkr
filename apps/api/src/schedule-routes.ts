@@ -71,9 +71,27 @@ export function registerScheduleRoutes({
   scopedSchedules,
   settingsStore,
 }: ScheduleRouteDependencies) {
-  app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) =>
-    c.json({ data: filterSchedules(await scopedSchedules(currentUser(c)), scheduleFilters(c)) }),
-  );
+  app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) => {
+    const filters = scheduleFilters(c);
+    const schedules = filterSchedules(await scopedSchedules(currentUser(c)), filters);
+
+    await recordAuditEvent(c, {
+      action: "schedules.read.succeeded",
+      auth: currentAuth(c),
+      details: {
+        filters,
+        returnedCount: schedules.length,
+      },
+      outcome: "succeeded",
+      permission: "schedule:read",
+      target: {
+        id: "schedule_collection",
+        type: "schedule_collection",
+      },
+    });
+
+    return c.json({ data: schedules });
+  });
 
   app.get(
     "/api/v1/schedules/export",
@@ -175,8 +193,27 @@ export function registerScheduleRoutes({
       );
 
       if (!schedule) {
+        await recordScheduleReadFailure(c, "schedules.detail.read.failed", "schedule_not_found", {
+          id: scheduleId,
+        });
         return c.json({ error: "Schedule not found" }, 404);
       }
+
+      await recordAuditEvent(c, {
+        action: "schedules.detail.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          enabled: schedule.enabled,
+          nodeId: schedule.nodeId,
+        },
+        outcome: "succeeded",
+        permission: "schedule:read",
+        target: {
+          id: schedule.id,
+          name: schedule.name,
+          type: "schedule",
+        },
+      });
 
       return c.json({ data: schedule });
     },
@@ -201,11 +238,37 @@ export function registerScheduleRoutes({
       const schedule = await findScopedSchedule(c, c.req.param("scheduleId"));
 
       if (!schedule) {
+        await recordScheduleReadFailure(
+          c,
+          "schedules.occurrences.read.failed",
+          "schedule_not_found",
+          {
+            id: c.req.param("scheduleId"),
+          },
+        );
         return c.json({ error: "Schedule not found" }, 404);
       }
+      const limit = occurrenceLimit(c.req.query("limit"));
+      const occurrences = previewScheduleOccurrences(schedule, limit);
+
+      await recordAuditEvent(c, {
+        action: "schedules.occurrences.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          occurrenceCount: occurrences.length,
+          requestedLimit: limit,
+        },
+        outcome: "succeeded",
+        permission: "schedule:read",
+        target: {
+          id: schedule.id,
+          name: schedule.name,
+          type: "schedule",
+        },
+      });
 
       return c.json({
-        data: previewScheduleOccurrences(schedule, occurrenceLimit(c.req.query("limit"))),
+        data: occurrences,
       });
     },
   );
@@ -623,6 +686,26 @@ export function registerScheduleRoutes({
       permission: "schedule:manage",
       reason,
       target: target ?? {
+        id: schedule?.id,
+        name: schedule?.name,
+        type: "schedule",
+      },
+    });
+  }
+
+  async function recordScheduleReadFailure(
+    c: Context<AppBindings>,
+    action: string,
+    reason: string,
+    schedule?: Partial<ScheduleSummary>,
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      outcome: "failed",
+      permission: "schedule:read",
+      reason,
+      target: {
         id: schedule?.id,
         name: schedule?.name,
         type: "schedule",

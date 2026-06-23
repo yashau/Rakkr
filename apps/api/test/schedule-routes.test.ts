@@ -205,6 +205,7 @@ test("selected schedule export preserves request order and rejects hidden schedu
 
 test("schedule list route filters scoped schedules", async () => {
   const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
   const currentUser = user(["schedule:read"]);
   const schedules = [
     schedule({
@@ -243,7 +244,7 @@ test("schedule list route filters scoped schedules", async () => {
     currentAuth: () => ({ user: currentUser }),
     currentUser: () => currentUser,
     nodeStore: createNodeStore([node()]),
-    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
@@ -257,6 +258,8 @@ test("schedule list route filters scoped schedules", async () => {
   const byNode = await scheduleList(app, "?nodeId=node_council");
   const byBackend = await scheduleList(app, "?captureBackend=pipewire");
   const byInterface = await scheduleList(app, "?captureInterfaceId=iface_jack");
+  const events = await auditStore.list({ action: "schedules.read.succeeded" });
+  const searchEvent = events.find((event) => event.details.filters?.search === "public");
 
   assert.deepEqual(
     bySearch.map((candidate) => candidate.id),
@@ -278,10 +281,22 @@ test("schedule list route filters scoped schedules", async () => {
     byInterface.map((candidate) => candidate.id),
     ["sched_council"],
   );
+  assert.equal(events.length, 5);
+  assert.deepEqual(events.map((event) => event.details.returnedCount).sort(), [1, 1, 1, 1, 2]);
+  assert.deepEqual(searchEvent?.details.filters, {
+    captureBackend: undefined,
+    captureInterfaceId: undefined,
+    enabled: undefined,
+    nodeId: undefined,
+    search: "public",
+  });
+  assert.equal(searchEvent?.permission, "schedule:read");
+  assert.equal(searchEvent?.target.id, "schedule_collection");
 });
 
 test("schedule detail route returns scoped schedules only", async () => {
   const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
   const currentUser = user(["schedule:read"]);
   const visible = schedule({ id: "sched_visible", name: "Visible Detail" });
   const hidden = schedule({ id: "sched_hidden", name: "Hidden Detail" });
@@ -292,7 +307,7 @@ test("schedule detail route returns scoped schedules only", async () => {
     currentAuth: () => ({ user: currentUser }),
     currentUser: () => currentUser,
     nodeStore: createNodeStore([node()]),
-    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: recordingStore(),
     requirePermission: allowPermission(),
     scheduleStore: store,
@@ -305,11 +320,22 @@ test("schedule detail route returns scoped schedules only", async () => {
   const hiddenResponse = await app.request(`/api/v1/schedules/${hidden.id}`);
   const missingResponse = await app.request("/api/v1/schedules/sched_missing");
   const visibleBody = (await visibleResponse.json()) as { data: ScheduleSummary };
+  const [successEvent] = await auditStore.list({ action: "schedules.detail.read.succeeded" });
+  const failedEvents = await auditStore.list({ action: "schedules.detail.read.failed" });
 
   assert.equal(visibleResponse.status, 200);
   assert.equal(visibleBody.data.id, visible.id);
   assert.equal(hiddenResponse.status, 404);
   assert.equal(missingResponse.status, 404);
+  assert.equal(successEvent?.permission, "schedule:read");
+  assert.equal(successEvent?.target.id, visible.id);
+  assert.equal(successEvent?.target.name, visible.name);
+  assert.equal(successEvent?.details.nodeId, visible.nodeId);
+  assert.equal(successEvent?.details.enabled, visible.enabled);
+  assert.deepEqual(failedEvents.map((event) => `${event.target.id}:${event.reason}`).sort(), [
+    `${hidden.id}:schedule_not_found`,
+    "sched_missing:schedule_not_found",
+  ]);
 });
 
 test("schedule occurrence and lifecycle routes only operate on scoped schedules", async () => {
@@ -347,6 +373,8 @@ test("schedule occurrence and lifecycle routes only operate on scoped schedules"
   const stillHidden = await store.find(hidden.id);
   const recordingList = await recordings.list();
   const failedEvents = await auditStore.list({ outcome: "failed" });
+  const readFailures = failedEvents.filter((event) => event.permission === "schedule:read");
+  const manageFailures = failedEvents.filter((event) => event.permission === "schedule:manage");
 
   assert.deepEqual(
     [occurrences.status, update.status, runNow.status, skipNext.status, deleted.status],
@@ -354,7 +382,11 @@ test("schedule occurrence and lifecycle routes only operate on scoped schedules"
   );
   assert.equal(stillHidden?.name, hidden.name);
   assert.deepEqual(recordingList, []);
-  assert.deepEqual(failedEvents.map((event) => `${event.action}:${event.reason}`).sort(), [
+  assert.deepEqual(
+    readFailures.map((event) => `${event.action}:${event.reason}`),
+    ["schedules.occurrences.read.failed:schedule_not_found"],
+  );
+  assert.deepEqual(manageFailures.map((event) => `${event.action}:${event.reason}`).sort(), [
     "schedules.delete.failed:schedule_not_found",
     "schedules.run_now.failed:schedule_not_found",
     "schedules.skip_next.failed:schedule_not_found",
@@ -710,6 +742,9 @@ test("schedule routes create update run-now and skip-next with audit events", as
   const runNowAudit = succeededAudits.find(
     (event) => event.action === "schedules.run_now.succeeded",
   );
+  const [occurrencesAudit] = await auditStore.list({
+    action: "schedules.occurrences.read.succeeded",
+  });
 
   assert.equal(invalidInterface.status, 409);
   assert.equal(created.status, 201);
@@ -748,6 +783,10 @@ test("schedule routes create update run-now and skip-next with audit events", as
   assert.equal(runNowAudit?.details.captureBackend, "jack");
   assert.equal(runNowAudit?.details.captureInterfaceId, routeInterfaceId);
   assert.equal(runNowAudit?.after?.recordingId, runNowBody.data.id);
+  assert.equal(occurrencesAudit?.permission, "schedule:read");
+  assert.equal(occurrencesAudit?.target.id, scheduleId);
+  assert.equal(occurrencesAudit?.details.requestedLimit, 2);
+  assert.equal(occurrencesAudit?.details.occurrenceCount, 2);
 });
 
 function requestJson(
