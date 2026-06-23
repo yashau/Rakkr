@@ -131,15 +131,22 @@ test("exposes OIDC config and protected discovery routes", async () => {
   );
   assert.deepEqual(
     events.map((event) => event.action),
-    ["auth.oidc.discovery.actions.read.succeeded", "auth.oidc.discovery.read.succeeded"],
+    [
+      "auth.oidc.config.read.succeeded",
+      "auth.oidc.actions.read.succeeded",
+      "auth.oidc.discovery.actions.read.succeeded",
+      "auth.oidc.discovery.read.succeeded",
+    ],
   );
   assert.ok(events.every((event) => event.outcome === "succeeded"));
-  assert.ok(events.every((event) => event.permission === "auth:manage"));
   assert.equal(events[0]?.details?.configured, true);
-  assert.equal(events[0]?.details?.discoveryAvailable, true);
-  assert.equal(events[1]?.details?.issuer, config.issuer);
-  assert.equal(events[1]?.details?.hasTokenEndpoint, true);
-  assert.equal(events[1]?.target.type, "auth");
+  assert.equal(events[0]?.details?.loginAvailable, true);
+  assert.equal(events[1]?.details?.visibleActionCount, 2);
+  assert.ok(events.slice(2).every((event) => event.permission === "auth:manage"));
+  assert.equal(events[2]?.details?.discoveryAvailable, true);
+  assert.equal(events[3]?.details?.issuer, config.issuer);
+  assert.equal(events[3]?.details?.hasTokenEndpoint, true);
+  assert.ok(events.every((event) => event.target.type === "auth"));
 });
 
 test("audits failed protected OIDC discovery reads", async () => {
@@ -181,12 +188,16 @@ test("audits failed protected OIDC discovery reads", async () => {
 
 test("reports disabled OIDC login readiness through public action summary", async () => {
   const app = new Hono();
+  const events: AuditInput[] = [];
 
   registerAuthOidcRoutes({
     app,
     authService: new LocalAuthService(""),
     configProvider: () => oidcConfigFromEnv({}),
-    recordAuditEvent: async () => auditEvent("auth.oidc.test"),
+    recordAuditEvent: async (_c, input) => {
+      events.push(input);
+      return auditEvent(input.action);
+    },
     requirePermission: () => async (_c, next) => next(),
     sessionContext: () => ({}),
     webOrigin: "http://localhost:5173",
@@ -200,6 +211,9 @@ test("reports disabled OIDC login readiness through public action summary", asyn
   assert.equal(body.data.actions.config.enabled, true);
   assert.equal(body.data.actions.login.enabled, false);
   assert.equal(body.data.actions.login.reason, "oidc_disabled");
+  assert.equal(events[0]?.action, "auth.oidc.actions.read.succeeded");
+  assert.equal(events[0]?.details?.enabled, false);
+  assert.equal(events[0]?.details?.visibleActionCount, 2);
 });
 
 test("starts OIDC login with PKCE state cookie and provider redirect", async () => {

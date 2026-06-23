@@ -67,14 +67,43 @@ export function registerAuthOidcRoutes({
   sessionContext,
   webOrigin,
 }: AuthOidcRouteDependencies) {
-  app.get("/api/v1/auth/oidc/config", (c) => c.json({ data: publicOidcConfig(configProvider()) }));
-
-  app.get("/api/v1/auth/oidc/actions", (c) => {
+  app.get("/api/v1/auth/oidc/config", async (c) => {
     const config = configProvider();
+    const publicConfig = publicOidcConfig(config);
+
+    await recordAuditEvent(c, {
+      action: "auth.oidc.config.read.succeeded",
+      details: {
+        configured: config.configured,
+        enabled: config.enabled,
+        loginAvailable: config.loginAvailable,
+      },
+      outcome: "succeeded",
+      target: { type: "auth" },
+    });
+
+    return c.json({ data: publicConfig });
+  });
+
+  app.get("/api/v1/auth/oidc/actions", async (c) => {
+    const config = configProvider();
+    const actions = oidcPublicActions(config);
+
+    await recordAuditEvent(c, {
+      action: "auth.oidc.actions.read.succeeded",
+      details: {
+        configured: config.configured,
+        enabled: config.enabled,
+        loginAvailable: config.loginAvailable,
+        visibleActionCount: Object.keys(actions).length,
+      },
+      outcome: "succeeded",
+      target: { type: "auth" },
+    });
 
     return c.json({
       data: {
-        actions: oidcPublicActions(config),
+        actions,
         config: publicOidcConfig(config),
         links: oidcLinks(),
       },

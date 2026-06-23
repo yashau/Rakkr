@@ -971,6 +971,7 @@ Current implementation baseline:
 332. ✅ Audit agent claim-next empty control route.
 333. ✅ Audit agent heartbeat steady-state control route.
 334. ✅ Audit auth session self-read route.
+335. ✅ Audit public OIDC config/readiness routes.
 
 ## Open Questions
 
