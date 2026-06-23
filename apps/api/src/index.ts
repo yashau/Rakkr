@@ -640,8 +640,23 @@ app.get("/api/v1/auth/me", async (c) => {
   const auth = await authService.authenticate(c.req.header("authorization"));
 
   if (!auth.user) {
+    await recordAuditEvent(c, {
+      action: "auth.me.read.failed",
+      auth,
+      outcome: "denied",
+      reason: "unauthorized",
+      target: { type: "user" },
+    });
+
     return c.json({ error: "Unauthorized" }, 401);
   }
+
+  await recordAuditEvent(c, {
+    action: "auth.me.read.succeeded",
+    auth,
+    outcome: "succeeded",
+    target: { id: auth.user.id, name: auth.user.email, type: "user" },
+  });
 
   return c.json({
     data: auth.user,
