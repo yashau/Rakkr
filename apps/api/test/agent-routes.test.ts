@@ -625,10 +625,11 @@ test("claim-next lets one node claim multiple queued recordings independently", 
   const expectedJobIds = new Set([firstStartedBody.job.id, secondStartedBody.job.id]);
   const firstRecording = await recordingStore.find(firstStartedBody.data.id);
   const secondRecording = await recordingStore.find(secondStartedBody.data.id);
-  const claimAudits = await auditStore.list({
-    action: "recording_jobs.claim_next.succeeded",
-  });
-
+  const claimAudits = (
+    await auditStore.list({
+      action: "recording_jobs.claim_next.succeeded",
+    })
+  ).filter((event) => event.target.type === "recording_job");
   assert.equal(firstStarted.status, 202);
   assert.equal(secondStarted.status, 202);
   assert.equal(firstClaim.status, 200);
@@ -641,7 +642,6 @@ test("claim-next lets one node claim multiple queued recordings independently", 
   assert.equal(secondRecording?.status, "recording");
   assert.equal(claimAudits.length, 2);
 });
-
 test("controller stop request survives agent cancellation as completed recording", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");

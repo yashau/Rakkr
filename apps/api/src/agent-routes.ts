@@ -374,6 +374,14 @@ export function registerAgentRoutes({
       const nextJob = await nextRecordingJob(nodeId);
 
       if (!nextJob) {
+        await recordAuditEvent(c, {
+          action: "recording_jobs.claim_next.succeeded",
+          actor: nodeActor(auth.credential),
+          details: { claimed: false },
+          outcome: "succeeded",
+          permission: "recording:control",
+          target: { id: nodeId, type: "node" },
+        });
         return c.body(null, 204);
       }
 

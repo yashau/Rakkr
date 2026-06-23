@@ -90,6 +90,36 @@ test("agent recording-job polling and reads audit successes", async () => {
   });
 });
 
+test("agent claim-next empty result audits success", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const routeNode = node();
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore([routeNode]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore([]),
+    settingsStore: {} as SettingsStore,
+  });
+
+  const emptyClaim = await app.request(`/api/v1/nodes/${routeNode.id}/recording-jobs/claim-next`, {
+    headers: { authorization: "Bearer node-token" },
+    method: "POST",
+  });
+  const [audit] = await auditStore.list({ action: "recording_jobs.claim_next.succeeded" });
+
+  assert.equal(emptyClaim.status, 204);
+  assert.equal(audit?.actor.type, "node");
+  assert.equal(audit?.permission, "recording:control");
+  assert.equal(audit?.target.id, routeNode.id);
+  assert.equal(audit?.target.type, "node");
+  assert.equal(audit?.details.claimed, false);
+  assert.equal(audit?.correlationIds, undefined);
+});
+
 function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
   return {
     async authenticateCredential(token) {
