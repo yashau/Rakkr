@@ -324,6 +324,25 @@ export function registerAgentRoutes({
 
     const job = await nextRecordingJob(nodeId);
 
+    await recordAuditEvent(c, {
+      action: "recording_jobs.next.succeeded",
+      actor: nodeActor(auth.credential),
+      correlationIds: job ? { recordingId: job.recordingId, recordingJobId: job.id } : undefined,
+      details: {
+        queued: Boolean(job),
+        ...(job
+          ? {
+              recordingId: job.recordingId,
+              recordingJobId: job.id,
+              status: job.status,
+            }
+          : {}),
+      },
+      outcome: "succeeded",
+      permission: "recording:control",
+      target: { id: nodeId, type: "node" },
+    });
+
     return job ? c.json({ data: job }) : c.body(null, 204);
   });
 
@@ -482,6 +501,25 @@ export function registerAgentRoutes({
     }
 
     const existing = await authorizeJobNode(c, credential, jobId, "recording_jobs.read_one");
+
+    if (!existing.response) {
+      await recordAuditEvent(c, {
+        action: "recording_jobs.read_one.succeeded",
+        actor: nodeActor(credential),
+        correlationIds: {
+          recordingId: existing.job.recordingId,
+          recordingJobId: existing.job.id,
+        },
+        details: {
+          nodeId: existing.job.nodeId,
+          recordingId: existing.job.recordingId,
+          status: existing.job.status,
+        },
+        outcome: "succeeded",
+        permission: "recording:control",
+        target: { id: existing.job.id, type: "recording_job" },
+      });
+    }
 
     return existing.response ?? c.json({ data: existing.job });
   });
