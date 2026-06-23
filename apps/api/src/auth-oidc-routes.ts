@@ -165,10 +165,25 @@ export function registerAuthOidcRoutes({
     requirePermission("auth:manage", "auth.oidc.discovery.actions.read", () => ({ type: "auth" })),
     async (c) => {
       const config = configProvider();
+      const actions = oidcDiscoveryActions(config, c.get("auth")?.user?.permissions ?? []);
+
+      await recordAuditEvent(c, {
+        action: "auth.oidc.discovery.actions.read.succeeded",
+        auth: c.get("auth"),
+        details: {
+          configured: config.configured,
+          discoveryAvailable: Boolean(config.discoveryUrl),
+          enabled: config.enabled,
+          loginAvailable: config.loginAvailable,
+        },
+        outcome: "succeeded",
+        permission: "auth:manage",
+        target: { type: "auth" },
+      });
 
       return c.json({
         data: {
-          actions: oidcDiscoveryActions(config, c.get("auth")?.user?.permissions ?? []),
+          actions,
           config: publicOidcConfig(config),
           links: oidcLinks(),
         },
@@ -183,8 +198,33 @@ export function registerAuthOidcRoutes({
       try {
         const discovery = await fetchOidcDiscovery(configProvider(), discoveryFetcher);
 
+        await recordAuditEvent(c, {
+          action: "auth.oidc.discovery.read.succeeded",
+          auth: c.get("auth"),
+          details: {
+            hasAuthorizationEndpoint: Boolean(discovery.authorizationEndpoint),
+            hasJwksUri: Boolean(discovery.jwksUri),
+            hasTokenEndpoint: Boolean(discovery.tokenEndpoint),
+            issuer: discovery.issuer,
+          },
+          outcome: "succeeded",
+          permission: "auth:manage",
+          target: { type: "auth" },
+        });
+
         return c.json({ data: discovery });
       } catch (error) {
+        const reason = oidcErrorReason(error);
+
+        await recordAuditEvent(c, {
+          action: "auth.oidc.discovery.read.failed",
+          auth: c.get("auth"),
+          outcome: "failed",
+          permission: "auth:manage",
+          reason,
+          target: { type: "auth" },
+        });
+
         if (error instanceof OidcConfigError) {
           return c.json({ error: error.message, reason: error.code }, statusForOidcError(error));
         }

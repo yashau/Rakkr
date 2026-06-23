@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
 import type { Permission } from "@rakkr/shared";
-import type { RequirePermission } from "../src/http-types.js";
+import type { RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 
 const { clearOidcLoginStateCookie, registerAuthOidcRoutes } =
   await import("../src/auth-oidc-routes.js");
@@ -73,6 +73,7 @@ test("fetches and sanitizes OIDC discovery documents", async () => {
 
 test("exposes OIDC config and protected discovery routes", async () => {
   const app = new Hono();
+  const events: AuditInput[] = [];
   const config = oidcConfigFromEnv({
     RAKKR_OIDC_AZURE_TENANT_ID: "tenant-id",
     RAKKR_OIDC_CLIENT_ID: "client-id",
@@ -94,7 +95,10 @@ test("exposes OIDC config and protected discovery routes", async () => {
       ok: true,
       status: 200,
     }),
-    recordAuditEvent: async () => auditEvent("auth.oidc.test"),
+    recordAuditEvent: async (_c, input) => {
+      events.push(input);
+      return auditEvent(input.action);
+    },
     requirePermission: allowOidcPermission(["auth:manage"]),
     sessionContext: () => ({}),
     webOrigin: "http://localhost:5173",
@@ -119,10 +123,60 @@ test("exposes OIDC config and protected discovery routes", async () => {
   assert.equal(discoveryActionsBody.data.actions.discovery.enabled, true);
   assert.equal(discoveryActionsBody.data.actions.discovery.href, "/api/v1/auth/oidc/discovery");
   assert.equal(discoveryActionsBody.data.actions.discovery.permission, "auth:manage");
+  const discoveryBody = await discoveryResponse.json();
+
   assert.equal(
-    (await discoveryResponse.json()).data.tokenEndpoint,
+    discoveryBody.data.tokenEndpoint,
     "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token",
   );
+  assert.deepEqual(
+    events.map((event) => event.action),
+    ["auth.oidc.discovery.actions.read.succeeded", "auth.oidc.discovery.read.succeeded"],
+  );
+  assert.ok(events.every((event) => event.outcome === "succeeded"));
+  assert.ok(events.every((event) => event.permission === "auth:manage"));
+  assert.equal(events[0]?.details?.configured, true);
+  assert.equal(events[0]?.details?.discoveryAvailable, true);
+  assert.equal(events[1]?.details?.issuer, config.issuer);
+  assert.equal(events[1]?.details?.hasTokenEndpoint, true);
+  assert.equal(events[1]?.target.type, "auth");
+});
+
+test("audits failed protected OIDC discovery reads", async () => {
+  const app = new Hono();
+  const events: AuditInput[] = [];
+
+  registerAuthOidcRoutes({
+    app,
+    authService: new LocalAuthService(""),
+    configProvider: configuredOidcConfig,
+    discoveryFetcher: async () => ({
+      json: async () => ({}),
+      ok: false,
+      status: 503,
+    }),
+    recordAuditEvent: async (_c, input) => {
+      events.push(input);
+      return auditEvent(input.action);
+    },
+    requirePermission: allowOidcPermission(["auth:manage"]),
+    sessionContext: () => ({}),
+    webOrigin: "http://localhost:5173",
+  });
+
+  const response = await app.request("/api/v1/auth/oidc/discovery");
+  const body = await response.json();
+
+  assert.equal(response.status, 502);
+  assert.equal(body.reason, "oidc_discovery_failed");
+  assert.deepEqual(
+    events.map((event) => event.action),
+    ["auth.oidc.discovery.read.failed"],
+  );
+  assert.equal(events[0]?.outcome, "failed");
+  assert.equal(events[0]?.permission, "auth:manage");
+  assert.equal(events[0]?.reason, "oidc_discovery_failed");
+  assert.equal(events[0]?.target.type, "auth");
 });
 
 test("reports disabled OIDC login readiness through public action summary", async () => {
@@ -344,7 +398,9 @@ function allowOidcPermission(permissions: Permission[]): RequirePermission {
   };
 }
 
-function auditEvent(action) {
+type AuditInput = Parameters<RecordAuditEvent>[1];
+
+function auditEvent(action: string) {
   return {
     action,
     actor: { id: "test", name: "Test", roles: [], type: "user" },

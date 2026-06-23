@@ -379,6 +379,7 @@ Current implementation baseline:
 - Access policy decisions enforce explicit deny precedence across user, group, and everyone subjects.
 - Access policy update routes have regression coverage for before/after audit snapshots.
 - Auth management routes have missing-permission deny coverage, user detail, and action summaries.
+- OIDC discovery read/action-summary routes are RBAC-gated and audited for success/failure.
 - Access policy denies have route coverage for protected recording metadata writes and bulk organization.
 - Access policy denies have route coverage for live-listen monitor starts.
 - Access policy denies have route coverage for recording stop controls.
@@ -940,6 +941,7 @@ Current implementation baseline:
 306. ✅ Audit node-scoped agent listen-monitor chunk ingress.
 307. ✅ Validate ALSA loopback capture and render on Debian test rig.
 308. ✅ Validate stable X32 32-channel ALSA capture on Debian test rig.
+309. ✅ Audit OIDC discovery read and action-summary routes.
 
 ## Open Questions
 
