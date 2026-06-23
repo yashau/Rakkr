@@ -154,6 +154,65 @@ test("retention policy routes create update and audit snapshots", async () => {
   assert.equal(updateAudit?.target.type, "retention_policy");
 });
 
+test("retention policy read routes audit list detail and missing resources", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer(["settings:read"]);
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: true,
+    maxAgeDays: 45,
+    name: `Read Audit Retention ${randomUUID()}`,
+    scope: "controller_cache",
+  });
+
+  registerRetentionPolicyRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allowPermission(),
+  });
+
+  const listResponse = await app.request("/api/v1/settings/retention-policies");
+  const listBody = (await listResponse.json()) as { data: Array<{ id: string }> };
+  const detailResponse = await app.request(`/api/v1/settings/retention-policies/${policy.id}`);
+  const missingResponse = await app.request(
+    "/api/v1/settings/retention-policies/retention_missing_read",
+  );
+  const successAudits = await auditStore.list({
+    outcome: "succeeded",
+    permission: "settings:read",
+  });
+  const failedAudits = await auditStore.list({
+    outcome: "failed",
+    permission: "settings:read",
+  });
+
+  assert.equal(listResponse.status, 200);
+  assert.equal(detailResponse.status, 200);
+  assert.equal(missingResponse.status, 404);
+  assert.ok(listBody.data.some((candidate) => candidate.id === policy.id));
+  assert.deepEqual(successAudits.map((event) => event.action).sort(), [
+    "settings.retention_policies.detail.read.succeeded",
+    "settings.retention_policies.read.succeeded",
+  ]);
+  assert.equal(
+    successAudits.find((event) => event.action === "settings.retention_policies.read.succeeded")
+      ?.details.returnedCount,
+    listBody.data.length,
+  );
+  assert.equal(
+    successAudits.find(
+      (event) => event.action === "settings.retention_policies.detail.read.succeeded",
+    )?.target.id,
+    policy.id,
+  );
+  assert.equal(failedAudits.length, 1);
+  assert.equal(failedAudits[0]?.action, "settings.retention_policies.detail.read.failed");
+  assert.equal(failedAudits[0]?.reason, "not_found");
+  assert.equal(failedAudits[0]?.target.id, "retention_missing_read");
+});
+
 test("retention policy routes honor resource-scope denies", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
