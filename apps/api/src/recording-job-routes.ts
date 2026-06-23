@@ -87,6 +87,7 @@ export function registerRecordingJobRoutes({
   registerRecordingJobActionRoutes({
     app,
     currentUser,
+    recordAuditEvent,
     requirePermission,
     scopedRecordings,
   });

@@ -2,13 +2,14 @@ import type { Context, Hono } from "hono";
 import type { Permission, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, RequirePermission } from "./http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { scopedRecordingJobs } from "./recording-job-scope.js";
 import { listRecordingJobs, recordingJob } from "./recording-jobs.js";
 
 interface RecordingJobActionRouteDependencies {
   app: Hono<AppBindings>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
@@ -29,6 +30,7 @@ const activeJobStatuses = new Set<RecordingJob["status"]>(["queued", "running", 
 export function registerRecordingJobActionRoutes({
   app,
   currentUser,
+  recordAuditEvent,
   requirePermission,
   scopedRecordings,
 }: RecordingJobActionRouteDependencies) {
@@ -54,6 +56,15 @@ export function registerRecordingJobActionRoutes({
       );
 
       if (!visibleJob) {
+        await recordAuditEvent(c, {
+          action: "recording_jobs.actions.read.failed",
+          auth: { user },
+          outcome: "failed",
+          permission: "recording:read",
+          reason: "recording_job_not_found",
+          target: { id: jobId, type: "recording_job" },
+        });
+
         return c.json({ error: "Recording job not found" }, 404);
       }
 
@@ -65,15 +76,31 @@ export function registerRecordingJobActionRoutes({
           job.recordingId === visibleJob.recordingId &&
           activeJobStatuses.has(job.status),
       );
+      const actions = recordingJobActions(
+        visibleJob,
+        user.permissions,
+        Boolean(recording),
+        activeConflict,
+      );
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.actions.read.succeeded",
+        auth: { user },
+        correlationIds: { recordingId: visibleJob.recordingId },
+        details: {
+          activeConflictAvailable: Boolean(activeConflict),
+          recordingAvailable: Boolean(recording),
+          status: visibleJob.status,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: { id: visibleJob.id, type: "recording_job" },
+      });
 
       return c.json({
         data: {
-          actions: recordingJobActions(
-            visibleJob,
-            user.permissions,
-            Boolean(recording),
-            activeConflict,
-          ),
+          actions,
           job: visibleJob,
           links: recordingJobActionLinks(visibleJob.id),
           recording,

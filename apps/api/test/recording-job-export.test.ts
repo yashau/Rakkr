@@ -242,6 +242,9 @@ test("recording job action summary returns readiness links and payloads", async 
 
   const response = await app.request(`/api/v1/recording-jobs/${failedJob.id}/actions`);
   const body = (await response.json()) as RecordingJobActionsResponse;
+  const [auditEvent] = await auditStore.list({
+    action: "recording_jobs.actions.read.succeeded",
+  });
 
   assert.equal(response.status, 200);
   assert.deepEqual(permissionCalls.at(-1), {
@@ -260,6 +263,14 @@ test("recording job action summary returns readiness links and payloads", async 
   assert.equal(body.data.actions.stop.enabled, false);
   assert.equal(body.data.actions.stop.reason, "recording_job_not_stoppable");
   assert.deepEqual(body.data.actions.stop.payload, { jobIds: [failedJob.id] });
+  assert.equal(auditEvent?.outcome, "succeeded");
+  assert.equal(auditEvent?.permission, "recording:read");
+  assert.equal(auditEvent?.target.id, failedJob.id);
+  assert.equal(auditEvent?.target.type, "recording_job");
+  assert.equal(auditEvent?.correlationIds?.recordingId, recording.id);
+  assert.equal(auditEvent?.details.recordingAvailable, true);
+  assert.equal(auditEvent?.details.status, "failed");
+  assert.equal(auditEvent?.details.visibleActionCount, 4);
 });
 
 test("recording job action summary uses scoped recording context for readiness", async () => {
@@ -369,6 +380,7 @@ test("recording job action summary hides jobs outside scoped visibility", async 
   });
 
   const response = await app.request(`/api/v1/recording-jobs/${hiddenJob.id}/actions`);
+  const [auditEvent] = await auditStore.list({ action: "recording_jobs.actions.read.failed" });
 
   assert.equal(response.status, 404);
   assert.deepEqual(permissionCalls.at(-1), {
@@ -376,6 +388,11 @@ test("recording job action summary hides jobs outside scoped visibility", async 
     permission: "recording:read",
     target: { id: hidden.id, type: "recording" },
   });
+  assert.equal(auditEvent?.outcome, "failed");
+  assert.equal(auditEvent?.permission, "recording:read");
+  assert.equal(auditEvent?.reason, "recording_job_not_found");
+  assert.equal(auditEvent?.target.id, hiddenJob.id);
+  assert.equal(auditEvent?.target.type, "recording_job");
 });
 
 test("recording job export route is RBAC-gated and audited", async () => {
