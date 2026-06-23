@@ -99,11 +99,31 @@ export function registerRecordingJobRoutes({
       const query = recordingJobsQuerySchema.safeParse(c.req.query());
 
       if (!query.success) {
+        await recordJobReadFailure(c, "recording_jobs.read.failed", "invalid_filters", {
+          issueCount: query.error.issues.length,
+        });
         return c.json({ error: "Invalid recording job filters", issues: query.error.issues }, 400);
       }
 
+      const jobs = filterRecordingJobsForExport(await scopedJobs(currentUser(c)), query.data);
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          filters: query.data,
+          returnedCount: jobs.length,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: {
+          id: "recording_job_collection",
+          type: "recording_collection",
+        },
+      });
+
       return c.json({
-        data: filterRecordingJobsForExport(await scopedJobs(currentUser(c)), query.data),
+        data: jobs,
       });
     },
   );
@@ -216,8 +236,35 @@ export function registerRecordingJobRoutes({
       const job = (await scopedJobs(currentUser(c))).find((candidate) => candidate.id === jobId);
 
       if (!job) {
+        await recordJobReadFailure(
+          c,
+          "recording_jobs.detail.read.failed",
+          "recording_job_not_found",
+          {
+            jobId,
+          },
+        );
         return c.json({ error: "Recording job not found" }, 404);
       }
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.detail.read.succeeded",
+        auth: currentAuth(c),
+        correlationIds: {
+          recordingId: job.recordingId,
+        },
+        details: {
+          nodeId: job.nodeId,
+          recordingId: job.recordingId,
+          status: job.status,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: {
+          id: job.id,
+          type: "recording_job",
+        },
+      });
 
       return c.json({ data: job });
     },
@@ -596,6 +643,31 @@ export function registerRecordingJobRoutes({
       return c.json({ data: result.job }, 201);
     },
   );
+
+  async function recordJobReadFailure(
+    c: Context<AppBindings>,
+    action: string,
+    reason: string,
+    details: Record<string, unknown> = {},
+  ) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      details,
+      outcome: "failed",
+      permission: "recording:read",
+      reason,
+      target: details.jobId
+        ? {
+            id: String(details.jobId),
+            type: "recording_job",
+          }
+        : {
+            id: "recording_job_collection",
+            type: "recording_collection",
+          },
+    });
+  }
 
   async function recordBulkJobFailure(
     c: Context<AppBindings>,

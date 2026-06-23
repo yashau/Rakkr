@@ -127,6 +127,8 @@ test("recording job list route filters scoped jobs by status search node and bac
   );
   const body = (await response.json()) as { data: RecordingJob[] };
   const invalidResponse = await app.request("/api/v1/recording-jobs?createdFrom=2026-06-20");
+  const [successEvent] = await auditStore.list({ action: "recording_jobs.read.succeeded" });
+  const [failedEvent] = await auditStore.list({ action: "recording_jobs.read.failed" });
 
   assert.equal(response.status, 200);
   assert.equal(permissionCalls.at(-1)?.permission, "recording:read");
@@ -136,6 +138,12 @@ test("recording job list route filters scoped jobs by status search node and bac
     [jackJob.id],
   );
   assert.equal(invalidResponse.status, 400);
+  assert.equal(successEvent?.target.id, "recording_job_collection");
+  assert.equal(successEvent?.details.returnedCount, 1);
+  assert.equal(successEvent?.details.filters.status, "queued");
+  assert.equal(failedEvent?.target.id, "recording_job_collection");
+  assert.equal(failedEvent?.reason, "invalid_filters");
+  assert.equal(failedEvent?.details.issueCount, 1);
 });
 
 test("recording job detail route returns only scoped jobs", async () => {
@@ -157,6 +165,10 @@ test("recording job detail route returns only scoped jobs", async () => {
   const hiddenResponse = await app.request(`/api/v1/recording-jobs/${hiddenJob.id}`);
   const missingResponse = await app.request("/api/v1/recording-jobs/job_missing_detail");
   const visibleBody = (await visibleResponse.json()) as { data: RecordingJob };
+  const [successEvent] = await auditStore.list({
+    action: "recording_jobs.detail.read.succeeded",
+  });
+  const failedEvents = await auditStore.list({ action: "recording_jobs.detail.read.failed" });
 
   assert.equal(visibleResponse.status, 200);
   assert.equal(visibleBody.data.id, visibleJob.id);
@@ -178,6 +190,14 @@ test("recording job detail route returns only scoped jobs", async () => {
     permission: "recording:read",
     target: { id: "job_missing_detail", type: "recording_job" },
   });
+  assert.equal(successEvent?.target.id, visibleJob.id);
+  assert.equal(successEvent?.correlationIds.recordingId, visible.id);
+  assert.equal(successEvent?.details.recordingId, visible.id);
+  assert.equal(successEvent?.details.status, visibleJob.status);
+  assert.deepEqual(failedEvents.map((event) => [event.target.id, event.reason]).sort(), [
+    [hiddenJob.id, "recording_job_not_found"],
+    ["job_missing_detail", "recording_job_not_found"],
+  ]);
 });
 
 test("recording job detail route lets controller bearer reads pass agent route", async () => {
