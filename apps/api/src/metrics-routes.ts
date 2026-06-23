@@ -13,7 +13,12 @@ import type { AuditStore } from "./audit-store.js";
 import { canReadAuditEvent } from "./audit-scope.js";
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
-import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import type { ListenMonitorStore } from "./listen-monitor-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { renderPrometheusMetrics } from "./metrics.js";
@@ -41,6 +46,7 @@ interface MetricsScopeDependencies {
 interface MetricsRouteDependencies extends MetricsScopeDependencies {
   app: Hono<AppBindings>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
 }
 
@@ -48,10 +54,23 @@ export function registerMetricsRoutes(dependencies: MetricsRouteDependencies) {
   dependencies.app.get(
     "/metrics",
     dependencies.requirePermission("metrics:read", "metrics.read"),
-    async (c) =>
-      c.text(await controllerPrometheusMetrics(dependencies.currentUser(c), dependencies), 200, {
+    async (c) => {
+      const user = dependencies.currentUser(c);
+      const result = await controllerPrometheusMetrics(user, dependencies);
+
+      await dependencies.recordAuditEvent(c, {
+        action: "metrics.read.succeeded",
+        auth: { user },
+        details: result.details,
+        outcome: "succeeded",
+        permission: "metrics:read",
+        target: { type: "controller" },
+      });
+
+      return c.text(result.output, 200, {
         "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
-      }),
+      });
+    },
   );
 }
 
@@ -88,8 +107,7 @@ async function controllerPrometheusMetrics(
     scopedMeterFrames(nodes, dependencies),
   ]);
   const recordingCacheBytes = await recordingCacheByteMap(recordings);
-
-  return renderPrometheusMetrics({
+  const output = renderPrometheusMetrics({
     auditEvents,
     healthEvents,
     listenMonitorChunks,
@@ -102,6 +120,24 @@ async function controllerPrometheusMetrics(
     startedAt: dependencies.startedAt,
     uploadQueueItems,
   });
+
+  return {
+    details: {
+      auditEventCount: auditEvents.length,
+      healthEventCount: healthEvents.length,
+      listenMonitorChunkCount: listenMonitorChunks.length,
+      meterFrameCount: meterFrames.length,
+      nodeCount: nodes.length,
+      recordingCacheBytes: Object.values(recordingCacheBytes).reduce(
+        (sum, bytes) => sum + bytes,
+        0,
+      ),
+      recordingCount: recordings.length,
+      recordingJobCount: recordingJobs.length,
+      uploadQueueItemCount: uploadQueueItems.length,
+    },
+    output,
+  };
 }
 
 async function scopedListenMonitorChunks(
@@ -207,9 +243,16 @@ async function scopedMeterFrames(nodes: RecorderNode[], dependencies: MetricsSco
   return frames.filter((frame): frame is MeterFrame => Boolean(frame));
 }
 
-async function recordingCacheByteMap(recordings: RecordingSummary[]) {
+async function recordingCacheByteMap(
+  recordings: RecordingSummary[],
+): Promise<Record<string, number>> {
   const entries = await Promise.all(
-    recordings.map(async (recording) => [recording.id, await recordingCacheFileSize(recording)]),
+    recordings.map(
+      async (recording): Promise<[string, number]> => [
+        recording.id,
+        (await recordingCacheFileSize(recording)) ?? 0,
+      ],
+    ),
   );
 
   return Object.fromEntries(entries);

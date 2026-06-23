@@ -504,6 +504,7 @@ registerMetricsRoutes({
   listenMonitorStore,
   meterFrameStore,
   nodeStore,
+  recordAuditEvent,
   recordingStore,
   requirePermission,
   startedAt,

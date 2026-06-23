@@ -39,6 +39,7 @@ test("ops routes deny users without required permissions", async () => {
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([]),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: createRecordingStore([]),
     requirePermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,11 +9,13 @@ import type {
   AuditEvent,
   CurrentUser,
   HealthEvent,
+  MeterFrame,
   Permission,
   RecorderNode,
   RecordingSummary,
 } from "@rakkr/shared";
 import type { AppBindings, AuditTarget, RequirePermission } from "../src/http-types.js";
+import type { RecordAuditEvent } from "../src/http-types.js";
 import type { RecordingStore } from "../src/recording-store.js";
 
 const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-metrics-routes-"));
@@ -62,6 +65,7 @@ test("metrics audit totals respect resource scope", async () => {
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([]),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: memoryRecordingStore([]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
@@ -102,6 +106,7 @@ test("metrics audit totals respect health event resource scope", async () => {
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([]),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: memoryRecordingStore([]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
@@ -152,6 +157,7 @@ test("metrics audit totals respect settings resource scope", async () => {
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([]),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: memoryRecordingStore([]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
@@ -196,6 +202,7 @@ test("metrics expose listen monitor chunks only for visible nodes", async () => 
     listenMonitorStore,
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([node("node_visible"), node("node_hidden")]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
     recordingStore: memoryRecordingStore([]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
@@ -207,6 +214,65 @@ test("metrics expose listen monitor chunks only for visible nodes", async () => 
   assert.equal(response.status, 200);
   assert.match(output, /rakkr_listen_monitor_chunk_age_seconds\{node_id="node_visible"/);
   assert.doesNotMatch(output, /node_hidden/);
+});
+
+test("metrics successful reads are audited with scoped operational counts", async () => {
+  const auditStore = createAuditStore("");
+  const listenMonitorStore = createListenMonitorStore();
+  const meterFrameStore = createMeterFrameStore();
+
+  await listenMonitorStore.save({
+    audio: new Uint8Array([82, 73, 70, 70]),
+    capturedAt: "2026-06-18T12:15:57.000Z",
+    contentType: "audio/wav",
+    durationMs: 1500,
+    nodeId: "node_audit_visible",
+  });
+  await listenMonitorStore.save({
+    audio: new Uint8Array([82, 73, 70, 70]),
+    capturedAt: "2026-06-18T12:15:57.000Z",
+    contentType: "audio/wav",
+    durationMs: 1500,
+    nodeId: "node_audit_hidden",
+  });
+  await meterFrameStore.save(meterFrame("node_audit_visible"));
+  await meterFrameStore.save(meterFrame("node_audit_hidden"));
+
+  const app = new Hono<AppBindings>();
+  registerMetricsRoutes({
+    app,
+    auditStore,
+    currentUser: () => user(["metrics:read"]),
+    hasResourceScope: async (_user, target) =>
+      target.id === "node_audit_visible" || target.id === "rec_audit_visible",
+    healthEventStore: createHealthEventStore("", []),
+    listenMonitorStore,
+    meterFrameStore,
+    nodeStore: createNodeStore([node("node_audit_visible"), node("node_audit_hidden")]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore([
+      recording("rec_audit_visible", "node_audit_visible"),
+      recording("rec_audit_hidden", "node_audit_hidden"),
+    ]),
+    requirePermission: allowPermission,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/metrics");
+  const output = await response.text();
+  const [event] = await auditStore.list({ action: "metrics.read.succeeded" });
+
+  assert.equal(response.status, 200);
+  assert.match(output, /node_audit_visible/);
+  assert.doesNotMatch(output, /node_audit_hidden/);
+  assert.equal(event?.permission, "metrics:read");
+  assert.equal(event?.target.type, "controller");
+  assert.equal(event?.details.nodeCount, 1);
+  assert.equal(event?.details.recordingCount, 1);
+  assert.equal(event?.details.listenMonitorChunkCount, 1);
+  assert.equal(event?.details.meterFrameCount, 1);
+  assert.equal(event?.details.healthEventCount, 0);
+  assert.equal(event?.details.auditEventCount, 0);
 });
 
 test("metrics recording job totals require visible recording context", async () => {
@@ -229,6 +295,7 @@ test("metrics recording job totals require visible recording context", async () 
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([node("node_metrics_jobs")]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
     recordingStore: memoryRecordingStore([visibleRecording]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
@@ -264,6 +331,7 @@ test("metrics health totals honor aggregate health event denies", async () => {
     listenMonitorStore: createListenMonitorStore(),
     meterFrameStore: createMeterFrameStore(),
     nodeStore: createNodeStore([node("node_metrics_health")]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
     recordingStore: memoryRecordingStore([recording("rec_metrics_health", "node_metrics_health")]),
     requirePermission: allowPermission,
     startedAt: new Date("2026-06-18T12:00:00.000Z"),
@@ -280,6 +348,35 @@ test("metrics health totals honor aggregate health event denies", async () => {
 const allowPermission: RequirePermission = () => async (_c, next) => {
   await next();
 };
+
+function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
+  return async (_c, input) => {
+    const event: AuditEvent = {
+      action: input.action,
+      actor: {
+        id: input.auth?.user?.id ?? "user_metrics_route",
+        name: input.auth?.user?.name ?? "Metrics Route User",
+        roles: input.auth?.user?.roles ?? [],
+        type: "user",
+      },
+      actorContext: {},
+      after: input.after,
+      before: input.before,
+      correlationIds: input.correlationIds,
+      createdAt: new Date().toISOString(),
+      details: input.details ?? {},
+      id: `audit_${randomUUID()}`,
+      outcome: input.outcome,
+      permission: input.permission,
+      reason: input.reason,
+      target: input.target,
+    };
+
+    await auditStore.append(event);
+
+    return event;
+  };
+}
 
 function auditEvent(
   action: string,
@@ -330,6 +427,23 @@ function node(id: string): RecorderNode {
     location: {},
     status: "online",
     tags: [],
+  };
+}
+
+function meterFrame(nodeId: string): MeterFrame {
+  return {
+    capturedAt: "2026-06-18T12:00:00.000Z",
+    interfaceId: "iface_metrics_route",
+    levels: [
+      {
+        channelIndex: 1,
+        clipping: false,
+        label: "Ch 1",
+        peakDbfs: -12.4,
+        rmsDbfs: -22.8,
+      },
+    ],
+    nodeId,
   };
 }
 
