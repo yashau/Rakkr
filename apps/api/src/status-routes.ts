@@ -9,7 +9,12 @@ import {
 
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
-import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import { scopedHealthEvents } from "./metrics-routes.js";
 import {
   profileSettingsTarget,
@@ -27,6 +32,7 @@ interface StatusRouteDependencies {
     target: AuditTarget,
   ) => Promise<boolean>;
   healthEventStore: HealthEventStore;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
@@ -61,8 +67,7 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
       const watchdogPolicy = canReadSettings
         ? await defaultWatchdogPolicy(user, dependencies)
         : undefined;
-
-      return c.json({
+      const payload = {
         activeRecordings: visibleRecordings.filter((recording) => recording.status === "recording")
           .length,
         alertingNodes: nodeStatusCount(visibleNodes, "alerting"),
@@ -90,7 +95,28 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
           (event) => event.severity === "warning" && event.status !== "resolved",
         ).length,
         ...(watchdogPolicy ? { watchdogPolicy } : {}),
+      };
+
+      await dependencies.recordAuditEvent(c, {
+        action: "status.read.succeeded",
+        auth: { user },
+        details: {
+          activeRecordings: payload.activeRecordings,
+          canReadSettings,
+          criticalAlerts: payload.criticalAlerts,
+          nodeCount: payload.nodeCount,
+          openAlerts: payload.openAlerts,
+          recordingProfileAvailable: Boolean(recordingProfile),
+          totalRecordings: payload.totalRecordings,
+          unresolvedAlerts: payload.unresolvedAlerts,
+          watchdogPolicyAvailable: Boolean(watchdogPolicy),
+        },
+        outcome: "succeeded",
+        permission: "node:read",
+        target: { type: "controller" },
       });
+
+      return c.json(payload);
     },
   );
 }

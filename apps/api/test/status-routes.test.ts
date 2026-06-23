@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
 import type {
+  AuditEvent,
   ChannelMapTemplate,
   ChannelMapTemplateAssignment,
   CurrentUser,
@@ -13,13 +15,15 @@ import type {
   WatchdogPolicy,
 } from "@rakkr/shared";
 import { defaultScheduledVoiceWatchdogPolicy, defaultVoiceRecordingProfile } from "@rakkr/shared";
-import type { AppBindings, RequirePermission } from "../src/http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 import type { SettingsStore } from "../src/settings-store.js";
 
+const { createAuditStore } = await import("../src/audit-store.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
 const { registerStatusRoutes } = await import("../src/status-routes.js");
 
 test("status health counts honor aggregate health event denies", async () => {
+  const auditStore = createAuditStore("");
   const healthEventStore = createHealthEventStore("", [
     healthEvent({
       id: "health_status_hidden",
@@ -38,6 +42,7 @@ test("status health counts honor aggregate health event denies", async () => {
     hasResourceScope: async (_user, target) =>
       target.id === "node_status_health" || target.id === "rec_status_health",
     healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission,
     scopedNodes: async () => [node("node_status_health")],
     scopedRecordings: async () => [recording("rec_status_health", "node_status_health")],
@@ -53,6 +58,7 @@ test("status health counts honor aggregate health event denies", async () => {
     totalRecordings: number;
     unresolvedAlerts: number;
   };
+  const [event] = await auditStore.list({ action: "status.read.succeeded" });
 
   assert.equal(response.status, 200);
   assert.equal(body.nodeCount, 1);
@@ -60,9 +66,18 @@ test("status health counts honor aggregate health event denies", async () => {
   assert.equal(body.criticalAlerts, 0);
   assert.equal(body.openAlerts, 0);
   assert.equal(body.unresolvedAlerts, 0);
+  assert.equal(event?.permission, "node:read");
+  assert.equal(event?.target.type, "controller");
+  assert.equal(event?.details.nodeCount, 1);
+  assert.equal(event?.details.totalRecordings, 1);
+  assert.equal(event?.details.criticalAlerts, 0);
+  assert.equal(event?.details.openAlerts, 0);
+  assert.equal(event?.details.unresolvedAlerts, 0);
+  assert.equal(event?.details.canReadSettings, false);
 });
 
 test("status embedded settings summaries honor resource-scope denies", async () => {
+  const auditStore = createAuditStore("");
   const visibleProfile: RecordingProfile = {
     ...defaultVoiceRecordingProfile,
     id: "profile_status_visible",
@@ -82,6 +97,7 @@ test("status embedded settings summaries honor resource-scope denies", async () 
       target.id !== defaultVoiceRecordingProfile.id &&
       target.id !== defaultScheduledVoiceWatchdogPolicy.id,
     healthEventStore: createHealthEventStore("", []),
+    recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission,
     scopedNodes: async () => [],
     scopedRecordings: async () => [],
@@ -97,15 +113,48 @@ test("status embedded settings summaries honor resource-scope denies", async () 
     recordingProfile?: RecordingProfile;
     watchdogPolicy?: WatchdogPolicy;
   };
+  const [event] = await auditStore.list({ action: "status.read.succeeded" });
 
   assert.equal(response.status, 200);
   assert.equal(body.recordingProfile?.id, visibleProfile.id);
   assert.equal(body.watchdogPolicy?.id, visibleWatchdog.id);
+  assert.equal(event?.details.canReadSettings, true);
+  assert.equal(event?.details.recordingProfileAvailable, true);
+  assert.equal(event?.details.watchdogPolicyAvailable, true);
 });
 
 const allowPermission: RequirePermission = () => async (_c, next) => {
   await next();
 };
+
+function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
+  return async (_c, input) => {
+    const event: AuditEvent = {
+      action: input.action,
+      actor: {
+        id: input.auth?.user?.id ?? "user_status_route",
+        name: input.auth?.user?.name ?? "Status Route User",
+        roles: input.auth?.user?.roles ?? [],
+        type: "user",
+      },
+      actorContext: {},
+      after: input.after,
+      before: input.before,
+      correlationIds: input.correlationIds,
+      createdAt: new Date().toISOString(),
+      details: input.details ?? {},
+      id: `audit_${randomUUID()}`,
+      outcome: input.outcome,
+      permission: input.permission,
+      reason: input.reason,
+      target: input.target,
+    };
+
+    await auditStore.append(event);
+
+    return event;
+  };
+}
 
 const emptySettingsStore: SettingsStore = {
   async assignChannelMapTemplate() {

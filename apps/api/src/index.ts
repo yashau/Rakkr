@@ -514,6 +514,7 @@ registerStatusRoutes({
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,
+  recordAuditEvent,
   requirePermission,
   settingsStore,
   scopedNodes,

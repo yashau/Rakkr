@@ -48,6 +48,7 @@ test("ops routes deny users without required permissions", async () => {
     currentUser: () => deniedUser,
     hasResourceScope: async () => true,
     healthEventStore: createHealthEventStore("", []),
+    recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission,
     scopedNodes: async () => [],
     scopedRecordings: async () => [],
@@ -99,6 +100,7 @@ test("ops routes deny users without required permissions", async () => {
 
 test("status route only includes settings summaries with settings read", async () => {
   const statusApp = (currentUser: CurrentUser) => {
+    const auditStore = createAuditStore("");
     const app = new Hono<AppBindings>();
 
     registerStatusRoutes({
@@ -106,6 +108,7 @@ test("status route only includes settings summaries with settings read", async (
       currentUser: () => currentUser,
       hasResourceScope: async () => true,
       healthEventStore: createHealthEventStore("", []),
+      recordAuditEvent: recordAuditEvent(auditStore),
       requirePermission: allowPermission,
       scopedNodes: async () => [],
       scopedRecordings: async () => [],
@@ -113,15 +116,17 @@ test("status route only includes settings summaries with settings read", async (
       startedAt: new Date("2026-06-18T12:00:00.000Z"),
     });
 
-    return app;
+    return { app, auditStore };
   };
 
-  const nodeOnlyResponse = await statusApp(user(["node:read"])).request("/api/v1/status");
+  const nodeOnlyStatus = statusApp(user(["node:read"]));
+  const nodeOnlyResponse = await nodeOnlyStatus.app.request("/api/v1/status");
   const nodeOnlyBody = (await nodeOnlyResponse.json()) as Record<string, unknown>;
-  const settingsResponse = await statusApp(user(["node:read", "settings:read"])).request(
-    "/api/v1/status",
-  );
+  const settingsStatus = statusApp(user(["node:read", "settings:read"]));
+  const settingsResponse = await settingsStatus.app.request("/api/v1/status");
   const settingsBody = (await settingsResponse.json()) as Record<string, unknown>;
+  const [nodeOnlyEvent] = await nodeOnlyStatus.auditStore.list({ action: "status.read.succeeded" });
+  const [settingsEvent] = await settingsStatus.auditStore.list({ action: "status.read.succeeded" });
 
   assert.equal(nodeOnlyResponse.status, 200);
   assert.equal(settingsResponse.status, 200);
@@ -129,9 +134,14 @@ test("status route only includes settings summaries with settings read", async (
   assert.equal("watchdogPolicy" in nodeOnlyBody, false);
   assert.equal(typeof settingsBody.recordingProfile, "object");
   assert.equal(typeof settingsBody.watchdogPolicy, "object");
+  assert.equal(nodeOnlyEvent?.details.canReadSettings, false);
+  assert.equal(nodeOnlyEvent?.details.recordingProfileAvailable, false);
+  assert.equal(settingsEvent?.details.canReadSettings, true);
+  assert.equal(settingsEvent?.details.recordingProfileAvailable, true);
 });
 
 test("status route includes scoped operational aggregates", async () => {
+  const auditStore = createAuditStore("");
   const app = new Hono<AppBindings>();
 
   registerStatusRoutes({
@@ -155,6 +165,7 @@ test("status route includes scoped operational aggregates", async () => {
       healthEvent({ id: "health_suppressed", severity: "info", status: "suppressed" }),
       healthEvent({ id: "health_hidden", nodeId: "health_hidden", severity: "critical" }),
     ]),
+    recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission,
     scopedNodes: async () => [
       node({ id: "node_online", status: "online" }),
@@ -177,6 +188,7 @@ test("status route includes scoped operational aggregates", async () => {
 
   const response = await app.request("/api/v1/status");
   const body = (await response.json()) as Record<string, unknown>;
+  const [event] = await auditStore.list({ action: "status.read.succeeded" });
 
   assert.equal(response.status, 200);
   assert.equal(body.nodeCount, 5);
@@ -198,6 +210,10 @@ test("status route includes scoped operational aggregates", async () => {
   assert.equal(body.openAlerts, 1);
   assert.equal(body.acknowledgedAlerts, 1);
   assert.equal(body.suppressedAlerts, 1);
+  assert.equal(event?.details.nodeCount, 5);
+  assert.equal(event?.details.totalRecordings, 6);
+  assert.equal(event?.details.criticalAlerts, 1);
+  assert.equal(event?.details.unresolvedAlerts, 3);
 });
 
 function denyMissingPermission(
