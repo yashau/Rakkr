@@ -34,12 +34,27 @@ test("agent monitor chunk route stores latest node audio chunk", async () => {
   });
   const body = (await response.json()) as { data: { source: string } };
   const stored = await listenMonitorStore.latest("node_agent_test");
+  const [event] = await auditStore.list({
+    action: "nodes.listen_monitor.chunk.ingest.succeeded",
+  });
 
   assert.equal(response.status, 202);
   assert.equal(body.data.source, "agent_audio_chunk");
   assert.equal(stored?.capturedAt, "2026-06-20T08:30:00.000Z");
   assert.equal(stored?.durationMs, 1000);
   assert.deepEqual(Buffer.from(stored?.audio ?? []), audio);
+  assert.equal(event?.actor.type, "node");
+  assert.equal(event?.outcome, "succeeded");
+  assert.equal(event?.permission, "node:control");
+  assert.equal(event?.target.id, "node_agent_test");
+  assert.equal(event?.target.type, "node");
+  assert.deepEqual(event?.details, {
+    capturedAt: "2026-06-20T08:30:00.000Z",
+    durationMs: 1000,
+    receivedAt: stored?.receivedAt,
+    sizeBytes: audio.byteLength,
+    source: "agent_audio_chunk",
+  });
 });
 
 test("agent monitor chunk route audits missing node credentials", async () => {
@@ -70,6 +85,43 @@ test("agent monitor chunk route audits missing node credentials", async () => {
   assert.equal(event?.outcome, "denied");
   assert.equal(event?.permission, "node:control");
   assert.equal(event?.reason, "missing_node_token");
+});
+
+test("agent monitor chunk route blocks credentials from writing other node chunks", async () => {
+  const auditStore = createAuditStore("");
+  const listenMonitorStore = createListenMonitorStore();
+  const app = new Hono<AppBindings>();
+
+  registerAgentMonitorRoutes({
+    app,
+    listenMonitorStore,
+    nodeStore: memoryNodeStore(),
+    recordAuditEvent: recordAuditEvent(auditStore),
+  });
+
+  const response = await app.request("/api/v1/nodes/node_agent_other/listen/chunk", {
+    body: wavChunk(),
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "audio/wav",
+      "x-rakkr-captured-at": "2026-06-20T08:30:00.000Z",
+      "x-rakkr-duration-ms": "1000",
+    },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({
+    action: "nodes.listen_monitor.chunk.ingest.failed",
+  });
+  const stored = await listenMonitorStore.latest("node_agent_other");
+
+  assert.equal(response.status, 403);
+  assert.equal(stored, undefined);
+  assert.equal(event?.actor.type, "node");
+  assert.equal(event?.outcome, "failed");
+  assert.equal(event?.permission, "node:control");
+  assert.equal(event?.reason, "node_scope_denied");
+  assert.equal(event?.target.id, "node_agent_other");
+  assert.equal(event?.target.type, "node");
 });
 
 function memoryNodeStore(): NodeStore {

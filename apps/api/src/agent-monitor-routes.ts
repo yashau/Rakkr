@@ -75,6 +75,21 @@ export function registerAgentMonitorRoutes({
       nodeId,
     });
 
+    await recordAuditEvent(c, {
+      action: "nodes.listen_monitor.chunk.ingest.succeeded",
+      actor: nodeActor(auth.credential),
+      details: {
+        capturedAt: stored.capturedAt,
+        durationMs: stored.durationMs,
+        receivedAt: stored.receivedAt,
+        sizeBytes: audio.byteLength,
+        source: stored.source,
+      },
+      outcome: "succeeded",
+      permission: "node:control",
+      target: { id: nodeId, type: "node" },
+    });
+
     return c.json(
       {
         data: {

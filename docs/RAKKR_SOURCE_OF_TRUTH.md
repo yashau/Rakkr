@@ -221,6 +221,7 @@ Current partial implementation:
 - Agent meter targeting maps numeric, named, and `CARD=`/`DEV=` ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
 - Agent runtime inventory reports detected PipeWire and JACK command availability, and both have managed capture/meter backend presets.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
+- Agent listen-monitor chunk ingress is node-scoped and audited for accepted and rejected chunks.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
 - RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
@@ -935,6 +936,7 @@ Current implementation baseline:
 303. ✅ Confirm X32 USB ALSA visibility on Debian test rig.
 304. ✅ Set ALSA/PipeWire backend direction.
 305. ✅ Add generic ALSA capture smoke and validate X32 short capture.
+306. ✅ Audit node-scoped agent listen-monitor chunk ingress.
 
 ## Open Questions
 
