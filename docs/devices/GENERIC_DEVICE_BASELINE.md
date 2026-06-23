@@ -24,7 +24,9 @@ Status: Partial baseline checked.
 - Node inventory can filter visible recorder nodes by audio backend from runtime availability or collected interface metadata.
 - Synthetic meters and fake-controller capture/render smoke tests validate agent workflows, including template-driven capture arguments, without hardware.
 - Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, and render/channel-map output on a recorder node.
-- Remaining gaps: Linux loopback smoke execution on a recorder node, physical X32 validation, and broader physical-device validation are not complete.
+- Generic ALSA hardware capture smoke can validate a selected Linux capture device with configured device, format, sample rate, channel count, duration, output size, and ffprobe metadata.
+- X32 X-USB short capture smoke passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
+- Remaining gaps: Linux loopback smoke execution on a recorder node, broader physical-device validation, full agent lifecycle against hardware, and long-run hardware capture validation are not complete.
 
 ## Checked By
 
@@ -40,6 +42,7 @@ Status: Partial baseline checked.
 | ALSA and synthetic meter frame generation | `crates/recorder-agent/src/telemetry.rs` |
 | Channel-map render planning for generic capture inputs | `crates/recorder-agent/src/channel_map.rs` |
 | Linux `snd-aloop` capture, meter, and render smoke tasks | `.mise.toml`, `scripts/alsa-loopback-smoke.sh`, `scripts/agent-loopback-meter-smoke.sh`, `scripts/alsa-loopback-render-smoke.sh` |
+| Generic ALSA hardware capture smoke | `.mise.toml`, `scripts/alsa-capture-smoke.sh` |
 | Hardware-free job lifecycle, render, cache upload, stop handling, and template meter sampling | `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-devices.mjs` |
 
 `mise run devices:check-generic` validates this partial baseline, and `mise run check` runs it.

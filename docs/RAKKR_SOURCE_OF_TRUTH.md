@@ -63,8 +63,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller API | 🟨 | Auth/OIDC detail/action summaries, RBAC, audit selected exports/facets, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, upload queue detail/action summaries and runner actions, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
-| Test rig | 🟨 | Debian node reachable; X32 X-USB visible as ALSA `hw:CARD=XUSB,DEV=0` with 32-channel 48 kHz capture; audio capture validation remains |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, Linux loopback tasks, and X32 ALSA visibility; Linux capture validation remains |
+| Test rig | 🟨 | Debian node reachable; X32 X-USB visible and short ALSA capture smoke passed as `hw:CARD=XUSB,DEV=0` with 32-channel 48 kHz capture; long-run/full-agent validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, Linux loopback tasks, and X32 ALSA visibility/capture smoke; broader Linux capture validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -934,6 +934,7 @@ Current implementation baseline:
 302. ✅ Scope recording-job audit targets.
 303. ✅ Confirm X32 USB ALSA visibility on Debian test rig.
 304. ✅ Set ALSA/PipeWire backend direction.
+305. ✅ Add generic ALSA capture smoke and validate X32 short capture.
 
 ## Open Questions
 

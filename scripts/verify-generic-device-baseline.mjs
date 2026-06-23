@@ -36,6 +36,7 @@ const sourceFiles = [
   "scripts/alsa-loopback-smoke.sh",
   "scripts/agent-loopback-meter-smoke.sh",
   "scripts/alsa-loopback-render-smoke.sh",
+  "scripts/alsa-capture-smoke.sh",
   "scripts/agent-fake-controller-smoke-devices.mjs",
   "scripts/agent-fake-controller-smoke.mjs",
 ];
@@ -69,6 +70,7 @@ const baselinePhrases = [
   "snd-aloop",
   "Remaining gaps",
   "Linux loopback smoke execution",
+  "generic ALSA hardware capture smoke",
   "mise run devices:check-generic",
 ];
 const sourceSnippets = [
@@ -146,6 +148,8 @@ const sourceSnippets = [
   "agent:loopback-smoke",
   "agent:loopback-meter-smoke",
   "agent:loopback-render-smoke",
+  "agent:alsa-capture-smoke",
+  "RAKKR_ALSA_CAPTURE_DEVICE",
   "snd-aloop",
   "speaker-test",
   "ffprobe",
