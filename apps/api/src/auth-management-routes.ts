@@ -61,13 +61,29 @@ export function registerAuthManagementRoutes({
   app.get(
     "/api/v1/auth/actions",
     requirePermission("auth:manage", "auth.actions.read", () => ({ type: "auth" })),
-    async (c) =>
-      c.json({
+    async (c) => {
+      const actions = authRootActions(currentUser(c).permissions);
+
+      await recordAuditEvent(c, {
+        action: "auth.actions.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "auth:manage",
+        target: {
+          type: "auth",
+        },
+      });
+
+      return c.json({
         data: {
-          actions: authRootActions(currentUser(c).permissions),
+          actions,
           links: authRootLinks(),
         },
-      }),
+      });
+    },
   );
 
   app.get(
@@ -191,6 +207,7 @@ export function registerAuthManagementRoutes({
       const user = await authService.localUser(c.req.param("userId"));
 
       if (!user) {
+        await recordUserReadFailure(c, c.req.param("userId"), "auth.users.detail.read.failed");
         return c.json({ error: "User not found" }, 404);
       }
 
@@ -223,6 +240,7 @@ export function registerAuthManagementRoutes({
       const user = await authService.localUser(c.req.param("userId"));
 
       if (!user) {
+        await recordUserReadFailure(c, c.req.param("userId"), "auth.users.actions.read.failed");
         return c.json({ error: "User not found" }, 404);
       }
 
@@ -276,10 +294,25 @@ export function registerAuthManagementRoutes({
     requirePermission("auth:manage", "auth.access_policies.actions.read", () => ({ type: "auth" })),
     async (c) => {
       const policies = await authService.accessPolicies();
+      const actions = accessPolicyActions(currentUser(c).permissions);
+
+      await recordAuditEvent(c, {
+        action: "auth.access_policies.actions.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          policyCount: policies.length,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "auth:manage",
+        target: {
+          type: "auth",
+        },
+      });
 
       return c.json({
         data: {
-          actions: accessPolicyActions(currentUser(c).permissions),
+          actions,
           links: accessPolicyLinks(),
           policies,
         },
@@ -404,6 +437,20 @@ export function registerAuthManagementRoutes({
       outcome: "failed",
       permission: "auth:manage",
       reason,
+      target: {
+        id: userId,
+        type: "user",
+      },
+    });
+  }
+
+  async function recordUserReadFailure(c: Context<AppBindings>, userId: string, action: string) {
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      outcome: "failed",
+      permission: "auth:manage",
+      reason: "user_not_found",
       target: {
         id: userId,
         type: "user",
