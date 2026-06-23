@@ -55,10 +55,26 @@ export function registerUploadRunnerRoutes({
     async (c) => {
       const visibleRecordingIds = await uploadRunnerRecordingIds(c, currentAuth, scopedRecordings);
       const status = scopedUploadRunnerStatus(uploadRunner.status(), visibleRecordingIds);
+      const actions = uploadRunnerActions(status, currentAuth(c).user?.permissions ?? []);
+
+      await recordAuditEvent(c, {
+        action: "recordings.upload_runner.actions.read.succeeded",
+        auth: currentAuth(c),
+        details: {
+          lastSummaryAttempted: status.lastSummary?.attempted ?? 0,
+          lastSummaryItemCount: status.lastSummary?.items.length ?? 0,
+          running: status.running,
+          started: status.started,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: { type: "upload_runner" },
+      });
 
       return c.json({
         data: {
-          actions: uploadRunnerActions(status, currentAuth(c).user?.permissions ?? []),
+          actions,
           links: uploadRunnerLinks(),
           status,
         },

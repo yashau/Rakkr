@@ -140,19 +140,51 @@ export function registerRecordingUploadQueueRoutes({
       };
     }),
     async (c) => {
-      const context = await visibleUploadQueueContext(c.req.param("itemId") ?? "", {
+      const itemId = c.req.param("itemId") ?? "";
+      const user = currentUser(c);
+      const context = await visibleUploadQueueContext(itemId, {
         currentUser,
         c,
         scopedRecordings,
       });
 
       if (!context) {
+        await recordAuditEvent(c, {
+          action: "recordings.upload_queue.actions.read.failed",
+          auth: currentAuth(c),
+          outcome: "failed",
+          permission: "recording:read",
+          reason: "upload_queue_item_not_found",
+          target: { id: itemId, type: "upload_queue" },
+        });
+
         return c.json({ error: "Upload queue item not found" }, 404);
       }
 
+      const actions = uploadQueueActions(context.item, user.permissions, true);
+
+      await recordAuditEvent(c, {
+        action: "recordings.upload_queue.actions.read.succeeded",
+        auth: currentAuth(c),
+        correlationIds: {
+          recordingId: context.recording.id,
+          uploadQueueItemId: context.item.id,
+        },
+        details: {
+          provider: context.item.provider,
+          recordingAvailable: true,
+          retryable: retryableUploadQueueStatuses.has(context.item.status),
+          status: context.item.status,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: { id: context.recording.id, name: context.recording.name, type: "recording" },
+      });
+
       return c.json({
         data: {
-          actions: uploadQueueActions(context.item, currentUser(c).permissions, true),
+          actions,
           item: context.item,
           links: uploadQueueLinks(context.item.id),
           recording: context.recording,

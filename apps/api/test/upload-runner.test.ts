@@ -189,6 +189,9 @@ test("upload runner routes expose status and run-now control", async () => {
     data: { actions: { run: { enabled: boolean; href?: string } } };
   };
   const payload = await run.json();
+  const actionEvents = await auditStore.list({
+    action: "recordings.upload_runner.actions.read.succeeded",
+  });
   const events = await auditStore.list({ action: "recordings.upload_runner.run.succeeded" });
 
   assert.equal(before.status, 200);
@@ -198,6 +201,11 @@ test("upload runner routes expose status and run-now control", async () => {
   assert.equal(run.status, 200);
   assert.equal(payload.summary.succeeded, 1);
   assert.equal(payload.data.lastSummary.succeeded, 1);
+  assert.equal(actionEvents.length, 1);
+  assert.equal(actionEvents[0]?.permission, "recording:read");
+  assert.equal(actionEvents[0]?.target.type, "upload_runner");
+  assert.equal(actionEvents[0]?.details.started, false);
+  assert.equal(actionEvents[0]?.details.visibleActionCount, 2);
   assert.equal(events.length, 1);
   assert.equal(events[0]?.actor.id, "user_upload_runner_test");
 });
@@ -291,6 +299,9 @@ test("upload runner status routes hide last-summary items outside scoped recordi
       status: { lastSummary?: { attempted: number; items: Array<{ recordingId: string }> } };
     };
   };
+  const [actionEvent] = await auditStore.list({
+    action: "recordings.upload_runner.actions.read.succeeded",
+  });
 
   assert.equal(statusResponse.status, 200);
   assert.equal(actionsResponse.status, 200);
@@ -301,6 +312,8 @@ test("upload runner status routes hide last-summary items outside scoped recordi
     [visible.id],
   );
   assert.deepEqual(actionsBody.data.status.lastSummary, statusBody.data.lastSummary);
+  assert.equal(actionEvent?.details.lastSummaryAttempted, 1);
+  assert.equal(actionEvent?.details.lastSummaryItemCount, 1);
 });
 
 test("upload runner routes deny users without required permissions", async () => {
@@ -362,10 +375,15 @@ test("upload runner action summary reports missing control permission", async ()
   const body = (await response.json()) as {
     data: { actions: { run: { enabled: boolean; reason?: string } } };
   };
+  const [event] = await auditStore.list({
+    action: "recordings.upload_runner.actions.read.succeeded",
+  });
 
   assert.equal(response.status, 200);
   assert.equal(body.data.actions.run.enabled, false);
   assert.equal(body.data.actions.run.reason, "missing_permission");
+  assert.equal(event?.outcome, "succeeded");
+  assert.equal(event?.details.visibleActionCount, 2);
 });
 
 const allow: RequirePermission = () => async (_c, next) => {

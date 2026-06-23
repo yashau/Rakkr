@@ -341,6 +341,12 @@ test("upload queue item action summary returns retry readiness", async () => {
   const queuedResponse = await app.request(`/api/v1/upload-queue/${queued.id}/actions`);
   const failedBody = (await failedResponse.json()) as UploadQueueActionsResponse;
   const queuedBody = (await queuedResponse.json()) as UploadQueueActionsResponse;
+  const actionEvents = await auditStore.list({
+    action: "recordings.upload_queue.actions.read.succeeded",
+  });
+  const failedEvent = actionEvents.find(
+    (event) => event.correlationIds?.uploadQueueItemId === failed.id,
+  );
 
   assert.equal(failedResponse.status, 200);
   assert.equal(failedBody.data.actions.detail.enabled, true);
@@ -349,6 +355,14 @@ test("upload queue item action summary returns retry readiness", async () => {
   assert.equal(queuedResponse.status, 200);
   assert.equal(queuedBody.data.actions.retry.enabled, false);
   assert.equal(queuedBody.data.actions.retry.reason, "upload_queue_item_not_retryable");
+  assert.equal(actionEvents.length, 2);
+  assert.equal(failedEvent?.permission, "recording:read");
+  assert.equal(failedEvent?.target.id, failedRecording.id);
+  assert.equal(failedEvent?.target.type, "recording");
+  assert.equal(failedEvent?.details.recordingAvailable, true);
+  assert.equal(failedEvent?.details.retryable, true);
+  assert.equal(failedEvent?.details.status, "failed");
+  assert.equal(failedEvent?.details.visibleActionCount, 2);
 });
 
 test("upload queue item action summary reports permission and visibility blockers", async () => {
@@ -382,11 +396,23 @@ test("upload queue item action summary reports permission and visibility blocker
   const visibleResponse = await app.request(`/api/v1/upload-queue/${visible.id}/actions`);
   const hiddenResponse = await app.request(`/api/v1/upload-queue/${hidden.id}/actions`);
   const visibleBody = (await visibleResponse.json()) as UploadQueueActionsResponse;
+  const [succeededEvent] = await auditStore.list({
+    action: "recordings.upload_queue.actions.read.succeeded",
+  });
+  const [failedEvent] = await auditStore.list({
+    action: "recordings.upload_queue.actions.read.failed",
+  });
 
   assert.equal(visibleResponse.status, 200);
   assert.equal(visibleBody.data.actions.retry.enabled, false);
   assert.equal(visibleBody.data.actions.retry.reason, "missing_permission");
   assert.equal(hiddenResponse.status, 404);
+  assert.equal(succeededEvent?.target.id, visibleRecording.id);
+  assert.equal(succeededEvent?.details.retryable, true);
+  assert.equal(failedEvent?.permission, "recording:read");
+  assert.equal(failedEvent?.reason, "upload_queue_item_not_found");
+  assert.equal(failedEvent?.target.id, hidden.id);
+  assert.equal(failedEvent?.target.type, "upload_queue");
 });
 
 test("upload queue retry audits items outside scoped visibility", async () => {
