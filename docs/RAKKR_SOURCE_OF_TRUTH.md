@@ -392,6 +392,7 @@ Current implementation baseline:
 - Schedule action-summary routes are scoped and audited for success/failure.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Health read and lifecycle routes have missing-permission deny coverage.
+- Health event action-summary routes are scoped and audited for success/failure.
 - Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
 - Node action-summary routes are scoped and audited for success/failure.
 - Status, Prometheus metrics, and OIDC discovery routes have missing-permission deny coverage.
@@ -948,6 +949,7 @@ Current implementation baseline:
 310. ✅ Audit settings action-summary routes.
 311. ✅ Audit node action-summary routes.
 312. ✅ Audit schedule action-summary routes.
+313. ✅ Audit health event action-summary routes.
 
 ## Open Questions
 

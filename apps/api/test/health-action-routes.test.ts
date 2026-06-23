@@ -27,8 +27,10 @@ test("health event action summary returns lifecycle readiness and links", async 
     nodeId: "node_health_action",
     status: "open",
   });
+  const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const app = healthActionsApp({
+    auditStore,
     events: [healthEvent],
     permissionCalls,
     user: user(["health:acknowledge", "health:read"]),
@@ -36,6 +38,9 @@ test("health event action summary returns lifecycle readiness and links", async 
 
   const response = await app.request(`/api/v1/health-events/${healthEvent.id}/actions`);
   const body = (await response.json()) as HealthActionsResponse;
+  const [auditEvent] = await auditStore.list({
+    action: "health.events.actions.read.succeeded",
+  });
 
   assert.equal(response.status, 200);
   assert.deepEqual(permissionCalls.at(-1), {
@@ -52,6 +57,14 @@ test("health event action summary returns lifecycle readiness and links", async 
   assert.equal(body.data.actions.reopen.enabled, false);
   assert.equal(body.data.actions.reopen.reason, "health_event_not_resolved");
   assert.equal(body.data.links.acknowledge, `/api/v1/health-events/${healthEvent.id}/acknowledge`);
+  assert.equal(auditEvent?.outcome, "succeeded");
+  assert.equal(auditEvent?.permission, "health:read");
+  assert.equal(auditEvent?.target.id, healthEvent.id);
+  assert.equal(auditEvent?.details.eventStatus, "open");
+  assert.equal(auditEvent?.details.eventType, healthEvent.type);
+  assert.equal(auditEvent?.details.severity, healthEvent.severity);
+  assert.equal(auditEvent?.details.targetCount, 1);
+  assert.equal(auditEvent?.details.visibleActionCount, 5);
 });
 
 test("health event action summary reports permission blockers", async () => {
@@ -111,8 +124,10 @@ test("health event action summary exposes lifecycle blockers after permission pa
 
 test("health event action summary hides events outside scoped visibility", async () => {
   const healthEvent = event({ id: "health_action_hidden", nodeId: "node_hidden" });
+  const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const app = healthActionsApp({
+    auditStore,
     events: [healthEvent],
     hasResourceScope: async (_user, target) => target.id !== "node_hidden",
     permissionCalls,
@@ -120,12 +135,18 @@ test("health event action summary hides events outside scoped visibility", async
   });
 
   const response = await app.request(`/api/v1/health-events/${healthEvent.id}/actions`);
+  const [auditEvent] = await auditStore.list({ action: "health.events.actions.read.failed" });
 
   assert.equal(response.status, 404);
   assert.deepEqual(permissionCalls.at(-1)?.target, {
     id: healthEvent.id,
     type: "health_event",
   });
+  assert.equal(auditEvent?.outcome, "failed");
+  assert.equal(auditEvent?.permission, "health:read");
+  assert.equal(auditEvent?.reason, "health_event_not_found");
+  assert.equal(auditEvent?.target.id, healthEvent.id);
+  assert.equal(auditEvent?.target.type, "health_event");
 });
 
 interface HealthActionsResponse {
@@ -144,11 +165,13 @@ interface PermissionCall {
 }
 
 function healthActionsApp({
+  auditStore = createAuditStore(""),
   events,
   hasResourceScope = async () => true,
   permissionCalls,
   user: currentUser,
 }: {
+  auditStore?: ReturnType<typeof createAuditStore>;
   events: HealthEvent[];
   hasResourceScope?: (user: CurrentUser, target: AuditTarget) => Promise<boolean>;
   permissionCalls: PermissionCall[];
@@ -162,7 +185,7 @@ function healthActionsApp({
     currentUser: () => currentUser,
     hasResourceScope,
     healthEventStore: createHealthEventStore("", events),
-    recordAuditEvent: recordAuditEvent(),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: memoryRecordingStore(),
     requirePermission: requirePermission(permissionCalls),
   });
@@ -181,9 +204,7 @@ function requirePermission(calls: PermissionCall[]): RequirePermission {
   };
 }
 
-function recordAuditEvent(): RecordAuditEvent {
-  const auditStore = createAuditStore("");
-
+function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
   return async (_c, input) => {
     const event: AuditEvent = {
       action: input.action,

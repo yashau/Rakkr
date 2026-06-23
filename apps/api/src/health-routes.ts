@@ -125,6 +125,7 @@ export function registerHealthRoutes({
     currentUser,
     hasResourceScope,
     healthEventStore,
+    recordAuditEvent,
     requirePermission,
   });
 

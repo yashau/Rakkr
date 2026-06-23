@@ -4,7 +4,12 @@ import type { HealthEvent, Permission } from "@rakkr/shared";
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import { healthEventTargets, visibleHealthEvent } from "./health-visibility.js";
-import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 
 interface HealthActionRouteDependencies {
   app: Hono<AppBindings>;
@@ -14,6 +19,7 @@ interface HealthActionRouteDependencies {
     target: AuditTarget,
   ) => Promise<boolean>;
   healthEventStore: HealthEventStore;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
 }
 
@@ -32,6 +38,7 @@ export function registerHealthActionRoutes({
   currentUser,
   hasResourceScope,
   healthEventStore,
+  recordAuditEvent,
   requirePermission,
 }: HealthActionRouteDependencies) {
   app.get(
@@ -46,15 +53,42 @@ export function registerHealthActionRoutes({
       const event = await healthEventStore.find(eventId);
 
       if (!event || !(await visibleHealthEvent(user, event, hasResourceScope))) {
+        await recordAuditEvent(c, {
+          action: "health.events.actions.read.failed",
+          auth: { user },
+          outcome: "failed",
+          permission: "health:read",
+          reason: "health_event_not_found",
+          target: { id: eventId, type: "health_event" },
+        });
+
         return c.json({ error: "Health event not found" }, 404);
       }
 
+      const actions = healthActions(event, user.permissions);
+      const targets = healthEventTargets(event);
+
+      await recordAuditEvent(c, {
+        action: "health.events.actions.read.succeeded",
+        auth: { user },
+        details: {
+          eventStatus: event.status,
+          eventType: event.type,
+          severity: event.severity,
+          targetCount: targets.length,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "health:read",
+        target: { id: event.id, type: "health_event" },
+      });
+
       return c.json({
         data: {
-          actions: healthActions(event, user.permissions),
+          actions,
           event,
           links: healthActionLinks(event.id),
-          targets: healthEventTargets(event),
+          targets,
         },
       });
     },
