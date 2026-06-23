@@ -389,6 +389,7 @@ Current implementation baseline:
 - Recorder-level denies have route coverage for hiding attached recordings and blocking recording edit/control/delete actions.
 - Schedule-level denies have route coverage for hiding schedules and blocking run-now control.
 - Schedule read/manage routes have missing-permission deny coverage.
+- Schedule action-summary routes are scoped and audited for success/failure.
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Health read and lifecycle routes have missing-permission deny coverage.
 - Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
@@ -946,6 +947,7 @@ Current implementation baseline:
 309. ✅ Audit OIDC discovery read and action-summary routes.
 310. ✅ Audit settings action-summary routes.
 311. ✅ Audit node action-summary routes.
+312. ✅ Audit schedule action-summary routes.
 
 ## Open Questions
 

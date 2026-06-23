@@ -2,12 +2,13 @@ import type { Context, Hono } from "hono";
 import type { Permission, RecorderNode, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, RequirePermission } from "./http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { skipNextScheduleOccurrence } from "./schedule-engine.js";
 
 interface ScheduleActionRouteDependencies {
   app: Hono<AppBindings>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
   scopedSchedules: (user: NonNullable<AuthResult["user"]>) => Promise<ScheduleSummary[]>;
@@ -24,6 +25,7 @@ interface ScheduleActionState {
 export function registerScheduleActionRoutes({
   app,
   currentUser,
+  recordAuditEvent,
   requirePermission,
   scopedNodes,
   scopedSchedules,
@@ -42,14 +44,37 @@ export function registerScheduleActionRoutes({
       );
 
       if (!schedule) {
+        await recordAuditEvent(c, {
+          action: "schedules.actions.read.failed",
+          auth: { user },
+          outcome: "failed",
+          permission: "schedule:read",
+          reason: "schedule_not_found",
+          target: { id: scheduleId, type: "schedule" },
+        });
+
         return c.json({ error: "Schedule not found" }, 404);
       }
 
       const node = (await scopedNodes(user)).find((candidate) => candidate.id === schedule.nodeId);
+      const actions = scheduleActions(schedule, user.permissions, Boolean(node));
+
+      await recordAuditEvent(c, {
+        action: "schedules.actions.read.succeeded",
+        auth: { user },
+        details: {
+          nodeAvailable: Boolean(node),
+          scheduleEnabled: schedule.enabled,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "schedule:read",
+        target: { id: schedule.id, name: schedule.name, type: "schedule" },
+      });
 
       return c.json({
         data: {
-          actions: scheduleActions(schedule, user.permissions, Boolean(node)),
+          actions,
           links: scheduleActionLinks(schedule.id),
           node,
           schedule,

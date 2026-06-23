@@ -185,6 +185,7 @@ export function registerScheduleRoutes({
   registerScheduleActionRoutes({
     app,
     currentUser,
+    recordAuditEvent,
     requirePermission,
     scopedNodes,
     scopedSchedules,
