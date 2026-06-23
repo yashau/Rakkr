@@ -25,7 +25,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Audit | Required for privileged reads, writes, denied attempts, and service actions |
 | Transport | Encrypted controller/node HTTP/WebSocket on trusted LAN |
 | Future remote | Prefer Iroh over libp2p for known-node QUIC dialing and relay fallback |
-| Audio devices | Generic Linux audio interfaces; X32 Rack is only the first test fixture |
+| Audio devices | Generic Linux audio interfaces; ALSA direct is the reliability default, PipeWire is the modern routed backend, X32 Rack is only the first test fixture |
 | Default profile | Voice, MP3 VBR, 128kbps target, fully configurable |
 | Scheduling | Human-friendly rules; no cron language exposed |
 | Storage | Local node cache plus SMB/S3 upload providers |
@@ -63,8 +63,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller API | 🟨 | Auth/OIDC detail/action summaries, RBAC, audit selected exports/facets, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, upload queue detail/action summaries and runner actions, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
-| Test rig | ⏸️ | Debian node reachable; X32 validation paused until hardware check |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, and Linux loopback tasks; Linux/hardware validation remains |
+| Test rig | 🟨 | Debian node reachable; X32 X-USB visible as ALSA `hw:CARD=XUSB,DEV=0` with 32-channel 48 kHz capture; audio capture validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, Linux loopback tasks, and X32 ALSA visibility; Linux capture validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -88,6 +88,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 - Defaults are profiles/templates, not hard-coded engine behavior.
 - Nodes must be identifiable by alias, location, network, devices, channels, status, and notes.
 - X32 support must not make Rakkr X32-specific.
+- ALSA direct capture is the default dependable hardware path; PipeWire remains first-class for modern routed audio graphs.
 
 ## Core Architecture
 
@@ -931,15 +932,17 @@ Current implementation baseline:
 300. ✅ Scope agent job recording mutations.
 301. ✅ Scope agent cache-file job completion.
 302. ✅ Scope recording-job audit targets.
+303. ✅ Confirm X32 USB ALSA visibility on Debian test rig.
+304. ✅ Set ALSA/PipeWire backend direction.
 
 ## Open Questions
 
 | Question | Current Lean |
 | -------- | ------------ |
-| ALSA/JACK/PipeWire order | ALSA default, PipeWire and JACK presets now |
+| JACK role | Supported for pro-audio graph setups; PipeWire is the preferred modern routed path |
 | Rust MP3 encoder path | Evaluate during agent recording pipeline hardening |
 | Live monitor protocol | Agent audio chunk polling now; encrypted WebSocket session control later |
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 
-Last updated: `2026-06-22`
+Last updated: `2026-06-23`
