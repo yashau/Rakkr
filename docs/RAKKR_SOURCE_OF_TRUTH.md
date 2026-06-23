@@ -63,8 +63,8 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller API | 🟨 | Auth/OIDC detail/action summaries, RBAC, audit selected exports/facets, node detail/list/action summaries with location/backend/last-seen filters/exports, capacity, scoped aggregate status, recording detail/context/action summaries/list/actions, ad-hoc and scheduled backend/interface selection, schedule list filters/detail/action summaries/exports, jobs, lifecycle coverage, settings list/detail/action summaries/update, searchable health filters/detail/action summaries/bulk lifecycle controls/exports, recording-job detail/action summaries/date/relationship/capture filters and controls/exports, upload queue detail/action summaries and runner actions, metrics |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
-| Test rig | 🟨 | Debian node reachable; X32 X-USB visible and short ALSA capture smoke passed as `hw:CARD=XUSB,DEV=0` with 32-channel 48 kHz capture; long-run/full-agent validation remains |
-| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, Linux loopback tasks, and X32 ALSA visibility/capture smoke; broader Linux capture validation remains |
+| Test rig | 🟨 | Debian node reachable; X32 X-USB visible and short ALSA capture smoke passed as `hw:CARD=XUSB,DEV=0` with 32-channel 48 kHz capture; ALSA loopback capture/render smoke passed; long-run/full-agent validation remains |
+| Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, Linux loopback capture/render execution, and X32 ALSA visibility/capture smoke; broader Linux capture validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
@@ -222,6 +222,7 @@ Current partial implementation:
 - Agent runtime inventory reports detected PipeWire and JACK command availability, and both have managed capture/meter backend presets.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - Agent listen-monitor chunk ingress is node-scoped and audited for accepted and rejected chunks.
+- ALSA loopback capture and channel-map render smokes passed on the Debian test rig using `hw:1,1,0`, stereo `S16_LE`, and 48 kHz capture.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
 - RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
@@ -937,6 +938,7 @@ Current implementation baseline:
 304. ✅ Set ALSA/PipeWire backend direction.
 305. ✅ Add generic ALSA capture smoke and validate X32 short capture.
 306. ✅ Audit node-scoped agent listen-monitor chunk ingress.
+307. ✅ Validate ALSA loopback capture and render on Debian test rig.
 
 ## Open Questions
 

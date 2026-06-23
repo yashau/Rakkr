@@ -68,8 +68,8 @@ const baselinePhrases = [
   "fake-controller",
   "template-driven capture arguments",
   "snd-aloop",
+  "Debian test rig loopback smoke execution passed",
   "Remaining gaps",
-  "Linux loopback smoke execution",
   "generic ALSA hardware capture smoke",
   "mise run devices:check-generic",
 ];

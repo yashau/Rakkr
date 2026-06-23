@@ -24,9 +24,10 @@ Status: Partial baseline checked.
 - Node inventory can filter visible recorder nodes by audio backend from runtime availability or collected interface metadata.
 - Synthetic meters and fake-controller capture/render smoke tests validate agent workflows, including template-driven capture arguments, without hardware.
 - Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, and render/channel-map output on a recorder node.
+- Debian test rig loopback smoke execution passed for ALSA WAV capture and channel-map render validation using `hw:1,1,0`, stereo `S16_LE`, 48 kHz capture, and non-silent rendered output.
 - Generic ALSA hardware capture smoke can validate a selected Linux capture device with configured device, format, sample rate, channel count, duration, output size, and ffprobe metadata.
 - X32 X-USB short capture smoke passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
-- Remaining gaps: Linux loopback smoke execution on a recorder node, broader physical-device validation, full agent lifecycle against hardware, and long-run hardware capture validation are not complete.
+- Remaining gaps: broader physical-device validation, full agent lifecycle against hardware, and long-run hardware capture validation are not complete.
 
 ## Checked By
 
