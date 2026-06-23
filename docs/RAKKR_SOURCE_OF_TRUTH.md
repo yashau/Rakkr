@@ -497,7 +497,7 @@ Current implementation baseline:
 - Recording card action readiness uses tested cached/terminal recording predicates.
 - Recording library API exposes scoped detail reads for visible recordings.
 - Single-recording playback, download, file, metadata, stop, and delete APIs operate only on scoped visible recordings.
-- Recording library API exposes scoped action summaries with job, cache, permission, upload queue, and lifecycle readiness.
+- Recording library API exposes scoped and audited action summaries with job, cache, permission, upload queue, and lifecycle readiness.
 - Recording library API supports audited bulk folder/tag organization for scoped recordings.
 - Recording library UI supports selecting visible recordings and bulk folder/tag organization.
 - Recording library API deletes terminal recordings and cached files with audit snapshots.
@@ -950,6 +950,7 @@ Current implementation baseline:
 311. ✅ Audit node action-summary routes.
 312. ✅ Audit schedule action-summary routes.
 313. ✅ Audit health event action-summary routes.
+314. ✅ Audit recording action-summary routes.
 
 ## Open Questions
 

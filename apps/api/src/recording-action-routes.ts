@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import type { Permission, RecordingJob, RecordingSummary } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, RequirePermission } from "./http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { recordingHasCachedFile } from "./recording-cache.js";
 import { listRecordingJobs } from "./recording-jobs.js";
 import { listUploadQueueItems } from "./upload-queue.js";
@@ -10,6 +10,7 @@ import { listUploadQueueItems } from "./upload-queue.js";
 interface RecordingActionRouteDependencies {
   app: Hono<AppBindings>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
@@ -29,6 +30,7 @@ const retryableJobStatuses = new Set<RecordingJob["status"]>(["cancelled", "fail
 export function registerRecordingActionRoutes({
   app,
   currentUser,
+  recordAuditEvent,
   requirePermission,
   scopedRecordings,
 }: RecordingActionRouteDependencies) {
@@ -46,6 +48,15 @@ export function registerRecordingActionRoutes({
       );
 
       if (!visibleRecording) {
+        await recordAuditEvent(c, {
+          action: "recordings.actions.read.failed",
+          auth: { user },
+          outcome: "failed",
+          permission: "recording:read",
+          reason: "recording_not_found",
+          target: { id: recordingId, type: "recording" },
+        });
+
         return c.json({ error: "Recording not found" }, 404);
       }
 
@@ -64,10 +75,27 @@ export function registerRecordingActionRoutes({
       const queuedUploads = uploadQueueItems.filter(
         (item) => item.recordingId === visibleRecording.id,
       );
+      const actions = recordingActions(visibleRecording, user.permissions, activeJob, retryableJob);
+
+      await recordAuditEvent(c, {
+        action: "recordings.actions.read.succeeded",
+        auth: { user },
+        details: {
+          activeJobAvailable: Boolean(activeJob),
+          cached: recordingHasCachedFile(visibleRecording),
+          relatedJobCount: recordingJobs.length,
+          retryableJobAvailable: Boolean(retryableJob),
+          uploadQueueCount: queuedUploads.length,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: { id: visibleRecording.id, name: visibleRecording.name, type: "recording" },
+      });
 
       return c.json({
         data: {
-          actions: recordingActions(visibleRecording, user.permissions, activeJob, retryableJob),
+          actions,
           jobs: {
             active: activeJob,
             latest: recordingJobs[0],

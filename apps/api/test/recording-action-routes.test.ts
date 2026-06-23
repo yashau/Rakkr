@@ -53,8 +53,10 @@ test("recording action summary returns ready actions links jobs and upload queue
     provider: "stub",
     reason: "manual_action_summary",
   });
+  const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const app = recordingActionsApp({
+    auditStore,
     permissionCalls,
     recordingStore: memoryRecordingStore([recording]),
     user: currentUser([
@@ -70,6 +72,7 @@ test("recording action summary returns ready actions links jobs and upload queue
 
   const response = await app.request(`/api/v1/recordings/${recording.id}/actions`);
   const body = (await response.json()) as RecordingActionsResponse;
+  const [auditEvent] = await auditStore.list({ action: "recordings.actions.read.succeeded" });
 
   assert.equal(response.status, 200);
   assert.equal(permissionCalls.at(-1)?.action, "recordings.actions.read");
@@ -89,6 +92,15 @@ test("recording action summary returns ready actions links jobs and upload queue
   assert.equal(body.data.actions.stop.reason, "recording_not_active");
   assert.equal(body.data.links.stream, `/api/v1/recordings/${recording.id}/stream`);
   assert.equal(body.data.links.retryJob, `/api/v1/recording-jobs/${failedJob.id}/retry`);
+  assert.equal(auditEvent?.outcome, "succeeded");
+  assert.equal(auditEvent?.permission, "recording:read");
+  assert.equal(auditEvent?.target.id, recording.id);
+  assert.equal(auditEvent?.target.name, recording.name);
+  assert.equal(auditEvent?.details.cached, true);
+  assert.equal(auditEvent?.details.relatedJobCount, 1);
+  assert.equal(auditEvent?.details.retryableJobAvailable, true);
+  assert.equal(auditEvent?.details.uploadQueueCount, 1);
+  assert.equal(auditEvent?.details.visibleActionCount, 7);
 });
 
 test("recording action summary reports active lifecycle blockers", async () => {
@@ -166,8 +178,10 @@ test("recording action summary uses scoped recording context for readiness", asy
 
 test("recording action summary hides recordings outside scoped visibility", async () => {
   const recording = recordingSummary({ id: `rec_action_hidden_${randomUUID()}` });
+  const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const app = recordingActionsApp({
+    auditStore,
     permissionCalls,
     recordingStore: memoryRecordingStore([recording]),
     user: currentUser(["recording:read"]),
@@ -175,6 +189,7 @@ test("recording action summary hides recordings outside scoped visibility", asyn
   });
 
   const response = await app.request(`/api/v1/recordings/${recording.id}/actions`);
+  const [auditEvent] = await auditStore.list({ action: "recordings.actions.read.failed" });
 
   assert.equal(response.status, 404);
   assert.equal(permissionCalls.at(-1)?.action, "recordings.actions.read");
@@ -182,6 +197,11 @@ test("recording action summary hides recordings outside scoped visibility", asyn
     id: recording.id,
     type: "recording",
   });
+  assert.equal(auditEvent?.outcome, "failed");
+  assert.equal(auditEvent?.permission, "recording:read");
+  assert.equal(auditEvent?.reason, "recording_not_found");
+  assert.equal(auditEvent?.target.id, recording.id);
+  assert.equal(auditEvent?.target.type, "recording");
 });
 
 interface RecordingActionsResponse {
@@ -205,12 +225,14 @@ interface PermissionCall {
 }
 
 function recordingActionsApp({
+  auditStore = createAuditStore(""),
   permissionCalls = [],
   recordingStore,
   scopedRecordingSnapshots,
   user,
   visibleRecordingIds,
 }: {
+  auditStore?: ReturnType<typeof createAuditStore>;
   permissionCalls?: PermissionCall[];
   recordingStore: RecordingStore;
   scopedRecordingSnapshots?: RecordingSummary[];
@@ -224,7 +246,7 @@ function recordingActionsApp({
     currentAuth: () => ({ user }),
     currentUser: () => user,
     nodeStore: memoryNodeStore(),
-    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
     requirePermission: requirePermission(permissionCalls),
     scopedNodes: async () => [],
