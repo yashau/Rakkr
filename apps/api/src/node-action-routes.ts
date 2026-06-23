@@ -3,7 +3,7 @@ import type { Permission, RecorderNode } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import { isUuid } from "./auth-utils.js";
-import type { AppBindings, RequirePermission } from "./http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { ListenMonitorStore, StoredListenMonitorChunk } from "./listen-monitor-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 
@@ -12,6 +12,7 @@ interface NodeActionRouteDependencies {
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   listenMonitorStore: ListenMonitorStore;
   meterFrameStore: MeterFrameStore;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
 }
@@ -32,6 +33,7 @@ export function registerNodeActionRoutes({
   currentUser,
   listenMonitorStore,
   meterFrameStore,
+  recordAuditEvent,
   requirePermission,
   scopedNodes,
 }: NodeActionRouteDependencies) {
@@ -47,6 +49,15 @@ export function registerNodeActionRoutes({
       const node = (await scopedNodes(user)).find((candidate) => candidate.id === nodeId);
 
       if (!node) {
+        await recordAuditEvent(c, {
+          action: "nodes.actions.read.failed",
+          auth: { user },
+          outcome: "failed",
+          permission: "node:read",
+          reason: "not_found",
+          target: { id: nodeId, type: "node" },
+        });
+
         return c.json({ error: "Node not found" }, 404);
       }
 
@@ -55,13 +66,27 @@ export function registerNodeActionRoutes({
         meterFrameStore.latest(node.id),
       ]);
       const monitor = nodeMonitorSource(freshMonitorChunk(monitorChunk), meterFrame?.capturedAt);
+      const actions = nodeActions(node, user.permissions, {
+        listen: monitor.available,
+        meters: Boolean(meterFrame),
+      });
+
+      await recordAuditEvent(c, {
+        action: "nodes.actions.read.succeeded",
+        auth: { user },
+        details: {
+          monitorAvailable: monitor.available,
+          monitorSource: monitor.source,
+          visibleActionCount: Object.keys(actions).length,
+        },
+        outcome: "succeeded",
+        permission: "node:read",
+        target: { id: node.id, name: node.alias, type: "node" },
+      });
 
       return c.json({
         data: {
-          actions: nodeActions(node, user.permissions, {
-            listen: monitor.available,
-            meters: Boolean(meterFrame),
-          }),
+          actions,
           links: nodeActionLinks(node),
           monitor,
           node,

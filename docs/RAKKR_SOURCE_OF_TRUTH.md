@@ -392,6 +392,7 @@ Current implementation baseline:
 - Node-level denies have route coverage for hiding health events and blocking alert acknowledgement.
 - Health read and lifecycle routes have missing-permission deny coverage.
 - Node inventory, meter, live-listen, and node-management routes have missing-permission deny coverage.
+- Node action-summary routes are scoped and audited for success/failure.
 - Status, Prometheus metrics, and OIDC discovery routes have missing-permission deny coverage.
 - Aggregate status includes scoped node, recording, and unresolved health-event counts behind node read; embedded settings summaries require settings read.
 - Upload runner read and run-now controls have route coverage for missing-permission denial.
@@ -944,6 +945,7 @@ Current implementation baseline:
 308. ✅ Validate stable X32 32-channel ALSA capture on Debian test rig.
 309. ✅ Audit OIDC discovery read and action-summary routes.
 310. ✅ Audit settings action-summary routes.
+311. ✅ Audit node action-summary routes.
 
 ## Open Questions
 

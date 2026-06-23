@@ -153,6 +153,7 @@ export function registerNodeRoutes({
     currentUser,
     listenMonitorStore,
     meterFrameStore,
+    recordAuditEvent,
     requirePermission,
     scopedNodes,
   });

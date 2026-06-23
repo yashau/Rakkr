@@ -20,6 +20,7 @@ const { registerNodeRoutes } = await import("../src/node-routes.js");
 
 test("node action summary returns ready actions links and monitor context", async () => {
   const recorder = nodeWithInterface({ id: randomUUID() });
+  const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const listenMonitorStore = createListenMonitorStore();
   const capturedAt = new Date().toISOString();
@@ -34,6 +35,7 @@ test("node action summary returns ready actions links and monitor context", asyn
 
   const app = nodeActionsApp({
     listenMonitorStore,
+    auditStore,
     nodes: [recorder],
     permissionCalls,
     user: user(["health:read", "listen:monitor", "node:manage", "node:read", "recording:create"]),
@@ -64,6 +66,16 @@ test("node action summary returns ready actions links and monitor context", asyn
     body.data.links.interfaces[0]?.href,
     `/api/v1/nodes/${recorder.id}/interfaces/iface_monitor`,
   );
+
+  const [event] = await auditStore.list({ action: "nodes.actions.read.succeeded" });
+
+  assert.equal(event?.outcome, "succeeded");
+  assert.equal(event?.permission, "node:read");
+  assert.equal(event?.target.id, recorder.id);
+  assert.equal(event?.target.name, recorder.alias);
+  assert.equal(event?.details.monitorAvailable, true);
+  assert.equal(event?.details.monitorSource, "agent_audio_chunk");
+  assert.equal(event?.details.visibleActionCount, 7);
 });
 
 test("node action summary explains permission and lifecycle blockers", async () => {
@@ -122,8 +134,10 @@ test("node action summary separates listen source from meter readiness", async (
 
 test("node action summary hides nodes outside scoped visibility", async () => {
   const recorder = nodeWithInterface({ id: "node_hidden" });
+  const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
   const app = nodeActionsApp({
+    auditStore,
     nodes: [recorder],
     permissionCalls,
     scopedNodeIds: [],
@@ -134,6 +148,13 @@ test("node action summary hides nodes outside scoped visibility", async () => {
 
   assert.equal(response.status, 404);
   assert.deepEqual(permissionCalls.at(-1)?.target, { id: recorder.id, type: "node" });
+
+  const [event] = await auditStore.list({ action: "nodes.actions.read.failed" });
+
+  assert.equal(event?.outcome, "failed");
+  assert.equal(event?.permission, "node:read");
+  assert.equal(event?.reason, "not_found");
+  assert.equal(event?.target.id, recorder.id);
 });
 
 interface NodeActionsResponse {
@@ -159,6 +180,7 @@ interface PermissionCall {
 }
 
 function nodeActionsApp({
+  auditStore = createAuditStore(""),
   listenMonitorStore = createListenMonitorStore(),
   meterFrames,
   nodes,
@@ -166,6 +188,7 @@ function nodeActionsApp({
   scopedNodeIds,
   user: currentUser,
 }: {
+  auditStore?: ReturnType<typeof createAuditStore>;
   listenMonitorStore?: ListenMonitorStore;
   meterFrames?: MeterFrame[];
   nodes: RecorderNode[];
@@ -194,7 +217,7 @@ function nodeActionsApp({
     },
     meterFrameStore: memoryMeterFrameStore(meterFrames ?? [meterFrame(nodes[0]?.id)]),
     nodeStore: memoryNodeStore(nodes),
-    recordAuditEvent: recordAuditEvent(),
+    recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: requirePermission(permissionCalls),
     scopedNodes: async () =>
       nodes.filter(
@@ -233,9 +256,7 @@ function user(permissions: Permission[]): CurrentUser {
   };
 }
 
-function recordAuditEvent(): RecordAuditEvent {
-  const auditStore = createAuditStore("");
-
+function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {
   return async (_c, input) => {
     return auditStore.append({
       action: input.action,
