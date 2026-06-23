@@ -4,7 +4,12 @@ import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, AuditTarget, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
   channelMapTemplateSettingsTarget,
@@ -24,6 +29,7 @@ interface SettingsActionRouteDependencies {
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
   ) => Promise<boolean>;
+  recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
   uploadProviderStore: UploadProviderStore;
@@ -43,6 +49,7 @@ export function registerSettingsActionRoutes({
   channelMapAssignmentPlanStore,
   currentAuth,
   hasResourceScope,
+  recordAuditEvent,
   requirePermission,
   settingsStore,
   uploadProviderStore,
@@ -58,18 +65,38 @@ export function registerSettingsActionRoutes({
     async (c) => {
       const profile = await settingsStore.findRecordingProfile(c.req.param("profileId") ?? "");
 
-      return profile
-        ? c.json({
-            data: {
-              actions: updateOnlyActions(
-                currentAuth(c).user?.permissions ?? [],
-                `/api/v1/settings/recording-profiles/${profile.id}`,
-              ),
-              links: detailUpdateLinks(`/api/v1/settings/recording-profiles/${profile.id}`),
-              profile,
-            },
-          })
-        : c.json({ error: "Recording profile not found" }, 404);
+      if (!profile) {
+        await recordSettingsActionRead(c, {
+          action: "settings.recording_profiles.actions.read.failed",
+          auth: currentAuth(c),
+          recordAuditEvent,
+          reason: "not_found",
+          target: profileTarget({ id: c.req.param("profileId") ?? "" }),
+        });
+
+        return c.json({ error: "Recording profile not found" }, 404);
+      }
+
+      const actions = updateOnlyActions(
+        currentAuth(c).user?.permissions ?? [],
+        `/api/v1/settings/recording-profiles/${profile.id}`,
+      );
+
+      await recordSettingsActionRead(c, {
+        action: "settings.recording_profiles.actions.read.succeeded",
+        auth: currentAuth(c),
+        recordAuditEvent,
+        target: profileTarget(profile),
+        visibleActionCount: Object.keys(actions).length,
+      });
+
+      return c.json({
+        data: {
+          actions,
+          links: detailUpdateLinks(`/api/v1/settings/recording-profiles/${profile.id}`),
+          profile,
+        },
+      });
     },
   );
 
@@ -84,30 +111,50 @@ export function registerSettingsActionRoutes({
     async (c) => {
       const policy = await settingsStore.findWatchdogPolicy(c.req.param("policyId") ?? "");
 
-      return policy
-        ? c.json({
-            data: {
-              actions: {
-                ...updateOnlyActions(
-                  currentAuth(c).user?.permissions ?? [],
-                  `/api/v1/settings/watchdog-policies/${policy.id}`,
-                ),
-                calibrate: actionState({
-                  href: `/api/v1/settings/watchdog-policies/${policy.id}/calibrations`,
-                  method: "POST",
-                  permission: "settings:manage",
-                  permissions: currentAuth(c).user?.permissions ?? [],
-                  ready: true,
-                }),
-              },
-              links: {
-                ...detailUpdateLinks(`/api/v1/settings/watchdog-policies/${policy.id}`),
-                calibrate: `/api/v1/settings/watchdog-policies/${policy.id}/calibrations`,
-              },
-              policy,
-            },
-          })
-        : c.json({ error: "Watchdog policy not found" }, 404);
+      if (!policy) {
+        await recordSettingsActionRead(c, {
+          action: "settings.watchdog_policies.actions.read.failed",
+          auth: currentAuth(c),
+          recordAuditEvent,
+          reason: "not_found",
+          target: { id: c.req.param("policyId") ?? "", type: "watchdog_policy" },
+        });
+
+        return c.json({ error: "Watchdog policy not found" }, 404);
+      }
+
+      const actions = {
+        ...updateOnlyActions(
+          currentAuth(c).user?.permissions ?? [],
+          `/api/v1/settings/watchdog-policies/${policy.id}`,
+        ),
+        calibrate: actionState({
+          href: `/api/v1/settings/watchdog-policies/${policy.id}/calibrations`,
+          method: "POST",
+          permission: "settings:manage",
+          permissions: currentAuth(c).user?.permissions ?? [],
+          ready: true,
+        }),
+      };
+
+      await recordSettingsActionRead(c, {
+        action: "settings.watchdog_policies.actions.read.succeeded",
+        auth: currentAuth(c),
+        recordAuditEvent,
+        target: watchdogSettingsTarget(policy),
+        visibleActionCount: Object.keys(actions).length,
+      });
+
+      return c.json({
+        data: {
+          actions,
+          links: {
+            ...detailUpdateLinks(`/api/v1/settings/watchdog-policies/${policy.id}`),
+            calibrate: `/api/v1/settings/watchdog-policies/${policy.id}/calibrations`,
+          },
+          policy,
+        },
+      });
     },
   );
 
@@ -125,49 +172,66 @@ export function registerSettingsActionRoutes({
       const template = await settingsStore.findChannelMapTemplate(c.req.param("templateId") ?? "");
       const permissions = currentAuth(c).user?.permissions ?? [];
 
-      return template
-        ? c.json({
-            data: {
-              actions: {
-                ...updateOnlyActions(
-                  permissions,
-                  `/api/v1/settings/channel-map-templates/${template.id}`,
-                ),
-                assign: actionState({
-                  href: "/api/v1/settings/channel-map-assignments",
-                  method: "PUT",
-                  payload: { templateId: template.id },
-                  permission: "settings:manage",
-                  permissions,
-                  ready: true,
-                }),
-                bulkAssign: actionState({
-                  href: "/api/v1/settings/channel-map-assignments/bulk",
-                  method: "PUT",
-                  payload: { templateId: template.id },
-                  permission: "settings:manage",
-                  permissions,
-                  ready: true,
-                }),
-                createRolloutPlan: actionState({
-                  href: "/api/v1/settings/channel-map-assignment-plans",
-                  method: "POST",
-                  payload: { templateId: template.id },
-                  permission: "settings:manage",
-                  permissions,
-                  ready: true,
-                }),
-              },
-              links: {
-                assign: "/api/v1/settings/channel-map-assignments",
-                bulkAssign: "/api/v1/settings/channel-map-assignments/bulk",
-                createRolloutPlan: "/api/v1/settings/channel-map-assignment-plans",
-                ...detailUpdateLinks(`/api/v1/settings/channel-map-templates/${template.id}`),
-              },
-              template,
-            },
-          })
-        : c.json({ error: "Channel map template not found" }, 404);
+      if (!template) {
+        await recordSettingsActionRead(c, {
+          action: "settings.channel_map_templates.actions.read.failed",
+          auth: currentAuth(c),
+          recordAuditEvent,
+          reason: "not_found",
+          target: { id: c.req.param("templateId") ?? "", type: "channel_map_template" },
+        });
+
+        return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const actions = {
+        ...updateOnlyActions(permissions, `/api/v1/settings/channel-map-templates/${template.id}`),
+        assign: actionState({
+          href: "/api/v1/settings/channel-map-assignments",
+          method: "PUT",
+          payload: { templateId: template.id },
+          permission: "settings:manage",
+          permissions,
+          ready: true,
+        }),
+        bulkAssign: actionState({
+          href: "/api/v1/settings/channel-map-assignments/bulk",
+          method: "PUT",
+          payload: { templateId: template.id },
+          permission: "settings:manage",
+          permissions,
+          ready: true,
+        }),
+        createRolloutPlan: actionState({
+          href: "/api/v1/settings/channel-map-assignment-plans",
+          method: "POST",
+          payload: { templateId: template.id },
+          permission: "settings:manage",
+          permissions,
+          ready: true,
+        }),
+      };
+
+      await recordSettingsActionRead(c, {
+        action: "settings.channel_map_templates.actions.read.succeeded",
+        auth: currentAuth(c),
+        recordAuditEvent,
+        target: channelMapTemplateSettingsTarget(template),
+        visibleActionCount: Object.keys(actions).length,
+      });
+
+      return c.json({
+        data: {
+          actions,
+          links: {
+            assign: "/api/v1/settings/channel-map-assignments",
+            bulkAssign: "/api/v1/settings/channel-map-assignments/bulk",
+            createRolloutPlan: "/api/v1/settings/channel-map-assignment-plans",
+            ...detailUpdateLinks(`/api/v1/settings/channel-map-templates/${template.id}`),
+          },
+          template,
+        },
+      });
     },
   );
 
@@ -194,34 +258,54 @@ export function registerSettingsActionRoutes({
       const plan = await channelMapAssignmentPlanStore.find(c.req.param("planId") ?? "");
       const permissions = currentAuth(c).user?.permissions ?? [];
 
-      return plan
-        ? c.json({
-            data: {
-              actions: {
-                detail: actionState({
-                  href: `/api/v1/settings/channel-map-assignment-plans/${plan.id}`,
-                  method: "GET",
-                  permission: "settings:read",
-                  permissions,
-                  ready: true,
-                }),
-                apply: actionState({
-                  href: `/api/v1/settings/channel-map-assignment-plans/${plan.id}/apply`,
-                  method: "POST",
-                  permission: "settings:manage",
-                  permissions,
-                  ready: plan.status === "pending",
-                  reason: plan.status === "pending" ? undefined : "plan_not_pending",
-                }),
-              },
-              links: {
-                apply: `/api/v1/settings/channel-map-assignment-plans/${plan.id}/apply`,
-                detail: `/api/v1/settings/channel-map-assignment-plans/${plan.id}`,
-              },
-              plan,
-            },
-          })
-        : c.json({ error: "Channel map assignment plan not found" }, 404);
+      if (!plan) {
+        await recordSettingsActionRead(c, {
+          action: "settings.channel_map_assignment_plans.actions.read.failed",
+          auth: currentAuth(c),
+          recordAuditEvent,
+          reason: "not_found",
+          target: planTarget({ id: c.req.param("planId") ?? "" }),
+        });
+
+        return c.json({ error: "Channel map assignment plan not found" }, 404);
+      }
+
+      const actions = {
+        detail: actionState({
+          href: `/api/v1/settings/channel-map-assignment-plans/${plan.id}`,
+          method: "GET",
+          permission: "settings:read",
+          permissions,
+          ready: true,
+        }),
+        apply: actionState({
+          href: `/api/v1/settings/channel-map-assignment-plans/${plan.id}/apply`,
+          method: "POST",
+          permission: "settings:manage",
+          permissions,
+          ready: plan.status === "pending",
+          reason: plan.status === "pending" ? undefined : "plan_not_pending",
+        }),
+      };
+
+      await recordSettingsActionRead(c, {
+        action: "settings.channel_map_assignment_plans.actions.read.succeeded",
+        auth: currentAuth(c),
+        recordAuditEvent,
+        target: planTarget(plan),
+        visibleActionCount: Object.keys(actions).length,
+      });
+
+      return c.json({
+        data: {
+          actions,
+          links: {
+            apply: `/api/v1/settings/channel-map-assignment-plans/${plan.id}/apply`,
+            detail: `/api/v1/settings/channel-map-assignment-plans/${plan.id}`,
+          },
+          plan,
+        },
+      });
     },
   );
 
@@ -239,23 +323,51 @@ export function registerSettingsActionRoutes({
       const provider = uploadProviderSchema.safeParse(c.req.param("provider") ?? "");
 
       if (!provider.success) {
+        await recordSettingsActionRead(c, {
+          action: "settings.upload_providers.actions.read.failed",
+          auth: currentAuth(c),
+          recordAuditEvent,
+          reason: "not_found",
+          target: { id: c.req.param("provider") ?? "", type: "upload_provider" },
+        });
+
         return c.json({ error: "Upload provider not found" }, 404);
       }
 
       const status = await uploadProviderStore.findStatus(provider.data);
 
-      return status
-        ? c.json({
-            data: {
-              actions: updateOnlyActions(
-                currentAuth(c).user?.permissions ?? [],
-                `/api/v1/settings/upload-providers/${status.provider}`,
-              ),
-              links: detailUpdateLinks(`/api/v1/settings/upload-providers/${status.provider}`),
-              provider: status,
-            },
-          })
-        : c.json({ error: "Upload provider not found" }, 404);
+      if (!status) {
+        await recordSettingsActionRead(c, {
+          action: "settings.upload_providers.actions.read.failed",
+          auth: currentAuth(c),
+          recordAuditEvent,
+          reason: "not_found",
+          target: { id: provider.data, type: "upload_provider" },
+        });
+
+        return c.json({ error: "Upload provider not found" }, 404);
+      }
+
+      const actions = updateOnlyActions(
+        currentAuth(c).user?.permissions ?? [],
+        `/api/v1/settings/upload-providers/${status.provider}`,
+      );
+
+      await recordSettingsActionRead(c, {
+        action: "settings.upload_providers.actions.read.succeeded",
+        auth: currentAuth(c),
+        recordAuditEvent,
+        target: uploadProviderSettingsTarget(status),
+        visibleActionCount: Object.keys(actions).length,
+      });
+
+      return c.json({
+        data: {
+          actions,
+          links: detailUpdateLinks(`/api/v1/settings/upload-providers/${status.provider}`),
+          provider: status,
+        },
+      });
     },
   );
 
@@ -273,20 +385,71 @@ export function registerSettingsActionRoutes({
       const policyId = c.req.param("policyId") ?? "";
       const policy = await findUploadPolicy(policyId);
 
-      return policy
-        ? c.json({
-            data: {
-              actions: updateOnlyActions(
-                currentAuth(c).user?.permissions ?? [],
-                `/api/v1/settings/upload-policies/${policy.id}`,
-              ),
-              links: detailUpdateLinks(`/api/v1/settings/upload-policies/${policy.id}`),
-              policy,
-            },
-          })
-        : c.json({ error: "Upload policy not found" }, 404);
+      if (!policy) {
+        await recordSettingsActionRead(c, {
+          action: "settings.upload_policies.actions.read.failed",
+          auth: currentAuth(c),
+          recordAuditEvent,
+          reason: "not_found",
+          target: uploadPolicySettingsTarget({ id: policyId }),
+        });
+
+        return c.json({ error: "Upload policy not found" }, 404);
+      }
+
+      const actions = updateOnlyActions(
+        currentAuth(c).user?.permissions ?? [],
+        `/api/v1/settings/upload-policies/${policy.id}`,
+      );
+
+      await recordSettingsActionRead(c, {
+        action: "settings.upload_policies.actions.read.succeeded",
+        auth: currentAuth(c),
+        recordAuditEvent,
+        target: uploadPolicySettingsTarget(policy),
+        visibleActionCount: Object.keys(actions).length,
+      });
+
+      return c.json({
+        data: {
+          actions,
+          links: detailUpdateLinks(`/api/v1/settings/upload-policies/${policy.id}`),
+          policy,
+        },
+      });
     },
   );
+}
+
+async function recordSettingsActionRead(
+  c: Context<AppBindings>,
+  {
+    action,
+    auth,
+    recordAuditEvent,
+    reason,
+    target,
+    visibleActionCount,
+  }: {
+    action: string;
+    auth: AuthResult;
+    recordAuditEvent: RecordAuditEvent;
+    reason?: string;
+    target: AuditTarget;
+    visibleActionCount?: number;
+  },
+) {
+  await recordAuditEvent(c, {
+    action,
+    auth,
+    details: {
+      visibleActionCount,
+    },
+    outcome: reason ? "failed" : "succeeded",
+    permission: "settings:read",
+    reason,
+    target,
+  });
 }
 
 function settingsRead(

@@ -81,7 +81,7 @@ test("settings action summaries expose ready links for managed resources", async
     scope: "controller_cache",
   });
 
-  registerAllSettingsRoutes({
+  const auditStore = registerAllSettingsRoutes({
     app,
     channelMapAssignmentPlanStore,
     currentUser,
@@ -128,6 +128,20 @@ test("settings action summaries expose ready links for managed resources", async
     retention.actions.update.href,
     `/api/v1/settings/retention-policies/${retentionPolicy.id}`,
   );
+
+  const auditActions = (await auditStore.list({ outcome: "succeeded" }))
+    .map((event) => [event.action, event.permission, event.details.visibleActionCount])
+    .sort();
+
+  assert.deepEqual(auditActions, [
+    ["settings.channel_map_assignment_plans.actions.read.succeeded", "settings:read", 2],
+    ["settings.channel_map_templates.actions.read.succeeded", "settings:read", 5],
+    ["settings.recording_profiles.actions.read.succeeded", "settings:read", 2],
+    ["settings.retention_policies.actions.read.succeeded", "settings:read", 2],
+    ["settings.upload_policies.actions.read.succeeded", "settings:read", 2],
+    ["settings.upload_providers.actions.read.succeeded", "settings:read", 2],
+    ["settings.watchdog_policies.actions.read.succeeded", "settings:read", 3],
+  ]);
 });
 
 test("settings action summaries explain missing permission and rollout blockers", async () => {
@@ -224,6 +238,45 @@ test("settings action summary routes deny users without settings read", async ()
   ]);
 });
 
+test("settings action summary routes audit missing resources", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = viewer(["settings:read"]);
+  const auditStore = registerAllSettingsRoutes({
+    app,
+    channelMapAssignmentPlanStore: createChannelMapAssignmentPlanStore(),
+    currentUser,
+    settingsStore: createSettingsStore(),
+    uploadProviderStore: createUploadProviderStore(),
+  });
+
+  const responses = await Promise.all([
+    app.request("/api/v1/settings/recording-profiles/profile_missing/actions"),
+    app.request("/api/v1/settings/watchdog-policies/watchdog_missing/actions"),
+    app.request("/api/v1/settings/channel-map-templates/template_missing/actions"),
+    app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing/actions"),
+    app.request("/api/v1/settings/upload-providers/not-a-provider/actions"),
+    app.request("/api/v1/settings/upload-policies/upload-policy-missing/actions"),
+    app.request("/api/v1/settings/retention-policies/retention-missing/actions"),
+  ]);
+  const failedEvents = await auditStore.list({ outcome: "failed", permission: "settings:read" });
+
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [404, 404, 404, 404, 404, 404, 404],
+  );
+  assert.deepEqual(failedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignment_plans.actions.read.failed",
+    "settings.channel_map_templates.actions.read.failed",
+    "settings.recording_profiles.actions.read.failed",
+    "settings.retention_policies.actions.read.failed",
+    "settings.upload_policies.actions.read.failed",
+    "settings.upload_providers.actions.read.failed",
+    "settings.watchdog_policies.actions.read.failed",
+  ]);
+  assert.ok(failedEvents.every((event) => event.reason === "not_found"));
+  assert.ok(failedEvents.every((event) => event.actor.id === currentUser.id));
+});
+
 async function actions(app: Hono<AppBindings>, targetPath: string) {
   const response = await app.request(targetPath);
   const body = (await response.json()) as {
@@ -265,6 +318,8 @@ function registerAllSettingsRoutes({
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
   });
+
+  return auditStore;
 }
 
 function allowPermission(): RequirePermission {

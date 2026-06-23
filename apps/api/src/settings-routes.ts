@@ -179,6 +179,7 @@ export function registerSettingsRoutes({
     channelMapAssignmentPlanStore,
     currentAuth,
     hasResourceScope,
+    recordAuditEvent,
     requirePermission,
     settingsStore,
     uploadProviderStore,

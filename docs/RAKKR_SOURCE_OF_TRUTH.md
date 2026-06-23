@@ -407,6 +407,7 @@ Current implementation baseline:
 - Header recording shortcut mirrors `recording:create`, requires node/settings lookup access, and opens the audited global quick-record start workflow.
 - Settings read routes have missing-permission deny coverage for `settings:read`.
 - Settings write routes have missing-permission deny coverage for `settings:manage`.
+- Settings action-summary routes are RBAC-gated and audited for success/failure.
 - Disabled/deleted/password-reset users lose active sessions.
 - Audit API/UI filters by id, actor, action, target, outcome, time, and result limit with removable active chips; filtered/selected CSV export and server-side filter facets are RBAC-gated.
 - Audit API/UI can filter by permission and reason for denial investigations.
@@ -942,6 +943,7 @@ Current implementation baseline:
 307. ✅ Validate ALSA loopback capture and render on Debian test rig.
 308. ✅ Validate stable X32 32-channel ALSA capture on Debian test rig.
 309. ✅ Audit OIDC discovery read and action-summary routes.
+310. ✅ Audit settings action-summary routes.
 
 ## Open Questions
 

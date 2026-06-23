@@ -64,21 +64,41 @@ export function registerRetentionPolicyRoutes({
       const policyId = c.req.param("policyId");
       const policy = await findRetentionPolicy(policyId);
 
-      return policy
-        ? c.json({
-            data: {
-              actions: retentionPolicyActions(
-                currentAuth(c).user?.permissions ?? [],
-                `/api/v1/settings/retention-policies/${policy.id}`,
-              ),
-              links: {
-                detail: `/api/v1/settings/retention-policies/${policy.id}`,
-                update: `/api/v1/settings/retention-policies/${policy.id}`,
-              },
-              policy,
-            },
-          })
-        : c.json({ error: "Retention policy not found" }, 404);
+      if (!policy) {
+        await recordRetentionPolicyActionRead(c, {
+          action: "settings.retention_policies.actions.read.failed",
+          currentAuth,
+          recordAuditEvent,
+          reason: "not_found",
+          target: { id: policyId, type: "retention_policy" },
+        });
+
+        return c.json({ error: "Retention policy not found" }, 404);
+      }
+
+      const actions = retentionPolicyActions(
+        currentAuth(c).user?.permissions ?? [],
+        `/api/v1/settings/retention-policies/${policy.id}`,
+      );
+
+      await recordRetentionPolicyActionRead(c, {
+        action: "settings.retention_policies.actions.read.succeeded",
+        currentAuth,
+        recordAuditEvent,
+        target: retentionPolicySettingsTarget(policy),
+        visibleActionCount: Object.keys(actions).length,
+      });
+
+      return c.json({
+        data: {
+          actions,
+          links: {
+            detail: `/api/v1/settings/retention-policies/${policy.id}`,
+            update: `/api/v1/settings/retention-policies/${policy.id}`,
+          },
+          policy,
+        },
+      });
     },
   );
 
@@ -244,6 +264,37 @@ async function recordSettingsFailure(
     details,
     outcome: "failed",
     reason: details.reason,
+    target,
+  });
+}
+
+async function recordRetentionPolicyActionRead(
+  c: Context<AppBindings>,
+  {
+    action,
+    currentAuth,
+    recordAuditEvent,
+    reason,
+    target,
+    visibleActionCount,
+  }: {
+    action: string;
+    currentAuth: (c: Context<AppBindings>) => AuthResult;
+    recordAuditEvent: RecordAuditEvent;
+    reason?: string;
+    target: AuditTarget;
+    visibleActionCount?: number;
+  },
+) {
+  await recordAuditEvent(c, {
+    action,
+    auth: currentAuth(c),
+    details: {
+      visibleActionCount,
+    },
+    outcome: reason ? "failed" : "succeeded",
+    permission: "settings:read",
+    reason,
     target,
   });
 }
