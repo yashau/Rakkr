@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import { meterFrameSchema, type RecordingSummary } from "@rakkr/shared";
+import type { RecordingSummary } from "@rakkr/shared";
 
 import {
   assignedChannelMaps,
@@ -14,6 +14,7 @@ import {
 } from "./agent-route-helpers.js";
 import { nodeHealthEventScopeFailure } from "./agent-health-event-scope.js";
 import { bearerToken } from "./auth-utils.js";
+import { registerAgentMeterFrameRoute } from "./agent-meter-frame-route.js";
 import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
 import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
@@ -69,6 +70,12 @@ export function registerAgentRoutes({
 }: AgentRouteDependencies) {
   registerAgentNodeConfigRoute({
     app,
+    nodeStore,
+    recordAuditEvent,
+  });
+  registerAgentMeterFrameRoute({
+    app,
+    meterFrameStore,
     nodeStore,
     recordAuditEvent,
   });
@@ -214,56 +221,6 @@ export function registerAgentRoutes({
     }
 
     return c.json({ data: updated }, 202);
-  });
-
-  app.post("/api/v1/nodes/:nodeId/meter-frame", async (c) => {
-    const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(
-      c,
-      "nodes.meter_frame.ingest",
-      {
-        id: nodeId,
-        type: "node",
-      },
-      "node:control",
-    );
-
-    if (auth.response) {
-      return auth.response;
-    }
-
-    if (auth.credential.nodeId !== nodeId) {
-      await recordNodeCredentialFailure(c, "nodes.meter_frame.ingest.failed", "node_scope_denied", {
-        actor: auth.credential,
-        permission: "node:control",
-        target: { id: nodeId, type: "node" },
-      });
-      return c.json({ error: "Node credential cannot access this node" }, 403);
-    }
-
-    const body = meterFrameSchema.safeParse(await c.req.json().catch(() => ({})));
-
-    if (!body.success) {
-      await recordNodeCredentialFailure(c, "nodes.meter_frame.ingest.failed", "invalid_request", {
-        actor: auth.credential,
-        permission: "node:control",
-        target: { id: nodeId, type: "node" },
-      });
-      return c.json({ error: "Invalid meter frame", issues: body.error.issues }, 400);
-    }
-
-    if (body.data.nodeId !== nodeId || body.data.nodeId !== auth.credential.nodeId) {
-      await recordNodeCredentialFailure(c, "nodes.meter_frame.ingest.failed", "node_scope_denied", {
-        actor: auth.credential,
-        permission: "node:control",
-        target: { id: body.data.nodeId, type: "node" },
-      });
-      return c.json({ error: "Meter frame node mismatch" }, 403);
-    }
-
-    const stored = await meterFrameStore.save(body.data);
-
-    return c.json({ data: stored }, 202);
   });
 
   app.post("/api/v1/nodes/:nodeId/health-events", async (c) => {
