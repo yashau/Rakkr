@@ -28,6 +28,7 @@ import {
   runMeterRecoveryScenario,
   runMeterXrunScenario,
   runMonitorChunkRecoveryScenario,
+  runNodeConfigRecoveryScenario,
   runSystemHealthScenario,
 } from "./agent-fake-controller-smoke-health.mjs";
 import {
@@ -159,6 +160,9 @@ try {
     healthScenarioDeps({ address, recoveringMeterCommand, renderCommand }),
   );
   await runMonitorChunkRecoveryScenario(
+    healthScenarioDeps({ address, captureCommand, renderCommand }),
+  );
+  await runNodeConfigRecoveryScenario(
     healthScenarioDeps({ address, captureCommand, renderCommand }),
   );
   console.log("Agent fake-controller smoke passed.");
@@ -689,6 +693,7 @@ function createObserved() {
     monitorChunkFailures: 0,
     monitorChunks: [],
     nextReads: 0,
+    nodeConfigFailures: 0,
     nodeHeartbeats: 0,
   };
 }
@@ -711,6 +716,12 @@ async function handleControllerRequest(request, response) {
 
   if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/config`) {
     observed.configReads += 1;
+    if (scenario.nodeConfigFailuresRemaining > 0) {
+      scenario.nodeConfigFailuresRemaining -= 1;
+      observed.nodeConfigFailures += 1;
+      return json(response, 503, { error: "simulated node config failure" });
+    }
+
     return json(response, 200, {
       data: {
         recordingCapacity: {

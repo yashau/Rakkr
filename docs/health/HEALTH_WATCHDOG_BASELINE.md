@@ -19,6 +19,7 @@ Status: Partial baseline checked.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced listen-monitor chunk failure and recovery without audio hardware.
+- Fake-controller smoke coverage exercises controller-synced node-config polling failure and recovery without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
 - A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields plus daemon health-log clipping, low-signal, and channel-correlation behavior.
 - A full-agent ALSA loopback job smoke records looped speech through `arecord`, uploads the captured WAV to a fake controller, and asserts recorder-cache cleanup health without synthetic capture.
@@ -58,7 +59,7 @@ Status: Partial baseline checked.
 | Full-agent ALSA loopback capture/upload job smoke | `scripts/agent-loopback-job-smoke.sh` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/broadband-noise/SNR/intelligibility/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |
-| Agent clipping, flatline, low-signal, channel correlation, xrun, system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
+| Agent clipping, flatline, low-signal, channel correlation, xrun, node-config sync, and system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
 | Agent capture growth, cache upload, stalled-capture, render-failure, and system-health smoke | `scripts/agent-fake-controller-smoke.mjs` |
 
 `mise run health:check-watchdog` validates this partial baseline, and `mise run check` runs it.

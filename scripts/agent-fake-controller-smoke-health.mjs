@@ -306,6 +306,78 @@ export async function runMonitorChunkRecoveryScenario({
   setActiveScenario(undefined);
 }
 
+export async function runNodeConfigRecoveryScenario({
+  address,
+  captureCommand,
+  createObserved,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "node-config-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "node-config-recovery-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: {
+      expectSuccess: true,
+      name: "node-config-recovery",
+      nodeConfigFailuresRemaining: 1,
+    },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.node_config.sync_failed") &&
+        observed.healthEvents.some((event) => event.type === "agent.node_config.sync_recovered") &&
+        observed.nodeConfigFailures === 1 &&
+        observed.configReads >= 2,
+      20_000,
+      () =>
+        `configReads=${observed.configReads} configFailures=${observed.nodeConfigFailures} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const failedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.node_config.sync_failed",
+  );
+  const recoveredEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.node_config.sync_recovered",
+  );
+
+  invariant(failedEvent?.severity === "warning", "node config sync failure was not warning");
+  invariant(
+    String(failedEvent?.details?.error).includes(
+      "controller rejected node config request with 503",
+    ),
+    "node config sync failure did not preserve controller rejection",
+  );
+  invariant(recoveredEvent?.severity === "info", "node config sync recovery was not info");
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.node_config.sync_failed"),
+    "node config sync failure event was not written locally",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.node_config.sync_recovered"),
+    "node config sync recovery event was not written locally",
+  );
+  setActiveScenario(undefined);
+}
+
 function fakeDfCommandPath(fakeDfPath) {
   return path.join(fakeDfPath, process.platform === "win32" ? "df.cmd" : "df");
 }

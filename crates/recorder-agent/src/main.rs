@@ -285,6 +285,17 @@ async fn main() -> anyhow::Result<()> {
 
                             if node_config_sync_failed {
                                 node_config_sync_failed = false;
+                                append_and_sync_health_event(
+                                    &active_config,
+                                    Some(token),
+                                    "agent.node_config.sync_recovered",
+                                    "info",
+                                    json!({
+                                        "nodeId": inventory.id,
+                                    }),
+                                )
+                                .await
+                                .context("append node config sync recovery event")?;
                                 info!("controller node config sync recovered");
                             }
 
@@ -295,6 +306,18 @@ async fn main() -> anyhow::Result<()> {
                         }
                         Err(error) if !node_config_sync_failed => {
                             node_config_sync_failed = true;
+                            append_and_sync_health_event(
+                                &active_config,
+                                Some(token),
+                                "agent.node_config.sync_failed",
+                                "warning",
+                                json!({
+                                    "error": error.to_string(),
+                                    "nodeId": inventory.id,
+                                }),
+                            )
+                            .await
+                            .context("append node config sync failure event")?;
                             warn!(error = %error, "failed to fetch controller node config");
                         }
                         Err(_) => {}
