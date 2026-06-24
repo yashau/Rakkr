@@ -29,7 +29,8 @@ Status: Partial baseline checked.
 - Debian test rig loopback smoke execution passed for ALSA WAV capture and channel-map render validation using `hw:1,1,0`, stereo `S16_LE`, 48 kHz capture, and non-silent rendered output.
 - Generic ALSA hardware capture smoke can validate a selected Linux capture device with configured device, format, sample rate, channel count, duration, output size, and ffprobe metadata.
 - X32 X-USB short capture smoke plus short and longer full-agent hardware job smokes passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
-- Remaining gaps: broader physical-device validation beyond the X32 test fixture is not complete.
+- Debian rig HDA Intel PCH full-agent hardware job smoke passed using `hw:CARD=PCH,DEV=0`, 2 channels, `S16_LE`, and 48 kHz.
+- Remaining gaps: broader physical-device validation beyond the Debian rig fixtures is not complete.
 
 ## Checked By
 

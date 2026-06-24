@@ -217,6 +217,10 @@ run = "env RAKKR_ALSA_JOB_EXPECT_CARD=XUSB RAKKR_ALSA_JOB_DEVICE=hw:CARD=XUSB,DE
 description = "Run a longer full recorder-agent job against the X32 X-USB ALSA hardware device"
 run = "env RAKKR_ALSA_JOB_EXPECT_CARD=XUSB RAKKR_ALSA_JOB_DEVICE=hw:CARD=XUSB,DEV=0 RAKKR_ALSA_JOB_FORMAT=S32_LE RAKKR_ALSA_JOB_CHANNELS=32 RAKKR_ALSA_JOB_SECONDS=${RAKKR_X32_LONGRUN_JOB_SECONDS:-45} RAKKR_ALSA_JOB_WORK_DIR=${RAKKR_X32_LONGRUN_JOB_WORK_DIR:-/tmp/rakkr-x32-longrun-job-test} RAKKR_ALSA_JOB_SMOKE_LABEL='X32 long-run full-agent job smoke' bash scripts/agent-alsa-job-smoke.sh"
 
+[tasks."agent:alsa-pch-job-smoke"]
+description = "Run a full recorder-agent job against the Debian rig HDA Intel PCH ALSA hardware device"
+run = "env RAKKR_ALSA_JOB_EXPECT_CARD=PCH RAKKR_ALSA_JOB_DEVICE=hw:CARD=PCH,DEV=0 RAKKR_ALSA_JOB_FORMAT=S16_LE RAKKR_ALSA_JOB_CHANNELS=2 RAKKR_ALSA_JOB_SECONDS=${RAKKR_ALSA_PCH_JOB_SECONDS:-5} RAKKR_ALSA_JOB_WORK_DIR=${RAKKR_ALSA_PCH_JOB_WORK_DIR:-/tmp/rakkr-alsa-pch-job-test} RAKKR_ALSA_JOB_SMOKE_LABEL='ALSA PCH full-agent job smoke' bash scripts/agent-alsa-job-smoke.sh"
+
 [tasks."agent:fake-controller-smoke"]
 depends = ["node:test", "rust:check", "rust:miri"]
 description = "Run the recorder agent against a local fake controller and fake capture command"
