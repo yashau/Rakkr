@@ -111,3 +111,43 @@ export async function runChannelMapLookupFailureScenario({
     },
   });
 }
+
+export async function runControllerTerminalStatusScenarios({
+  address,
+  captureCommand,
+  renderCommand,
+  runScenario,
+}) {
+  for (const terminal of [
+    {
+      jobId: "job_fake_controller_terminal_completed",
+      name: "controller-terminal-completed",
+      outputFileName: "rec_fake_controller_terminal_completed.mp3",
+      recordingId: "rec_fake_controller_terminal_completed",
+      status: "completed",
+    },
+    {
+      jobId: "job_fake_controller_terminal_failed",
+      name: "controller-terminal-failed",
+      outputFileName: "rec_fake_controller_terminal_failed.mp3",
+      reason: "controller_marked_failed_during_capture",
+      recordingId: "rec_fake_controller_terminal_failed",
+      status: "failed",
+    },
+  ]) {
+    await runScenario({
+      address,
+      captureCommand,
+      renderCommand,
+      scenario: {
+        controllerTerminalReason: terminal.reason,
+        controllerTerminalStatus: terminal.status,
+        expectSuccess: true,
+        jobId: terminal.jobId,
+        name: terminal.name,
+        outputFileName: terminal.outputFileName,
+        recordingId: terminal.recordingId,
+      },
+    });
+  }
+}

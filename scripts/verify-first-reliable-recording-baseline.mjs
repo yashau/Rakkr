@@ -80,6 +80,7 @@ const baselinePhrases = [
   "leases, heartbeats, and failures",
   "Fake-controller smoke",
   "claim-next/status-poll/control-plane/channel-map failure health",
+  "controller-terminal status handoff",
   "MP3 VBR output",
   "mise run recordings:check-first-reliable",
 ];
@@ -139,6 +140,10 @@ const sourceSnippets = [
   "agent.recording_job.control_plane_failed",
   "agent.recording_job.status_poll_failed",
   "controller_stop_requested",
+  "runControllerTerminalStatusScenarios",
+  "assertControllerTerminalStatusScenario",
+  "job_fake_controller_terminal_completed",
+  "terminal state did not preserve controller failure reason",
   "RAKKR_MAX_CONCURRENT_RECORDINGS",
   "fetch_node_config",
   "max_concurrent_recordings",
@@ -185,6 +190,7 @@ const testSnippets = [
   "claim-next health event did not preserve controller rejection",
   "control-plane health event did not preserve heartbeat rejection",
   "status-poll health event did not preserve controller rejection",
+  "agent uploaded cache after controller terminal status",
   "concurrent jobs did not overlap as running",
   "concurrent agent did not claim both queued jobs",
 ];

@@ -18,6 +18,7 @@ import {
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
   assertCacheUploadFailureScenario,
+  assertControllerTerminalStatusScenario,
   assertControlPlaneFailureScenario,
   assertRenderedOutputScenario,
   assertRenderFailureScenario,
@@ -25,7 +26,7 @@ import {
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
-import { runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
+import { runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
@@ -108,6 +109,7 @@ try {
   for (const scenario of scenarios) {
     await runScenario({ address, captureCommand, renderCommand, scenario });
   }
+  await runControllerTerminalStatusScenarios({ address, captureCommand, renderCommand, runScenario });
   await runScenario({
     address,
     captureCommand: templateCaptureCommand,
@@ -277,13 +279,15 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertControlPlaneFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStatusPollFailure) {
     assertStatusPollFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.controllerTerminalStatus) {
+    assertControllerTerminalStatusScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.controllerStopRequested) {
     assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state });
   } else {
     assertRenderedOutputScenario({ healthLogEvents, observed, renderedLocalEvent, scenario });
   }
 
-  if (scenario.expectSuccess && !scenario.controllerStopRequested) {
+  if (scenario.expectSuccess && !scenario.controllerStopRequested && !scenario.controllerTerminalStatus) {
     await assertCompletedScenario({ job, retentionLocalEvent, scenario, state });
   } else if (scenario.cacheUploadFails) {
     assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
@@ -857,6 +861,10 @@ async function handleControllerRequest(request, response) {
 
     if (scenario.controllerStopRequested) {
       job.status = "stop_requested";
+    }
+    if (scenario.controllerTerminalStatus) {
+      job.status = scenario.controllerTerminalStatus;
+      job.failureReason = scenario.controllerTerminalReason;
     }
 
     return json(response, 200, { data: job });

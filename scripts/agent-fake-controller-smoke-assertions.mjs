@@ -202,6 +202,36 @@ export function assertRenderedOutputScenario({
   }
 }
 
+export function assertControllerTerminalStatusScenario({
+  healthLogEvents,
+  job,
+  observed,
+  scenario,
+  state,
+}) {
+  invariant(
+    job.status === scenario.controllerTerminalStatus,
+    "fake controller did not preserve terminal job status",
+  );
+  invariant(observed.failures === 0, "agent marked controller-terminal job failed");
+  invariant(observed.cancellations === 0, "agent marked controller-terminal job cancelled");
+  invariant(!observed.cacheUpload, "agent uploaded cache after controller terminal status");
+  invariant(
+    state.status === scenario.controllerTerminalStatus,
+    "agent state file did not preserve controller terminal status",
+  );
+  invariant(state.jobId === scenario.jobId, "terminal state recorded the wrong job id");
+  invariant(state.outputPath === null, "terminal state unexpectedly recorded an output path");
+  invariant(
+    state.reason === (scenario.controllerTerminalReason ?? null),
+    "terminal state did not preserve controller failure reason",
+  );
+  invariant(
+    !healthLogEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
+    "agent rendered output after controller terminal status",
+  );
+}
+
 function assertChannelMapLookupFailureScenario({ healthLogEvents, observed, scenario }) {
   const localEvent = healthLogEvents.find(
     (event) => event.type === "agent.recording_job.channel_map_lookup_failed",
