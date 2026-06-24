@@ -23,6 +23,7 @@ Status: Partial baseline checked.
 - A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields plus daemon health-log clipping, low-signal, and channel-correlation behavior.
 - A full-agent ALSA loopback job smoke records looped speech through `arecord`, uploads the captured WAV to a fake controller, and asserts recorder-cache cleanup health without synthetic capture.
 - X32 S32_LE hardware meter smoke validates real 32-channel one-shot and repeated agent meter-frame and quality-field generation without synthetic fallback.
+- X32 low-signal health smoke validates the daemon meter loop writes a local `agent.meter.low_signal` health event from real quiet ALSA hardware without synthetic fallback.
 - HDA Intel PCH S16_LE hardware meter smoke validates real 2-channel onboard-agent meter-frame and quality-field generation without synthetic fallback.
 - HDA Intel PCH flatline health smoke validates the daemon meter loop writes a local `agent.meter.flatline` health event from real silent ALSA hardware without synthetic fallback.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
@@ -51,6 +52,7 @@ Status: Partial baseline checked.
 | Recording and schedule quality timelines with clipping, flatline, quality anomaly, and upload-failure evidence | `apps/web/src/components/quality-timeline.tsx`, `apps/web/src/lib/quality-timeline-helpers.test.ts` |
 | Clean multi-speaker speech source fixture and loopback clipped/noisy fault smoke | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json`, `scripts/agent-loopback-fixture-smoke.sh` |
 | X32 S32_LE hardware meter smoke and repeated soak | `scripts/agent-alsa-meter-smoke.sh` |
+| X32 low-signal health smoke | `scripts/agent-alsa-health-smoke.sh` |
 | HDA Intel PCH S16_LE hardware meter smoke | `scripts/agent-alsa-meter-smoke.sh` |
 | HDA Intel PCH flatline health smoke | `scripts/agent-alsa-health-smoke.sh` |
 | Full-agent ALSA loopback capture/upload job smoke | `scripts/agent-loopback-job-smoke.sh` |

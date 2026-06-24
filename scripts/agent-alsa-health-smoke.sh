@@ -125,6 +125,23 @@ else:
                 errors.append(
                     f"flatline maxRmsDbfs {max_rms} exceeded threshold {flatline_dbfs}"
                 )
+    if expected_event == "agent.meter.low_signal":
+        max_rms = details.get("maxRmsDbfs")
+        low_signal_dbfs = details.get("lowSignalDbfs")
+        max_speech_score = details.get("maxSpeechScore")
+        if not isinstance(max_rms, (int, float)) or not math.isfinite(max_rms):
+            errors.append("low-signal event did not include finite details.maxRmsDbfs")
+        if not isinstance(low_signal_dbfs, (int, float)) or not math.isfinite(low_signal_dbfs):
+            errors.append("low-signal event did not include finite details.lowSignalDbfs")
+        if not isinstance(max_speech_score, (int, float)) or not math.isfinite(max_speech_score):
+            errors.append("low-signal event did not include finite details.maxSpeechScore")
+        if isinstance(max_rms, (int, float)) and isinstance(low_signal_dbfs, (int, float)):
+            if max_rms > low_signal_dbfs:
+                errors.append(
+                    f"low-signal maxRmsDbfs {max_rms} exceeded threshold {low_signal_dbfs}"
+                )
+        if "agent.meter.flatline" in [event.get("type") for event in events]:
+            errors.append("low-signal smoke unexpectedly wrote agent.meter.flatline")
 
 unexpected_meter_failures = {
     "agent.meter.capture_failed",
