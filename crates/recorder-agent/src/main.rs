@@ -125,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
     let mut meter_channel_correlation_active = false;
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
+    let mut meter_low_signal_active = false;
     let mut monitor_sync_failed = false;
     let mut meter_sync_failed = false;
     let mut node_config_sync_failed = false;
@@ -187,6 +188,7 @@ async fn main() -> anyhow::Result<()> {
                     &mut meter_channel_correlation_active,
                     &mut meter_clipping_active,
                     &mut meter_flatline_active,
+                    &mut meter_low_signal_active,
                 ).await?;
 
                 update_system_health(
@@ -683,6 +685,7 @@ async fn update_meter_health(
     channel_correlation_active: &mut bool,
     clipping_active: &mut bool,
     flatline_active: &mut bool,
+    low_signal_active: &mut bool,
 ) -> anyhow::Result<()> {
     let correlated_pairs = correlated_channel_pairs(frame);
     let clipping_channels = frame
@@ -690,11 +693,15 @@ async fn update_meter_health(
         .iter()
         .filter(|level| level.clipping)
         .collect::<Vec<_>>();
+    let frame_max_rms_dbfs = max_rms_dbfs(frame);
     let flatline = !frame.levels.is_empty()
         && frame
             .levels
             .iter()
             .all(|level| level.rms_dbfs <= config.meter_flatline_dbfs);
+    let low_signal = !frame.levels.is_empty()
+        && !flatline
+        && frame_max_rms_dbfs.is_some_and(|value| value <= config.meter_low_signal_dbfs);
 
     if !correlated_pairs.is_empty() && !*channel_correlation_active {
         *channel_correlation_active = true;
@@ -782,7 +789,7 @@ async fn update_meter_health(
                 "capturedAt": frame.captured_at,
                 "flatlineDbfs": config.meter_flatline_dbfs,
                 "interfaceId": frame.interface_id,
-                "maxRmsDbfs": max_rms_dbfs(frame),
+                "maxRmsDbfs": frame_max_rms_dbfs,
                 "nodeId": frame.node_id,
             }),
         )
@@ -798,12 +805,49 @@ async fn update_meter_health(
             json!({
                 "capturedAt": frame.captured_at,
                 "interfaceId": frame.interface_id,
-                "maxRmsDbfs": max_rms_dbfs(frame),
+                "maxRmsDbfs": frame_max_rms_dbfs,
                 "nodeId": frame.node_id,
             }),
         )
         .await
         .context("append flatline recovery health event")?;
+    }
+
+    if low_signal && !*low_signal_active {
+        *low_signal_active = true;
+        append_and_sync_health_event(
+            config,
+            token,
+            "agent.meter.low_signal",
+            "warning",
+            json!({
+                "capturedAt": frame.captured_at,
+                "interfaceId": frame.interface_id,
+                "lowSignalDbfs": config.meter_low_signal_dbfs,
+                "maxRmsDbfs": frame_max_rms_dbfs,
+                "maxSpeechScore": max_speech_score(frame),
+                "nodeId": frame.node_id,
+            }),
+        )
+        .await
+        .context("append low signal health event")?;
+    } else if !low_signal && *low_signal_active {
+        *low_signal_active = false;
+        append_and_sync_health_event(
+            config,
+            token,
+            "agent.meter.low_signal_recovered",
+            "info",
+            json!({
+                "capturedAt": frame.captured_at,
+                "interfaceId": frame.interface_id,
+                "maxRmsDbfs": frame_max_rms_dbfs,
+                "maxSpeechScore": max_speech_score(frame),
+                "nodeId": frame.node_id,
+            }),
+        )
+        .await
+        .context("append low signal recovery health event")?;
     }
 
     Ok(())
@@ -856,6 +900,14 @@ fn max_rms_dbfs(frame: &MeterFrame) -> Option<f32> {
         .max_by(f32::total_cmp)
 }
 
+fn max_speech_score(frame: &MeterFrame) -> Option<f32> {
+    frame
+        .levels
+        .iter()
+        .map(|level| level.quality.speech_score)
+        .max_by(f32::total_cmp)
+}
+
 fn correlated_channel_pairs(frame: &MeterFrame) -> Vec<Value> {
     let mut pairs: Vec<Value> = Vec::new();
 
@@ -890,75 +942,5 @@ fn correlated_channel_pairs(frame: &MeterFrame) -> Vec<Value> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::telemetry::{AudioLevel, AudioQuality, ChannelCorrelation};
-
-    #[test]
-    fn classifies_alsa_xrun_errors() {
-        assert_eq!(
-            MeterFailureKind::classify("ALSA meter command exited: overrun!!!"),
-            MeterFailureKind::Xrun
-        );
-    }
-
-    #[test]
-    fn classifies_alsa_device_unavailable_errors() {
-        assert_eq!(
-            MeterFailureKind::classify("Unknown PCM hw:9,9,0: No such device"),
-            MeterFailureKind::DeviceUnavailable
-        );
-    }
-
-    #[test]
-    fn channel_correlation_pairs_deduplicate_peer_entries() {
-        let frame = MeterFrame {
-            captured_at: "2026-06-18T00:00:00Z".to_string(),
-            interface_id: "iface_1".to_string(),
-            levels: vec![
-                level_with_correlation(1, 2, 0.99, "same"),
-                level_with_correlation(2, 1, 0.99, "same"),
-                level_with_correlation(3, 4, 0.79, "same"),
-            ],
-            node_id: "node_1".to_string(),
-        };
-        let pairs = correlated_channel_pairs(&frame);
-
-        assert_eq!(pairs.len(), 1);
-        assert_eq!(pairs[0]["leftChannelIndex"], 1);
-        assert_eq!(pairs[0]["rightChannelIndex"], 2);
-        assert_eq!(pairs[0]["phase"], "same");
-    }
-
-    fn level_with_correlation(
-        channel_index: u16,
-        peer_channel_index: u16,
-        score: f32,
-        phase: &'static str,
-    ) -> AudioLevel {
-        AudioLevel {
-            channel_index,
-            clipping: false,
-            label: format!("Input {channel_index}"),
-            peak_dbfs: -12.0,
-            quality: AudioQuality {
-                channel_correlation: Some(ChannelCorrelation {
-                    peer_channel_index,
-                    phase,
-                    score,
-                }),
-                broadband_noise_score: 0.18,
-                crest_factor_db: 10.0,
-                estimated_snr_db: 18.0,
-                hum_score: 0.0,
-                intelligibility_score: 0.72,
-                noise_score: 0.1,
-                speech_like: true,
-                speech_score: 0.8,
-                static_score: 0.0,
-                zero_crossing_rate: 0.1,
-            },
-            rms_dbfs: -24.0,
-        }
-    }
-}
+#[path = "main/tests.rs"]
+mod tests;

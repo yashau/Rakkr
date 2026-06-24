@@ -13,14 +13,14 @@ Status: Partial baseline checked.
 - Quality anomaly policies can alert when scheduled audio has sustained high broadband noise, noise, hum, or static likelihood and auto-resolve after recovery.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
-- Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
+- Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, configurable low-signal, first-pass channel correlation, disk/CPU/audio backend pressure, capture growth failure, render failure, cache upload failure, and terminal job state.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced listen-monitor chunk failure and recovery without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
-- A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields, clipping, low-signal, and channel-correlation behavior.
+- A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields plus daemon health-log clipping, low-signal, and channel-correlation behavior.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, searchable and filterable by opened/resolved date range and incident fields, export scoped filtered CSV incident lists, and audited.
@@ -48,7 +48,7 @@ Status: Partial baseline checked.
 | Clean multi-speaker speech source fixture and loopback clipped/noisy fault smoke | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json`, `scripts/agent-loopback-fixture-smoke.sh` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/broadband-noise/SNR/intelligibility/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |
-| Agent clipping, flatline, channel correlation, xrun, system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
+| Agent clipping, flatline, low-signal, channel correlation, xrun, system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
 | Agent capture growth, cache upload, stalled-capture, render-failure, and system-health smoke | `scripts/agent-fake-controller-smoke.mjs` |
 
 `mise run health:check-watchdog` validates this partial baseline, and `mise run check` runs it.

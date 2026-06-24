@@ -60,6 +60,10 @@ clean_meter="${work_dir}/clean-meter.json"
 fault_meter="${work_dir}/fault-clipped-noisy-meter.json"
 low_meter="${work_dir}/fault-low-volume-meter.json"
 correlated_meter="${work_dir}/fault-correlated-channel-meter.json"
+clean_health="${work_dir}/clean-health-events.jsonl"
+fault_health="${work_dir}/fault-clipped-noisy-health-events.jsonl"
+low_health="${work_dir}/fault-low-volume-health-events.jsonl"
+correlated_health="${work_dir}/fault-correlated-channel-health-events.jsonl"
 
 mkdir -p "$work_dir"
 
@@ -149,12 +153,53 @@ loop_meter() {
   wait "$player_pid" >/dev/null 2>&1 || true
 }
 
+loop_health() {
+  local input="$1"
+  local output="$2"
+  local name="$3"
+
+  rm -f "$output"
+  timeout "$((meter_seconds + 18))s" aplay -D "$play_device" "$input" >"${work_dir}/${name}-health-aplay.log" 2>&1 &
+  local player_pid=$!
+  sleep "$warmup_seconds"
+
+  set +e
+  RAKKR_CAPTURE_DEVICE="$capture_device" \
+    RAKKR_CAPTURE_FORMAT=S16_LE \
+    RAKKR_CAPTURE_SAMPLE_RATE="$rate" \
+    RAKKR_CAPTURE_CHANNELS="$channels" \
+    RAKKR_METER_BACKEND=alsa \
+    RAKKR_METER_SAMPLE_SECONDS="$meter_seconds" \
+    RAKKR_METER_LOW_SIGNAL_DBFS=-55 \
+    RAKKR_SYSTEM_HEALTH_ENABLED=false \
+    timeout "$((meter_seconds + 8))s" \
+      "$agent_binary" \
+        --agent-health-log-file "$output" \
+        --agent-state-file "${work_dir}/${name}-agent-state.json" \
+        --heartbeat-seconds 1 \
+        >"${work_dir}/${name}-health-agent.log" 2>&1
+  local agent_status=$?
+  set -e
+
+  wait "$player_pid" >/dev/null 2>&1 || true
+
+  if [[ "$agent_status" -ne 124 ]]; then
+    echo "Agent health loop for ${name} exited before timeout with status ${agent_status}." >&2
+    cat "${work_dir}/${name}-health-agent.log" >&2 || true
+    exit 1
+  fi
+}
+
 loop_capture "$clean_play" "$clean_capture"
 loop_capture "$fault_play" "$fault_capture"
 loop_meter "$clean_play" "$clean_meter"
 loop_meter "$fault_play" "$fault_meter"
 loop_meter "$low_play" "$low_meter"
 loop_meter "$correlated_play" "$correlated_meter"
+loop_health "$clean_play" "$clean_health" "clean"
+loop_health "$fault_play" "$fault_health" "fault-clipped-noisy"
+loop_health "$low_play" "$low_health" "fault-low-volume"
+loop_health "$correlated_play" "$correlated_health" "fault-correlated-channel"
 
 RAKKR_LOOPBACK_WORK_DIR="$work_dir" python3 <<'PY'
 import json
@@ -241,6 +286,25 @@ def meter(path):
     }
 
 
+def health_events(path):
+    events = []
+
+    if not path.exists():
+        return events
+
+    for line in path.read_text().splitlines():
+        line = line.strip()
+
+        if line:
+            events.append(json.loads(line))
+
+    return events
+
+
+def health_event_types(path):
+    return [event.get("type") for event in health_events(path)]
+
+
 summary = {
     "clean_capture": {
         "duration": round(ffprobe_duration(work / "clean-capture.wav"), 3),
@@ -254,6 +318,10 @@ summary = {
     "fault_meter": meter(work / "fault-clipped-noisy-meter.json"),
     "low_meter": meter(work / "fault-low-volume-meter.json"),
     "correlated_meter": meter(work / "fault-correlated-channel-meter.json"),
+    "clean_health": health_event_types(work / "clean-health-events.jsonl"),
+    "fault_health": health_event_types(work / "fault-clipped-noisy-health-events.jsonl"),
+    "low_health": health_event_types(work / "fault-low-volume-health-events.jsonl"),
+    "correlated_health": health_event_types(work / "fault-correlated-channel-health-events.jsonl"),
 }
 print(json.dumps(summary, indent=2))
 
@@ -300,6 +368,20 @@ correlated_scores = [
 ]
 if not correlated_scores or max(correlated_scores) < 0.98:
     errors.append("correlated-channel meter did not detect duplicated channels")
+agent_meter_faults = {
+    "agent.meter.channel_correlation",
+    "agent.meter.clipping",
+    "agent.meter.flatline",
+    "agent.meter.low_signal",
+}
+if agent_meter_faults.intersection(summary["clean_health"]):
+    errors.append("clean daemon health log unexpectedly reported a meter fault")
+if "agent.meter.clipping" not in summary["fault_health"]:
+    errors.append("clipped/noisy daemon health log did not report clipping")
+if "agent.meter.low_signal" not in summary["low_health"]:
+    errors.append("low-volume daemon health log did not report low signal")
+if "agent.meter.channel_correlation" not in summary["correlated_health"]:
+    errors.append("correlated-channel daemon health log did not report channel correlation")
 
 if errors:
     print("FAIL: " + "; ".join(errors), file=sys.stderr)

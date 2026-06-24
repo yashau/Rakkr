@@ -879,6 +879,7 @@ mod tests {
             meter_args_template: None,
             meter_clip_dbfs: -1.0,
             meter_flatline_dbfs: -120.0,
+            meter_low_signal_dbfs: -55.0,
             meter_sample_seconds: 1,
             monitor_chunk_sync_enabled: true,
             max_concurrent_recordings: 1,

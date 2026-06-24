@@ -165,6 +165,9 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_METER_FLATLINE_DBFS", default_value_t = -120.0)]
     pub meter_flatline_dbfs: f32,
 
+    #[arg(long, env = "RAKKR_METER_LOW_SIGNAL_DBFS", default_value_t = -55.0)]
+    pub meter_low_signal_dbfs: f32,
+
     #[arg(long, env = "RAKKR_MONITOR_CHUNK_SYNC_ENABLED", default_value_t = true)]
     pub monitor_chunk_sync_enabled: bool,
 

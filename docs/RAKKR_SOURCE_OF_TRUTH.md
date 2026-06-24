@@ -62,13 +62,13 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | ✅ | Audited Auth/OIDC read/detail/action summaries, RBAC, audited audit list/detail/action summaries/exports/facets, audited node detail/list/meter/action summaries and agent meter-frame/job polling reads with location/backend/last-seen filters/exports, capacity, scoped audited aggregate status and metrics reads, audited recording detail/context/list/facets/action summaries/actions, ad-hoc and scheduled backend/interface selection, audited schedule list/detail/occurrence reads and filters/action summaries/exports, jobs, lifecycle coverage, audited settings and retention list/detail/action summaries/update, searchable audited health filters/detail/action summaries/bulk lifecycle controls/exports, audited recording-job detail/list/action summaries/date/relationship/capture filters and controls/exports, scoped audited upload queue reads/action summaries and runner status/actions |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
-| Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
-| Test rig | 🟨 | Debian node reachable; X32 X-USB visible and stable-name ALSA capture passed as `hw:XUSB,0` with non-silent 32-channel 48 kHz audio; ALSA loopback capture/render smoke passed; current agent binary deployed and clean multi-speaker speech fixture replayed through ALSA loopback with quality fields plus clipping, low-volume, and duplicated-channel fault detection; long-run/full-agent validation remains |
+| Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, clipping/flatline/low-signal/channel-correlation health, concurrent-safe health log |
+| Test rig | 🟨 | Debian node reachable; X32 X-USB visible and stable-name ALSA capture passed as `hw:XUSB,0` with non-silent 32-channel 48 kHz audio; ALSA loopback capture/render smoke passed; current agent binary deployed and clean multi-speaker speech fixture replayed through ALSA loopback with quality fields plus clipping, low-volume, and duplicated-channel daemon health-event detection; long-run/full-agent validation remains |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, Linux loopback capture/render execution, and X32 stable-name ALSA capture smoke; broader Linux capture validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
-| Health watchdog | 🟨 | Checked low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, policy-tuned broadband quality alerts, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
+| Health watchdog | 🟨 | Checked scheduled and agent low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, policy-tuned broadband quality alerts, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, and node health lifecycle controls; long-duration real-room validation remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, checked baseline |
@@ -227,7 +227,7 @@ Current partial implementation:
 - `fixtures/audio/rakkr-golden-dialogue-clean.wav` provides a clean 48 kHz stereo multi-speaker speech fixture for deriving loopback fault permutations.
 - Debian test rig ALSA loopback replay captured the clean fixture without clipping and a clipped/noisy derivative with agent meter clipping on both channels.
 - Debian test rig `/tmp/rakkr-recorder-agent` was refreshed from current source, and loopback meter JSON now includes speech/noise/broadband/static quality scores for the fixture smoke.
-- Debian test rig fixture replay now verifies healthy delayed-stereo speech avoids alert-level channel correlation, low-volume speech drops below the low-signal threshold, and duplicated channels produce alert-level correlation.
+- Debian test rig fixture replay now verifies healthy delayed-stereo speech avoids alert-level channel correlation, low-volume speech drops below the low-signal threshold, duplicated channels produce alert-level correlation, and the daemon health log records clipping, low-signal, and channel-correlation events for those faults.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
 - RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
@@ -310,7 +310,7 @@ Current partial implementation:
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
-- A clean multi-speaker speech fixture is checked in for deterministic loopback health permutations; Debian loopback replay verified clean speech stays unclipped/speech-like, clipped/noisy speech trips clipping, low-volume speech loses speech-like level, and duplicated channels trip channel correlation.
+- A clean multi-speaker speech fixture is checked in for deterministic loopback health permutations; Debian loopback replay verified clean speech stays unclipped/speech-like, clipped/noisy speech trips clipping, low-volume speech trips configurable agent low-signal health, and duplicated channels trip channel correlation.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 - `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
 
@@ -982,6 +982,7 @@ Current implementation baseline:
 338. ✅ Validate clean and clipped/noisy speech fixture replay on Debian ALSA loopback.
 339. ✅ Deploy current recorder agent to Debian rig and validate fixture quality fields.
 340. ✅ Extend Debian ALSA loopback fixture smoke to low-volume and duplicated-channel faults.
+341. ✅ Add agent low-signal health and loopback daemon fault-event assertions.
 
 ## Open Questions
 

@@ -12,4 +12,4 @@ This directory contains reusable audio sources for recorder-agent and watchdog v
 - Metadata: `rakkr-golden-dialogue-clean.json`
 - Intended baseline: audible speech, no clipping, no flatline, low hum/static/broadband-noise likelihood
 
-Use this file as the source for deterministic fault permutations such as low-volume speech, clipped speech, hum, static, broadband noise, and duplicated/inverted channels. The ALSA loopback fixture smoke derives a delayed-stereo healthy lane from this source so clean speech does not falsely present as duplicated-channel audio. Do not store API keys or provider credentials in this directory.
+Use this file as the source for deterministic fault permutations such as low-volume speech, clipped speech, hum, static, broadband noise, and duplicated/inverted channels. The ALSA loopback fixture smoke derives a delayed-stereo healthy lane from this source so clean speech does not falsely present as duplicated-channel audio, then checks daemon health logs for the fault lanes. Do not store API keys or provider credentials in this directory.
