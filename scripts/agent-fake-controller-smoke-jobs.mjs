@@ -67,3 +67,25 @@ export async function runClaimNextFailureScenario({
   );
   setActiveScenario(undefined);
 }
+
+export async function runControlPlaneFailureScenario({
+  address,
+  captureCommand,
+  renderCommand,
+  runScenario,
+}) {
+  await runScenario({
+    address,
+    captureCommand,
+    renderCommand,
+    scenario: {
+      expectControlPlaneFailure: true,
+      expectSuccess: false,
+      jobHeartbeatFailuresRemaining: 1,
+      jobId: "job_fake_controller_control_plane_failure",
+      name: "control-plane-failure",
+      outputFileName: "rec_fake_controller_control_plane_failure.mp3",
+      recordingId: "rec_fake_controller_control_plane_failure",
+    },
+  });
+}

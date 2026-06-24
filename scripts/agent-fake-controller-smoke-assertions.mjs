@@ -105,6 +105,51 @@ export function assertStatusPollFailureScenario({
   );
 }
 
+export function assertControlPlaneFailureScenario({
+  healthLogEvents,
+  job,
+  observed,
+  scenario,
+  state,
+}) {
+  const failedLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.control_plane_failed",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.control_plane_failed",
+  );
+
+  invariant(job.status === "failed", "fake controller did not mark control-plane job failed");
+  invariant(observed.failures === 1, "agent did not mark control-plane job failed");
+  invariant(observed.jobHeartbeatFailures === 1, "fake controller did not fail heartbeat once");
+  invariant(!observed.cacheUpload, "agent uploaded cache after control-plane failure");
+  invariant(state.status === "failed", "control-plane state file did not end failed");
+  invariant(state.jobId === scenario.jobId, "control-plane state recorded the wrong job id");
+  invariant(
+    String(state.reason).includes("controller rejected job heartbeat with 503"),
+    "control-plane state did not retain heartbeat rejection",
+  );
+  invariant(
+    String(observed.failureReason).includes("controller rejected job heartbeat with 503"),
+    "failed-job reason did not include heartbeat rejection",
+  );
+  invariant(failedLocalEvent, "agent local health log did not include control-plane failure");
+  invariant(failedLocalEvent.severity === "warning", "control-plane failure was not warning");
+  invariant(
+    failedLocalEvent.recordingId === scenario.recordingId,
+    "control-plane local health event recorded the wrong recording",
+  );
+  invariant(
+    failedLocalEvent.details?.jobId === scenario.jobId,
+    "control-plane local health event recorded the wrong job",
+  );
+  invariant(syncedEvent, "agent did not sync control-plane failure health event");
+  invariant(
+    String(syncedEvent.details?.error).includes("controller rejected job heartbeat with 503"),
+    "control-plane health event did not preserve heartbeat rejection",
+  );
+}
+
 export function assertCacheUploadFailureScenario({
   healthLogEvents,
   job,

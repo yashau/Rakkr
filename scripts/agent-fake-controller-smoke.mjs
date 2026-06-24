@@ -18,12 +18,13 @@ import {
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
   assertCacheUploadFailureScenario,
+  assertControlPlaneFailureScenario,
   assertRenderFailureScenario,
   assertStatusPollFailureScenario,
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
-import { runClaimNextFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
+import { runClaimNextFailureScenario, runControlPlaneFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
@@ -137,6 +138,7 @@ try {
       recordingId: "rec_fake_controller_stalled_capture",
     },
   });
+  await runControlPlaneFailureScenario({ address, captureCommand, renderCommand, runScenario });
   await runScenario({
     address,
     captureCommand,
@@ -269,6 +271,8 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertRenderFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStalledCapture) {
     assertStalledCaptureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectControlPlaneFailure) {
+    assertControlPlaneFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStatusPollFailure) {
     assertStatusPollFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.controllerStopRequested) {
@@ -697,17 +701,11 @@ function healthScenarioDeps(overrides) {
 }
 
 function jobScenarioDeps(overrides) {
-  return {
-    ...overrides,
-    createObserved,
-    nodeId,
-    repoRoot,
-    setActiveScenario: (scenario) => {
-      activeScenario = scenario;
-    },
-    smokeRoot,
-    token,
-  };
+  return { ...overrides, createObserved, nodeId, repoRoot, setActiveScenario, smokeRoot, token };
+}
+
+function setActiveScenario(scenario) {
+  activeScenario = scenario;
 }
 
 function createObserved() {
@@ -727,6 +725,7 @@ function createObserved() {
     jobStatusReads: 0,
     jobStatusReadFailures: 0,
     claimNextReadFailures: 0,
+    jobHeartbeatFailures: 0,
     maxRunningJobs: 0,
     meterFrames: 0,
     monitorChunkFailures: 0,
@@ -872,6 +871,12 @@ async function handleControllerRequest(request, response) {
     }
 
     observed.heartbeats += 1;
+    if (scenario.jobHeartbeatFailuresRemaining > 0) {
+      scenario.jobHeartbeatFailuresRemaining -= 1;
+      observed.jobHeartbeatFailures += 1;
+      return json(response, 503, { error: "simulated job heartbeat failure" });
+    }
+
     return json(response, 200, { data: job });
   }
 
