@@ -28,6 +28,7 @@ import {
   runMeterRecoveryScenario,
   runMeterXrunScenario,
   runMonitorChunkRecoveryScenario,
+  runNodeHeartbeatRecoveryScenario,
   runNodeConfigRecoveryScenario,
   runSystemHealthScenario,
 } from "./agent-fake-controller-smoke-health.mjs";
@@ -160,6 +161,9 @@ try {
     healthScenarioDeps({ address, recoveringMeterCommand, renderCommand }),
   );
   await runMonitorChunkRecoveryScenario(
+    healthScenarioDeps({ address, captureCommand, renderCommand }),
+  );
+  await runNodeHeartbeatRecoveryScenario(
     healthScenarioDeps({ address, captureCommand, renderCommand }),
   );
   await runNodeConfigRecoveryScenario(
@@ -694,6 +698,7 @@ function createObserved() {
     monitorChunks: [],
     nextReads: 0,
     nodeConfigFailures: 0,
+    nodeHeartbeatFailures: 0,
     nodeHeartbeats: 0,
   };
 }
@@ -766,6 +771,12 @@ async function handleControllerRequest(request, response) {
 
   if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/heartbeat`) {
     await readBody(request);
+    if (scenario.nodeHeartbeatFailuresRemaining > 0) {
+      scenario.nodeHeartbeatFailuresRemaining -= 1;
+      observed.nodeHeartbeatFailures += 1;
+      return json(response, 503, { error: "simulated node heartbeat failure" });
+    }
+
     observed.nodeHeartbeats += 1;
     return json(response, 202, { data: { ok: true } });
   }

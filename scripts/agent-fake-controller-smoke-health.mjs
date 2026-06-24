@@ -306,6 +306,78 @@ export async function runMonitorChunkRecoveryScenario({
   setActiveScenario(undefined);
 }
 
+export async function runNodeHeartbeatRecoveryScenario({
+  address,
+  captureCommand,
+  createObserved,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "node-heartbeat-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "node-heartbeat-recovery-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: {
+      expectSuccess: true,
+      name: "node-heartbeat-recovery",
+      nodeHeartbeatFailuresRemaining: 1,
+    },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.node_heartbeat.sync_failed") &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.node_heartbeat.sync_recovered",
+        ) &&
+        observed.nodeHeartbeatFailures === 1 &&
+        observed.nodeHeartbeats >= 1,
+      20_000,
+      () =>
+        `heartbeats=${observed.nodeHeartbeats} heartbeatFailures=${observed.nodeHeartbeatFailures} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const failedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.node_heartbeat.sync_failed",
+  );
+  const recoveredEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.node_heartbeat.sync_recovered",
+  );
+
+  invariant(failedEvent?.severity === "warning", "node heartbeat sync failure was not warning");
+  invariant(
+    String(failedEvent?.details?.error).includes("controller rejected node heartbeat with 503"),
+    "node heartbeat sync failure did not preserve controller rejection",
+  );
+  invariant(recoveredEvent?.severity === "info", "node heartbeat sync recovery was not info");
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.node_heartbeat.sync_failed"),
+    "node heartbeat sync failure event was not written locally",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.node_heartbeat.sync_recovered"),
+    "node heartbeat sync recovery event was not written locally",
+  );
+  setActiveScenario(undefined);
+}
+
 export async function runNodeConfigRecoveryScenario({
   address,
   captureCommand,

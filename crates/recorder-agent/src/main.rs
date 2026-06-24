@@ -126,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
     let mut meter_clipping_active = false;
     let mut meter_flatline_active = false;
     let mut meter_low_signal_active = false;
+    let mut heartbeat_sync_failed = false;
     let mut monitor_sync_failed = false;
     let mut meter_sync_failed = false;
     let mut node_config_sync_failed = false;
@@ -203,12 +204,40 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(token) = token {
                     let heartbeat = inventory::heartbeat_snapshot(&inventory);
 
-                    if let Err(error) = controller::post_node_heartbeat(
-                        &active_config,
-                        token,
-                        &heartbeat,
-                    ).await {
-                        warn!(error = %error, "failed to post node heartbeat");
+                    match controller::post_node_heartbeat(&active_config, token, &heartbeat).await {
+                        Ok(()) if heartbeat_sync_failed => {
+                            heartbeat_sync_failed = false;
+                            append_and_sync_health_event(
+                                &active_config,
+                                Some(token),
+                                "agent.node_heartbeat.sync_recovered",
+                                "info",
+                                json!({ "nodeId": inventory.id }),
+                            )
+                            .await
+                            .context("append node heartbeat sync recovery event")?;
+                        }
+                        Ok(()) => {}
+                        Err(error) if !heartbeat_sync_failed => {
+                            heartbeat_sync_failed = true;
+                            append_and_sync_health_event(
+                                &active_config,
+                                Some(token),
+                                "agent.node_heartbeat.sync_failed",
+                                "warning",
+                                json!({
+                                    "error": error.to_string(),
+                                    "nodeId": inventory.id,
+                                }),
+                            )
+                            .await
+                            .context("append node heartbeat sync failure event")?;
+
+                            warn!(error = %error, "failed to post node heartbeat");
+                        }
+                        Err(error) => {
+                            warn!(error = %error, "failed to post node heartbeat");
+                        }
                     }
 
                     match controller::post_meter_frame(&active_config, token, frame).await {
