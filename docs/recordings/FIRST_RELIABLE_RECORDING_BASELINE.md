@@ -13,7 +13,7 @@ Status: MVP baseline checked.
 - Stop requests survive agent cancellation without falsely marking the recording unhealthy.
 - Failed and unexpectedly cancelled jobs update recording health and create central health events.
 - Recording jobs workbench shows scoped job status, status/search/node/backend/interface filters, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export, RBAC-mirrored stop controls for active jobs, and audited retry controls for failed/cancelled jobs.
-- Fake-controller smoke coverage proves agent job polling, claim-next/status-poll/control-plane failure health, controller capacity override, bounded concurrent jobs, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, and controller stop handling without hardware.
+- Fake-controller smoke coverage proves agent job polling, claim-next/status-poll/control-plane/channel-map failure health, controller capacity override, bounded concurrent jobs, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, and controller stop handling without hardware.
 
 ## Checked By
 
@@ -25,7 +25,7 @@ Status: MVP baseline checked.
 | Cache checksum, duration, waveform preview, file size | `apps/api/test/recording-cache.test.ts` |
 | Failed/cancelled job health transitions | `apps/api/test/agent-routes.test.ts` |
 | Stop-request lifecycle | `apps/api/test/agent-routes.test.ts` |
-| Agent render/cache/stop/claim-next-status-poll-control-plane failure/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs` |
+| Agent render/cache/stop/claim-next-status-poll-control-plane-channel-map failure/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs` |
 | Playback/download UI readiness and cleanup | `apps/web/src/lib/recording-page-helpers.test.ts` |
 | Schedule detail playback/download controls | `apps/web/src/lib/schedule-detail-page-helpers.test.ts` |
 | Recording jobs workbench, export, stop, and retry controls | `apps/api/test/recording-job-export.test.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/web/src/pages/jobs.tsx`, `apps/web/src/lib/jobs-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |

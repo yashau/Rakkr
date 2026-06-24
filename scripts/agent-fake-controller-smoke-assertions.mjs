@@ -150,6 +150,82 @@ export function assertControlPlaneFailureScenario({
   );
 }
 
+export function assertRenderedOutputScenario({
+  healthLogEvents,
+  observed,
+  renderedLocalEvent,
+  scenario,
+}) {
+  invariant(
+    observed.cacheUpload?.recordingId === scenario.recordingId,
+    "agent did not upload cache file",
+  );
+  invariant(
+    observed.cacheUpload?.jobId === scenario.jobId,
+    "cache upload did not include the job id",
+  );
+  invariant(observed.cacheUpload?.durationSeconds === "1", "cache upload did not include duration");
+  invariant(
+    observed.cacheUpload?.fileName === scenario.outputFileName,
+    "cache upload did not include rendered file name",
+  );
+  invariant(observed.cacheUpload?.contentType === "audio/mpeg", "cache upload was not MP3");
+  invariant(observed.cacheUpload?.size > 44, "cache upload body was too small");
+  invariant(
+    observed.healthEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
+    "agent did not report rendered output",
+  );
+  invariant(renderedLocalEvent, "agent local health log did not include rendered output");
+  invariant(
+    renderedLocalEvent.severity === "info",
+    "rendered local health event did not record info severity",
+  );
+  invariant(
+    renderedLocalEvent.recordingId === scenario.recordingId,
+    "rendered local health event recorded the wrong recording",
+  );
+  invariant(
+    renderedLocalEvent.details?.jobId === scenario.jobId,
+    "rendered local health event recorded the wrong job",
+  );
+  invariant(
+    renderedLocalEvent.details?.outputCodec === "mp3",
+    "rendered local health event did not record MP3 output",
+  );
+  invariant(
+    renderedLocalEvent.details?.outputVbr === true,
+    "rendered local health event did not record VBR output",
+  );
+
+  if (scenario.expectChannelMapLookupFailure) {
+    assertChannelMapLookupFailureScenario({ healthLogEvents, observed, scenario });
+  }
+}
+
+function assertChannelMapLookupFailureScenario({ healthLogEvents, observed, scenario }) {
+  const localEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.channel_map_lookup_failed",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.channel_map_lookup_failed",
+  );
+
+  invariant(observed.channelMapFailures === 1, "fake controller did not fail channel-map once");
+  invariant(localEvent, "agent local health log did not include channel-map lookup failure");
+  invariant(localEvent.severity === "warning", "channel-map lookup failure was not warning");
+  invariant(
+    localEvent.recordingId === scenario.recordingId,
+    "channel-map local health event recorded the wrong recording",
+  );
+  invariant(syncedEvent, "agent did not sync channel-map lookup failure health event");
+  invariant(
+    String(syncedEvent.details?.error).includes(
+      "controller rejected channel map assignment request with 503",
+    ),
+    "channel-map health event did not preserve controller rejection",
+  );
+}
+
 export function assertCacheUploadFailureScenario({
   healthLogEvents,
   job,

@@ -19,12 +19,13 @@ import {
 import {
   assertCacheUploadFailureScenario,
   assertControlPlaneFailureScenario,
+  assertRenderedOutputScenario,
   assertRenderFailureScenario,
   assertStatusPollFailureScenario,
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
-import { runClaimNextFailureScenario, runControlPlaneFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
+import { runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
@@ -139,6 +140,7 @@ try {
     },
   });
   await runControlPlaneFailureScenario({ address, captureCommand, renderCommand, runScenario });
+  await runChannelMapLookupFailureScenario({ address, captureCommand, renderCommand, runScenario });
   await runScenario({
     address,
     captureCommand,
@@ -278,7 +280,7 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   } else if (scenario.controllerStopRequested) {
     assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state });
   } else {
-    assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario });
+    assertRenderedOutputScenario({ healthLogEvents, observed, renderedLocalEvent, scenario });
   }
 
   if (scenario.expectSuccess && !scenario.controllerStopRequested) {
@@ -501,49 +503,6 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
   activeScenario = undefined;
 }
 
-function assertRenderedOutputScenario({ observed, renderedLocalEvent, scenario }) {
-  invariant(
-    observed.cacheUpload?.recordingId === scenario.recordingId,
-    "agent did not upload cache file",
-  );
-  invariant(
-    observed.cacheUpload?.jobId === scenario.jobId,
-    "cache upload did not include the job id",
-  );
-  invariant(observed.cacheUpload?.durationSeconds === "1", "cache upload did not include duration");
-  invariant(
-    observed.cacheUpload?.fileName === scenario.outputFileName,
-    "cache upload did not include rendered file name",
-  );
-  invariant(observed.cacheUpload?.contentType === "audio/mpeg", "cache upload was not MP3");
-  invariant(observed.cacheUpload?.size > 44, "cache upload body was too small");
-  invariant(
-    observed.healthEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
-    "agent did not report rendered output",
-  );
-  invariant(renderedLocalEvent, "agent local health log did not include rendered output");
-  invariant(
-    renderedLocalEvent.severity === "info",
-    "rendered local health event did not record info severity",
-  );
-  invariant(
-    renderedLocalEvent.recordingId === scenario.recordingId,
-    "rendered local health event recorded the wrong recording",
-  );
-  invariant(
-    renderedLocalEvent.details?.jobId === scenario.jobId,
-    "rendered local health event recorded the wrong job",
-  );
-  invariant(
-    renderedLocalEvent.details?.outputCodec === "mp3",
-    "rendered local health event did not record MP3 output",
-  );
-  invariant(
-    renderedLocalEvent.details?.outputVbr === true,
-    "rendered local health event did not record VBR output",
-  );
-}
-
 async function assertCompletedScenario({ job, retentionLocalEvent, scenario, state }) {
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
@@ -704,9 +663,7 @@ function jobScenarioDeps(overrides) {
   return { ...overrides, createObserved, nodeId, repoRoot, setActiveScenario, smokeRoot, token };
 }
 
-function setActiveScenario(scenario) {
-  activeScenario = scenario;
-}
+function setActiveScenario(scenario) { activeScenario = scenario; }
 
 function createObserved() {
   return {
@@ -715,6 +672,7 @@ function createObserved() {
     cacheUpload: undefined,
     cacheUploads: [],
     channelMapReads: 0,
+    channelMapFailures: 0,
     claimNextReads: 0,
     claims: 0,
     configReads: 0,
@@ -806,6 +764,7 @@ async function handleControllerRequest(request, response) {
     url.pathname === `/api/v1/nodes/${nodeId}/channel-map-assignments`
   ) {
     observed.channelMapReads += 1;
+    if (scenario.channelMapFailuresRemaining-- > 0) { observed.channelMapFailures += 1; return json(response, 503, { error: "simulated channel-map failure" }); }
     return json(response, 200, { data: [] });
   }
 

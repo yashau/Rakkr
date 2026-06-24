@@ -89,3 +89,25 @@ export async function runControlPlaneFailureScenario({
     },
   });
 }
+
+export async function runChannelMapLookupFailureScenario({
+  address,
+  captureCommand,
+  renderCommand,
+  runScenario,
+}) {
+  await runScenario({
+    address,
+    captureCommand,
+    renderCommand,
+    scenario: {
+      channelMapFailuresRemaining: 1,
+      expectChannelMapLookupFailure: true,
+      expectSuccess: true,
+      jobId: "job_fake_controller_channel_map_failure",
+      name: "channel-map-failure",
+      outputFileName: "rec_fake_controller_channel_map_failure.mp3",
+      recordingId: "rec_fake_controller_channel_map_failure",
+    },
+  });
+}
