@@ -6,7 +6,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 1
 fi
 
-for tool in aplay arecord ffmpeg ffprobe modprobe python3 awk; do
+for tool in arecord ffprobe python3 awk; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "Missing '$tool'. Install alsa-utils, ffmpeg, kmod, and python3 on the recorder node." >&2
     exit 1
@@ -18,14 +18,40 @@ fixture="${RAKKR_LOOPBACK_FIXTURE:-fixtures/audio/rakkr-golden-dialogue-clean.wa
 work_dir="${RAKKR_LOOPBACK_WORK_DIR:-/tmp/rakkr-loopback-job-test}"
 rate="${RAKKR_LOOPBACK_RATE:-48000}"
 channels="${RAKKR_LOOPBACK_CHANNELS:-2}"
+capture_format="${RAKKR_LOOPBACK_CAPTURE_FORMAT:-S16_LE}"
 capture_seconds="${RAKKR_LOOPBACK_JOB_SECONDS:-8}"
 play_seconds="$((capture_seconds + 2))"
 warmup_seconds="${RAKKR_LOOPBACK_WARMUP_SECONDS:-0.4}"
 node_id="${RAKKR_LOOPBACK_NODE_ID:-node_loopback_job_smoke}"
 token="${RAKKR_LOOPBACK_TOKEN:-node-token}"
-recording_id="rec_loopback_full_agent"
-job_id="job_loopback_full_agent"
+recording_id="${RAKKR_LOOPBACK_RECORDING_ID:-rec_loopback_full_agent}"
+job_id="${RAKKR_LOOPBACK_JOB_ID:-job_loopback_full_agent}"
 output_name="${recording_id}.wav"
+playback_mode="${RAKKR_LOOPBACK_PLAYBACK_MODE:-fixture}"
+require_snd_aloop="${RAKKR_LOOPBACK_REQUIRE_SND_ALOOP:-1}"
+expected_card="${RAKKR_LOOPBACK_EXPECT_CARD:-}"
+smoke_label="${RAKKR_LOOPBACK_JOB_SMOKE_LABEL:-Loopback full-agent job smoke}"
+check_volume="${RAKKR_LOOPBACK_CHECK_VOLUME:-1}"
+min_output_bytes="${RAKKR_LOOPBACK_CAPTURE_MIN_OUTPUT_BYTES:-1024}"
+
+if [[ "$playback_mode" == "fixture" ]]; then
+  for tool in aplay ffmpeg; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "Missing '$tool'. Install alsa-utils and ffmpeg on the recorder node." >&2
+      exit 1
+    fi
+  done
+fi
+
+if [[ "$check_volume" == "1" ]] && ! command -v ffmpeg >/dev/null 2>&1; then
+  echo "Missing 'ffmpeg'. Install ffmpeg or set RAKKR_LOOPBACK_CHECK_VOLUME=0." >&2
+  exit 1
+fi
+
+if [[ "$require_snd_aloop" == "1" ]] && ! command -v modprobe >/dev/null 2>&1; then
+  echo "Missing 'modprobe'. Install kmod or set RAKKR_LOOPBACK_REQUIRE_SND_ALOOP=0." >&2
+  exit 1
+fi
 
 if [[ ! -x "$agent_binary" ]]; then
   echo "Rakkr agent binary is not executable: $agent_binary" >&2
@@ -33,28 +59,43 @@ if [[ ! -x "$agent_binary" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$fixture" ]]; then
+if [[ "$playback_mode" == "fixture" && ! -f "$fixture" ]]; then
   echo "Loopback fixture is missing: $fixture" >&2
   exit 1
 fi
 
-if ! grep -q "^snd_aloop " /proc/modules 2>/dev/null; then
+if [[ -n "$expected_card" ]] && ! arecord -l | grep -Eq "$expected_card"; then
+  echo "Expected ALSA capture card matching '${expected_card}' was not found." >&2
+  arecord -l >&2 || true
+  exit 1
+fi
+
+if [[ "$require_snd_aloop" == "1" ]] && ! grep -q "^snd_aloop " /proc/modules 2>/dev/null; then
   substreams="${RAKKR_LOOPBACK_SUBSTREAMS:-8}"
   modprobe snd-aloop "pcm_substreams=${substreams}"
 fi
 
-loopback_card="$(
-  arecord -l |
-    awk '/^card [0-9]+: Loopback / { gsub(":", "", $2); print $2; exit }'
-)"
+loopback_card=""
+capture_device="${RAKKR_LOOPBACK_CAPTURE_DEVICE:-}"
+play_device="${RAKKR_LOOPBACK_PLAY_DEVICE:-}"
+if [[ "$require_snd_aloop" == "1" ]]; then
+  loopback_card="$(
+    arecord -l |
+      awk '/^card [0-9]+: Loopback / { gsub(":", "", $2); print $2; exit }'
+  )"
 
-if [[ -z "$loopback_card" ]]; then
-  echo "ALSA Loopback card was not found after loading snd-aloop." >&2
+  if [[ -z "$loopback_card" ]]; then
+    echo "ALSA Loopback card was not found after loading snd-aloop." >&2
+    exit 1
+  fi
+
+  play_device="${play_device:-hw:${loopback_card},0,0}"
+  capture_device="${capture_device:-hw:${loopback_card},1,0}"
+elif [[ -z "$capture_device" ]]; then
+  echo "Set RAKKR_LOOPBACK_CAPTURE_DEVICE when RAKKR_LOOPBACK_REQUIRE_SND_ALOOP=0." >&2
   exit 1
 fi
 
-play_device="${RAKKR_LOOPBACK_PLAY_DEVICE:-hw:${loopback_card},0,0}"
-capture_device="${RAKKR_LOOPBACK_CAPTURE_DEVICE:-hw:${loopback_card},1,0}"
 play_file="${work_dir}/job-clean-play.wav"
 controller_script="${work_dir}/loopback-controller.py"
 controller_log="${work_dir}/controller.log"
@@ -69,18 +110,23 @@ aplay_log="${work_dir}/aplay.log"
 rm -rf "$work_dir"
 mkdir -p "$work_dir"
 
-ffmpeg \
-  -y \
-  -hide_banner \
-  -loglevel error \
-  -stream_loop -1 \
-  -i "$fixture" \
-  -t "$play_seconds" \
-  -filter_complex "[0:a]pan=mono|c0=0.5*c0+0.5*c1,asplit=2[left][right];[right]adelay=83[rightd];[left][rightd]join=inputs=2:channel_layout=stereo" \
-  -ar "$rate" \
-  -ac "$channels" \
-  -sample_fmt s16 \
-  "$play_file"
+if [[ "$playback_mode" == "fixture" ]]; then
+  ffmpeg \
+    -y \
+    -hide_banner \
+    -loglevel error \
+    -stream_loop -1 \
+    -i "$fixture" \
+    -t "$play_seconds" \
+    -filter_complex "[0:a]pan=mono|c0=0.5*c0+0.5*c1,asplit=2[left][right];[right]adelay=83[rightd];[left][rightd]join=inputs=2:channel_layout=stereo" \
+    -ar "$rate" \
+    -ac "$channels" \
+    -sample_fmt s16 \
+    "$play_file"
+elif [[ "$playback_mode" != "none" ]]; then
+  echo "Unsupported RAKKR_LOOPBACK_PLAYBACK_MODE: ${playback_mode}" >&2
+  exit 1
+fi
 
 cat >"$controller_script" <<'PY'
 import json
@@ -286,7 +332,7 @@ RAKKR_LOOPBACK_JOB_ID="$job_id" \
 RAKKR_LOOPBACK_RECORDING_ID="$recording_id" \
 RAKKR_LOOPBACK_OUTPUT_NAME="$output_name" \
 RAKKR_LOOPBACK_CAPTURE_DEVICE="$capture_device" \
-RAKKR_LOOPBACK_CAPTURE_FORMAT=S16_LE \
+RAKKR_LOOPBACK_CAPTURE_FORMAT="$capture_format" \
 RAKKR_LOOPBACK_CAPTURE_RATE="$rate" \
 RAKKR_LOOPBACK_CAPTURE_CHANNELS="$channels" \
 RAKKR_LOOPBACK_CAPTURE_SECONDS="$capture_seconds" \
@@ -325,9 +371,11 @@ fi
 
 port="$(cat "$port_file")"
 
-timeout "$((capture_seconds + 18))s" aplay -D "$play_device" "$play_file" >"$aplay_log" 2>&1 &
-player_pid=$!
-sleep "$warmup_seconds"
+if [[ "$playback_mode" == "fixture" ]]; then
+  timeout "$((capture_seconds + 18))s" aplay -D "$play_device" "$play_file" >"$aplay_log" 2>&1 &
+  player_pid=$!
+  sleep "$warmup_seconds"
+fi
 
 set +e
 timeout "$((capture_seconds + 30))s" \
@@ -337,7 +385,7 @@ timeout "$((capture_seconds + 30))s" \
     --agent-state-file "$agent_state" \
     --capture-command arecord \
     --capture-growth-grace-seconds 0 \
-    --capture-min-output-bytes 1024 \
+    --capture-min-output-bytes "$min_output_bytes" \
     --controller-token "$token" \
     --controller-url "http://127.0.0.1:${port}" \
     --channel-render-command ffmpeg \
@@ -348,15 +396,25 @@ timeout "$((capture_seconds + 30))s" \
 agent_status=$?
 set -e
 
-wait "$player_pid" >/dev/null 2>&1 || true
+if [[ -n "${player_pid:-}" ]]; then
+  wait "$player_pid" >/dev/null 2>&1 || true
+fi
 
 if [[ "$agent_status" -ne 0 ]]; then
-  echo "Loopback full-agent job failed with status ${agent_status}." >&2
+  echo "${smoke_label} failed with status ${agent_status}." >&2
   cat "$agent_log" >&2 || true
   exit 1
 fi
 
-RAKKR_LOOPBACK_WORK_DIR="$work_dir" python3 <<'PY'
+RAKKR_LOOPBACK_WORK_DIR="$work_dir" \
+RAKKR_LOOPBACK_CAPTURE_CHANNELS="$channels" \
+RAKKR_LOOPBACK_CAPTURE_RATE="$rate" \
+RAKKR_LOOPBACK_CHECK_VOLUME="$check_volume" \
+RAKKR_LOOPBACK_JOB_ID="$job_id" \
+RAKKR_LOOPBACK_OUTPUT_NAME="$output_name" \
+RAKKR_LOOPBACK_MIN_MEAN_VOLUME_DBFS="${RAKKR_LOOPBACK_MIN_MEAN_VOLUME_DBFS:--45}" \
+RAKKR_LOOPBACK_MIN_MAX_VOLUME_DBFS="${RAKKR_LOOPBACK_MIN_MAX_VOLUME_DBFS:--20}" \
+  python3 <<'PY'
 import json
 import os
 import pathlib
@@ -365,6 +423,13 @@ import sys
 
 work = pathlib.Path(os.environ["RAKKR_LOOPBACK_WORK_DIR"])
 capture_seconds = int(os.environ.get("RAKKR_LOOPBACK_JOB_SECONDS", "8"))
+expected_channels = int(os.environ["RAKKR_LOOPBACK_CAPTURE_CHANNELS"])
+expected_rate = int(os.environ["RAKKR_LOOPBACK_CAPTURE_RATE"])
+expected_job_id = os.environ["RAKKR_LOOPBACK_JOB_ID"]
+output_name = os.environ["RAKKR_LOOPBACK_OUTPUT_NAME"]
+check_volume = os.environ.get("RAKKR_LOOPBACK_CHECK_VOLUME") == "1"
+min_mean_volume = float(os.environ["RAKKR_LOOPBACK_MIN_MEAN_VOLUME_DBFS"])
+min_max_volume = float(os.environ["RAKKR_LOOPBACK_MIN_MAX_VOLUME_DBFS"])
 state = json.loads((work / "controller-state.json").read_text())
 agent_state = json.loads((work / "agent-state.json").read_text())
 health_events = [
@@ -372,7 +437,7 @@ health_events = [
     for line in (work / "agent-health-events.jsonl").read_text().splitlines()
     if line.strip()
 ]
-upload = work / "uploaded-rec_loopback_full_agent.wav"
+upload = work / f"uploaded-{output_name}"
 errors = []
 
 observed = state["observed"]
@@ -384,11 +449,11 @@ if job["status"] != "completed":
 if agent_state.get("status") != "completed":
     errors.append(f"agent state did not complete: {agent_state.get('status')}")
 if observed["claimNextReads"] != 1 or observed["claims"] != 1:
-    errors.append("agent did not claim exactly one loopback job")
+    errors.append("agent did not claim exactly one job")
 if observed["heartbeats"] < 1:
-    errors.append("agent did not heartbeat during loopback capture")
+    errors.append("agent did not heartbeat during capture")
 if observed["jobStatusReads"] < 1:
-    errors.append("agent did not poll loopback job status")
+    errors.append("agent did not poll job status")
 if observed["channelMapReads"] != 1:
     errors.append("agent did not fetch channel-map assignments")
 if len(uploads) != 1:
@@ -399,9 +464,9 @@ else:
         errors.append(f"cache upload was not audio/wav: {uploaded['contentType']}")
     if uploaded["durationSeconds"] != str(capture_seconds):
         errors.append(f"cache upload duration header was wrong: {uploaded['durationSeconds']}")
-    if uploaded["fileName"] != "rec_loopback_full_agent.wav":
+    if uploaded["fileName"] != output_name:
         errors.append(f"cache upload file name was wrong: {uploaded['fileName']}")
-    if uploaded["jobId"] != "job_loopback_full_agent":
+    if uploaded["jobId"] != expected_job_id:
         errors.append(f"cache upload job id was wrong: {uploaded['jobId']}")
     if uploaded["size"] <= 1024:
         errors.append("cache upload body was too small")
@@ -431,40 +496,41 @@ if upload.exists():
     duration = float(metadata["format"]["duration"])
     if duration < capture_seconds - 0.5:
         errors.append(f"uploaded WAV duration too short: {duration}")
-    if int(stream["channels"]) != 2:
+    if int(stream["channels"]) != expected_channels:
         errors.append(f"uploaded WAV channel count was wrong: {stream['channels']}")
-    if int(stream["sample_rate"]) != 48000:
+    if int(stream["sample_rate"]) != expected_rate:
         errors.append(f"uploaded WAV sample rate was wrong: {stream['sample_rate']}")
 
-    proc = subprocess.run(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-nostats",
-            "-i",
-            str(upload),
-            "-filter:a",
-            "volumedetect",
-            "-f",
-            "null",
-            "/dev/null",
-        ],
-        stderr=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
-    mean_volume = None
-    max_volume = None
-    for line in proc.stderr.splitlines():
-        if "mean_volume:" in line:
-            mean_volume = float(line.rsplit("mean_volume:", 1)[1].strip().split()[0])
-        if "max_volume:" in line:
-            max_volume = float(line.rsplit("max_volume:", 1)[1].strip().split()[0])
-    if mean_volume is None or mean_volume < -45:
-        errors.append(f"uploaded WAV mean volume was too quiet: {mean_volume}")
-    if max_volume is None or max_volume < -20:
-        errors.append(f"uploaded WAV max volume was too quiet: {max_volume}")
+    if check_volume:
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(upload),
+                "-filter:a",
+                "volumedetect",
+                "-f",
+                "null",
+                "/dev/null",
+            ],
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        mean_volume = None
+        max_volume = None
+        for line in proc.stderr.splitlines():
+            if "mean_volume:" in line:
+                mean_volume = float(line.rsplit("mean_volume:", 1)[1].strip().split()[0])
+            if "max_volume:" in line:
+                max_volume = float(line.rsplit("max_volume:", 1)[1].strip().split()[0])
+        if mean_volume is None or mean_volume < min_mean_volume:
+            errors.append(f"uploaded WAV mean volume was too quiet: {mean_volume}")
+        if max_volume is None or max_volume < min_max_volume:
+            errors.append(f"uploaded WAV max volume was too quiet: {max_volume}")
 
 summary = {
     "agent_state": agent_state.get("status"),
@@ -482,5 +548,9 @@ if errors:
 PY
 
 echo
-echo "Loopback full-agent job smoke passed. Artifacts:"
+if [[ "$smoke_label" == "Loopback full-agent job smoke" ]]; then
+  echo "Loopback full-agent job smoke passed. Artifacts:"
+else
+  echo "${smoke_label} passed. Artifacts:"
+fi
 ls -lh "$work_dir"

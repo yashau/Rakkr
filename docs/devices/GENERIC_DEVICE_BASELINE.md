@@ -24,11 +24,12 @@ Status: Partial baseline checked.
 - Node inventory can filter visible recorder nodes by audio backend from runtime availability or collected interface metadata.
 - Synthetic meters and fake-controller capture/render smoke tests validate agent workflows, including template-driven capture arguments, without hardware.
 - Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, render/channel-map output, clean/clipping/low-volume/channel-correlation fixture replay plus daemon health-log events, and short or longer full fake-controller agent jobs that capture, upload, and clean up loopback WAVs.
+- Generic ALSA full-agent job smoke can run the same fake-controller claim/capture/upload/cleanup lifecycle against a selected hardware device without loopback playback.
 - A clean 48 kHz stereo multi-speaker speech fixture is checked in for replay through ALSA loopback and derived fault permutations.
 - Debian test rig loopback smoke execution passed for ALSA WAV capture and channel-map render validation using `hw:1,1,0`, stereo `S16_LE`, 48 kHz capture, and non-silent rendered output.
 - Generic ALSA hardware capture smoke can validate a selected Linux capture device with configured device, format, sample rate, channel count, duration, output size, and ffprobe metadata.
-- X32 X-USB short capture smoke passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
-- Remaining gaps: broader physical-device validation, full agent lifecycle against hardware, and long-run hardware capture validation are not complete.
+- X32 X-USB short capture smoke and full-agent hardware job smoke passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
+- Remaining gaps: broader physical-device validation and long-run hardware capture validation are not complete.
 
 ## Checked By
 
@@ -45,7 +46,7 @@ Status: Partial baseline checked.
 | Channel-map render planning for generic capture inputs | `crates/recorder-agent/src/channel_map.rs` |
 | Linux `snd-aloop` capture, meter, render, clean/fault fixture, and full-agent job smoke tasks | `.mise.toml`, `scripts/alsa-loopback-smoke.sh`, `scripts/agent-loopback-meter-smoke.sh`, `scripts/alsa-loopback-render-smoke.sh`, `scripts/agent-loopback-fixture-smoke.sh`, `scripts/agent-loopback-job-smoke.sh` |
 | Clean speech source fixture for loopback/fault permutations | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json`, `fixtures/audio/README.md` |
-| Generic ALSA hardware capture smoke | `.mise.toml`, `scripts/alsa-capture-smoke.sh` |
+| Generic ALSA hardware capture and full-agent job smoke | `.mise.toml`, `scripts/alsa-capture-smoke.sh`, `scripts/agent-alsa-job-smoke.sh` |
 | Hardware-free job lifecycle, render, cache upload, stop handling, and template meter sampling | `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-devices.mjs` |
 
 `mise run devices:check-generic` validates this partial baseline, and `mise run check` runs it.
