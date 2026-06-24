@@ -13,7 +13,7 @@ Status: Partial baseline checked.
 - Quality anomaly policies can alert when scheduled audio has sustained high broadband noise, noise, hum, or static likelihood and auto-resolve after recovery.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
-- Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, configurable low-signal, first-pass channel correlation, disk/CPU/audio backend pressure, capture start/runtime/growth failure, render failure, cache upload failure, recording-job claim-next/status-poll/control-plane/channel-map failure, and controller-terminal job state handoff.
+- Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, configurable low-signal, first-pass channel correlation, disk/CPU/audio backend pressure, capture start/runtime/too-small/growth failure, render failure, cache upload failure, recording-job claim-next/status-poll/control-plane/channel-map failure, and controller-terminal job state handoff.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
@@ -59,6 +59,6 @@ Status: Partial baseline checked.
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/broadband-noise/SNR/intelligibility/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |
 | Agent clipping, flatline, low-signal, channel correlation, xrun, node-heartbeat/node-config sync, and system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
-| Agent capture start/runtime/growth, cache upload, job claim-next/status-poll/control-plane/channel-map failure, controller-terminal handoff, render-failure, and system-health smoke | `scripts/agent-fake-controller-smoke.mjs` |
+| Agent capture start/runtime/too-small/growth, cache upload, job claim-next/status-poll/control-plane/channel-map failure, controller-terminal handoff, render-failure, and system-health smoke | `scripts/agent-fake-controller-smoke.mjs` |
 
 `mise run health:check-watchdog` validates this partial baseline, and `mise run check` runs it.

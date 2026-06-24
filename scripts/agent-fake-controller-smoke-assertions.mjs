@@ -90,6 +90,24 @@ export function assertCaptureFailureScenario({ healthLogEvents, job, observed, s
   });
 }
 
+export function assertTinyCaptureFailureScenario({
+  healthLogEvents,
+  job,
+  observed,
+  scenario,
+  state,
+}) {
+  assertCaptureFailureHealth({
+    eventType: "agent.recording_job.capture_failed",
+    healthLogEvents,
+    job,
+    observed,
+    reasonFragment: "capture output is too small",
+    scenario,
+    state,
+  });
+}
+
 export function assertStatusPollFailureScenario({
   healthLogEvents,
   job,

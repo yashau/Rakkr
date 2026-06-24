@@ -158,6 +158,7 @@ export async function runCaptureFailureScenarios({
   missingCaptureCommand,
   renderCommand,
   runScenario,
+  tinyCaptureCommand,
 }) {
   await runScenario({
     address,
@@ -183,6 +184,19 @@ export async function runCaptureFailureScenarios({
       name: "capture-failure",
       outputFileName: "rec_fake_controller_capture_failure.mp3",
       recordingId: "rec_fake_controller_capture_failure",
+    },
+  });
+  await runScenario({
+    address,
+    captureCommand: tinyCaptureCommand,
+    renderCommand,
+    scenario: {
+      expectTinyCaptureFailure: true,
+      expectSuccess: false,
+      jobId: "job_fake_controller_tiny_capture_failure",
+      name: "tiny-capture-failure",
+      outputFileName: "rec_fake_controller_tiny_capture_failure.mp3",
+      recordingId: "rec_fake_controller_tiny_capture_failure",
     },
   });
 }

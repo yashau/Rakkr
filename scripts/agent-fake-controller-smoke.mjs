@@ -15,6 +15,7 @@ import {
   writeFakeStalledCaptureCommand,
   writeFakeTemplateCaptureCommand,
   writeFakeTemplateMeterCommand,
+  writeFakeTinyCaptureCommand,
   writeFakeXrunMeterCommand,
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
@@ -27,6 +28,7 @@ import {
   assertRenderFailureScenario,
   assertStatusPollFailureScenario,
   assertStalledCaptureScenario,
+  assertTinyCaptureFailureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
 import { runCaptureFailureScenarios, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios } from "./agent-fake-controller-smoke-jobs.mjs";
@@ -109,6 +111,7 @@ try {
   const failingCaptureCommand = await writeFakeFailingCaptureCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
+  const tinyCaptureCommand = await writeFakeTinyCaptureCommand(smokeRoot);
   await runClaimNextFailureScenario(jobScenarioDeps({ address }));
   for (const scenario of scenarios) {
     await runScenario({ address, captureCommand, renderCommand, scenario });
@@ -120,6 +123,7 @@ try {
     missingCaptureCommand: path.join(smokeRoot, "missing-capture-command"),
     renderCommand,
     runScenario,
+    tinyCaptureCommand,
   });
   await runScenario({
     address,
@@ -278,7 +282,7 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
 
   invariant(observed.claimNextReads === 1, "agent did not claim the next queued job");
   invariant(observed.claims === 1, "agent did not claim exactly one queued job");
-  if (!scenario.expectCaptureStartFailure && !scenario.expectCaptureFailure) {
+  if (!scenario.expectCaptureStartFailure && !scenario.expectCaptureFailure && !scenario.expectTinyCaptureFailure) {
     invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
     invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
   }
@@ -290,6 +294,8 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertCaptureStartFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectCaptureFailure) {
     assertCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectTinyCaptureFailure) {
+    assertTinyCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStalledCapture) {
     assertStalledCaptureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectControlPlaneFailure) {
