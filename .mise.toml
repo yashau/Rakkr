@@ -205,6 +205,10 @@ run = "env RAKKR_LOOPBACK_JOB_SECONDS=${RAKKR_LOOPBACK_LONGRUN_SECONDS:-45} bash
 description = "Capture and validate a generic Linux ALSA hardware device"
 run = "bash scripts/alsa-capture-smoke.sh"
 
+[tasks."agent:alsa-meter-smoke"]
+description = "Sample and validate Rakkr agent meters from a generic Linux ALSA hardware device"
+run = "bash scripts/agent-alsa-meter-smoke.sh"
+
 [tasks."agent:alsa-job-smoke"]
 description = "Run a full recorder-agent job against a generic Linux ALSA hardware device"
 run = "bash scripts/agent-alsa-job-smoke.sh"
@@ -216,6 +220,10 @@ run = "env RAKKR_ALSA_JOB_EXPECT_CARD=XUSB RAKKR_ALSA_JOB_DEVICE=hw:CARD=XUSB,DE
 [tasks."agent:x32-longrun-job-smoke"]
 description = "Run a longer full recorder-agent job against the X32 X-USB ALSA hardware device"
 run = "env RAKKR_ALSA_JOB_EXPECT_CARD=XUSB RAKKR_ALSA_JOB_DEVICE=hw:CARD=XUSB,DEV=0 RAKKR_ALSA_JOB_FORMAT=S32_LE RAKKR_ALSA_JOB_CHANNELS=32 RAKKR_ALSA_JOB_SECONDS=${RAKKR_X32_LONGRUN_JOB_SECONDS:-45} RAKKR_ALSA_JOB_WORK_DIR=${RAKKR_X32_LONGRUN_JOB_WORK_DIR:-/tmp/rakkr-x32-longrun-job-test} RAKKR_ALSA_JOB_SMOKE_LABEL='X32 long-run full-agent job smoke' bash scripts/agent-alsa-job-smoke.sh"
+
+[tasks."agent:x32-meter-smoke"]
+description = "Sample Rakkr agent meters from the X32 X-USB ALSA hardware device"
+run = "env RAKKR_ALSA_METER_EXPECT_CARD=XUSB RAKKR_ALSA_METER_DEVICE=hw:CARD=XUSB,DEV=0 RAKKR_ALSA_METER_FORMAT=S32_LE RAKKR_ALSA_METER_CHANNELS=32 RAKKR_ALSA_METER_SECONDS=${RAKKR_X32_METER_SECONDS:-3} RAKKR_ALSA_METER_OUTPUT=${RAKKR_X32_METER_OUTPUT:-/tmp/rakkr-x32-meter-smoke.json} RAKKR_ALSA_METER_SMOKE_LABEL='X32 S32_LE meter smoke' bash scripts/agent-alsa-meter-smoke.sh"
 
 [tasks."agent:alsa-pch-job-smoke"]
 description = "Run a full recorder-agent job against the Debian rig HDA Intel PCH ALSA hardware device"

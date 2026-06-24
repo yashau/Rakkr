@@ -60,6 +60,43 @@ pub struct ChannelCorrelation {
 
 const MONITOR_CHUNK_SAMPLE_RATE: u32 = 16_000;
 
+#[derive(Clone, Copy)]
+enum PcmSampleFormat {
+    S16Le,
+    S32Le,
+}
+
+impl PcmSampleFormat {
+    fn parse(format: &str) -> anyhow::Result<Self> {
+        match format.to_ascii_uppercase().as_str() {
+            "S16_LE" => Ok(Self::S16Le),
+            "S32_LE" => Ok(Self::S32Le),
+            _ => anyhow::bail!(
+                "meter sampling currently supports S16_LE and S32_LE PCM, not {}",
+                format
+            ),
+        }
+    }
+
+    fn bytes_per_sample(self) -> usize {
+        match self {
+            Self::S16Le => 2,
+            Self::S32Le => 4,
+        }
+    }
+
+    fn normalized_sample(self, sample: &[u8]) -> f64 {
+        match self {
+            Self::S16Le => f64::from(i16::from_le_bytes([sample[0], sample[1]])) / 32768.0,
+            Self::S32Le => {
+                f64::from(i32::from_le_bytes([
+                    sample[0], sample[1], sample[2], sample[3],
+                ])) / 2_147_483_648.0
+            }
+        }
+    }
+}
+
 pub fn now_rfc3339() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -79,12 +116,7 @@ pub fn alsa_meter_sample(
     interface_id: &str,
     config: &MeterCaptureConfig<'_>,
 ) -> anyhow::Result<MeterSample> {
-    if !config.format.eq_ignore_ascii_case("S16_LE") {
-        anyhow::bail!(
-            "meter sampling currently supports S16_LE PCM, not {}",
-            config.format
-        );
-    }
+    let sample_format = PcmSampleFormat::parse(config.format)?;
 
     let args = meter_command_args(config)?;
     let output = Command::new(config.command)
@@ -101,28 +133,7 @@ pub fn alsa_meter_sample(
         );
     }
 
-    meter_sample_from_pcm(node_id, interface_id, &output.stdout, config)
-}
-
-pub fn pcm_s16le_meter_frame(
-    node_id: &str,
-    interface_id: &str,
-    pcm: &[u8],
-    channel_count: u16,
-    clip_dbfs: f32,
-) -> anyhow::Result<MeterFrame> {
-    let captured_at = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .context("format captured timestamp")?;
-
-    pcm_s16le_meter_frame_at(
-        node_id,
-        interface_id,
-        pcm,
-        channel_count,
-        clip_dbfs,
-        &captured_at,
-    )
+    meter_sample_from_pcm(node_id, interface_id, &output.stdout, config, sample_format)
 }
 
 fn meter_sample_from_pcm(
@@ -130,21 +141,29 @@ fn meter_sample_from_pcm(
     interface_id: &str,
     pcm: &[u8],
     config: &MeterCaptureConfig<'_>,
+    sample_format: PcmSampleFormat,
 ) -> anyhow::Result<MeterSample> {
-    let frame = pcm_s16le_meter_frame(
+    let captured_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .context("format captured timestamp")?;
+    let frame = pcm_meter_frame_at(
         node_id,
         interface_id,
         pcm,
         config.channel_count,
         config.clip_dbfs,
+        &captured_at,
+        sample_format,
     )?;
-    let monitor_duration_ms = pcm_duration_ms(pcm, config.sample_rate, config.channel_count)
-        .unwrap_or_else(|| config.sample_seconds.max(1).saturating_mul(1000));
-    let monitor_wav = pcm_s16le_monitor_wav(
+    let monitor_duration_ms =
+        pcm_duration_ms(pcm, config.sample_rate, config.channel_count, sample_format)
+            .unwrap_or_else(|| config.sample_seconds.max(1).saturating_mul(1000));
+    let monitor_wav = pcm_monitor_wav(
         pcm,
         config.sample_rate,
         config.channel_count,
         MONITOR_CHUNK_SAMPLE_RATE,
+        sample_format,
     )?;
 
     Ok(MeterSample {
@@ -154,6 +173,7 @@ fn meter_sample_from_pcm(
     })
 }
 
+#[cfg(test)]
 fn pcm_s16le_meter_frame_at(
     node_id: &str,
     interface_id: &str,
@@ -162,20 +182,42 @@ fn pcm_s16le_meter_frame_at(
     clip_dbfs: f32,
     captured_at: &str,
 ) -> anyhow::Result<MeterFrame> {
+    pcm_meter_frame_at(
+        node_id,
+        interface_id,
+        pcm,
+        channel_count,
+        clip_dbfs,
+        captured_at,
+        PcmSampleFormat::S16Le,
+    )
+}
+
+fn pcm_meter_frame_at(
+    node_id: &str,
+    interface_id: &str,
+    pcm: &[u8],
+    channel_count: u16,
+    clip_dbfs: f32,
+    captured_at: &str,
+    sample_format: PcmSampleFormat,
+) -> anyhow::Result<MeterFrame> {
     if channel_count == 0 {
         anyhow::bail!("meter frame requires at least one channel");
     }
 
-    if pcm.len() < usize::from(channel_count) * 2 {
+    let sample_bytes = sample_format.bytes_per_sample();
+
+    if pcm.len() < usize::from(channel_count) * sample_bytes {
         anyhow::bail!("meter PCM payload does not contain a complete frame");
     }
 
-    if !pcm.len().is_multiple_of(2) {
+    if !pcm.len().is_multiple_of(sample_bytes) {
         anyhow::bail!("meter PCM payload has an incomplete sample");
     }
 
     let channel_count = usize::from(channel_count);
-    let frame_bytes = channel_count * 2;
+    let frame_bytes = channel_count * sample_bytes;
 
     if !pcm.len().is_multiple_of(frame_bytes) {
         anyhow::bail!("meter PCM payload has an incomplete interleaved frame");
@@ -190,8 +232,8 @@ fn pcm_s16le_meter_frame_at(
         let mut samples = Vec::with_capacity(channel_count);
 
         for (channel_index, channel_stats) in stats.iter_mut().enumerate() {
-            let offset = channel_index * 2;
-            let sample = i16::from_le_bytes([frame[offset], frame[offset + 1]]);
+            let offset = channel_index * sample_bytes;
+            let sample = sample_format.normalized_sample(&frame[offset..offset + sample_bytes]);
             let signed = channel_stats.observe(sample);
 
             samples.push(signed);
@@ -294,18 +336,36 @@ pub fn synthetic_meter_sample(
     })
 }
 
+#[cfg(test)]
 fn pcm_s16le_monitor_wav(
     pcm: &[u8],
     source_sample_rate: u32,
     channel_count: u16,
     target_sample_rate: u32,
 ) -> anyhow::Result<Vec<u8>> {
+    pcm_monitor_wav(
+        pcm,
+        source_sample_rate,
+        channel_count,
+        target_sample_rate,
+        PcmSampleFormat::S16Le,
+    )
+}
+
+fn pcm_monitor_wav(
+    pcm: &[u8],
+    source_sample_rate: u32,
+    channel_count: u16,
+    target_sample_rate: u32,
+    sample_format: PcmSampleFormat,
+) -> anyhow::Result<Vec<u8>> {
     if source_sample_rate == 0 || target_sample_rate == 0 || channel_count == 0 {
         anyhow::bail!("monitor WAV requires non-zero sample rates and channels");
     }
 
     let channel_count = usize::from(channel_count);
-    let frame_bytes = channel_count * 2;
+    let sample_bytes = sample_format.bytes_per_sample();
+    let frame_bytes = channel_count * sample_bytes;
 
     if pcm.len() < frame_bytes || !pcm.len().is_multiple_of(frame_bytes) {
         anyhow::bail!("monitor PCM payload has incomplete interleaved frames");
@@ -326,13 +386,15 @@ fn pcm_s16le_monitor_wav(
         let frame = &pcm[source_index * frame_bytes..(source_index + 1) * frame_bytes];
         let mixed = (0..channel_count)
             .map(|channel| {
-                let offset = channel * 2;
-                i32::from(i16::from_le_bytes([frame[offset], frame[offset + 1]]))
+                let offset = channel * sample_bytes;
+                sample_format.normalized_sample(&frame[offset..offset + sample_bytes])
             })
-            .sum::<i32>()
-            / i32::try_from(channel_count).unwrap_or(1);
+            .sum::<f64>()
+            / channel_count as f64;
 
-        samples.push(mixed.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16);
+        samples.push(
+            (mixed * f64::from(i16::MAX)).clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16,
+        );
     }
 
     Ok(wav_mono_s16le(&samples, target_sample_rate))
@@ -385,12 +447,17 @@ fn wav_mono_s16le(samples: &[i16], sample_rate: u32) -> Vec<u8> {
     bytes
 }
 
-fn pcm_duration_ms(pcm: &[u8], sample_rate: u32, channel_count: u16) -> Option<u64> {
+fn pcm_duration_ms(
+    pcm: &[u8],
+    sample_rate: u32,
+    channel_count: u16,
+    sample_format: PcmSampleFormat,
+) -> Option<u64> {
     if sample_rate == 0 || channel_count == 0 {
         return None;
     }
 
-    let frame_bytes = usize::from(channel_count) * 2;
+    let frame_bytes = usize::from(channel_count) * sample_format.bytes_per_sample();
     let frames = pcm.len() / frame_bytes;
 
     Some(
@@ -410,17 +477,17 @@ struct ChannelStats {
 }
 
 impl ChannelStats {
-    fn observe(&mut self, sample: i16) -> f64 {
-        let signed = f64::from(sample) / 32768.0;
+    fn observe(&mut self, sample: f64) -> f64 {
+        let signed = sample.clamp(-1.0, 1.0);
         let normalized = signed.abs();
 
         self.peak = self.peak.max(normalized);
         self.sample_count += 1;
         self.sum_squares += normalized * normalized;
 
-        let sign = if sample > 0 {
+        let sign = if signed > 0.0 {
             1
-        } else if sample < 0 {
+        } else if signed < 0.0 {
             -1
         } else {
             0

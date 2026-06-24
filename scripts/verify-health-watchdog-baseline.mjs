@@ -2,6 +2,7 @@ import { access, readFile } from "node:fs/promises";
 
 const baselineFile = "docs/health/HEALTH_WATCHDOG_BASELINE.md";
 const sourceFiles = [
+  ".mise.toml",
   "packages/shared/src/index.ts",
   "apps/api/src/watchdog-clipping.ts",
   "apps/api/src/watchdog-flatline.ts",
@@ -38,6 +39,7 @@ const sourceFiles = [
   "crates/recorder-agent/src/controller.rs",
   "scripts/agent-loopback-fixture-smoke.sh",
   "scripts/agent-loopback-job-smoke.sh",
+  "scripts/agent-alsa-meter-smoke.sh",
   "scripts/agent-fake-controller-smoke-assertions.mjs",
   "scripts/agent-fake-controller-smoke-agent.mjs",
   "scripts/agent-fake-controller-smoke-health.mjs",
@@ -75,6 +77,7 @@ const baselinePhrases = [
   "controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback",
   "controller-synced agent disk-pressure, stalled-capture, and render-failure health",
   "without synthetic capture",
+  "X32 S32_LE hardware meter smoke",
   "device unavailable/xrun",
   "clipping",
   "flatline",
@@ -205,6 +208,8 @@ const sourceSnippets = [
   "agent health log did not record recorder-cache deletion",
   "Loopback full-agent job smoke passed",
   "stream_loop",
+  "S32_LE",
+  "X32 S32_LE meter smoke",
   "correlated-channel meter did not detect duplicated channels",
   "deploy a current agent binary",
   "agent.meter.xrun",

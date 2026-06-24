@@ -22,6 +22,7 @@ Status: Partial baseline checked.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
 - A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields plus daemon health-log clipping, low-signal, and channel-correlation behavior.
 - A full-agent ALSA loopback job smoke records looped speech through `arecord`, uploads the captured WAV to a fake controller, and asserts recorder-cache cleanup health without synthetic capture.
+- X32 S32_LE hardware meter smoke validates real 32-channel agent meter-frame and quality-field generation without synthetic fallback.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, searchable and filterable by opened/resolved date range and incident fields, export scoped filtered CSV incident lists, and audited.
@@ -47,6 +48,7 @@ Status: Partial baseline checked.
 | Meter speech/noise/broadband-noise/SNR/intelligibility/hum/static/clipping UI helpers | `apps/web/src/lib/meter-helpers.test.ts` |
 | Recording and schedule quality timelines with clipping, flatline, quality anomaly, and upload-failure evidence | `apps/web/src/components/quality-timeline.tsx`, `apps/web/src/lib/quality-timeline-helpers.test.ts` |
 | Clean multi-speaker speech source fixture and loopback clipped/noisy fault smoke | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json`, `scripts/agent-loopback-fixture-smoke.sh` |
+| X32 S32_LE hardware meter smoke | `scripts/agent-alsa-meter-smoke.sh` |
 | Full-agent ALSA loopback capture/upload job smoke | `scripts/agent-loopback-job-smoke.sh` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/broadband-noise/SNR/intelligibility/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |

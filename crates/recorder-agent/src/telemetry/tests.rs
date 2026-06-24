@@ -19,12 +19,64 @@ fn computes_s16le_meter_levels_per_channel() {
 }
 
 #[test]
+fn computes_s32le_meter_levels_per_channel() {
+    let pcm = [
+        0_i32,
+        i32::MAX,
+        1_073_741_824_i32,
+        -1_073_741_824_i32,
+        i32::MIN,
+        0_i32,
+    ]
+    .into_iter()
+    .flat_map(i32::to_le_bytes)
+    .collect::<Vec<_>>();
+
+    let frame = pcm_meter_frame_at(
+        "node_1",
+        "iface_1",
+        &pcm,
+        2,
+        -1.0,
+        "2026-06-18T00:00:00Z",
+        PcmSampleFormat::S32Le,
+    )
+    .expect("meter frame");
+
+    assert_eq!(frame.levels.len(), 2);
+    assert_eq!(frame.levels[0].channel_index, 1);
+    assert!(frame.levels[0].clipping);
+    assert!(frame.levels[0].peak_dbfs >= -0.1);
+    assert!(frame.levels[1].rms_dbfs < frame.levels[1].peak_dbfs);
+}
+
+#[test]
 fn builds_mono_monitor_wav_from_interleaved_pcm() {
     let pcm = [1000_i16, -1000_i16, 3000_i16, -3000_i16]
         .into_iter()
         .flat_map(i16::to_le_bytes)
         .collect::<Vec<_>>();
     let wav = pcm_s16le_monitor_wav(&pcm, 2, 2, 2).expect("monitor wav");
+
+    assert_eq!(&wav[0..4], b"RIFF");
+    assert_eq!(&wav[8..12], b"WAVE");
+    assert_eq!(u16::from_le_bytes([wav[22], wav[23]]), 1);
+    assert_eq!(u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]), 2);
+    assert_eq!(u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]), 4);
+}
+
+#[test]
+fn builds_mono_monitor_wav_from_s32le_interleaved_pcm() {
+    let pcm = [
+        65_536_000_i32,
+        -65_536_000_i32,
+        196_608_000_i32,
+        -196_608_000_i32,
+    ]
+    .into_iter()
+    .flat_map(i32::to_le_bytes)
+    .collect::<Vec<_>>();
+    let wav = pcm_monitor_wav(&pcm, 2, 2, 2, PcmSampleFormat::S32Le).expect("monitor wav");
 
     assert_eq!(&wav[0..4], b"RIFF");
     assert_eq!(&wav[8..12], b"WAVE");

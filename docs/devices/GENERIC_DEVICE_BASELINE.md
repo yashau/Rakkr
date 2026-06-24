@@ -28,7 +28,9 @@ Status: Partial baseline checked.
 - A clean 48 kHz stereo multi-speaker speech fixture is checked in for replay through ALSA loopback and derived fault permutations.
 - Debian test rig loopback smoke execution passed for ALSA WAV capture and channel-map render validation using `hw:1,1,0`, stereo `S16_LE`, 48 kHz capture, and non-silent rendered output.
 - Generic ALSA hardware capture smoke can validate a selected Linux capture device with configured device, format, sample rate, channel count, duration, output size, and ffprobe metadata.
+- Generic ALSA hardware meter smoke can validate agent meter frames, quality fields, clipping state, and S16/S32 PCM decoding against selected hardware.
 - X32 X-USB short capture smoke plus short and longer full-agent hardware job smokes passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
+- X32 X-USB hardware meter smoke passed using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
 - Debian rig HDA Intel PCH full-agent hardware job smoke passed using `hw:CARD=PCH,DEV=0`, 2 channels, `S16_LE`, and 48 kHz.
 - Remaining gaps: broader physical-device validation beyond the Debian rig fixtures is not complete.
 
@@ -47,7 +49,7 @@ Status: Partial baseline checked.
 | Channel-map render planning for generic capture inputs | `crates/recorder-agent/src/channel_map.rs` |
 | Linux `snd-aloop` capture, meter, render, clean/fault fixture, and full-agent job smoke tasks | `.mise.toml`, `scripts/alsa-loopback-smoke.sh`, `scripts/agent-loopback-meter-smoke.sh`, `scripts/alsa-loopback-render-smoke.sh`, `scripts/agent-loopback-fixture-smoke.sh`, `scripts/agent-loopback-job-smoke.sh` |
 | Clean speech source fixture for loopback/fault permutations | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json`, `fixtures/audio/README.md` |
-| Generic ALSA hardware capture and full-agent job smoke | `.mise.toml`, `scripts/alsa-capture-smoke.sh`, `scripts/agent-alsa-job-smoke.sh` |
+| Generic ALSA hardware capture, meter, and full-agent job smoke | `.mise.toml`, `scripts/alsa-capture-smoke.sh`, `scripts/agent-alsa-meter-smoke.sh`, `scripts/agent-alsa-job-smoke.sh` |
 | Hardware-free job lifecycle, render, cache upload, stop handling, and template meter sampling | `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-devices.mjs` |
 
 `mise run devices:check-generic` validates this partial baseline, and `mise run check` runs it.
