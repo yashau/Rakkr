@@ -204,6 +204,7 @@ const sourceSnippets = [
   "correlated-channel daemon health log did not report channel correlation",
   "agent health log did not record recorder-cache deletion",
   "Loopback full-agent job smoke passed",
+  "stream_loop",
   "correlated-channel meter did not detect duplicated channels",
   "deploy a current agent binary",
   "agent.meter.xrun",

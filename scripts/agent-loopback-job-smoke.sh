@@ -19,6 +19,7 @@ work_dir="${RAKKR_LOOPBACK_WORK_DIR:-/tmp/rakkr-loopback-job-test}"
 rate="${RAKKR_LOOPBACK_RATE:-48000}"
 channels="${RAKKR_LOOPBACK_CHANNELS:-2}"
 capture_seconds="${RAKKR_LOOPBACK_JOB_SECONDS:-8}"
+play_seconds="$((capture_seconds + 2))"
 warmup_seconds="${RAKKR_LOOPBACK_WARMUP_SECONDS:-0.4}"
 node_id="${RAKKR_LOOPBACK_NODE_ID:-node_loopback_job_smoke}"
 token="${RAKKR_LOOPBACK_TOKEN:-node-token}"
@@ -72,7 +73,9 @@ ffmpeg \
   -y \
   -hide_banner \
   -loglevel error \
+  -stream_loop -1 \
   -i "$fixture" \
+  -t "$play_seconds" \
   -filter_complex "[0:a]pan=mono|c0=0.5*c0+0.5*c1,asplit=2[left][right];[right]adelay=83[rightd];[left][rightd]join=inputs=2:channel_layout=stereo" \
   -ar "$rate" \
   -ac "$channels" \
@@ -466,6 +469,7 @@ if upload.exists():
 summary = {
     "agent_state": agent_state.get("status"),
     "cache_upload": uploads[0] if uploads else None,
+    "capture_seconds": capture_seconds,
     "health_events": [event["type"] for event in health_events],
     "job_status": job["status"],
     "observed": observed,
