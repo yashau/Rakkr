@@ -28,8 +28,8 @@ Status: Partial baseline checked.
 - A clean 48 kHz stereo multi-speaker speech fixture is checked in for replay through ALSA loopback and derived fault permutations.
 - Debian test rig loopback smoke execution passed for ALSA WAV capture and channel-map render validation using `hw:1,1,0`, stereo `S16_LE`, 48 kHz capture, and non-silent rendered output.
 - Generic ALSA hardware capture smoke can validate a selected Linux capture device with configured device, format, sample rate, channel count, duration, output size, and ffprobe metadata.
-- X32 X-USB short capture smoke and full-agent hardware job smoke passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
-- Remaining gaps: broader physical-device validation and long-run hardware capture validation are not complete.
+- X32 X-USB short capture smoke plus short and longer full-agent hardware job smokes passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
+- Remaining gaps: broader physical-device validation beyond the X32 test fixture is not complete.
 
 ## Checked By
 
