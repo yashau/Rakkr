@@ -192,6 +192,8 @@ const sourceSnippets = [
   "agent.meter.channel_correlation",
   "fault meter did not detect clipping",
   "clean meter did not classify the fixture as speech-like",
+  "low-volume meter did not drop below the low-signal threshold",
+  "correlated-channel meter did not detect duplicated channels",
   "deploy a current agent binary",
   "agent.meter.xrun",
   "agent.meter.device_unavailable",

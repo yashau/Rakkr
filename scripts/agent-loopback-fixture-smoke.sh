@@ -52,10 +52,14 @@ play_device="${RAKKR_LOOPBACK_PLAY_DEVICE:-hw:${loopback_card},0,0}"
 capture_device="${RAKKR_LOOPBACK_CAPTURE_DEVICE:-hw:${loopback_card},1,0}"
 clean_play="${work_dir}/clean-play.wav"
 fault_play="${work_dir}/fault-clipped-noisy-play.wav"
+low_play="${work_dir}/fault-low-volume-play.wav"
+correlated_play="${work_dir}/fault-correlated-channel-play.wav"
 clean_capture="${work_dir}/clean-capture.wav"
 fault_capture="${work_dir}/fault-clipped-noisy-capture.wav"
 clean_meter="${work_dir}/clean-meter.json"
 fault_meter="${work_dir}/fault-clipped-noisy-meter.json"
+low_meter="${work_dir}/fault-low-volume-meter.json"
+correlated_meter="${work_dir}/fault-correlated-channel-meter.json"
 
 mkdir -p "$work_dir"
 
@@ -64,6 +68,7 @@ ffmpeg \
   -hide_banner \
   -loglevel error \
   -i "$fixture" \
+  -filter_complex "[0:a]pan=mono|c0=0.5*c0+0.5*c1,asplit=2[left][right];[right]adelay=83[rightd];[left][rightd]join=inputs=2:channel_layout=stereo" \
   -ar "$rate" \
   -ac "$channels" \
   -sample_fmt s16 \
@@ -79,6 +84,28 @@ ffmpeg \
   -ac "$channels" \
   -sample_fmt s16 \
   "$fault_play"
+
+ffmpeg \
+  -y \
+  -hide_banner \
+  -loglevel error \
+  -i "$clean_play" \
+  -filter:a "volume=-38dB" \
+  -ar "$rate" \
+  -ac "$channels" \
+  -sample_fmt s16 \
+  "$low_play"
+
+ffmpeg \
+  -y \
+  -hide_banner \
+  -loglevel error \
+  -i "$fixture" \
+  -filter_complex "[0:a]pan=mono|c0=0.5*c0+0.5*c1,asplit=2[left][right];[left][right]join=inputs=2:channel_layout=stereo" \
+  -ar "$rate" \
+  -ac "$channels" \
+  -sample_fmt s16 \
+  "$correlated_play"
 
 loop_capture() {
   local input="$1"
@@ -126,6 +153,8 @@ loop_capture "$clean_play" "$clean_capture"
 loop_capture "$fault_play" "$fault_capture"
 loop_meter "$clean_play" "$clean_meter"
 loop_meter "$fault_play" "$fault_meter"
+loop_meter "$low_play" "$low_meter"
+loop_meter "$correlated_play" "$correlated_meter"
 
 RAKKR_LOOPBACK_WORK_DIR="$work_dir" python3 <<'PY'
 import json
@@ -191,6 +220,16 @@ def meter(path):
     return {
         "channels": len(levels),
         "clipping": [level["clipping"] for level in levels],
+        "channel_correlation_score": [
+            (
+                level.get("quality", {})
+                .get("channelCorrelation", {})
+                .get("score")
+                if level.get("quality", {}).get("channelCorrelation")
+                else None
+            )
+            for level in levels
+        ],
         "peak_dbfs": [level["peakDbfs"] for level in levels],
         "rms_dbfs": [level["rmsDbfs"] for level in levels],
         "speech_score": [level.get("quality", {}).get("speechScore") for level in levels],
@@ -213,6 +252,8 @@ summary = {
     },
     "clean_meter": meter(work / "clean-meter.json"),
     "fault_meter": meter(work / "fault-clipped-noisy-meter.json"),
+    "low_meter": meter(work / "fault-low-volume-meter.json"),
+    "correlated_meter": meter(work / "fault-correlated-channel-meter.json"),
 }
 print(json.dumps(summary, indent=2))
 
@@ -228,14 +269,18 @@ if summary["clean_capture"]["duration"] < 25:
 if summary["fault_capture"]["duration"] < 25:
     errors.append("fault capture duration too short")
 for key in required_quality_keys:
-    if any(value is None for value in summary["clean_meter"][key]):
-        errors.append(f"clean meter is missing {key}; deploy a current agent binary")
-    if any(value is None for value in summary["fault_meter"][key]):
-        errors.append(f"fault meter is missing {key}; deploy a current agent binary")
+    for meter_name in ["clean_meter", "fault_meter", "low_meter", "correlated_meter"]:
+        if any(value is None for value in summary[meter_name][key]):
+            errors.append(f"{meter_name} is missing {key}; deploy a current agent binary")
 if max(summary["clean_meter"]["speech_score"]) < 0.55:
     errors.append("clean meter did not classify the fixture as speech-like")
 if max(summary["clean_meter"]["noise_score"]) >= max(summary["clean_meter"]["speech_score"]):
     errors.append("clean meter noise score should stay below speech score")
+clean_correlation_scores = [
+    abs(value) for value in summary["clean_meter"]["channel_correlation_score"] if value is not None
+]
+if clean_correlation_scores and max(clean_correlation_scores) >= 0.98:
+    errors.append("clean meter unexpectedly reported alert-level channel correlation")
 if any(summary["clean_meter"]["clipping"]):
     errors.append("clean meter unexpectedly clipped")
 if not any(summary["fault_meter"]["clipping"]):
@@ -244,6 +289,17 @@ if max(summary["fault_meter"]["peak_dbfs"]) < -1.0:
     errors.append("fault peak did not reach clipping threshold")
 if max(summary["clean_meter"]["peak_dbfs"]) >= -1.0:
     errors.append("clean peak is too close to clipping")
+if max(summary["low_meter"]["rms_dbfs"]) > -55.0:
+    errors.append("low-volume meter did not drop below the low-signal threshold")
+if max(summary["low_meter"]["speech_score"]) >= 0.55:
+    errors.append("low-volume meter remained speech-like")
+correlated_scores = [
+    abs(value)
+    for value in summary["correlated_meter"]["channel_correlation_score"]
+    if value is not None
+]
+if not correlated_scores or max(correlated_scores) < 0.98:
+    errors.append("correlated-channel meter did not detect duplicated channels")
 
 if errors:
     print("FAIL: " + "; ".join(errors), file=sys.stderr)

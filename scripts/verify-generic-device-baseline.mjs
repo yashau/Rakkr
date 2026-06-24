@@ -154,6 +154,8 @@ const sourceSnippets = [
   "RAKKR_ALSA_CAPTURE_DEVICE",
   "RAKKR_LOOPBACK_FIXTURE",
   "fault-clipped-noisy",
+  "fault-low-volume",
+  "fault-correlated-channel",
   "snd-aloop",
   "speaker-test",
   "ffprobe",
