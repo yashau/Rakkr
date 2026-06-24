@@ -191,6 +191,8 @@ const sourceSnippets = [
   "agent.meter.flatline",
   "agent.meter.channel_correlation",
   "fault meter did not detect clipping",
+  "clean meter did not classify the fixture as speech-like",
+  "deploy a current agent binary",
   "agent.meter.xrun",
   "agent.meter.device_unavailable",
   "agent.meter.capture_recovered",

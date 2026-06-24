@@ -20,7 +20,7 @@ Status: Partial baseline checked.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced listen-monitor chunk failure and recovery without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
-- A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays the clean source plus a clipped/noisy derivative and asserts agent meter clipping detection.
+- A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays the clean source plus a clipped/noisy derivative and asserts current-agent speech/noise quality fields plus clipping detection.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, searchable and filterable by opened/resolved date range and incident fields, export scoped filtered CSV incident lists, and audited.

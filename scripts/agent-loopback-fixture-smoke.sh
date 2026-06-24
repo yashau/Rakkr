@@ -217,10 +217,25 @@ summary = {
 print(json.dumps(summary, indent=2))
 
 errors = []
+required_quality_keys = [
+    "speech_score",
+    "noise_score",
+    "broadband_noise_score",
+    "static_score",
+]
 if summary["clean_capture"]["duration"] < 25:
     errors.append("clean capture duration too short")
 if summary["fault_capture"]["duration"] < 25:
     errors.append("fault capture duration too short")
+for key in required_quality_keys:
+    if any(value is None for value in summary["clean_meter"][key]):
+        errors.append(f"clean meter is missing {key}; deploy a current agent binary")
+    if any(value is None for value in summary["fault_meter"][key]):
+        errors.append(f"fault meter is missing {key}; deploy a current agent binary")
+if max(summary["clean_meter"]["speech_score"]) < 0.55:
+    errors.append("clean meter did not classify the fixture as speech-like")
+if max(summary["clean_meter"]["noise_score"]) >= max(summary["clean_meter"]["speech_score"]):
+    errors.append("clean meter noise score should stay below speech score")
 if any(summary["clean_meter"]["clipping"]):
     errors.append("clean meter unexpectedly clipped")
 if not any(summary["fault_meter"]["clipping"]):
