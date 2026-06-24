@@ -77,6 +77,7 @@ const baselinePhrases = [
   "scoped job status",
   "leases, heartbeats, and failures",
   "Fake-controller smoke",
+  "status-poll failure health",
   "MP3 VBR output",
   "mise run recordings:check-first-reliable",
 ];
@@ -131,6 +132,7 @@ const sourceSnippets = [
   "schedule detail permissions mirror granular read and action grants",
   "agent.recording_job.output_rendered",
   "agent.recording_job.cache_upload_failed",
+  "agent.recording_job.status_poll_failed",
   "controller_stop_requested",
   "RAKKR_MAX_CONCURRENT_RECORDINGS",
   "fetch_node_config",
@@ -174,6 +176,7 @@ const testSnippets = [
   "recording:playback",
   "agent did not upload cache file",
   "cache upload local health event",
+  "status-poll health event did not preserve controller rejection",
   "concurrent jobs did not overlap as running",
   "concurrent agent did not claim both queued jobs",
 ];

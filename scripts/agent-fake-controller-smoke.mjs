@@ -19,6 +19,7 @@ import {
 import {
   assertCacheUploadFailureScenario,
   assertRenderFailureScenario,
+  assertStatusPollFailureScenario,
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
@@ -132,6 +133,20 @@ try {
       name: "stalled-capture",
       outputFileName: "rec_fake_controller_stalled_capture.mp3",
       recordingId: "rec_fake_controller_stalled_capture",
+    },
+  });
+  await runScenario({
+    address,
+    captureCommand,
+    renderCommand,
+    scenario: {
+      expectStatusPollFailure: true,
+      expectSuccess: false,
+      jobId: "job_fake_controller_status_poll_failure",
+      jobStatusFailuresRemaining: 1,
+      name: "status-poll-failure",
+      outputFileName: "rec_fake_controller_status_poll_failure.mp3",
+      recordingId: "rec_fake_controller_status_poll_failure",
     },
   });
   await runScenario({
@@ -252,6 +267,8 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertRenderFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStalledCapture) {
     assertStalledCaptureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectStatusPollFailure) {
+    assertStatusPollFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.controllerStopRequested) {
     assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state });
   } else {
@@ -692,6 +709,7 @@ function createObserved() {
     heartbeats: 0,
     healthEvents: [],
     jobStatusReads: 0,
+    jobStatusReadFailures: 0,
     maxRunningJobs: 0,
     meterFrames: 0,
     monitorChunkFailures: 0,
@@ -844,6 +862,12 @@ async function handleControllerRequest(request, response) {
     }
 
     observed.jobStatusReads += 1;
+    if (scenario.jobStatusFailuresRemaining > 0) {
+      scenario.jobStatusFailuresRemaining -= 1;
+      observed.jobStatusReadFailures += 1;
+      return json(response, 503, { error: "simulated job status failure" });
+    }
+
     if (scenario.controllerStopRequested) {
       job.status = "stop_requested";
     }

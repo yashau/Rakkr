@@ -412,7 +412,31 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             return Err(error);
         }
 
-        let latest = fetch_recording_job(config, token, &job.id).await?;
+        let latest = match fetch_recording_job(config, token, &job.id).await {
+            Ok(latest) => latest,
+            Err(error) => {
+                let reason = error.to_string();
+
+                capture.stop()?;
+                let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+                append_job_health_event(
+                    config,
+                    token,
+                    &job,
+                    "agent.recording_job.status_poll_failed",
+                    "warning",
+                    json!({
+                        "error": reason.as_str(),
+                        "jobId": job.id.as_str(),
+                        "recordingId": job.recording_id.as_str(),
+                    }),
+                )
+                .await?;
+                write_job_state(config, &job, "failed", None, Some(&reason))?;
+
+                return Err(error);
+            }
+        };
 
         if matches!(latest.status.as_str(), "stop_requested" | "cancelled") {
             capture.stop()?;
@@ -895,7 +919,6 @@ async fn fetch_recording_job(
 
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-
         anyhow::bail!("controller rejected job status request with {status}: {body}");
     }
 
@@ -949,7 +972,6 @@ async fn mark_recording_job_terminal(
 
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-
         anyhow::bail!("controller rejected job terminal update with {status}: {body}");
     }
 
@@ -974,22 +996,4 @@ pub(crate) fn node_url(controller_url: &str, node_id: &str, suffix: &str) -> Str
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_recording_cache_url_without_double_slashes() {
-        assert_eq!(
-            recording_cache_url("https://controller.local/", "rec_123"),
-            "https://controller.local/api/v1/recordings/rec_123/cache-file"
-        );
-    }
-
-    #[test]
-    fn builds_node_url_without_double_slashes() {
-        assert_eq!(
-            node_url("https://controller.local/", "node_1", "/meter-frame"),
-            "https://controller.local/api/v1/nodes/node_1/meter-frame"
-        );
-    }
-}
+mod tests;

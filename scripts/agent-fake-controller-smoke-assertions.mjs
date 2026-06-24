@@ -60,6 +60,51 @@ export function assertRenderFailureScenario({ healthLogEvents, job, observed, sc
   );
 }
 
+export function assertStatusPollFailureScenario({
+  healthLogEvents,
+  job,
+  observed,
+  scenario,
+  state,
+}) {
+  const failedLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.status_poll_failed",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.status_poll_failed",
+  );
+
+  invariant(job.status === "failed", "fake controller did not mark status-poll job failed");
+  invariant(observed.failures === 1, "agent did not mark status-poll job failed");
+  invariant(observed.jobStatusReadFailures === 1, "fake controller did not fail status read once");
+  invariant(!observed.cacheUpload, "agent uploaded cache after status-poll failure");
+  invariant(state.status === "failed", "status-poll state file did not end failed");
+  invariant(state.jobId === scenario.jobId, "status-poll state recorded the wrong job id");
+  invariant(
+    String(state.reason).includes("controller rejected job status request with 503"),
+    "status-poll state did not retain controller rejection",
+  );
+  invariant(
+    String(observed.failureReason).includes("controller rejected job status request with 503"),
+    "failed-job reason did not include status-poll rejection",
+  );
+  invariant(failedLocalEvent, "agent local health log did not include status-poll failure");
+  invariant(failedLocalEvent.severity === "warning", "status-poll failure was not warning");
+  invariant(
+    failedLocalEvent.recordingId === scenario.recordingId,
+    "status-poll local health event recorded the wrong recording",
+  );
+  invariant(
+    failedLocalEvent.details?.jobId === scenario.jobId,
+    "status-poll local health event recorded the wrong job",
+  );
+  invariant(syncedEvent, "agent did not sync status-poll failure health event");
+  invariant(
+    String(syncedEvent.details?.error).includes("controller rejected job status request with 503"),
+    "status-poll health event did not preserve controller rejection",
+  );
+}
+
 export function assertCacheUploadFailureScenario({
   healthLogEvents,
   job,
