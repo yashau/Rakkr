@@ -19,6 +19,17 @@ const ignoredPathParts = [
 ];
 
 const ignoredFiles = new Set(["pnpm-lock.yaml", "Cargo.lock"]);
+const ignoredExtensions = new Set([
+  ".flac",
+  ".gif",
+  ".jpeg",
+  ".jpg",
+  ".mp3",
+  ".ogg",
+  ".png",
+  ".wav",
+  ".webp",
+]);
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -42,7 +53,11 @@ async function walk(directory) {
       continue;
     }
 
-    if (!entry.isFile() || ignoredFiles.has(entry.name)) {
+    if (
+      !entry.isFile() ||
+      ignoredFiles.has(entry.name) ||
+      ignoredExtensions.has(path.extname(entry.name).toLowerCase())
+    ) {
       continue;
     }
 
@@ -77,4 +92,3 @@ if (violations.length > 0) {
 }
 
 console.log(`All checked files are at or below ${maxLines} LOC.`);
-
