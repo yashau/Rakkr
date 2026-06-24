@@ -24,6 +24,7 @@ Status: Partial baseline checked.
 - A full-agent ALSA loopback job smoke records looped speech through `arecord`, uploads the captured WAV to a fake controller, and asserts recorder-cache cleanup health without synthetic capture.
 - X32 S32_LE hardware meter smoke validates real 32-channel one-shot and repeated agent meter-frame and quality-field generation without synthetic fallback.
 - HDA Intel PCH S16_LE hardware meter smoke validates real 2-channel onboard-agent meter-frame and quality-field generation without synthetic fallback.
+- HDA Intel PCH flatline health smoke validates the daemon meter loop writes a local `agent.meter.flatline` health event from real silent ALSA hardware without synthetic fallback.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, searchable and filterable by opened/resolved date range and incident fields, export scoped filtered CSV incident lists, and audited.
@@ -51,6 +52,7 @@ Status: Partial baseline checked.
 | Clean multi-speaker speech source fixture and loopback clipped/noisy fault smoke | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json`, `scripts/agent-loopback-fixture-smoke.sh` |
 | X32 S32_LE hardware meter smoke and repeated soak | `scripts/agent-alsa-meter-smoke.sh` |
 | HDA Intel PCH S16_LE hardware meter smoke | `scripts/agent-alsa-meter-smoke.sh` |
+| HDA Intel PCH flatline health smoke | `scripts/agent-alsa-health-smoke.sh` |
 | Full-agent ALSA loopback capture/upload job smoke | `scripts/agent-loopback-job-smoke.sh` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/broadband-noise/SNR/intelligibility/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |

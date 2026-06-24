@@ -233,6 +233,10 @@ run = "env RAKKR_ALSA_METER_EXPECT_CARD=XUSB RAKKR_ALSA_METER_DEVICE=hw:CARD=XUS
 description = "Sample Rakkr agent meters from the Debian rig HDA Intel PCH ALSA hardware device"
 run = "env RAKKR_ALSA_METER_EXPECT_CARD=PCH RAKKR_ALSA_METER_DEVICE=hw:CARD=PCH,DEV=0 RAKKR_ALSA_METER_FORMAT=S16_LE RAKKR_ALSA_METER_CHANNELS=2 RAKKR_ALSA_METER_SECONDS=${RAKKR_ALSA_PCH_METER_SECONDS:-3} RAKKR_ALSA_METER_OUTPUT=${RAKKR_ALSA_PCH_METER_OUTPUT:-/tmp/rakkr-alsa-pch-meter-smoke.json} RAKKR_ALSA_METER_SMOKE_LABEL='ALSA PCH S16_LE meter smoke' bash scripts/agent-alsa-meter-smoke.sh"
 
+[tasks."agent:alsa-pch-flatline-health-smoke"]
+description = "Run the recorder-agent health loop against silent Debian rig HDA Intel PCH ALSA hardware"
+run = "env RAKKR_ALSA_HEALTH_EXPECT_CARD=PCH RAKKR_ALSA_HEALTH_DEVICE=hw:CARD=PCH,DEV=0 RAKKR_ALSA_HEALTH_FORMAT=S16_LE RAKKR_ALSA_HEALTH_CHANNELS=2 RAKKR_ALSA_HEALTH_METER_SECONDS=${RAKKR_ALSA_PCH_HEALTH_METER_SECONDS:-3} RAKKR_ALSA_HEALTH_RUN_SECONDS=${RAKKR_ALSA_PCH_HEALTH_RUN_SECONDS:-8} RAKKR_ALSA_HEALTH_EXPECT_EVENT=agent.meter.flatline RAKKR_ALSA_HEALTH_WORK_DIR=${RAKKR_ALSA_PCH_HEALTH_WORK_DIR:-/tmp/rakkr-alsa-pch-flatline-health-test} RAKKR_ALSA_HEALTH_SMOKE_LABEL='ALSA PCH flatline health smoke' bash scripts/agent-alsa-health-smoke.sh"
+
 [tasks."agent:alsa-pch-job-smoke"]
 description = "Run a full recorder-agent job against the Debian rig HDA Intel PCH ALSA hardware device"
 run = "env RAKKR_ALSA_JOB_EXPECT_CARD=PCH RAKKR_ALSA_JOB_DEVICE=hw:CARD=PCH,DEV=0 RAKKR_ALSA_JOB_FORMAT=S16_LE RAKKR_ALSA_JOB_CHANNELS=2 RAKKR_ALSA_JOB_SECONDS=${RAKKR_ALSA_PCH_JOB_SECONDS:-5} RAKKR_ALSA_JOB_WORK_DIR=${RAKKR_ALSA_PCH_JOB_WORK_DIR:-/tmp/rakkr-alsa-pch-job-test} RAKKR_ALSA_JOB_SMOKE_LABEL='ALSA PCH full-agent job smoke' bash scripts/agent-alsa-job-smoke.sh"
