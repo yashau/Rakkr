@@ -31,9 +31,9 @@ Status: Partial baseline checked.
 - Generic ALSA hardware meter smoke can validate one-shot or repeated agent meter frames, quality fields, clipping state, stable node/interface identity, and S16/S32 PCM decoding against selected hardware.
 - X32 X-USB short capture smoke plus short and longer full-agent hardware job smokes passed on the Debian test rig using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
 - X32 X-USB hardware meter smoke and repeated meter soak passed using `hw:CARD=XUSB,DEV=0`, 32 channels, `S32_LE`, and 48 kHz.
-- X32 X-USB low-signal health smoke passed using real quiet `hw:CARD=XUSB,DEV=0` metering and local health-log assertions.
+- X32 X-USB low-signal health smoke passed using real quiet `hw:CARD=XUSB,DEV=0` metering, local health-log assertions, and fake-controller health-event sync assertions.
 - Debian rig HDA Intel PCH hardware meter smoke passed using `hw:CARD=PCH,DEV=0`, 2 channels, `S16_LE`, and 48 kHz.
-- Debian rig HDA Intel PCH flatline health smoke passed using real silent `hw:CARD=PCH,DEV=0` metering and local health-log assertions.
+- Debian rig HDA Intel PCH flatline health smoke passed using real silent `hw:CARD=PCH,DEV=0` metering, local health-log assertions, and fake-controller health-event sync assertions.
 - Debian rig HDA Intel PCH full-agent hardware job smoke passed using `hw:CARD=PCH,DEV=0`, 2 channels, `S16_LE`, and 48 kHz.
 - Remaining gaps: broader physical-device validation beyond the Debian rig fixtures is not complete.
 
