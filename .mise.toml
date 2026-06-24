@@ -189,6 +189,10 @@ run = "bash scripts/agent-loopback-meter-smoke.sh"
 description = "Capture and render mapped audio from a Linux ALSA snd-aloop fake device"
 run = "bash scripts/alsa-loopback-render-smoke.sh"
 
+[tasks."agent:loopback-fixture-smoke"]
+description = "Replay the speech fixture through ALSA snd-aloop and assert clean/fault meter behavior"
+run = "bash scripts/agent-loopback-fixture-smoke.sh"
+
 [tasks."agent:alsa-capture-smoke"]
 description = "Capture and validate a generic Linux ALSA hardware device"
 run = "bash scripts/alsa-capture-smoke.sh"

@@ -63,7 +63,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Controller API | ✅ | Audited Auth/OIDC read/detail/action summaries, RBAC, audited audit list/detail/action summaries/exports/facets, audited node detail/list/meter/action summaries and agent meter-frame/job polling reads with location/backend/last-seen filters/exports, capacity, scoped audited aggregate status and metrics reads, audited recording detail/context/list/facets/action summaries/actions, ad-hoc and scheduled backend/interface selection, audited schedule list/detail/occurrence reads and filters/action summaries/exports, jobs, lifecycle coverage, audited settings and retention list/detail/action summaries/update, searchable audited health filters/detail/action summaries/bulk lifecycle controls/exports, audited recording-job detail/list/action summaries/date/relationship/capture filters and controls/exports, scoped audited upload queue reads/action summaries and runner status/actions |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
 | Recorder agent | 🟨 | Inventory, meters, controller capacity polling, bounded concurrent jobs, capture growth guards, profile rendering, channel correlation, concurrent-safe health log |
-| Test rig | 🟨 | Debian node reachable; X32 X-USB visible and stable-name ALSA capture passed as `hw:XUSB,0` with non-silent 32-channel 48 kHz audio; ALSA loopback capture/render smoke passed; clean multi-speaker speech fixture generated for loopback/fault permutations; long-run/full-agent validation remains |
+| Test rig | 🟨 | Debian node reachable; X32 X-USB visible and stable-name ALSA capture passed as `hw:XUSB,0` with non-silent 32-channel 48 kHz audio; ALSA loopback capture/render smoke passed; clean multi-speaker speech fixture generated and replayed through ALSA loopback with clipped/noisy fault detection; long-run/full-agent validation remains |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, backend availability reporting, Linux loopback capture/render execution, and X32 stable-name ALSA capture smoke; broader Linux capture validation remains |
 | Settings/templates | ✅ | Profiles, watchdog policies, channel maps, upload retention, schedule retention assignment, controller retention execution, recorder delete-after-upload/max-age/max-bytes/min-free execution, bulk assignment, staged apply, checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
@@ -225,6 +225,7 @@ Current partial implementation:
 - ALSA loopback capture and channel-map render smokes passed on the Debian test rig using `hw:1,1,0`, stereo `S16_LE`, and 48 kHz capture.
 - ALSA loopback and fake-controller tasks can validate capture/meter/render and agent job lifecycle before X32 validation resumes.
 - `fixtures/audio/rakkr-golden-dialogue-clean.wav` provides a clean 48 kHz stereo multi-speaker speech fixture for deriving loopback fault permutations.
+- Debian test rig ALSA loopback replay captured the clean fixture without clipping and a clipped/noisy derivative with agent meter clipping on both channels.
 - `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
 - RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
@@ -307,7 +308,7 @@ Current partial implementation:
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
-- A clean multi-speaker speech fixture is checked in for deriving deterministic low-volume, clipping, hum, static, broadband-noise, and channel-duplication health permutations.
+- A clean multi-speaker speech fixture is checked in for deterministic loopback health permutations; Debian loopback replay verified clean speech stays unclipped and a clipped/noisy derivative trips agent meter clipping detection.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
 - `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
 
@@ -976,6 +977,7 @@ Current implementation baseline:
 335. ✅ Audit public OIDC config/readiness routes.
 336. ✅ Promote Controller API checked route-family baseline.
 337. ✅ Add clean multi-speaker speech fixture for loopback fault permutations.
+338. ✅ Validate clean and clipped/noisy speech fixture replay on Debian ALSA loopback.
 
 ## Open Questions
 

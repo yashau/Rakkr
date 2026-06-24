@@ -23,7 +23,7 @@ Status: Partial baseline checked.
 - Runtime inventory reports detected PipeWire and JACK command availability alongside collected audio interface backends; PipeWire and JACK can be selected as managed capture/meter backends.
 - Node inventory can filter visible recorder nodes by audio backend from runtime availability or collected interface metadata.
 - Synthetic meters and fake-controller capture/render smoke tests validate agent workflows, including template-driven capture arguments, without hardware.
-- Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, and render/channel-map output on a recorder node.
+- Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, render/channel-map output, and clean/fault fixture replay on a recorder node.
 - A clean 48 kHz stereo multi-speaker speech fixture is checked in for replay through ALSA loopback and derived fault permutations.
 - Debian test rig loopback smoke execution passed for ALSA WAV capture and channel-map render validation using `hw:1,1,0`, stereo `S16_LE`, 48 kHz capture, and non-silent rendered output.
 - Generic ALSA hardware capture smoke can validate a selected Linux capture device with configured device, format, sample rate, channel count, duration, output size, and ffprobe metadata.
@@ -43,7 +43,7 @@ Status: Partial baseline checked.
 | Runtime PipeWire/JACK availability reporting | `crates/recorder-agent/src/inventory.rs` |
 | ALSA and synthetic meter frame generation | `crates/recorder-agent/src/telemetry.rs` |
 | Channel-map render planning for generic capture inputs | `crates/recorder-agent/src/channel_map.rs` |
-| Linux `snd-aloop` capture, meter, and render smoke tasks | `.mise.toml`, `scripts/alsa-loopback-smoke.sh`, `scripts/agent-loopback-meter-smoke.sh`, `scripts/alsa-loopback-render-smoke.sh` |
+| Linux `snd-aloop` capture, meter, render, and clean/fault fixture smoke tasks | `.mise.toml`, `scripts/alsa-loopback-smoke.sh`, `scripts/agent-loopback-meter-smoke.sh`, `scripts/alsa-loopback-render-smoke.sh`, `scripts/agent-loopback-fixture-smoke.sh` |
 | Clean speech source fixture for loopback/fault permutations | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json`, `fixtures/audio/README.md` |
 | Generic ALSA hardware capture smoke | `.mise.toml`, `scripts/alsa-capture-smoke.sh` |
 | Hardware-free job lifecycle, render, cache upload, stop handling, and template meter sampling | `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-devices.mjs` |
