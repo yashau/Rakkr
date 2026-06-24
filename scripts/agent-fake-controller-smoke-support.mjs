@@ -129,6 +129,28 @@ await new Promise((resolve) => setTimeout(resolve, 10000));
   return captureScript;
 }
 
+export async function writeFakeFailingCaptureCommand(directory) {
+  const captureScript = path.join(directory, "fake-failing-capture.mjs");
+  await writeFile(
+    captureScript,
+    `#!/usr/bin/env node
+console.error("simulated capture failure");
+process.exit(43);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-failing-capture.cmd");
+    await writeFile(commandPath, commandShim(captureScript));
+
+    return commandPath;
+  }
+
+  await chmod(captureScript, 0o755);
+
+  return captureScript;
+}
+
 export async function writeFakeXrunMeterCommand(directory) {
   const meterScript = path.join(directory, "fake-xrun-meter.mjs");
   await writeFile(

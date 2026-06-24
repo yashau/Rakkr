@@ -151,3 +151,38 @@ export async function runControllerTerminalStatusScenarios({
     });
   }
 }
+
+export async function runCaptureFailureScenarios({
+  address,
+  failingCaptureCommand,
+  missingCaptureCommand,
+  renderCommand,
+  runScenario,
+}) {
+  await runScenario({
+    address,
+    captureCommand: missingCaptureCommand,
+    renderCommand,
+    scenario: {
+      expectCaptureStartFailure: true,
+      expectSuccess: false,
+      jobId: "job_fake_controller_capture_start_failure",
+      name: "capture-start-failure",
+      outputFileName: "rec_fake_controller_capture_start_failure.mp3",
+      recordingId: "rec_fake_controller_capture_start_failure",
+    },
+  });
+  await runScenario({
+    address,
+    captureCommand: failingCaptureCommand,
+    renderCommand,
+    scenario: {
+      expectCaptureFailure: true,
+      expectSuccess: false,
+      jobId: "job_fake_controller_capture_failure",
+      name: "capture-failure",
+      outputFileName: "rec_fake_controller_capture_failure.mp3",
+      recordingId: "rec_fake_controller_capture_failure",
+    },
+  });
+}

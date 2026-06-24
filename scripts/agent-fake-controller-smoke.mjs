@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  writeFakeFailingCaptureCommand,
   writeFakeCaptureCommand,
   writeFakeDfCommand,
   writeFakeDeviceUnavailableMeterCommand,
@@ -18,6 +19,8 @@ import {
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
   assertCacheUploadFailureScenario,
+  assertCaptureFailureScenario,
+  assertCaptureStartFailureScenario,
   assertControllerTerminalStatusScenario,
   assertControlPlaneFailureScenario,
   assertRenderedOutputScenario,
@@ -26,7 +29,7 @@ import {
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
-import { runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios } from "./agent-fake-controller-smoke-jobs.mjs";
+import { runCaptureFailureScenarios, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
@@ -103,6 +106,7 @@ try {
   const recoveringMeterCommand = await writeFakeRecoveringMeterCommand(smokeRoot);
   const xrunMeterCommand = await writeFakeXrunMeterCommand(smokeRoot);
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
+  const failingCaptureCommand = await writeFakeFailingCaptureCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
   await runClaimNextFailureScenario(jobScenarioDeps({ address }));
@@ -110,6 +114,13 @@ try {
     await runScenario({ address, captureCommand, renderCommand, scenario });
   }
   await runControllerTerminalStatusScenarios({ address, captureCommand, renderCommand, runScenario });
+  await runCaptureFailureScenarios({
+    address,
+    failingCaptureCommand,
+    missingCaptureCommand: path.join(smokeRoot, "missing-capture-command"),
+    renderCommand,
+    runScenario,
+  });
   await runScenario({
     address,
     captureCommand: templateCaptureCommand,
@@ -267,12 +278,18 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
 
   invariant(observed.claimNextReads === 1, "agent did not claim the next queued job");
   invariant(observed.claims === 1, "agent did not claim exactly one queued job");
-  invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
-  invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
+  if (!scenario.expectCaptureStartFailure && !scenario.expectCaptureFailure) {
+    invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
+    invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
+  }
   invariant(observed.channelMapReads === 1, "agent did not fetch channel-map assignments");
 
   if (scenario.expectRenderFailure) {
     assertRenderFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectCaptureStartFailure) {
+    assertCaptureStartFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectCaptureFailure) {
+    assertCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStalledCapture) {
     assertStalledCaptureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectControlPlaneFailure) {

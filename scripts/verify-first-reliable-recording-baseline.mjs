@@ -81,6 +81,7 @@ const baselinePhrases = [
   "Fake-controller smoke",
   "claim-next/status-poll/control-plane/channel-map failure health",
   "controller-terminal status handoff",
+  "capture start/runtime failure",
   "MP3 VBR output",
   "mise run recordings:check-first-reliable",
 ];
@@ -144,6 +145,11 @@ const sourceSnippets = [
   "assertControllerTerminalStatusScenario",
   "job_fake_controller_terminal_completed",
   "terminal state did not preserve controller failure reason",
+  "runCaptureFailureScenarios",
+  "assertCaptureStartFailureScenario",
+  "assertCaptureFailureScenario",
+  "job_fake_controller_capture_start_failure",
+  "job_fake_controller_capture_failure",
   "RAKKR_MAX_CONCURRENT_RECORDINGS",
   "fetch_node_config",
   "max_concurrent_recordings",
@@ -191,6 +197,7 @@ const testSnippets = [
   "control-plane health event did not preserve heartbeat rejection",
   "status-poll health event did not preserve controller rejection",
   "agent uploaded cache after controller terminal status",
+  "capture failure health event did not preserve capture error",
   "concurrent jobs did not overlap as running",
   "concurrent agent did not claim both queued jobs",
 ];

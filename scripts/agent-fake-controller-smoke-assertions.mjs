@@ -60,6 +60,36 @@ export function assertRenderFailureScenario({ healthLogEvents, job, observed, sc
   );
 }
 
+export function assertCaptureStartFailureScenario({
+  healthLogEvents,
+  job,
+  observed,
+  scenario,
+  state,
+}) {
+  assertCaptureFailureHealth({
+    eventType: "agent.recording_job.capture_start_failed",
+    healthLogEvents,
+    job,
+    observed,
+    reasonFragment: "run capture command",
+    scenario,
+    state,
+  });
+}
+
+export function assertCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state }) {
+  assertCaptureFailureHealth({
+    eventType: "agent.recording_job.capture_failed",
+    healthLogEvents,
+    job,
+    observed,
+    reasonFragment: "capture command",
+    scenario,
+    state,
+  });
+}
+
 export function assertStatusPollFailureScenario({
   healthLogEvents,
   job,
@@ -253,6 +283,44 @@ function assertChannelMapLookupFailureScenario({ healthLogEvents, observed, scen
       "controller rejected channel map assignment request with 503",
     ),
     "channel-map health event did not preserve controller rejection",
+  );
+}
+
+function assertCaptureFailureHealth({
+  eventType,
+  healthLogEvents,
+  job,
+  observed,
+  reasonFragment,
+  scenario,
+  state,
+}) {
+  const localEvent = healthLogEvents.find((event) => event.type === eventType);
+  const syncedEvent = observed.healthEvents.find((event) => event.type === eventType);
+
+  invariant(job.status === "failed", "fake controller did not mark capture job failed");
+  invariant(observed.failures === 1, "agent did not mark capture job failed");
+  invariant(!observed.cacheUpload, "agent uploaded cache after capture failure");
+  invariant(state.status === "failed", "capture failure state file did not end failed");
+  invariant(state.jobId === scenario.jobId, "capture failure state recorded the wrong job id");
+  invariant(
+    String(state.reason).includes(reasonFragment),
+    "capture failure state did not retain the capture reason",
+  );
+  invariant(
+    String(observed.failureReason).includes(reasonFragment),
+    "capture failed-job reason did not include capture failure",
+  );
+  invariant(localEvent, "agent local health log did not include capture failure");
+  invariant(localEvent.severity === "critical", "capture failure was not critical");
+  invariant(
+    localEvent.recordingId === scenario.recordingId,
+    "capture failure local health event recorded the wrong recording",
+  );
+  invariant(syncedEvent, "agent did not sync capture failure health event");
+  invariant(
+    String(syncedEvent.details?.error).includes(reasonFragment),
+    "capture failure health event did not preserve capture error",
   );
 }
 
