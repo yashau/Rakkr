@@ -1,0 +1,48 @@
+{
+  "fixture": "rakkr-golden-dialogue-clean",
+  "description": "Clean multi-speaker dialogue fixture for deriving Rakkr audio health fault permutations.",
+  "generatedWith": "ElevenLabs text-to-speech API",
+  "modelId": "eleven_flash_v2_5",
+  "outputWav": "rakkr-golden-dialogue-clean.wav",
+  "outputMp3": "rakkr-golden-dialogue-clean.mp3",
+  "durationSeconds": 28.332,
+  "sampleRateHz": 48000,
+  "channels": 2,
+  "codec": "pcm_s16le",
+  "format": "PCM signed 16-bit little-endian WAV, stereo, 48 kHz",
+  "turns": [
+    {
+      "speaker": "Maya",
+      "voice": "Sarah - Mature, Reassuring, Confident",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "text": "Good morning. Rakkr loopback calibration is live. This clean voice should read as speech, steady, and unclipped."
+    },
+    {
+      "speaker": "Jonah",
+      "voice": "Roger - Laid-Back, Casual, Resonant",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "text": "Channel two checking in. The room is quiet; no hum, static, or broadband noise should be present."
+    },
+    {
+      "speaker": "Priya",
+      "voice": "Alice - Clear, Engaging Educator",
+      "voiceId": "Xb7hH8MSUJpSbSDYk0k2",
+      "text": "This is the third speaker. Each turn is separated by a short pause, so the watchdog can measure recovery."
+    },
+    {
+      "speaker": "Maya",
+      "voice": "Sarah - Mature, Reassuring, Confident",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "text": "Use this golden file to derive low volume, clipping, hum, static, noise, and duplicate channel tests."
+    }
+  ],
+  "intendedHealthyScores": {
+    "speech": "high",
+    "clipping": "none",
+    "flatline": "none",
+    "hum": "low",
+    "static": "low",
+    "broadbandNoise": "low",
+    "channelCorrelation": "not intentionally duplicated"
+  }
+}

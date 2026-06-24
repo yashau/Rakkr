@@ -20,6 +20,7 @@ Status: Partial baseline checked.
 - Fake-controller smoke coverage exercises controller-synced agent disk-pressure, stalled-capture, and render-failure health without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced listen-monitor chunk failure and recovery without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
+- A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav` for deriving deterministic low-volume, clipping, hum, static, broadband-noise, and channel-correlation fault permutations.
 - RBAC/audited field calibration can recommend and optionally apply watchdog thresholds from recent room meter history.
 - Settings UI exposes RBAC-mirrored watchdog calibration controls for visible nodes.
 - Health APIs are RBAC-gated, resource-scoped, lifecycle managed, searchable and filterable by opened/resolved date range and incident fields, export scoped filtered CSV incident lists, and audited.
@@ -44,6 +45,7 @@ Status: Partial baseline checked.
 | Node health lifecycle controls | `apps/web/src/components/node-health-events.tsx`, `apps/web/src/lib/node-page-helpers.test.ts` |
 | Meter speech/noise/broadband-noise/SNR/intelligibility/hum/static/clipping UI helpers | `apps/web/src/lib/meter-helpers.test.ts` |
 | Recording and schedule quality timelines with clipping, flatline, quality anomaly, and upload-failure evidence | `apps/web/src/components/quality-timeline.tsx`, `apps/web/src/lib/quality-timeline-helpers.test.ts` |
+| Clean multi-speaker speech source fixture for future fault permutations | `fixtures/audio/rakkr-golden-dialogue-clean.wav`, `fixtures/audio/rakkr-golden-dialogue-clean.json` |
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/broadband-noise/SNR/intelligibility/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |
 | Agent clipping, flatline, channel correlation, xrun, system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
