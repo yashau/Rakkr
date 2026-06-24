@@ -1,128 +1,34 @@
+mod types;
+
 use anyhow::Context;
 use reqwest::header::{CONTENT_TYPE, HeaderName, HeaderValue};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
-use std::path::Path;
 use std::time::Duration;
 use tracing::{info, warn};
 
 use crate::cache_content_type::content_type_for_codec;
 use crate::capture::spawn_capture_plan;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
-use crate::config::{AgentConfig, CaptureBackend};
+use crate::config::AgentConfig;
 use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
-use crate::recorder_cache_retention::{
-    ControllerRecorderCacheRetention, delete_recorder_cache_files, record_uploaded_cache_files,
-};
+use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
+use types::DataEnvelope;
+pub use types::{
+    CacheFileUpload, ControllerCaptureCommand, ControllerChannelMapBundle,
+    ControllerChannelMapEntry, ControllerRecordingJob, ControllerRecordingJobChannelMap,
+};
+#[cfg(test)]
+pub use types::{ControllerChannelMapAssignment, ControllerChannelMapTemplate};
 
 const DURATION_HEADER: &str = "x-rakkr-duration-seconds";
 const FILE_NAME_HEADER: &str = "x-rakkr-file-name";
 const AGENT_ID_HEADER: &str = "x-rakkr-agent-id";
 const JOB_ID_HEADER: &str = "x-rakkr-recording-job-id";
-
-pub struct CacheFileUpload<'a> {
-    pub allow_insecure_controller: bool,
-    pub content_type: &'a str,
-    pub controller_ca_cert_path: Option<&'a Path>,
-    pub controller_url: &'a str,
-    pub duration_seconds: Option<u64>,
-    pub file_name: Option<String>,
-    pub file_path: &'a std::path::Path,
-    pub job_id: Option<&'a str>,
-    pub recording_id: &'a str,
-    pub token: &'a str,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerRecordingJob {
-    pub command: ControllerCaptureCommand,
-    pub failure_reason: Option<String>,
-    pub id: String,
-    pub node_id: String,
-    pub recording_id: String,
-    pub status: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerCaptureCommand {
-    pub capture_backend: Option<CaptureBackend>,
-    pub capture_channels: u16,
-    pub capture_device: String,
-    pub capture_format: String,
-    pub capture_interface_id: Option<String>,
-    pub capture_sample_rate: u32,
-    pub channel_map: Option<ControllerRecordingJobChannelMap>,
-    pub duration_seconds: u64,
-    pub output_bitrate_kbps: Option<u32>,
-    pub output_codec: Option<String>,
-    pub output_file_name: String,
-    pub output_vbr: Option<bool>,
-    pub recorder_cache_retention: Option<ControllerRecorderCacheRetention>,
-    pub track_group_id: Option<String>,
-    pub track_index: Option<u32>,
-    pub track_total: Option<u32>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerRecordingJobChannelMap {
-    pub assignment_id: String,
-    pub channel_mode: String,
-    pub entries: Vec<ControllerChannelMapEntry>,
-    pub source_channels: u16,
-    pub target_id: String,
-    pub target_type: String,
-    pub template_id: String,
-    pub template_name: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerChannelMapBundle {
-    pub assignment: ControllerChannelMapAssignment,
-    pub template: ControllerChannelMapTemplate,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerChannelMapAssignment {
-    pub assigned_at: String,
-    pub id: String,
-    pub target_id: String,
-    pub target_type: String,
-    pub template_id: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerChannelMapTemplate {
-    pub channel_mode: String,
-    pub entries: Vec<ControllerChannelMapEntry>,
-    pub id: String,
-    pub name: String,
-    pub tags: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerChannelMapEntry {
-    pub included: bool,
-    pub label: String,
-    pub output_channel_index: Option<u16>,
-    pub source_channel_index: u16,
-}
-
-#[derive(Debug, Deserialize)]
-struct DataEnvelope<T> {
-    data: T,
-}
 
 pub async fn fetch_channel_map_assignments(
     config: &AgentConfig,
@@ -197,7 +103,23 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         .controller_token
         .as_deref()
         .context("missing --controller-token or RAKKR_CONTROLLER_TOKEN")?;
-    let Some(job) = claim_next_recording_job(config, token).await? else {
+    let Some(job) = (match claim_next_recording_job(config, token).await {
+        Ok(job) => job,
+        Err(error) => {
+            let reason = error.to_string();
+            let event = health_log::append_health_event(
+                config,
+                "agent.recording_job.claim_next_failed",
+                "warning",
+                json!({ "error": reason.as_str(), "nodeId": config.node_id.as_str() }),
+            )?;
+            if let Err(sync_error) = sync_health_event(config, token, &event).await {
+                warn!(error = %sync_error, "failed to sync claim-next health event");
+            }
+
+            return Err(error);
+        }
+    }) else {
         info!(node_id = %config.node_id, "no queued recording job for node");
         return Ok(());
     };

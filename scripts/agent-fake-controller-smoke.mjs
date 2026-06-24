@@ -23,6 +23,7 @@ import {
   assertStalledCaptureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
+import { runClaimNextFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
@@ -101,6 +102,7 @@ try {
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
+  await runClaimNextFailureScenario(jobScenarioDeps({ address }));
   for (const scenario of scenarios) {
     await runScenario({ address, captureCommand, renderCommand, scenario });
   }
@@ -694,6 +696,20 @@ function healthScenarioDeps(overrides) {
   };
 }
 
+function jobScenarioDeps(overrides) {
+  return {
+    ...overrides,
+    createObserved,
+    nodeId,
+    repoRoot,
+    setActiveScenario: (scenario) => {
+      activeScenario = scenario;
+    },
+    smokeRoot,
+    token,
+  };
+}
+
 function createObserved() {
   return {
     cancelReason: undefined,
@@ -710,6 +726,7 @@ function createObserved() {
     healthEvents: [],
     jobStatusReads: 0,
     jobStatusReadFailures: 0,
+    claimNextReadFailures: 0,
     maxRunningJobs: 0,
     meterFrames: 0,
     monitorChunkFailures: 0,
@@ -767,6 +784,12 @@ async function handleControllerRequest(request, response) {
     url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/claim-next`
   ) {
     observed.claimNextReads += 1;
+    if (scenario.claimNextFailuresRemaining > 0) {
+      scenario.claimNextFailuresRemaining -= 1;
+      observed.claimNextReadFailures += 1;
+      return json(response, 503, { error: "simulated claim-next failure" });
+    }
+
     const job = nextQueuedJob(jobs);
 
     if (!job) {

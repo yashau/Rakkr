@@ -19,6 +19,7 @@ const sourceFiles = [
   "apps/api/src/upload-queue.ts",
   "crates/recorder-agent/src/config.rs",
   "crates/recorder-agent/src/controller.rs",
+  "crates/recorder-agent/src/controller/types.rs",
   "crates/recorder-agent/src/health_log.rs",
   "crates/recorder-agent/src/main.rs",
   "apps/web/src/components/recording-card.tsx",
@@ -42,6 +43,7 @@ const sourceFiles = [
   "apps/web/src/lib/schedule-detail-page-helpers.test.ts",
   "scripts/agent-fake-controller-smoke-assertions.mjs",
   "scripts/agent-fake-controller-smoke-agent.mjs",
+  "scripts/agent-fake-controller-smoke-jobs.mjs",
   "scripts/agent-fake-controller-smoke.mjs",
 ];
 const baselinePhrases = [
@@ -77,7 +79,7 @@ const baselinePhrases = [
   "scoped job status",
   "leases, heartbeats, and failures",
   "Fake-controller smoke",
-  "status-poll failure health",
+  "claim-next/status-poll failure health",
   "MP3 VBR output",
   "mise run recordings:check-first-reliable",
 ];
@@ -132,6 +134,7 @@ const sourceSnippets = [
   "schedule detail permissions mirror granular read and action grants",
   "agent.recording_job.output_rendered",
   "agent.recording_job.cache_upload_failed",
+  "agent.recording_job.claim_next_failed",
   "agent.recording_job.status_poll_failed",
   "controller_stop_requested",
   "RAKKR_MAX_CONCURRENT_RECORDINGS",
@@ -176,6 +179,7 @@ const testSnippets = [
   "recording:playback",
   "agent did not upload cache file",
   "cache upload local health event",
+  "claim-next health event did not preserve controller rejection",
   "status-poll health event did not preserve controller rejection",
   "concurrent jobs did not overlap as running",
   "concurrent agent did not claim both queued jobs",
@@ -196,6 +200,7 @@ const allTests = sourceEntries
       entry.path.includes("/test/") ||
       entry.path.endsWith(".test.ts") ||
       entry.path.endsWith("agent-fake-controller-smoke-assertions.mjs") ||
+      entry.path.endsWith("agent-fake-controller-smoke-jobs.mjs") ||
       entry.path.endsWith("agent-fake-controller-smoke.mjs"),
   )
   .map((entry) => entry.content)
