@@ -41,6 +41,7 @@ const sourceFiles = [
   "crates/recorder-agent/src/controller.rs",
   "crates/recorder-agent/src/controller/types.rs",
   "crates/recorder-agent/src/recording_job_recovery.rs",
+  "crates/recorder-agent/src/recording_job_segments.rs",
   "crates/recorder-agent/src/recorder_cache_retention.rs",
   "scripts/agent-loopback-fixture-smoke.sh",
   "scripts/agent-loopback-job-smoke.sh",

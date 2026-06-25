@@ -25,7 +25,7 @@ Status: MVP baseline checked.
 | Cache checksum, duration, waveform preview, file size | `apps/api/test/recording-cache.test.ts` |
 | Failed/cancelled job health transitions | `apps/api/test/agent-routes.test.ts` |
 | Stop-request lifecycle | `apps/api/test/agent-routes.test.ts` |
-| Agent capture/render/cache/channel-map application/retention/stop/controller-terminal/claim-next-status-poll-control-plane-channel-map failure/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs`, `crates/recorder-agent/src/recording_job_recovery.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs` |
+| Agent capture/render/cache/channel-map application/retention/stop/controller-terminal/claim-next-status-poll-control-plane-channel-map failure/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs`, `crates/recorder-agent/src/recording_job_recovery.rs`, `crates/recorder-agent/src/recording_job_segments.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs` |
 | Playback/download UI readiness and cleanup | `apps/web/src/lib/recording-page-helpers.test.ts` |
 | Schedule detail playback/download controls | `apps/web/src/lib/schedule-detail-page-helpers.test.ts` |
 | Recording jobs workbench, export, stop, and retry controls | `apps/api/test/recording-job-export.test.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/web/src/pages/jobs.tsx`, `apps/web/src/lib/jobs-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import {
   writeFakeCaptureCommand,
   writeFakeDeviceLostCaptureCommand,
   writeFakeRecoveringDeviceLostCaptureCommand,
+  writeRecoverableRestartCaptureFile,
   writeFakeCaptureFailedMeterCommand,
   writeFakeDfCommand,
   writeFakeDeviceUnavailableMeterCommand,
@@ -159,6 +160,7 @@ try {
     runScenario,
     tinyCaptureCommand,
   });
+  await runRestartRecoveryScenario({ address, captureCommand, renderCommand });
   await runScenario({
     address,
     captureCommand: templateCaptureCommand,
@@ -393,6 +395,120 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   } else if (scenario.cacheUploadFails) {
     assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
   }
+  activeScenario = undefined;
+}
+
+async function runRestartRecoveryScenario({ address, captureCommand, renderCommand }) {
+  const stateFile = path.join(smokeRoot, "restart-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "restart-recovery-health-events.jsonl");
+  const outputPath = await writeRecoverableRestartCaptureFile(
+    smokeRoot,
+    "rec_fake_controller_restart_recovery.raw.wav",
+  );
+  const segmentPath = await writeRecoverableRestartCaptureFile(
+    smokeRoot,
+    "rec_fake_controller_restart_recovery.raw.recovery-attempt-1.wav",
+  );
+  const segmentBytes = (await readFile(segmentPath)).byteLength;
+  const job = createJob({
+    expectSuccess: true,
+    jobId: "job_fake_controller_restart_recovery",
+    name: "restart-recovery",
+    outputFileName: "rec_fake_controller_restart_recovery.mp3",
+    recordingId: "rec_fake_controller_restart_recovery",
+  });
+  const observed = createObserved();
+  job.status = "running";
+  activeScenario = {
+    job,
+    jobs: [job],
+    observed,
+    scenario: {
+      expectSuccess: true,
+      name: "restart-recovery",
+    },
+  };
+  await writeFile(
+    stateFile,
+    JSON.stringify(
+      {
+        jobId: job.id,
+        nodeId,
+        outputPath,
+        reason: null,
+        recordingId: job.recordingId,
+        recoveredSegments: [
+          {
+            attempt: 1,
+            bytes: segmentBytes,
+            path: segmentPath,
+            reason: "capture command arecord failed with status exit code: 32",
+          },
+        ],
+        status: "running",
+        updatedAt: "2026-06-25T00:00:00Z",
+      },
+      null,
+      2,
+    ),
+  );
+
+  const child = spawnDaemonAgent(
+    agentContext,
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  );
+
+  try {
+    await waitFor(
+      () =>
+        job.status === "completed" &&
+        observed.cacheUpload &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.recording_job.recovered_after_restart",
+        ),
+      20_000,
+      () =>
+        `job=${job.status} upload=${Boolean(observed.cacheUpload)} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const state = JSON.parse(await readFile(stateFile, "utf8"));
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const localEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.recovered_after_restart",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.recovered_after_restart",
+  );
+
+  invariant(observed.claims === 0, "restart recovery should not claim a fresh job");
+  invariant(
+    observed.cacheUpload?.recordingId === job.recordingId,
+    "restart recovery upload target",
+  );
+  invariant(observed.cacheUpload?.contentType === "audio/wav", "restart recovery uploaded raw WAV");
+  invariant(state.status === "completed", "restart recovery state did not complete");
+  invariant(localEvent, "restart recovery did not write local health");
+  invariant(
+    localEvent.details?.willUpload === true,
+    "restart recovery did not record upload intent",
+  );
+  invariant(
+    localEvent.details?.recoveredSegmentCount === 1,
+    "restart recovery did not retain recovered segment evidence",
+  );
+  invariant(syncedEvent, "restart recovery did not sync health event");
+  invariant(
+    syncedEvent.details?.recoveredSegmentCount === 1,
+    "synced restart recovery lost segment evidence",
+  );
   activeScenario = undefined;
 }
 

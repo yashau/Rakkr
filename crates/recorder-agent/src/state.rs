@@ -16,8 +16,19 @@ pub struct AgentJobState {
     pub output_path: Option<String>,
     pub reason: Option<String>,
     pub recording_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recovered_segments: Vec<AgentRecoveredCaptureSegment>,
     pub status: String,
     pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRecoveredCaptureSegment {
+    pub attempt: u8,
+    pub bytes: u64,
+    pub path: String,
+    pub reason: String,
 }
 
 pub fn write_job_state(
@@ -35,6 +46,7 @@ pub fn write_job_state(
             output_path: output_path.map(|path| path.display().to_string()),
             reason: reason.map(str::to_string),
             recording_id: job.recording_id.clone(),
+            recovered_segments: Vec::new(),
             status: status.to_string(),
             updated_at: now_rfc3339(),
         },
@@ -94,6 +106,12 @@ mod tests {
                 output_path: Some("/tmp/recovery.wav".to_string()),
                 reason: Some("interrupted".to_string()),
                 recording_id: "rec_recovery".to_string(),
+                recovered_segments: vec![AgentRecoveredCaptureSegment {
+                    attempt: 1,
+                    bytes: 128,
+                    path: "/tmp/recovery.segment.wav".to_string(),
+                    reason: "device_lost".to_string(),
+                }],
                 status: "running".to_string(),
                 updated_at: "2026-06-25T00:00:00Z".to_string(),
             },
@@ -105,6 +123,8 @@ mod tests {
         assert_eq!(loaded.job_id, "job_recovery");
         assert_eq!(loaded.recording_id, "rec_recovery");
         assert_eq!(loaded.status, "running");
+        assert_eq!(loaded.recovered_segments.len(), 1);
+        assert_eq!(loaded.recovered_segments[0].attempt, 1);
         assert!(!loaded.is_terminal());
 
         cleanup(&state_file);

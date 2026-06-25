@@ -20,8 +20,9 @@ use crate::recording_job_recovery::{
     recover_runtime_capture_device_loss, refresh_capture_device_from_inventory,
     report_capture_command_failure, report_capture_disk_space_shortfall,
     report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
-    stitch_recovered_capture_segments,
+    write_recoverable_job_state,
 };
+use crate::recording_job_segments::stitch_recovered_capture_segments;
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 use types::DataEnvelope;
@@ -206,6 +207,15 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         return Err(error);
     }
 
+    write_recoverable_job_state(
+        config,
+        &job,
+        "running",
+        Some(&capture_plan.output_path),
+        None,
+        &[],
+    )?;
+
     let mut capture =
         match spawn_capture_plan_with_recovery(config, token, &job, &capture_plan).await {
             Ok(capture) => capture,
@@ -241,7 +251,14 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     let raw_output_path = loop {
         match capture.try_complete() {
             Ok(Some(output_path)) => {
-                write_job_state(config, &job, "captured", Some(&output_path), None)?;
+                write_recoverable_job_state(
+                    config,
+                    &job,
+                    "captured",
+                    Some(&output_path),
+                    None,
+                    &recovered_segments,
+                )?;
                 break output_path;
             }
             Ok(None) => match capture.check_growth() {
@@ -318,7 +335,14 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                             recovered_segments.push(segment);
                         }
                         capture = recovered_capture.capture;
-                        write_job_state(config, &job, "running", None, None)?;
+                        write_recoverable_job_state(
+                            config,
+                            &job,
+                            "running",
+                            Some(&capture_plan.output_path),
+                            None,
+                            &recovered_segments,
+                        )?;
                         continue;
                     }
                     Ok(None) => {

@@ -23,6 +23,7 @@ const sourceFiles = [
   "crates/recorder-agent/src/health_log.rs",
   "crates/recorder-agent/src/main.rs",
   "crates/recorder-agent/src/recording_job_recovery.rs",
+  "crates/recorder-agent/src/recording_job_segments.rs",
   "crates/recorder-agent/src/recorder_cache_retention.rs",
   "apps/web/src/components/recording-card.tsx",
   "apps/web/src/components/node-inventory-editors.tsx",

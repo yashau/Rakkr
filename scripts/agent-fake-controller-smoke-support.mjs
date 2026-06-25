@@ -358,6 +358,15 @@ function wavFile(channels, samples) {
   return captureScript;
 }
 
+export async function writeRecoverableRestartCaptureFile(directory, fileName) {
+  const outputPath = path.join(directory, "data", "recordings", "local-captures", fileName);
+
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, wavFile(1, [0, 10000, -10000, 5000, -5000, 2500]));
+
+  return outputPath;
+}
+
 export async function writeFakeTinyCaptureCommand(directory) {
   const captureScript = path.join(directory, "fake-tiny-capture.mjs");
   await writeFile(
@@ -623,6 +632,32 @@ process.exit(42);
   await chmod(renderScript, 0o755);
 
   return renderScript;
+}
+
+function wavFile(channels, samples) {
+  const dataSize = samples.length * channels * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(channels, 22);
+  buffer.writeUInt32LE(48000, 24);
+  buffer.writeUInt32LE(48000 * channels * 2, 28);
+  buffer.writeUInt16LE(channels * 2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataSize, 40);
+  samples.forEach((sample, frameIndex) => {
+    for (let channel = 0; channel < channels; channel += 1) {
+      buffer.writeInt16LE(sample, 44 + (frameIndex * channels + channel) * 2);
+    }
+  });
+
+  return buffer;
 }
 
 function commandShim(scriptPath) {
