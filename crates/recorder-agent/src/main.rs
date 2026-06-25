@@ -24,8 +24,9 @@ use config::{AgentConfig, CaptureBackend, MeterBackend};
 use meter_command::MeterCaptureConfig;
 use serde_json::{Value, json};
 use telemetry::{
-    MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample, meter_quality_evidence,
-    synthetic_meter_frame, synthetic_meter_sample,
+    MeterFaultKind, MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample,
+    meter_fault_score, meter_max_rms_dbfs, meter_quality_evidence, synthetic_meter_frame,
+    synthetic_meter_sample,
 };
 use tokio::task::JoinSet;
 use tracing::{info, warn};
@@ -746,7 +747,7 @@ async fn update_meter_health(
         .iter()
         .filter(|level| level.clipping)
         .collect::<Vec<_>>();
-    let frame_max_rms_dbfs = max_rms_dbfs(frame);
+    let frame_max_rms_dbfs = meter_max_rms_dbfs(frame);
     let flatline = !frame.levels.is_empty()
         && frame
             .levels
@@ -755,6 +756,10 @@ async fn update_meter_health(
     let low_signal = !frame.levels.is_empty()
         && !flatline
         && frame_max_rms_dbfs.is_some_and(|value| value <= config.meter_low_signal_dbfs);
+    let correlation_fault_score = meter_fault_score(
+        frame,
+        MeterFaultKind::ChannelCorrelation(CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE),
+    );
 
     if !correlated_pairs.is_empty() && !*channel_correlation_active {
         *channel_correlation_active = true;
@@ -766,6 +771,7 @@ async fn update_meter_health(
             json!({
                 "capturedAt": frame.captured_at,
                 "correlationAbsScore": CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE,
+                "faultScore": correlation_fault_score,
                 "interfaceId": frame.interface_id,
                 "nodeId": frame.node_id,
                 "pairs": correlated_pairs,
@@ -809,8 +815,10 @@ async fn update_meter_health(
                     }))
                     .collect::<Vec<_>>(),
                 "clipDbfs": config.meter_clip_dbfs,
+                "faultScore": meter_fault_score(frame, MeterFaultKind::Clipping(config.meter_clip_dbfs)),
                 "interfaceId": frame.interface_id,
                 "nodeId": frame.node_id,
+                "quality": quality_evidence,
             }),
         )
         .await
@@ -841,11 +849,11 @@ async fn update_meter_health(
             "warning",
             json!({
                 "capturedAt": frame.captured_at,
+                "faultScore": meter_fault_score(frame, MeterFaultKind::Flatline(config.meter_flatline_dbfs)),
                 "flatlineDbfs": config.meter_flatline_dbfs,
                 "interfaceId": frame.interface_id,
                 "maxRmsDbfs": frame_max_rms_dbfs,
                 "nodeId": frame.node_id,
-                "quality": quality_evidence,
             }),
         )
         .await
@@ -878,6 +886,7 @@ async fn update_meter_health(
             "warning",
             json!({
                 "capturedAt": frame.captured_at,
+                "faultScore": meter_fault_score(frame, MeterFaultKind::LowSignal(config.meter_low_signal_dbfs)),
                 "interfaceId": frame.interface_id,
                 "lowSignalDbfs": config.meter_low_signal_dbfs,
                 "maxRmsDbfs": frame_max_rms_dbfs,
@@ -948,14 +957,6 @@ async fn append_and_sync_health_event(
     }
 
     Ok(())
-}
-
-fn max_rms_dbfs(frame: &MeterFrame) -> Option<f32> {
-    frame
-        .levels
-        .iter()
-        .map(|level| level.rms_dbfs)
-        .max_by(f32::total_cmp)
 }
 
 fn correlated_channel_pairs(frame: &MeterFrame) -> Vec<Value> {

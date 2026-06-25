@@ -62,6 +62,14 @@ pub struct MeterQualityEvidence {
     pub min_intelligibility_score: Option<f32>,
 }
 
+#[derive(Clone, Copy)]
+pub enum MeterFaultKind {
+    ChannelCorrelation(f32),
+    Clipping(f32),
+    Flatline(f32),
+    LowSignal(f32),
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelCorrelation {
@@ -360,6 +368,44 @@ pub fn meter_quality_evidence(frame: &MeterFrame) -> MeterQualityEvidence {
     }
 }
 
+pub fn meter_max_rms_dbfs(frame: &MeterFrame) -> Option<f32> {
+    frame
+        .levels
+        .iter()
+        .map(|level| level.rms_dbfs)
+        .max_by(f32::total_cmp)
+}
+
+pub fn meter_fault_score(frame: &MeterFrame, fault: MeterFaultKind) -> Option<f32> {
+    if frame.levels.is_empty() {
+        return None;
+    }
+
+    Some(round_2(match fault {
+        MeterFaultKind::ChannelCorrelation(min_abs_score) => channel_correlation_fault_score(
+            frame
+                .levels
+                .iter()
+                .filter_map(|level| level.quality.channel_correlation.as_ref())
+                .map(|correlation| correlation.score.abs())
+                .max_by(f32::total_cmp)
+                .unwrap_or(0.0),
+            min_abs_score,
+        ),
+        MeterFaultKind::Clipping(clip_dbfs) => rising_score(max_peak_dbfs(frame), clip_dbfs, 0.0),
+        MeterFaultKind::Flatline(flatline_dbfs) => falling_score(
+            meter_max_rms_dbfs(frame).unwrap_or(-160.0),
+            flatline_dbfs - 40.0,
+            flatline_dbfs,
+        ),
+        MeterFaultKind::LowSignal(low_signal_dbfs) => falling_score(
+            meter_max_rms_dbfs(frame).unwrap_or(-160.0),
+            low_signal_dbfs - 30.0,
+            low_signal_dbfs,
+        ),
+    }))
+}
+
 fn max_quality_by(frame: &MeterFrame, value: impl Fn(&AudioQuality) -> f32) -> Option<f32> {
     frame
         .levels
@@ -374,6 +420,23 @@ fn min_quality_by(frame: &MeterFrame, value: impl Fn(&AudioQuality) -> f32) -> O
         .iter()
         .map(|level| value(&level.quality))
         .min_by(f32::total_cmp)
+}
+
+fn max_peak_dbfs(frame: &MeterFrame) -> f32 {
+    frame
+        .levels
+        .iter()
+        .map(|level| level.peak_dbfs)
+        .max_by(f32::total_cmp)
+        .unwrap_or(-160.0)
+}
+
+fn channel_correlation_fault_score(max_abs_score: f32, min_abs_score: f32) -> f32 {
+    if max_abs_score < min_abs_score {
+        return 0.0;
+    }
+
+    clamp_01((max_abs_score - min_abs_score) / (1.0 - min_abs_score).max(0.01))
 }
 
 #[cfg(test)]

@@ -50,11 +50,39 @@ fn meter_health_score_helpers_track_max_signal_values() {
     };
     let quality = meter_quality_evidence(&frame);
 
-    assert_eq!(max_rms_dbfs(&frame), Some(-62.0));
+    assert_eq!(meter_max_rms_dbfs(&frame), Some(-62.0));
     assert_eq!(quality.max_speech_score, Some(0.47));
     assert_eq!(quality.max_noise_score, Some(0.12));
     assert_eq!(quality.min_estimated_snr_db, Some(8.0));
     assert_eq!(quality.min_intelligibility_score, Some(0.35));
+}
+
+#[test]
+fn meter_fault_scores_are_normalized() {
+    let low_frame = meter_frame(vec![level_with_signal(1, -62.0, 0.2)]);
+    let flatline_frame = meter_frame(vec![level_with_signal(1, -160.0, 0.0)]);
+    let clipping_frame = meter_frame(vec![level_with_signal(1, -20.0, 0.2)]);
+    let correlated_frame = meter_frame(vec![level_with_correlation(1, 2, 0.99, "same")]);
+
+    assert_eq!(
+        meter_fault_score(&low_frame, MeterFaultKind::LowSignal(-55.0),),
+        Some(0.23)
+    );
+    assert_eq!(
+        meter_fault_score(&flatline_frame, MeterFaultKind::Flatline(-120.0),),
+        Some(1.0)
+    );
+    assert_eq!(
+        meter_fault_score(&clipping_frame, MeterFaultKind::Clipping(-1.0)),
+        Some(1.0)
+    );
+    assert_eq!(
+        meter_fault_score(
+            &correlated_frame,
+            MeterFaultKind::ChannelCorrelation(CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE),
+        ),
+        Some(0.5)
+    );
 }
 
 #[tokio::test]
@@ -124,6 +152,7 @@ async fn meter_health_logs_low_signal_and_recovery() {
         .map(|line| serde_json::from_str::<Value>(line).expect("parse health event"))
         .find(|event| event["type"] == "agent.meter.low_signal")
         .expect("low-signal event");
+    assert_json_f32(&low_signal["details"]["faultScore"], 0.23);
     assert_json_f32(&low_signal["details"]["maxSpeechScore"], 0.47);
     assert_json_f32(
         &low_signal["details"]["quality"]["maxBroadbandNoiseScore"],
@@ -184,6 +213,15 @@ fn level_with_signal(channel_index: u16, rms_dbfs: f32, speech_score: f32) -> Au
             zero_crossing_rate: 0.1,
         },
         rms_dbfs,
+    }
+}
+
+fn meter_frame(levels: Vec<AudioLevel>) -> MeterFrame {
+    MeterFrame {
+        captured_at: "2026-06-18T00:00:00Z".to_string(),
+        interface_id: "iface_1".to_string(),
+        levels,
+        node_id: "node_1".to_string(),
     }
 }
 
