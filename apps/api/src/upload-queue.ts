@@ -53,7 +53,7 @@ class JsonUploadQueueStore implements UploadQueueStore {
       (item) =>
         item.recordingId === recording.id &&
         item.provider === provider &&
-        activeStatuses.has(item.status),
+        reusableUploadQueueItem(item, recording, input),
     );
 
     if (existing) {
@@ -221,7 +221,7 @@ class PostgresUploadQueueStore implements UploadQueueStore {
         );
       const existing = existingRows
         .map(queueItemFromRow)
-        .find((item) => activeStatuses.has(item.status));
+        .find((item) => reusableUploadQueueItem(item, recording, input));
 
       if (existing) {
         return existing;
@@ -505,6 +505,24 @@ function retryAt(attemptCount: number) {
   const seconds = Math.min(3600, 60 * 2 ** Math.max(0, attemptCount - 1));
 
   return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function reusableUploadQueueItem(
+  item: UploadQueueItem,
+  recording: RecordingSummary,
+  input: EnqueueUploadInput,
+) {
+  if (activeStatuses.has(item.status)) {
+    return true;
+  }
+
+  return (
+    item.status === "succeeded" &&
+    item.cachePath === recording.cachePath &&
+    item.checksum === recording.checksum &&
+    item.target === input.target &&
+    item.uploadPolicyId === input.policyId
+  );
 }
 
 function loadQueueItems() {

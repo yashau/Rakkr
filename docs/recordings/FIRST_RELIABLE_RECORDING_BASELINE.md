@@ -13,14 +13,14 @@ Status: MVP baseline checked.
 - Stop requests survive agent cancellation without falsely marking the recording unhealthy.
 - Failed, unexpectedly cancelled, and lease-expired orphan jobs update recording health and create central health events.
 - Recording jobs workbench shows scoped job status, status/search/node/backend/interface filters, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export, RBAC-mirrored stop controls for active jobs, and audited retry controls for failed/cancelled jobs.
-- Fake-controller smoke and recorder-cache helper coverage prove agent job polling, channel-map application sync, claim-next/status-poll/control-plane/channel-map failure health, controller-terminal status handoff, controller capacity override, bounded concurrent jobs, capture start/runtime/too-small/stall/render/upload-evidence failure, capture runtime restart with recovered segment stitching, upload-pending retry and uploaded-finalization restart recovery, power-loss tiny partial rejection, controller lease expiry recovery for orphaned running jobs, disk preflight and in-flight disk cleanup recovery, stable ALSA capture-interface renumbering refresh, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, recorder-cache cleanup/delete-failure/tracking sync and tracking failure, and controller stop handling without hardware.
+- Fake-controller smoke and recorder-cache helper coverage prove agent job polling, channel-map application sync, claim-next/status-poll/control-plane/channel-map failure health, controller-terminal status handoff, controller capacity override, bounded concurrent jobs, capture start/runtime/too-small/stall/render/upload-evidence failure, capture runtime restart with recovered segment stitching, upload-pending retry and uploaded-finalization restart recovery, duplicate cache-attach upload idempotency, power-loss tiny partial rejection, controller lease expiry recovery for orphaned running jobs, disk preflight and in-flight disk cleanup recovery, stable ALSA capture-interface renumbering refresh, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, recorder-cache cleanup/delete-failure/tracking sync and tracking failure, and controller stop handling without hardware.
 
 ## Checked By
 
 | Check | Evidence |
 | ----- | -------- |
 | Ad-hoc start metadata, profile, upload policy, and capture targeting | `apps/api/test/recording-start-routes.test.ts`, `apps/api/test/recording-routes.test.ts` |
-| Ad-hoc claim, claim-next, heartbeat, cache attach, playback, download, stream, file | `apps/api/test/agent-routes.test.ts` |
+| Ad-hoc claim, claim-next, heartbeat, cache attach, duplicate attach idempotency, playback, download, stream, file | `apps/api/test/agent-routes.test.ts`, `apps/api/test/agent-cache-idempotency-routes.test.ts` |
 | Scheduled due-run metadata, claim, cache attach, playback, download, stream, file | `apps/api/test/schedule-runner.test.ts` |
 | Cache checksum, duration, waveform preview, file size | `apps/api/test/recording-cache.test.ts` |
 | Failed/cancelled/lease-expired job health transitions | `apps/api/test/agent-routes.test.ts`, `apps/api/test/recording-job-lease-runner.test.ts` |

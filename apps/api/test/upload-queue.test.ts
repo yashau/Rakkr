@@ -9,8 +9,12 @@ const queueRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-queue-"));
 process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS = "2";
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(queueRoot, "queue.json");
 
-const { enqueueRecordingUpload, listUploadQueueItems, retryUploadQueueItem } =
-  await import("../src/upload-queue.js");
+const {
+  enqueueRecordingUpload,
+  listUploadQueueItems,
+  retryUploadQueueItem,
+  succeedUploadQueueItem,
+} = await import("../src/upload-queue.js");
 
 test.after(async () => {
   await rm(queueRoot, { force: true, recursive: true });
@@ -47,15 +51,46 @@ test("queues cached recordings and retries failed stub uploads", async () => {
   assert.equal(failed?.status, "failed");
 });
 
-function recording(): RecordingSummary {
+test("reuses succeeded upload queue item for the same cached artifact", async () => {
+  const queued = await enqueueRecordingUpload(recording("rec_upload_idempotent"), {
+    policyId: "upload-policy-idempotent",
+    target: "s3://future-bucket/idempotent",
+  });
+  const succeeded = await succeedUploadQueueItem(queued.id);
+  const duplicate = await enqueueRecordingUpload(recording("rec_upload_idempotent"), {
+    policyId: "upload-policy-idempotent",
+    target: "s3://future-bucket/idempotent",
+  });
+  const changed = await enqueueRecordingUpload(
+    {
+      ...recording("rec_upload_idempotent"),
+      checksum: "sha256:changed",
+    },
+    {
+      policyId: "upload-policy-idempotent",
+      target: "s3://future-bucket/idempotent",
+    },
+  );
+
+  assert.equal(succeeded?.status, "succeeded");
+  assert.equal(duplicate.id, queued.id);
+  assert.notEqual(changed.id, queued.id);
+  assert.equal(
+    (await listUploadQueueItems()).filter((item) => item.recordingId === "rec_upload_idempotent")
+      .length,
+    2,
+  );
+});
+
+function recording(id = "rec_upload_test"): RecordingSummary {
   return {
-    cachePath: "scheduled/rec_upload_test.mp3",
+    cachePath: `scheduled/${id}.mp3`,
     cached: true,
     checksum: "sha256:test",
     durationSeconds: 900,
     folder: "Meetings/2026",
     healthStatus: "healthy",
-    id: "rec_upload_test",
+    id,
     name: "Council Meeting",
     recordedAt: "2026-06-18T12:00:00.000Z",
     source: "schedule",
