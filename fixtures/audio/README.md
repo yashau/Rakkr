@@ -1,15 +1,41 @@
 # Rakkr Audio Fixtures
 
-This directory contains reusable audio sources for recorder-agent and watchdog validation.
+Curated audio sources for recorder-agent, loopback, and health-watchdog validation.
 
-## Golden Dialogue Fixture
+## Fixture Catalog
+
+| Fixture | Purpose |
+| ------- | ------- |
+| `rakkr-golden-dialogue-clean.wav` | Clean multi-speaker speech baseline for loopback and watchdog smokes |
+| `rakkr-golden-dialogue-clean.mp3` | Compact listening/reference copy of the clean fixture |
+| `rakkr-golden-dialogue-clean.json` | Generation and fixture metadata |
+
+## Golden Dialogue
 
 `rakkr-golden-dialogue-clean.wav` is a clean, non-overlapping, multi-speaker speech fixture generated with the ElevenLabs text-to-speech API.
 
-- Duration: about 28.3 seconds
-- Format: 48 kHz stereo PCM signed 16-bit WAV
-- Companion MP3: `rakkr-golden-dialogue-clean.mp3`
-- Metadata: `rakkr-golden-dialogue-clean.json`
-- Intended baseline: audible speech, no clipping, no flatline, low hum/static/broadband-noise likelihood
+| Property | Value |
+| -------- | ----- |
+| Duration | About 28.3 seconds |
+| Format | 48 kHz stereo PCM signed 16-bit WAV |
+| Intended baseline | Audible speech, no clipping, no flatline, low hum/static/broadband-noise likelihood |
 
-Use this file as the source for deterministic fault permutations such as low-volume speech, clipped speech, hum, static, broadband noise, and duplicated/inverted channels. The ALSA loopback fixture smoke derives a delayed-stereo healthy lane from this source so clean speech does not falsely present as duplicated-channel audio, then checks daemon health logs for the fault lanes. Do not store API keys or provider credentials in this directory.
+## Fault Permutations
+
+Use the clean WAV as the source for deterministic fault lanes:
+
+| Fault Lane | What It Exercises |
+| ---------- | ----------------- |
+| Low-volume speech | Low-signal scoring and health events |
+| Clipped speech | Peak/clipping detection |
+| Hum/static/broadband noise | Quality anomaly scoring |
+| Duplicated or inverted channels | Channel-correlation detection |
+| Delayed-stereo healthy lane | Speech quality without false duplicated-channel positives |
+
+The ALSA loopback fixture smoke derives the healthy and fault lanes from this source, replays them through loopback, and checks daemon health logs for clipping, low signal, and channel-correlation behavior.
+
+## Handling
+
+- Keep source fixtures small enough for normal repository use.
+- Store generated metadata next to the audio fixture.
+- Do not store API keys, provider credentials, or temporary generated secrets in this directory.

@@ -2,7 +2,9 @@
 
 Status: MVP baseline checked.
 
-## Surfaces
+Rakkr exposes both live metrics and investigation-grade event trails. Prometheus handles fast operational signals, Grafana gives operators a single board to scan, and central health/audit events keep the story attached to recordings, nodes, jobs, and settings.
+
+## Signal Map
 
 | Surface | Artifact |
 | ------- | -------- |
@@ -15,11 +17,21 @@ Status: MVP baseline checked.
 
 ## Operator Path
 
-1. Scrape the controller `/metrics` endpoint with TLS enabled.
-2. Load `rakkr-alerts.yml` into Prometheus.
-3. Send long-term metrics to Mimir with `remote_write`.
-4. Import `grafana-dashboard.example.json` into Grafana.
-5. Use central health/audit events for investigation and local node logs when a recorder is isolated.
+1. Scrape the controller `GET /metrics` endpoint with TLS enabled.
+2. Load `docs/observability/rakkr-alerts.yml` into Prometheus.
+3. Send long-term metrics to Mimir with `docs/observability/prometheus-mimir.example.yml`.
+4. Import `docs/observability/grafana-dashboard.example.json` into Grafana.
+5. Use central health/audit events for incident context.
+6. Fall back to the Rotating JSONL health log on recorder nodes when a node is isolated.
+
+## What To Watch
+
+| Category | Examples |
+| -------- | -------- |
+| Recorder health | Node liveness, xrun/device faults, clipping, flatline, low signal, channel correlation |
+| Recording flow | Active recordings, cached recordings, watchdog alerts, upload failures |
+| Controller health | API availability, audit totals, health-event totals, queue state |
+| Capacity and storage | Recording duration, cache bytes, upload queue pressure |
 
 ## Checked By
 

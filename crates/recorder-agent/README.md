@@ -1,36 +1,85 @@
 # Rakkr Recorder Agent
 
-The recorder agent is the Linux node process responsible for audio inventory, capture pipelines, health events, local cache management, and controller communication.
+The recorder agent is the Linux node process that turns local audio hardware into managed Rakkr recordings. It discovers interfaces, samples meters, captures jobs, renders outputs, manages local cache, writes health evidence, and syncs node state back to the controller.
 
-Current capabilities:
+## Responsibilities
 
-- parses node/controller configuration;
-- reports stable node identity fields;
-- emits JSON inventory;
-- captures and meters configurable inputs through the local command with optional argument templates for non-`arecord` tools;
-- samples ALSA S16_LE PCM through `arecord` for live RMS/peak meter frames, with synthetic fallback for development hosts;
-- polls controller node capacity and runs bounded simultaneous recording jobs with `--max-concurrent-recordings` as the local fallback;
-- detects meter capture failure/recovery, device-unavailable/xrun failures, clipping, flatline, and suspicious same/inverted channel correlation transitions;
-- samples disk pressure, Linux load average, and audio-backend availability transitions;
-- refreshes audio inventory during the daemon heartbeat so backend recovery can be reported without restarting the agent;
-- writes a lifecycle-managed local JSONL health log with size-based retention and syncs node health events to the controller when a node token is configured;
-- reports ALSA interfaces plus PipeWire/JACK command availability in runtime inventory, with managed PipeWire and JACK capture/meter presets.
+| Area | Capability |
+| ---- | ---------- |
+| Identity | Stable node ID, alias, site, room, tags, runtime details |
+| Inventory | ALSA capture discovery, PipeWire/JACK availability, refreshed daemon probes |
+| Metering | S16/S32 PCM levels, quality fields, synthetic fallback for development hosts |
+| Capture | ALSA/PipeWire/JACK presets plus command-template overrides |
+| Scheduling handoff | Polls controller capacity and runs bounded concurrent jobs |
+| Health | Capture failure/recovery, device unavailable, xrun, clipping, flatline, low signal, channel correlation, disk/CPU/backend transitions |
+| Cache | Local rendered/raw cache tracking, retention cleanup, delete-failure reporting |
+| Sync | Node heartbeat, meter frames, monitor chunks, job state, and health events |
+
+## Quick Commands
 
 ```powershell
 cargo run -p rakkr-recorder-agent -- --print-inventory
 cargo run -p rakkr-recorder-agent -- --print-meter-frame
 ```
 
-Useful health-log controls:
+Run one claimed controller job:
 
-- `--agent-health-log-max-bytes` / `RAKKR_AGENT_HEALTH_LOG_MAX_BYTES`
-- `--agent-health-log-retained-files` / `RAKKR_AGENT_HEALTH_LOG_RETAINED_FILES`
+```powershell
+cargo run -p rakkr-recorder-agent -- --run-next-job --controller-token <token> --node-id <node>
+```
 
-Useful recording controls:
+Run as a daemon against a local controller:
 
-- `--max-concurrent-recordings` / `RAKKR_MAX_CONCURRENT_RECORDINGS`
+```powershell
+cargo run -p rakkr-recorder-agent -- `
+  --allow-insecure-controller `
+  --controller-url http://127.0.0.1:8787 `
+  --controller-token <token> `
+  --node-id node_local_dev
+```
 
-Useful inventory controls:
+## Configuration Highlights
 
-- `--inventory-arecord-command` / `RAKKR_INVENTORY_ARECORD_COMMAND`
-- `--inventory-proc-asound-pcm-path` / `RAKKR_INVENTORY_PROC_ASOUND_PCM_PATH`
+| Area | CLI / Environment |
+| ---- | ----------------- |
+| Node identity | `--node-id`, `--node-alias`, `--node-site`, `--node-room` |
+| Capture | `--capture-backend`, `--capture-command`, `--capture-device`, `--capture-format`, `--capture-sample-rate`, `--capture-channels` |
+| Capture templates | `--capture-args-template` |
+| Metering | `--meter-backend`, `--meter-args-template`, `--meter-sample-seconds` |
+| Fault thresholds | `--meter-clip-dbfs`, `--meter-flatline-dbfs`, `--meter-low-signal-dbfs` |
+| Job concurrency | `--max-concurrent-recordings` / `RAKKR_MAX_CONCURRENT_RECORDINGS` |
+| Health log | `--agent-health-log-file`, `--agent-health-log-max-bytes`, `--agent-health-log-retained-files` |
+| Inventory probes | `--inventory-arecord-command`, `--inventory-proc-asound-pcm-path` |
+| System health | `--system-health-df-command`, `--system-health-disk-path`, `--system-health-loadavg-path` |
+
+## Health Evidence
+
+The agent writes a lifecycle-managed local JSONL health log and, when a node token is configured, syncs health events to the controller. The daemon refreshes audio inventory during heartbeat ticks so backend recovery can be reported without restarting the agent.
+
+| Event Family | Examples |
+| ------------ | -------- |
+| Meter capture | `agent.meter.capture_failed`, `agent.meter.device_unavailable`, `agent.meter.xrun`, `agent.meter.capture_recovered` |
+| Meter quality | `agent.meter.clipping`, `agent.meter.flatline`, `agent.meter.low_signal`, `agent.meter.channel_correlation` |
+| Sync health | `agent.node_heartbeat.sync_failed`, `agent.meter_frame.sync_failed`, `agent.listen_monitor.chunk_sync_failed`, recovery events |
+| Job health | Capture start/runtime/too-small/stall/render/upload/cache-retention failures |
+| System health | Disk pressure, CPU pressure, audio-backend unavailable/recovered |
+
+## Backends
+
+| Backend | Capture | Meter |
+| ------- | ------- | ----- |
+| ALSA | `arecord` defaults and templates | PCM stdout sampling |
+| PipeWire | `pw-record` preset or template | PCM stdout sampling |
+| JACK | `jack_capture` preset or template | PCM stdout sampling |
+| Synthetic | Development fallback | Generated meter frames |
+
+## Validation
+
+The agent is covered by Rust tests, Miri, fake-controller smokes, ALSA loopback smokes, and Debian hardware smokes.
+
+```powershell
+mise run check
+node scripts/agent-fake-controller-smoke.mjs
+mise run agent:loopback-fixture-smoke
+mise run agent:loopback-job-smoke
+```
