@@ -422,6 +422,9 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         }
         Err(error) => {
             let reason = error.to_string();
+            let raw_output_bytes = fs::metadata(&raw_output_path)
+                .ok()
+                .map(|metadata| metadata.len());
 
             let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
             append_job_health_event(
@@ -438,7 +441,10 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                     "outputCodec": capture_plan.output_codec.as_str(),
                     "outputVbr": capture_plan.output_vbr,
                     "rawOutputPath": raw_output_path.display().to_string(),
+                    "rawOutputBytes": raw_output_bytes,
                     "recordingId": job.recording_id.as_str(),
+                    "renderCommand": capture_plan.render_command.as_str(),
+                    "renderedOutputPath": capture_plan.final_output_path.display().to_string(),
                 }),
             )
             .await?;

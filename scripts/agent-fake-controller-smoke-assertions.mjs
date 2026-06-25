@@ -56,6 +56,9 @@ export function assertRenderFailureScenario({ healthLogEvents, job, observed, sc
   const renderLocalEvent = healthLogEvents.find(
     (event) => event.type === "agent.recording_job.output_render_failed",
   );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.output_render_failed",
+  );
 
   invariant(job.status === "failed", "fake controller did not mark render failure job failed");
   invariant(observed.failures === 1, "agent did not mark render failure job failed");
@@ -81,8 +84,25 @@ export function assertRenderFailureScenario({ healthLogEvents, job, observed, sc
     "render failure did not retain target output codec",
   );
   invariant(
-    observed.healthEvents.some((event) => event.type === renderLocalEvent.type),
-    "agent did not sync render failure health event",
+    renderLocalEvent.details?.renderCommand,
+    "render failure did not include render command evidence",
+  );
+  invariant(
+    renderLocalEvent.details?.rawOutputBytes > 44,
+    "render failure did not include raw output byte evidence",
+  );
+  invariant(
+    renderLocalEvent.details?.rawOutputPath?.endsWith(".raw.wav"),
+    "render failure did not include raw output path evidence",
+  );
+  invariant(
+    renderLocalEvent.details?.renderedOutputPath?.endsWith(scenario.outputFileName),
+    "render failure did not include intended rendered output path",
+  );
+  invariant(syncedEvent, "agent did not sync render failure health event");
+  invariant(
+    syncedEvent.details?.renderCommand === renderLocalEvent.details.renderCommand,
+    "synced render failure health event did not preserve render command evidence",
   );
 }
 
