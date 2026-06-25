@@ -496,6 +496,7 @@ test("claim-next lets one node claim multiple queued recordings independently", 
     ...node(),
     alias: "Concurrent Lifecycle Recorder",
     id: `node_concurrent_lifecycle_${randomUUID()}`,
+    recordingCapacity: { maxConcurrentRecordings: 2 },
   };
   const nodeStore = memoryNodeStore([lifecycleNode]);
   const recordingStore = memoryRecordingStore();

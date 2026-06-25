@@ -62,6 +62,7 @@ const baselinePhrases = [
   "MVP baseline checked",
   "Ad-hoc recording start",
   "node, profile, upload policy, folder, name, tags, and optional capture backend/interface targeting",
+  "honoring node recording capacity for repeated start commands",
   "Scheduled due runs",
   "schedule-owned recordings",
   "claim jobs",
@@ -109,6 +110,8 @@ const baselinePhrases = [
 ];
 const sourceSnippets = [
   "recordingStartRequestSchema",
+  "capacityReservedRecordingJobStatuses",
+  "activeJobCount",
   "recordings.start.succeeded",
   "createRecordingJob",
   "claimNextRecordingJob",
@@ -241,6 +244,8 @@ const sourceSnippets = [
 ];
 const testSnippets = [
   "ad hoc recording start uses requested capture backend and interface",
+  "ad hoc recording start allows another job when node capacity has room",
+  "ad hoc recording start rejects queued and running jobs once node capacity is full",
   "ad hoc recording completes through agent cache attach and exposes cached media",
   "claim-next lets one node claim multiple queued recordings independently",
   "agent config read returns node recording capacity",

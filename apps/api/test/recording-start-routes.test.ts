@@ -237,6 +237,91 @@ test("ad hoc recording start rejects active jobs on the requested node", async (
   assert.equal(recordings.length, 0);
 });
 
+test("ad hoc recording start allows another job when node capacity has room", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode({
+    id: `node_capacity_room_${randomUUID()}`,
+    recordingCapacity: { maxConcurrentRecordings: 2 },
+  });
+  const activeRecording = recordingSummary({
+    id: `rec_capacity_room_${randomUUID()}`,
+    nodeId: node.id,
+  });
+  const activeJob = await createRecordingJob(activeRecording);
+  await claimRecordingJob(activeJob.id, node.id);
+  const app = recordingApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({ nodeId: node.id }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { job: { nodeId: string; status: string } };
+  const [event] = await auditStore.list({ action: "recordings.start.succeeded" });
+  const recordings = await recordingStore.list();
+
+  assert.equal(response.status, 202);
+  assert.equal(body.job.nodeId, node.id);
+  assert.equal(body.job.status, "queued");
+  assert.equal(event?.outcome, "succeeded");
+  assert.equal(recordings.length, 1);
+});
+
+test("ad hoc recording start rejects queued and running jobs once node capacity is full", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode({
+    id: `node_capacity_full_${randomUUID()}`,
+    recordingCapacity: { maxConcurrentRecordings: 2 },
+  });
+  const queuedRecording = recordingSummary({
+    id: `rec_capacity_queued_${randomUUID()}`,
+    nodeId: node.id,
+  });
+  const runningRecording = recordingSummary({
+    id: `rec_capacity_running_${randomUUID()}`,
+    nodeId: node.id,
+  });
+  await createRecordingJob(queuedRecording);
+  const runningJob = await createRecordingJob(runningRecording);
+  await claimRecordingJob(runningJob.id, node.id);
+  const app = recordingApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({ nodeId: node.id }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as {
+    activeJobCount: number;
+    maxConcurrentRecordings: number;
+    reason: string;
+  };
+  const [event] = await auditStore.list({ action: "recordings.start.failed" });
+  const recordings = await recordingStore.list();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.reason, "active_recording_job_exists");
+  assert.equal(body.activeJobCount, 2);
+  assert.equal(body.maxConcurrentRecordings, 2);
+  assert.equal(event?.reason, "active_recording_job_exists");
+  assert.equal(event?.target.type, "recording_job");
+  assert.equal(recordings.length, 0);
+});
+
 test("ad hoc recording start only operates on scoped visible nodes", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();

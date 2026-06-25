@@ -91,7 +91,7 @@ const recordingSelectedExportSchema = z
     recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
   })
   .strict();
-const activeRecordingJobStatuses = new Set(["running", "stop_requested"]);
+const capacityReservedRecordingJobStatuses = new Set(["queued", "running", "stop_requested"]);
 
 export function registerRecordingRoutes({
   app,
@@ -714,19 +714,24 @@ export function registerRecordingRoutes({
         return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
       }
 
-      const activeJob = (await listRecordingJobs()).find(
-        (job) => job.nodeId === node.id && activeRecordingJobStatuses.has(job.status),
+      const capacityReservedJobs = (await listRecordingJobs()).filter(
+        (job) => job.nodeId === node.id && capacityReservedRecordingJobStatuses.has(job.status),
       );
+      const maxConcurrentRecordings = node.recordingCapacity?.maxConcurrentRecordings ?? 1;
 
-      if (activeJob) {
+      if (capacityReservedJobs.length >= maxConcurrentRecordings) {
+        const activeJob = capacityReservedJobs[0];
+
         await recordRecordingStartFailure(c, "active_recording_job_exists", node.id, node.alias, {
-          id: activeJob.id,
+          id: activeJob?.id,
           type: "recording_job",
         });
         return c.json(
           {
             error: "Recorder node already has an active recording job",
-            jobId: activeJob.id,
+            activeJobCount: capacityReservedJobs.length,
+            jobId: activeJob?.id,
+            maxConcurrentRecordings,
             reason: "active_recording_job_exists",
           },
           409,
