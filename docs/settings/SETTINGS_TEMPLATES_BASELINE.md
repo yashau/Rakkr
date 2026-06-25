@@ -16,7 +16,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 - Retention policy templates can be created and updated through RBAC-gated settings routes.
 - The retention runner executes controller-cache max-age and max-bytes cleanup policies with audit events.
 - Schedules and recordings carry `retentionPolicyId` so controller-cache cleanup only applies to assigned recordings.
-- Recorder-cache delete-after-upload policies are pinned to recording jobs and executed by the agent after successful controller attach.
+- Recorder-cache delete-after-upload policies are pinned to recording jobs and executed by the agent after successful controller attach with delete-failure reporting.
 - Recorder-cache max-age and max-bytes sweep policies are sent through node config and executed by idle agents from a local uploaded-cache manifest.
 - Recorder-cache min-free-disk sweep policies are sent through node config and executed by idle agents using system disk pressure and the local uploaded-cache manifest.
 - Settings writes audit before/after snapshots when the route has an existing resource.

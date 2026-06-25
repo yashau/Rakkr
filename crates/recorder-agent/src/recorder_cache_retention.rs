@@ -401,8 +401,32 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn reports_cache_delete_failures() {
+        let root = temp_dir("delete-failure");
+        let raw = root.join("recording.raw.wav");
+        let rendered = root.join("recording.mp3");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&raw).unwrap();
+        fs::write(&rendered, b"rendered").unwrap();
+
+        let cleanup = delete_recorder_cache_files(&raw, &rendered);
+
+        assert_eq!(cleanup.deleted_paths, vec![rendered.display().to_string()]);
+        assert_eq!(cleanup.errors.len(), 1);
+        assert!(cleanup.errors[0].contains(&raw.display().to_string()));
+        assert!(raw.is_dir());
+        assert!(!rendered.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
     fn temp_dir(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("rakkr-recorder-cache-retention-{name}"))
+        let process_id = std::process::id();
+        std::env::temp_dir().join(format!(
+            "rakkr-recorder-cache-retention-{name}-{process_id}"
+        ))
     }
 
     fn candidate(
