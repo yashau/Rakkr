@@ -454,16 +454,13 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
   const sweepEvent = observed.healthEvents.find(
     (event) => event.type === "agent.recorder_cache.sweep_completed",
   );
+  const trackedSyncedEvents = observed.healthEvents.filter(
+    (event) => event.type === "agent.recording_job.recorder_cache_tracked",
+  );
 
-  invariant(
-    healthLogEvents.filter((event) => event.type === "agent.recording_job.recorder_cache_tracked")
-      .length === 2,
-    "deferred retention jobs were not tracked in the local health log",
-  );
-  invariant(
-    sweepEvent?.details?.deleted >= 1,
-    "deferred recorder-cache sweep did not delete files",
-  );
+  invariant(healthLogEvents.filter((event) => event.type === "agent.recording_job.recorder_cache_tracked").length === 2, "deferred retention jobs were not tracked in the local health log");
+  invariant(trackedSyncedEvents.length === 2 && trackedSyncedEvents.every((event) => event.details?.policyId === deferredSweepRetention().policyId && event.details?.maxBytes === 1), "agent did not sync deferred recorder-cache tracking policy");
+  invariant(sweepEvent?.details?.deleted >= 1, "deferred recorder-cache sweep did not delete files");
 
   activeScenario = undefined;
 }

@@ -82,7 +82,7 @@ const baselinePhrases = [
   "claim-next/status-poll/control-plane/channel-map failure health",
   "controller-terminal status handoff",
   "capture start/runtime/too-small failure",
-  "recorder-cache cleanup sync/tracking failure",
+  "recorder-cache cleanup/tracking sync and tracking failure",
   "MP3 VBR output",
   "mise run recordings:check-first-reliable",
 ];
@@ -157,6 +157,8 @@ const sourceSnippets = [
   "capture output is too small",
   "assertRecorderCacheTrackFailureScenario",
   "runRecorderCacheTrackFailureScenario",
+  "agent did not sync deferred recorder-cache tracking policy",
+  "agent.recording_job.recorder_cache_tracked",
   "agent.recording_job.recorder_cache_track_failed",
   "agent did not sync recorder-cache retention cleanup policy",
   "synced recorder-cache cleanup did not include rendered cache path",
