@@ -16,6 +16,7 @@ mod node_config;
 mod recorder_cache_retention;
 mod recording_job_recovery;
 mod recording_job_segments;
+mod recording_job_upload;
 mod state;
 mod system_health;
 mod telemetry;

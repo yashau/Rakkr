@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::AgentConfig;
 use crate::controller::ControllerRecordingJob;
+use crate::recorder_cache_retention::ControllerRecorderCacheRetention;
 use crate::telemetry::now_rfc3339;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -15,11 +16,21 @@ pub struct AgentJobState {
     pub node_id: String,
     pub output_path: Option<String>,
     pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_output_path: Option<String>,
     pub recording_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorder_cache_retention: Option<ControllerRecorderCacheRetention>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recovered_segments: Vec<AgentRecoveredCaptureSegment>,
     pub status: String,
     pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upload_content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upload_duration_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upload_file_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -45,10 +56,15 @@ pub fn write_job_state(
             node_id: job.node_id.clone(),
             output_path: output_path.map(|path| path.display().to_string()),
             reason: reason.map(str::to_string),
+            raw_output_path: None,
             recording_id: job.recording_id.clone(),
+            recorder_cache_retention: None,
             recovered_segments: Vec::new(),
             status: status.to_string(),
             updated_at: now_rfc3339(),
+            upload_content_type: None,
+            upload_duration_seconds: None,
+            upload_file_name: None,
         },
     )
 }
@@ -105,7 +121,9 @@ mod tests {
                 node_id: "node_recovery".to_string(),
                 output_path: Some("/tmp/recovery.wav".to_string()),
                 reason: Some("interrupted".to_string()),
+                raw_output_path: Some("/tmp/recovery.raw.wav".to_string()),
                 recording_id: "rec_recovery".to_string(),
+                recorder_cache_retention: None,
                 recovered_segments: vec![AgentRecoveredCaptureSegment {
                     attempt: 1,
                     bytes: 128,
@@ -114,6 +132,9 @@ mod tests {
                 }],
                 status: "running".to_string(),
                 updated_at: "2026-06-25T00:00:00Z".to_string(),
+                upload_content_type: Some("audio/wav".to_string()),
+                upload_duration_seconds: Some(30),
+                upload_file_name: Some("recovery.wav".to_string()),
             },
         )
         .expect("write state");
@@ -123,9 +144,54 @@ mod tests {
         assert_eq!(loaded.job_id, "job_recovery");
         assert_eq!(loaded.recording_id, "rec_recovery");
         assert_eq!(loaded.status, "running");
+        assert_eq!(
+            loaded.raw_output_path.as_deref(),
+            Some("/tmp/recovery.raw.wav")
+        );
         assert_eq!(loaded.recovered_segments.len(), 1);
         assert_eq!(loaded.recovered_segments[0].attempt, 1);
+        assert_eq!(loaded.upload_content_type.as_deref(), Some("audio/wav"));
+        assert_eq!(loaded.upload_duration_seconds, Some(30));
+        assert_eq!(loaded.upload_file_name.as_deref(), Some("recovery.wav"));
         assert!(!loaded.is_terminal());
+
+        cleanup(&state_file);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn reads_legacy_job_state_without_optional_recovery_fields() {
+        let state_file = temp_state_file("legacy");
+        let state_file_arg = state_file.to_string_lossy().into_owned();
+        let config =
+            AgentConfig::parse_from(["test", "--agent-state-file", state_file_arg.as_str()]);
+
+        if let Some(parent) = state_file.parent() {
+            fs::create_dir_all(parent).expect("state dir");
+        }
+        fs::write(
+            &state_file,
+            br#"{
+  "jobId": "job_legacy",
+  "nodeId": "node_legacy",
+  "outputPath": "/tmp/legacy.wav",
+  "reason": null,
+  "recordingId": "rec_legacy",
+  "status": "upload_pending",
+  "updatedAt": "2026-06-25T00:00:00Z"
+}"#,
+        )
+        .expect("legacy state");
+
+        let loaded = read_job_state(&config).expect("read state").expect("state");
+
+        assert_eq!(loaded.job_id, "job_legacy");
+        assert_eq!(loaded.raw_output_path, None);
+        assert!(loaded.recorder_cache_retention.is_none());
+        assert!(loaded.recovered_segments.is_empty());
+        assert_eq!(loaded.upload_content_type, None);
+        assert_eq!(loaded.upload_duration_seconds, None);
+        assert_eq!(loaded.upload_file_name, None);
 
         cleanup(&state_file);
     }

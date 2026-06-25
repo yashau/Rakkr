@@ -23,6 +23,7 @@ use crate::recording_job_recovery::{
     write_recoverable_job_state,
 };
 use crate::recording_job_segments::stitch_recovered_capture_segments;
+use crate::recording_job_upload::{UploadCheckpoint, write_upload_checkpoint_state};
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 use types::DataEnvelope;
@@ -516,6 +517,17 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     let upload_output_bytes = fs::metadata(&output_path)
         .ok()
         .map(|metadata| metadata.len());
+    let upload_checkpoint = UploadCheckpoint {
+        content_type: upload_content_type,
+        duration_seconds: Some(job.command.duration_seconds),
+        file_name: Some(upload_file_name.as_str()),
+        output_path: &output_path,
+        raw_output_path: &raw_output_path,
+        recorder_cache_retention: job.command.recorder_cache_retention.clone(),
+        recovered_segments: &recovered_segments,
+    };
+    write_upload_checkpoint_state(config, &job, "upload_pending", &upload_checkpoint, None)?;
+
     let upload_result = upload_cache_file(CacheFileUpload {
         allow_insecure_controller: config.allow_insecure_controller,
         content_type: upload_content_type,
@@ -532,6 +544,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
 
     match upload_result {
         Ok(()) => {
+            write_upload_checkpoint_state(config, &job, "uploaded", &upload_checkpoint, None)?;
             apply_recorder_cache_retention(config, token, &job, &raw_output_path, &output_path)
                 .await?;
             write_job_state(config, &job, "completed", Some(&output_path), None)?;
@@ -560,11 +573,11 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 }),
             )
             .await?;
-            write_job_state(
+            write_upload_checkpoint_state(
                 config,
                 &job,
                 "upload_pending",
-                Some(&output_path),
+                &upload_checkpoint,
                 Some(&reason),
             )?;
             Err(error)

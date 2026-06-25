@@ -62,6 +62,7 @@ import {
   runNodeConfigRecoveryScenario,
   runSystemHealthScenario,
 } from "./agent-fake-controller-smoke-health.mjs";
+import { runUploadBoundaryRecoveryScenarios } from "./agent-fake-controller-smoke-recovery.mjs";
 import {
   fileExists,
   invariant,
@@ -161,6 +162,17 @@ try {
     tinyCaptureCommand,
   });
   await runRestartRecoveryScenario({ address, captureCommand, renderCommand });
+  await runUploadBoundaryRecoveryScenarios({
+    address,
+    agentContext,
+    captureCommand,
+    createJob,
+    createObserved,
+    nodeId,
+    renderCommand,
+    setActiveScenario,
+    smokeRoot,
+  });
   await runScenario({
     address,
     captureCommand: templateCaptureCommand,

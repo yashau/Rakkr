@@ -20,6 +20,7 @@ use crate::recorder_cache_retention::{delete_recorder_cache_files, record_upload
 use crate::recording_job_segments::{
     RecoveredCaptureSegment, RuntimeCaptureRecovery, preserve_recovered_capture_segment,
 };
+use crate::recording_job_upload::apply_recovered_upload_retention;
 use crate::state::{
     AgentJobState, AgentRecoveredCaptureSegment, read_job_state, write_job_state_snapshot,
 };
@@ -36,6 +37,69 @@ pub(crate) async fn reconcile_previous_recording_job(
     };
 
     if state.is_terminal() {
+        return Ok(());
+    }
+
+    if state.status == "uploaded" {
+        let output_path = state.output_path.as_deref().map(PathBuf::from);
+        let raw_output_path = state
+            .raw_output_path
+            .as_deref()
+            .map(PathBuf::from)
+            .or_else(|| output_path.clone());
+        let details = json!({
+            "jobId": state.job_id.as_str(),
+            "nodeId": state.node_id.as_str(),
+            "outputPath": state.output_path.as_deref(),
+            "previousStatus": state.status.as_str(),
+            "rawOutputPath": state.raw_output_path.as_deref(),
+            "recordingId": state.recording_id.as_str(),
+            "stateUpdatedAt": state.updated_at.as_str(),
+            "uploadAlreadyAccepted": true,
+            "willUpload": false,
+        });
+        let event = health_log::append_health_event_with_targets(
+            config,
+            "agent.recording_job.recovered_after_restart",
+            "warning",
+            details,
+            Some(state.recording_id.clone()),
+            None,
+        )?;
+
+        if let Err(error) = sync_health_event(config, token, &event).await {
+            warn!(
+                error = %error,
+                job_id = %state.job_id,
+                "failed to sync recovered-after-restart health event"
+            );
+        }
+
+        if let (Some(raw_output_path), Some(output_path), Some(retention)) = (
+            raw_output_path.as_deref(),
+            output_path.as_deref(),
+            state.recorder_cache_retention.as_ref(),
+        ) {
+            apply_recovered_upload_retention(
+                config,
+                token,
+                &state,
+                retention,
+                raw_output_path,
+                output_path,
+            )
+            .await?;
+        }
+
+        write_job_state_snapshot(
+            config,
+            AgentJobState {
+                reason: None,
+                status: "completed".to_string(),
+                updated_at: crate::telemetry::now_rfc3339(),
+                ..state
+            },
+        )?;
         return Ok(());
     }
 
@@ -80,14 +144,19 @@ pub(crate) async fn reconcile_previous_recording_job(
 
         upload_cache_file(CacheFileUpload {
             allow_insecure_controller: config.allow_insecure_controller,
-            content_type: content_type_for_codec(None, &output_path),
+            content_type: state
+                .upload_content_type
+                .as_deref()
+                .unwrap_or_else(|| content_type_for_codec(None, &output_path)),
             controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
             controller_url: &config.controller_url,
-            duration_seconds: None,
-            file_name: output_path
-                .file_name()
-                .and_then(|value| value.to_str())
-                .map(str::to_string),
+            duration_seconds: state.upload_duration_seconds,
+            file_name: state.upload_file_name.clone().or_else(|| {
+                output_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(str::to_string)
+            }),
             file_path: &output_path,
             job_id: Some(&state.job_id),
             recording_id: &state.recording_id,
@@ -100,6 +169,38 @@ pub(crate) async fn reconcile_previous_recording_job(
                 state.job_id
             )
         })?;
+
+        write_job_state_snapshot(
+            config,
+            AgentJobState {
+                reason: None,
+                status: "uploaded".to_string(),
+                updated_at: crate::telemetry::now_rfc3339(),
+                ..state
+            },
+        )?;
+
+        let Some(state) = read_job_state(config)? else {
+            return Ok(());
+        };
+
+        let recovered_raw_output_path = state
+            .raw_output_path
+            .as_deref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| output_path.clone());
+
+        if let Some(retention) = state.recorder_cache_retention.as_ref() {
+            apply_recovered_upload_retention(
+                config,
+                token,
+                &state,
+                retention,
+                &recovered_raw_output_path,
+                &output_path,
+            )
+            .await?;
+        }
 
         write_job_state_snapshot(
             config,
@@ -196,10 +297,15 @@ pub(crate) fn write_recoverable_job_state(
             node_id: job.node_id.clone(),
             output_path: output_path.map(|path| path.display().to_string()),
             reason: reason.map(str::to_string),
+            raw_output_path: None,
             recording_id: job.recording_id.clone(),
+            recorder_cache_retention: None,
             recovered_segments: recovered_segments.iter().map(state_segment).collect(),
             status: status.to_string(),
             updated_at: crate::telemetry::now_rfc3339(),
+            upload_content_type: None,
+            upload_duration_seconds: None,
+            upload_file_name: None,
         },
     )
 }

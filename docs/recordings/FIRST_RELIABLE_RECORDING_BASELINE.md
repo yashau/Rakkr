@@ -13,7 +13,7 @@ Status: MVP baseline checked.
 - Stop requests survive agent cancellation without falsely marking the recording unhealthy.
 - Failed and unexpectedly cancelled jobs update recording health and create central health events.
 - Recording jobs workbench shows scoped job status, status/search/node/backend/interface filters, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export, RBAC-mirrored stop controls for active jobs, and audited retry controls for failed/cancelled jobs.
-- Fake-controller smoke and recorder-cache helper coverage prove agent job polling, channel-map application sync, claim-next/status-poll/control-plane/channel-map failure health, controller-terminal status handoff, controller capacity override, bounded concurrent jobs, capture start/runtime/too-small/stall/render/upload-evidence failure, capture runtime restart with recovered segment stitching, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, recorder-cache cleanup/delete-failure/tracking sync and tracking failure, and controller stop handling without hardware.
+- Fake-controller smoke and recorder-cache helper coverage prove agent job polling, channel-map application sync, claim-next/status-poll/control-plane/channel-map failure health, controller-terminal status handoff, controller capacity override, bounded concurrent jobs, capture start/runtime/too-small/stall/render/upload-evidence failure, capture runtime restart with recovered segment stitching, upload-pending retry and uploaded-finalization restart recovery, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, recorder-cache cleanup/delete-failure/tracking sync and tracking failure, and controller stop handling without hardware.
 
 ## Checked By
 
@@ -25,7 +25,7 @@ Status: MVP baseline checked.
 | Cache checksum, duration, waveform preview, file size | `apps/api/test/recording-cache.test.ts` |
 | Failed/cancelled job health transitions | `apps/api/test/agent-routes.test.ts` |
 | Stop-request lifecycle | `apps/api/test/agent-routes.test.ts` |
-| Agent capture/render/cache/channel-map application/retention/stop/controller-terminal/claim-next-status-poll-control-plane-channel-map failure/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs`, `crates/recorder-agent/src/recording_job_recovery.rs`, `crates/recorder-agent/src/recording_job_segments.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs` |
+| Agent capture/render/cache/channel-map application/retention/stop/controller-terminal/claim-next-status-poll-control-plane-channel-map failure/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-recovery.mjs`, `crates/recorder-agent/src/recording_job_recovery.rs`, `crates/recorder-agent/src/recording_job_segments.rs`, `crates/recorder-agent/src/recording_job_upload.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs` |
 | Playback/download UI readiness and cleanup | `apps/web/src/lib/recording-page-helpers.test.ts` |
 | Schedule detail playback/download controls | `apps/web/src/lib/schedule-detail-page-helpers.test.ts` |
 | Recording jobs workbench, export, stop, and retry controls | `apps/api/test/recording-job-export.test.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/web/src/pages/jobs.tsx`, `apps/web/src/lib/jobs-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |
