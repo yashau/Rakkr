@@ -13,7 +13,7 @@ Status: Partial baseline checked.
 - Quality anomaly policies can alert when scheduled audio has sustained high broadband noise, noise, hum, or static likelihood and auto-resolve after recovery.
 - Node liveness creates and resolves offline health events with node alias, room, IP, and heartbeat details.
 - Recorder nodes write lifecycle-managed local JSONL health logs and sync health events to the controller.
-- Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, configurable low-signal, first-pass channel correlation, disk/CPU/audio backend pressure, capture start/runtime/too-small/growth failure, render failure, cache upload failure, recorder-cache tracking failure, recording-job claim-next/status-poll/control-plane/channel-map failure, and controller-terminal job state handoff.
+- Agent health coverage includes meter capture failure/recovery, device unavailable/xrun, clipping, flatline, configurable low-signal, first-pass channel correlation, disk/CPU/audio backend pressure, capture start/runtime/too-small/growth failure, render failure, cache upload failure, recorder-cache cleanup sync/tracking failure, recording-job claim-next/status-poll/control-plane/channel-map failure, and controller-terminal job state handoff.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
@@ -21,7 +21,7 @@ Status: Partial baseline checked.
 - Fake-controller smoke coverage exercises controller-synced node-heartbeat, listen-monitor chunk, and node-config polling failure and recovery without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
 - A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields plus daemon health-log clipping, low-signal, and channel-correlation behavior.
-- A full-agent ALSA loopback job smoke records looped speech through `arecord`, uploads the captured WAV to a fake controller, and asserts recorder-cache cleanup health without synthetic capture.
+- A full-agent ALSA loopback job smoke records looped speech through `arecord`, uploads the captured WAV to a fake controller, and asserts controller-synced recorder-cache cleanup health without synthetic capture.
 - X32 S32_LE hardware meter smoke validates real 32-channel one-shot and repeated agent meter-frame and quality-field generation without synthetic fallback.
 - X32 low-signal health smoke validates the daemon meter loop writes a local `agent.meter.low_signal` health event from real quiet ALSA hardware without synthetic fallback; the health sync smoke also validates the same event is posted to a fake controller with heartbeat and meter-frame sync.
 - HDA Intel PCH S16_LE hardware meter smoke validates real 2-channel onboard-agent meter-frame and quality-field generation without synthetic fallback.
@@ -59,6 +59,6 @@ Status: Partial baseline checked.
 | Agent local health log rotation | `crates/recorder-agent/src/health_log.rs` |
 | Agent meter quality, speech/noise/broadband-noise/SNR/intelligibility/hum/static/channel correlation, clipping, synthetic PCM calibration | `crates/recorder-agent/src/telemetry.rs` |
 | Agent clipping, flatline, low-signal, channel correlation, xrun, node-heartbeat/node-config sync, and system health sync | `crates/recorder-agent/src/main.rs` and `crates/recorder-agent/src/system_health.rs` |
-| Agent capture start/runtime/too-small/growth, cache upload, recorder-cache tracking failure, job claim-next/status-poll/control-plane/channel-map failure, controller-terminal handoff, render-failure, and system-health smoke | `scripts/agent-fake-controller-smoke.mjs` |
+| Agent capture start/runtime/too-small/growth, cache upload, recorder-cache cleanup sync/tracking failure, job claim-next/status-poll/control-plane/channel-map failure, controller-terminal handoff, render-failure, and system-health smoke | `scripts/agent-fake-controller-smoke.mjs` |
 
 `mise run health:check-watchdog` validates this partial baseline, and `mise run check` runs it.

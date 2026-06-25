@@ -319,7 +319,7 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   }
 
   if (scenario.expectSuccess && !scenario.controllerStopRequested && !scenario.controllerTerminalStatus && !scenario.expectRecorderCacheTrackFailure) {
-    await assertCompletedScenario({ job, retentionLocalEvent, scenario, state });
+    await assertCompletedScenario({ job, observed, retentionLocalEvent, scenario, state });
   } else if (scenario.cacheUploadFails) {
     assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
   }
@@ -538,18 +538,18 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
   activeScenario = undefined;
 }
 
-async function assertCompletedScenario({ job, retentionLocalEvent, scenario, state }) {
+async function assertCompletedScenario({ job, observed, retentionLocalEvent, scenario, state }) {
+  const retentionSyncedEvent = observed.healthEvents.find((event) => event.type === "agent.recording_job.recorder_cache_deleted");
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
   invariant(state.jobId === scenario.jobId, "agent state file recorded the wrong job id");
-  invariant(
-    state.outputPath?.endsWith(scenario.outputFileName),
-    "agent state did not end on rendered MP3",
-  );
+  invariant(state.outputPath?.endsWith(scenario.outputFileName), "agent state did not end on rendered MP3");
   invariant(retentionLocalEvent, "agent did not log recorder-cache retention cleanup");
+  invariant(retentionLocalEvent.details?.policyId === job.command.recorderCacheRetention.policyId, "recorder-cache cleanup did not include the retention policy id");
+  invariant(retentionSyncedEvent?.details?.policyId === job.command.recorderCacheRetention.policyId, "agent did not sync recorder-cache retention cleanup policy");
   invariant(
-    retentionLocalEvent.details?.policyId === job.command.recorderCacheRetention.policyId,
-    "recorder-cache cleanup did not include the retention policy id",
+    retentionSyncedEvent?.details?.deletedPaths?.some((deletedPath) => deletedPath.endsWith(scenario.outputFileName)),
+    "synced recorder-cache cleanup did not include rendered cache path",
   );
   await assertLocalRecorderCacheDeleted(scenario.outputFileName);
 }
