@@ -164,7 +164,7 @@ try {
     renderCommand,
     scenario: {
       expectStatusPollFailure: true,
-      expectSuccess: false,
+      expectSuccess: true,
       jobId: "job_fake_controller_status_poll_failure",
       jobStatusFailuresRemaining: 1,
       name: "status-poll-failure",

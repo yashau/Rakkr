@@ -81,7 +81,7 @@ export async function runControlPlaneFailureScenario({
     renderCommand,
     scenario: {
       expectControlPlaneFailure: true,
-      expectSuccess: false,
+      expectSuccess: true,
       jobHeartbeatFailuresRemaining: 1,
       jobId: "job_fake_controller_control_plane_failure",
       name: "control-plane-failure",

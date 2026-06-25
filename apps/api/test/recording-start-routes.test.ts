@@ -35,6 +35,7 @@ process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerRecordingRoutes } = await import("../src/recording-routes.js");
+const { claimRecordingJob, createRecordingJob } = await import("../src/recording-jobs.js");
 
 test.after(async () => {
   await rm(routeRoot, { force: true, recursive: true });
@@ -120,6 +121,120 @@ test("ad hoc recording start rejects interfaces outside the requested node", asy
   assert.equal(response.status, 409);
   assert.equal(event?.reason, "recording_interface_not_found");
   assert.equal(event?.target.id, node.id);
+});
+
+test("ad hoc recording start prefers stable ALSA system refs", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode({
+    id: `node_stable_alsa_${randomUUID()}`,
+    interfaces: [
+      {
+        alias: "X32 USB",
+        backend: "alsa",
+        channelCount: 32,
+        channels: [{ alias: "Input 1", index: 1 }],
+        id: "iface_x32_usb",
+        sampleRates: [48_000],
+        systemName: "X-USB USB Audio",
+        systemRef: "hw:CARD=XUSB,DEV=0",
+      },
+    ],
+  });
+  const app = recordingApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      captureInterfaceId: "iface_x32_usb",
+      nodeId: node.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { job: { command: Record<string, unknown> } };
+
+  assert.equal(response.status, 202);
+  assert.equal(body.job.command.captureBackend, "alsa");
+  assert.equal(body.job.command.captureDevice, "hw:CARD=XUSB,DEV=0");
+});
+
+test("ad hoc recording start normalizes prefixed ALSA system refs", async () => {
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode({
+    id: `node_prefixed_alsa_${randomUUID()}`,
+    interfaces: [
+      {
+        alias: "X32 USB",
+        backend: "alsa",
+        channelCount: 32,
+        channels: [{ alias: "Input 1", index: 1 }],
+        id: "iface_x32_prefixed_usb",
+        sampleRates: [48_000],
+        systemName: "X-USB USB Audio",
+        systemRef: "alsa:hw:CARD=XUSB,DEV=0",
+      },
+    ],
+  });
+  const app = recordingApp({
+    auditStore: createAuditStore(""),
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      captureInterfaceId: "iface_x32_prefixed_usb",
+      nodeId: node.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { job: { command: Record<string, unknown> } };
+
+  assert.equal(response.status, 202);
+  assert.equal(body.job.command.captureDevice, "hw:CARD=XUSB,DEV=0");
+});
+
+test("ad hoc recording start rejects active jobs on the requested node", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode({ id: `node_active_start_${randomUUID()}` });
+  const activeRecording = recordingSummary({
+    id: `rec_active_start_${randomUUID()}`,
+    nodeId: node.id,
+  });
+  const activeJob = await createRecordingJob(activeRecording);
+  await claimRecordingJob(activeJob.id, node.id);
+  const app = recordingApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({ nodeId: node.id }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { reason: string };
+  const [event] = await auditStore.list({ action: "recordings.start.failed" });
+  const recordings = await recordingStore.list();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.reason, "active_recording_job_exists");
+  assert.equal(event?.reason, "active_recording_job_exists");
+  assert.equal(event?.target.type, "recording_job");
+  assert.equal(recordings.length, 0);
 });
 
 test("ad hoc recording start only operates on scoped visible nodes", async () => {
@@ -447,6 +562,23 @@ function user(): CurrentUser {
     provider: "local",
     resourceGrants: [],
     roles: ["operator"],
+  };
+}
+
+function recordingSummary(overrides: Partial<RecordingSummary> = {}): RecordingSummary {
+  return {
+    cached: false,
+    durationSeconds: 0,
+    folder: "Ad Hoc",
+    healthStatus: "unknown",
+    id: `rec_start_${randomUUID()}`,
+    name: "Active Start Fixture",
+    nodeId: "node_room_alpha",
+    recordedAt: "2026-06-25T00:00:00.000Z",
+    source: "ad_hoc",
+    status: "recording",
+    tags: ["voice"],
+    ...overrides,
   };
 }
 

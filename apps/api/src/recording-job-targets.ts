@@ -53,7 +53,7 @@ export async function recordingJobTargetOptions({
       knownCaptureBackend(captureInterface) ??
       node?.audioDefaults?.captureBackend,
     captureChannels: node?.audioDefaults?.captureChannels,
-    captureDevice: captureInterface?.systemName ?? node?.audioDefaults?.captureDevice,
+    captureDevice: captureDeviceTarget(captureInterface) ?? node?.audioDefaults?.captureDevice,
     captureFormat: node?.audioDefaults?.captureFormat,
     captureInterfaceId,
     captureSampleRate: node?.audioDefaults?.captureSampleRate,
@@ -61,6 +61,24 @@ export async function recordingJobTargetOptions({
     durationSeconds,
     profile,
   };
+}
+
+function captureDeviceTarget(captureInterface: AudioInterface | undefined) {
+  if (!captureInterface) {
+    return undefined;
+  }
+
+  if (captureInterface.backend !== "alsa") {
+    return captureInterface.systemName;
+  }
+
+  const systemRef = captureInterface.systemRef?.replace(/^alsa:/, "");
+
+  return systemRef && isAlsaCaptureDeviceRef(systemRef) ? systemRef : captureInterface.systemName;
+}
+
+function isAlsaCaptureDeviceRef(value: string) {
+  return value.startsWith("hw:") || value.startsWith("plughw:");
 }
 
 function knownCaptureBackend(

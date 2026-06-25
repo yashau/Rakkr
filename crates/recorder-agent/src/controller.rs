@@ -1,20 +1,25 @@
 mod types;
 
 use anyhow::Context;
-use reqwest::header::{CONTENT_TYPE, HeaderName, HeaderValue};
+use reqwest::header::{CONTENT_TYPE, DATE, HeaderName, HeaderValue};
 use serde_json::json;
 use std::fs;
 use std::time::Duration;
+use time::{OffsetDateTime, format_description::well_known::Rfc2822};
 use tracing::{info, warn};
 
 use crate::cache_content_type::content_type_for_codec;
-use crate::capture::spawn_capture_plan;
+use crate::capture::CaptureChild;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
 use crate::config::AgentConfig;
 use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
 use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
+use crate::recording_job_recovery::{
+    ensure_capture_disk_space, refresh_capture_device_from_inventory,
+    report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
+};
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 use types::DataEnvelope;
@@ -159,7 +164,8 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             }
         }
     };
-    let capture_plan = capture_plan_for_job(config, &job, &channel_maps);
+    let mut capture_plan = capture_plan_for_job(config, &job, &channel_maps);
+    refresh_capture_device_from_inventory(config, token, &job, &mut capture_plan).await?;
 
     if let Some(channel_map) = &capture_plan.channel_map {
         info!(
@@ -192,34 +198,42 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         .await?;
     }
 
-    let mut capture = match spawn_capture_plan(&capture_plan) {
-        Ok(capture) => capture,
-        Err(error) => {
-            let reason = error.to_string();
+    if let Err(error) = ensure_capture_disk_space(config, token, &job, &capture_plan).await {
+        write_job_state(config, &job, "failed", None, Some(&error.to_string()))?;
 
-            let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
-            append_job_health_event(
-                config,
-                token,
-                &job,
-                "agent.recording_job.capture_start_failed",
-                "critical",
-                json!({
-                    "command": capture_plan.command.as_str(),
-                    "device": capture_plan.device.as_str(),
-                    "error": reason.as_str(),
-                    "jobId": job.id.as_str(),
-                    "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
-                    "outputPath": capture_plan.output_path.display().to_string(),
-                    "recordingId": job.recording_id.as_str(),
-                }),
-            )
-            .await?;
-            write_job_state(config, &job, "failed", None, Some(&reason))?;
+        return Err(error);
+    }
 
-            return Err(error);
-        }
-    };
+    let mut capture =
+        match spawn_capture_plan_with_recovery(config, token, &job, &capture_plan).await {
+            Ok(capture) => capture,
+            Err(error) => {
+                let reason = error.to_string();
+
+                let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+                append_job_health_event(
+                    config,
+                    token,
+                    &job,
+                    "agent.recording_job.capture_start_failed",
+                    "critical",
+                    json!({
+                        "command": capture_plan.command.as_str(),
+                        "device": capture_plan.device.as_str(),
+                        "error": reason.as_str(),
+                        "jobId": job.id.as_str(),
+                        "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
+                        "outputPath": capture_plan.output_path.display().to_string(),
+                        "recordingId": job.recording_id.as_str(),
+                    }),
+                )
+                .await?;
+                write_job_state(config, &job, "failed", None, Some(&reason))?;
+
+                return Err(error);
+            }
+        };
+    let mut control_plane_sync_failed = false;
     let raw_output_path = loop {
         match capture.try_complete() {
             Ok(Some(output_path)) => {
@@ -286,110 +300,62 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         }
 
         if let Err(error) = heartbeat_recording_job(config, token, &job.id).await {
-            let refreshed = fetch_recording_job(config, token, &job.id).await.ok();
-
-            if let Some(latest) = refreshed {
-                if matches!(latest.status.as_str(), "stop_requested" | "cancelled") {
-                    capture.stop()?;
-                    mark_recording_job_cancelled(
-                        config,
-                        token,
-                        &job.id,
-                        "controller_stop_requested",
-                    )
-                    .await?;
-                    write_job_state(
-                        config,
-                        &latest,
-                        "cancelled",
-                        None,
-                        Some("controller_stop_requested"),
-                    )?;
-                    return Ok(());
-                }
-
-                if matches!(latest.status.as_str(), "failed" | "completed") {
-                    capture.stop()?;
-                    write_job_state(
-                        config,
-                        &latest,
-                        latest.status.as_str(),
-                        None,
-                        latest.failure_reason.as_deref(),
-                    )?;
-                    return Ok(());
-                }
-            }
-
-            let reason = error.to_string();
-            capture.stop()?;
-            let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
-            append_job_health_event(
+            control_plane_sync_failed = report_control_plane_sync_failure(
                 config,
                 token,
                 &job,
                 "agent.recording_job.control_plane_failed",
-                "warning",
+                error.to_string(),
+                control_plane_sync_failed,
+            )
+            .await?;
+
+            if let Ok(latest) = fetch_recording_job(config, token, &job.id).await
+                && handle_terminal_controller_job(config, token, &job, &latest, &mut capture)
+                    .await?
+            {
+                return Ok(());
+            }
+
+            tokio::time::sleep(Duration::from_secs(config.job_poll_seconds.max(1))).await;
+            continue;
+        }
+
+        if control_plane_sync_failed {
+            control_plane_sync_failed = false;
+            append_job_health_event(
+                config,
+                token,
+                &job,
+                "agent.recording_job.control_plane_recovered",
+                "info",
                 json!({
-                    "error": reason.as_str(),
                     "jobId": job.id.as_str(),
                     "recordingId": job.recording_id.as_str(),
                 }),
             )
             .await?;
-            write_job_state(config, &job, "failed", None, Some(&reason))?;
-            return Err(error);
         }
 
         let latest = match fetch_recording_job(config, token, &job.id).await {
             Ok(latest) => latest,
             Err(error) => {
-                let reason = error.to_string();
-
-                capture.stop()?;
-                let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
-                append_job_health_event(
+                control_plane_sync_failed = report_control_plane_sync_failure(
                     config,
                     token,
                     &job,
                     "agent.recording_job.status_poll_failed",
-                    "warning",
-                    json!({
-                        "error": reason.as_str(),
-                        "jobId": job.id.as_str(),
-                        "recordingId": job.recording_id.as_str(),
-                    }),
+                    error.to_string(),
+                    control_plane_sync_failed,
                 )
                 .await?;
-                write_job_state(config, &job, "failed", None, Some(&reason))?;
 
-                return Err(error);
+                tokio::time::sleep(Duration::from_secs(config.job_poll_seconds.max(1))).await;
+                continue;
             }
         };
 
-        if matches!(latest.status.as_str(), "stop_requested" | "cancelled") {
-            capture.stop()?;
-            mark_recording_job_cancelled(config, token, &job.id, "controller_stop_requested")
-                .await?;
-            write_job_state(
-                config,
-                &latest,
-                "cancelled",
-                None,
-                Some("controller_stop_requested"),
-            )?;
-            return Ok(());
-        }
-
-        if matches!(latest.status.as_str(), "failed" | "completed") {
-            capture.stop()?;
-            write_job_state(
-                config,
-                &latest,
-                latest.status.as_str(),
-                None,
-                latest.failure_reason.as_deref(),
-            )?;
+        if handle_terminal_controller_job(config, token, &job, &latest, &mut capture).await? {
             return Ok(());
         }
 
@@ -490,7 +456,6 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         }
         Err(error) => {
             let reason = error.to_string();
-            mark_recording_job_failed(config, token, &job.id, &reason).await?;
             append_job_health_event(
                 config,
                 token,
@@ -512,10 +477,52 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 }),
             )
             .await?;
-            write_job_state(config, &job, "failed", Some(&output_path), Some(&reason))?;
+            write_job_state(
+                config,
+                &job,
+                "upload_pending",
+                Some(&output_path),
+                Some(&reason),
+            )?;
             Err(error)
         }
     }
+}
+
+async fn handle_terminal_controller_job(
+    config: &AgentConfig,
+    token: &str,
+    claimed_job: &ControllerRecordingJob,
+    latest: &ControllerRecordingJob,
+    capture: &mut CaptureChild,
+) -> anyhow::Result<bool> {
+    if matches!(latest.status.as_str(), "stop_requested" | "cancelled") {
+        capture.stop()?;
+        mark_recording_job_cancelled(config, token, &claimed_job.id, "controller_stop_requested")
+            .await?;
+        write_job_state(
+            config,
+            latest,
+            "cancelled",
+            None,
+            Some("controller_stop_requested"),
+        )?;
+        return Ok(true);
+    }
+
+    if matches!(latest.status.as_str(), "failed" | "completed") {
+        capture.stop()?;
+        write_job_state(
+            config,
+            latest,
+            latest.status.as_str(),
+            None,
+            latest.failure_reason.as_deref(),
+        )?;
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 async fn apply_recorder_cache_retention(
@@ -708,7 +715,7 @@ pub async fn post_node_heartbeat(
     config: &AgentConfig,
     token: &str,
     inventory: &NodeInventory,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<i64>> {
     config.validate_controller_transport()?;
     let url = node_url(&config.controller_url, &config.node_id, "heartbeat");
     let response = controller_http_client(config)?
@@ -719,6 +726,11 @@ pub async fn post_node_heartbeat(
         .await
         .context("post node heartbeat to controller")?;
     let status = response.status();
+    let clock_skew_seconds = response
+        .headers()
+        .get(DATE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(controller_clock_skew_seconds);
 
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
@@ -726,7 +738,7 @@ pub async fn post_node_heartbeat(
         anyhow::bail!("controller rejected node heartbeat with {status}: {body}");
     }
 
-    Ok(())
+    Ok(clock_skew_seconds)
 }
 
 pub async fn sync_health_event(
@@ -754,7 +766,7 @@ pub async fn sync_health_event(
     Ok(())
 }
 
-async fn append_job_health_event(
+pub(crate) async fn append_job_health_event(
     config: &AgentConfig,
     token: &str,
     job: &ControllerRecordingJob,
@@ -887,7 +899,7 @@ async fn mark_recording_job_cancelled(
     mark_recording_job_terminal(config, token, job_id, "cancelled", reason).await
 }
 
-async fn mark_recording_job_failed(
+pub(crate) async fn mark_recording_job_failed(
     config: &AgentConfig,
     token: &str,
     job_id: &str,
@@ -932,6 +944,17 @@ fn recording_cache_url(controller_url: &str, recording_id: &str) -> String {
         controller_url.trim_end_matches('/'),
         recording_id
     )
+}
+
+fn controller_clock_skew_seconds(date_header: &str) -> Option<i64> {
+    controller_clock_skew_seconds_at(date_header, OffsetDateTime::now_utc())
+}
+
+fn controller_clock_skew_seconds_at(date_header: &str, now: OffsetDateTime) -> Option<i64> {
+    let controller_time = OffsetDateTime::parse(date_header, &Rfc2822).ok()?;
+    let skew = controller_time - now;
+
+    Some(skew.whole_seconds())
 }
 
 pub(crate) fn node_url(controller_url: &str, node_id: &str, suffix: &str) -> String {

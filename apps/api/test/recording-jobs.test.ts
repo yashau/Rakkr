@@ -11,8 +11,14 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(jobRoot, "jobs.json");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(jobRoot, "retention-policies.json");
 
-const { createRecordingJob, failRecordingJob, retryRecordingJob } =
-  await import("../src/recording-jobs.js");
+const {
+  claimRecordingJob,
+  createRecordingJob,
+  expireRecordingJobLeases,
+  failRecordingJob,
+  onRecordingJobLeaseExpired,
+  retryRecordingJob,
+} = await import("../src/recording-jobs.js");
 
 test.after(async () => {
   await rm(jobRoot, { force: true, recursive: true });
@@ -59,6 +65,48 @@ test("recording job retry clones failed jobs and blocks active duplicates", asyn
 
   assert.equal(blocked.ok, false);
   assert.equal(blocked.reason, "active_job_exists");
+});
+
+test("recording job lease expiry notifies terminal listeners", async () => {
+  const previousLeaseSeconds = process.env.RAKKR_RECORDING_JOB_LEASE_SECONDS;
+  process.env.RAKKR_RECORDING_JOB_LEASE_SECONDS = "1";
+  const job = await createRecordingJob(recording());
+  const observed: Array<{
+    jobId: string;
+    reason?: string;
+    terminalState: string;
+  }> = [];
+  const dispose = onRecordingJobLeaseExpired(({ job, terminalState }) => {
+    observed.push({
+      jobId: job.id,
+      reason: job.failureReason,
+      terminalState,
+    });
+  });
+
+  try {
+    const claimed = await claimRecordingJob(job.id, "node_audio_defaults");
+
+    assert.equal(claimed?.status, "running");
+
+    await expireRecordingJobLeases(new Date(Date.now() + 2_000));
+
+    assert.deepEqual(observed, [
+      {
+        jobId: job.id,
+        reason: "lease_expired",
+        terminalState: "failed",
+      },
+    ]);
+  } finally {
+    dispose();
+
+    if (previousLeaseSeconds === undefined) {
+      delete process.env.RAKKR_RECORDING_JOB_LEASE_SECONDS;
+    } else {
+      process.env.RAKKR_RECORDING_JOB_LEASE_SECONDS = previousLeaseSeconds;
+    }
+  }
 });
 
 function recording(): RecordingSummary {

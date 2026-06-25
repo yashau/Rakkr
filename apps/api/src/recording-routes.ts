@@ -20,7 +20,7 @@ import type { NodeStore } from "./node-store.js";
 import { registerRecordingActionRoutes } from "./recording-action-routes.js";
 import { registerRecordingJobRoutes } from "./recording-job-routes.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
-import { createRecordingJob, stopRecordingJob } from "./recording-jobs.js";
+import { createRecordingJob, listRecordingJobs, stopRecordingJob } from "./recording-jobs.js";
 import {
   filterRecordings,
   recordingManifestCsv,
@@ -91,6 +91,7 @@ const recordingSelectedExportSchema = z
     recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
   })
   .strict();
+const activeRecordingJobStatuses = new Set(["running", "stop_requested"]);
 
 export function registerRecordingRoutes({
   app,
@@ -711,6 +712,25 @@ export function registerRecordingRoutes({
           retentionPolicySettingsTarget(retentionPolicy),
         );
         return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+      }
+
+      const activeJob = (await listRecordingJobs()).find(
+        (job) => job.nodeId === node.id && activeRecordingJobStatuses.has(job.status),
+      );
+
+      if (activeJob) {
+        await recordRecordingStartFailure(c, "active_recording_job_exists", node.id, node.alias, {
+          id: activeJob.id,
+          type: "recording_job",
+        });
+        return c.json(
+          {
+            error: "Recorder node already has an active recording job",
+            jobId: activeJob.id,
+            reason: "active_recording_job_exists",
+          },
+          409,
+        );
       }
 
       const recording: RecordingSummary = {

@@ -168,19 +168,19 @@ export function assertStatusPollFailureScenario({
     (event) => event.type === "agent.recording_job.status_poll_failed",
   );
 
-  invariant(job.status === "failed", "fake controller did not mark status-poll job failed");
-  invariant(observed.failures === 1, "agent did not mark status-poll job failed");
+  invariant(job.status === "completed", "status-poll retry did not complete the job");
+  invariant(observed.failures === 0, "agent should not mark transient status-poll failure failed");
   invariant(observed.jobStatusReadFailures === 1, "fake controller did not fail status read once");
-  invariant(!observed.cacheUpload, "agent uploaded cache after status-poll failure");
-  invariant(state.status === "failed", "status-poll state file did not end failed");
+  invariant(observed.cacheUpload, "agent did not upload cache after status-poll recovery");
+  invariant(state.status === "completed", "status-poll recovery state file did not end completed");
   invariant(state.jobId === scenario.jobId, "status-poll state recorded the wrong job id");
   invariant(
-    String(state.reason).includes("controller rejected job status request with 503"),
-    "status-poll state did not retain controller rejection",
+    state.reason === undefined || state.reason === null,
+    "status-poll recovery should not retain a terminal reason",
   );
   invariant(
-    String(observed.failureReason).includes("controller rejected job status request with 503"),
-    "failed-job reason did not include status-poll rejection",
+    observed.failureReason === undefined,
+    "status-poll recovery should not set terminal failure reason",
   );
   invariant(failedLocalEvent, "agent local health log did not include status-poll failure");
   invariant(failedLocalEvent.severity === "warning", "status-poll failure was not warning");
@@ -213,19 +213,19 @@ export function assertControlPlaneFailureScenario({
     (event) => event.type === "agent.recording_job.control_plane_failed",
   );
 
-  invariant(job.status === "failed", "fake controller did not mark control-plane job failed");
-  invariant(observed.failures === 1, "agent did not mark control-plane job failed");
+  invariant(job.status === "completed", "control-plane retry did not complete the job");
+  invariant(observed.failures === 0, "agent should not mark transient control-plane failure failed");
   invariant(observed.jobHeartbeatFailures === 1, "fake controller did not fail heartbeat once");
-  invariant(!observed.cacheUpload, "agent uploaded cache after control-plane failure");
-  invariant(state.status === "failed", "control-plane state file did not end failed");
+  invariant(observed.cacheUpload, "agent did not upload cache after control-plane recovery");
+  invariant(state.status === "completed", "control-plane recovery state file did not end completed");
   invariant(state.jobId === scenario.jobId, "control-plane state recorded the wrong job id");
   invariant(
-    String(state.reason).includes("controller rejected job heartbeat with 503"),
-    "control-plane state did not retain heartbeat rejection",
+    state.reason === undefined || state.reason === null,
+    "control-plane recovery should not retain a terminal reason",
   );
   invariant(
-    String(observed.failureReason).includes("controller rejected job heartbeat with 503"),
-    "failed-job reason did not include heartbeat rejection",
+    observed.failureReason === undefined,
+    "control-plane recovery should not set terminal failure reason",
   );
   invariant(failedLocalEvent, "agent local health log did not include control-plane failure");
   invariant(failedLocalEvent.severity === "warning", "control-plane failure was not warning");
@@ -448,24 +448,24 @@ export function assertCacheUploadFailureScenario({
     (event) => event.type === "agent.recording_job.cache_upload_failed",
   );
 
-  invariant(job.status === "failed", "fake controller did not mark failed cache upload job failed");
-  invariant(observed.failures === 1, "agent did not mark cache upload failure job failed");
+  invariant(job.status === "running", "cache upload failure should leave job retryable");
+  invariant(observed.failures === 0, "agent should not mark cache upload failure job failed");
   invariant(
-    String(observed.failureReason).includes("controller rejected cache file with 503"),
-    "agent failed-job reason did not include rejected cache upload",
+    observed.failureReason === undefined,
+    "cache upload failure should not set terminal failure reason",
   );
   invariant(
-    state.status === "failed",
-    "agent state file did not end failed after cache upload failure",
+    state.status === "upload_pending",
+    "agent state file did not retain upload-pending retry state",
   );
-  invariant(state.jobId === scenario.jobId, "failed agent state file recorded the wrong job id");
+  invariant(state.jobId === scenario.jobId, "upload-pending state file recorded the wrong job id");
   invariant(
     state.outputPath?.endsWith(scenario.outputFileName),
-    "failed state did not retain rendered output path",
+    "upload-pending state did not retain rendered output path",
   );
   invariant(
     String(state.reason).includes("controller rejected cache file with 503"),
-    "failed state did not retain cache upload rejection reason",
+    "upload-pending state did not retain cache upload rejection reason",
   );
   invariant(syncedEvent, "agent did not report cache upload failure");
   invariant(failedLocalEvent, "agent local health log did not include cache upload failure");

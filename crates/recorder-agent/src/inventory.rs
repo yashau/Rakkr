@@ -169,7 +169,7 @@ fn discover_arecord_interfaces(arecord_command: &str) -> Vec<AudioInterfaceInven
                 sample_rates,
                 serial_number: alsa_serial_number(device.card),
                 system_name: device.system_name,
-                system_ref: Some(format!("hw:{},{}", device.card, device.device)),
+                system_ref: Some(device.system_ref),
             }
         })
         .collect()
@@ -202,7 +202,7 @@ fn discover_proc_asound_interfaces(
                         sample_rates,
                         serial_number: alsa_serial_number(device.card),
                         system_name: device.system_name,
-                        system_ref: Some(format!("hw:{},{}", device.card, device.device)),
+                        system_ref: Some(device.system_ref),
                     }
                 })
                 .collect()
@@ -406,6 +406,7 @@ fn channels(channel_count: u16) -> Vec<AudioChannelInventory> {
 struct AlsaCaptureDevice {
     card: u16,
     device: u16,
+    system_ref: String,
     system_name: String,
 }
 
@@ -430,6 +431,7 @@ fn parse_alsa_capture_device(line: &str) -> Option<AlsaCaptureDevice> {
     let (card_label_text, after_device_marker) = after_card_number.split_once(", device ")?;
     let (device_text, device_label_text) = after_device_marker.split_once(':')?;
     let device = device_text.trim().parse::<u16>().ok()?;
+    let card_id = card_label_text.split_whitespace().next()?;
     let card_label = bracket_label(card_label_text).unwrap_or_else(|| card_label_text.trim());
     let device_label = bracket_label(device_label_text).unwrap_or_else(|| device_label_text.trim());
     let system_name = if card_label.eq_ignore_ascii_case(device_label) {
@@ -441,6 +443,7 @@ fn parse_alsa_capture_device(line: &str) -> Option<AlsaCaptureDevice> {
     Some(AlsaCaptureDevice {
         card,
         device,
+        system_ref: format!("hw:CARD={card_id},DEV={device}"),
         system_name,
     })
 }
@@ -465,6 +468,7 @@ fn parse_proc_asound_pcm_device(line: &str) -> Option<AlsaCaptureDevice> {
     Some(AlsaCaptureDevice {
         card,
         device,
+        system_ref: format!("hw:{card},{device}"),
         system_name,
     })
 }
@@ -629,6 +633,7 @@ card 2: XUSB [X-USB], device 0: USB Audio [USB Audio]
             vec![AlsaCaptureDevice {
                 card: 2,
                 device: 0,
+                system_ref: "hw:CARD=XUSB,DEV=0".to_string(),
                 system_name: "X-USB USB Audio".to_string(),
             }]
         );
@@ -735,11 +740,13 @@ PERIOD_SIZE: [32 8192]
                 AlsaCaptureDevice {
                     card: 0,
                     device: 0,
+                    system_ref: "hw:0,0".to_string(),
                     system_name: "ALC256 Analog".to_string(),
                 },
                 AlsaCaptureDevice {
                     card: 1,
                     device: 0,
+                    system_ref: "hw:1,0".to_string(),
                     system_name: "USB Audio".to_string(),
                 },
             ]

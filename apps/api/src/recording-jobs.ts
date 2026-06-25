@@ -33,6 +33,10 @@ interface RecordingJobStore {
   list(): Promise<RecordingJob[]>;
   save(job: RecordingJob): Promise<void>;
 }
+type RecordingJobLeaseExpirationListener = (input: {
+  job: RecordingJob;
+  terminalState: "cancelled" | "failed";
+}) => Promise<void> | void;
 
 const jobStorePath = path.resolve(
   process.env.RAKKR_RECORDING_JOB_STORE_PATH ?? "data/recording-jobs.json",
@@ -45,6 +49,13 @@ const recordingJobStatuses = new Set<RecordingJobStatus>([
   "completed",
   "failed",
 ]);
+const leaseExpirationListeners = new Set<RecordingJobLeaseExpirationListener>();
+
+export function onRecordingJobLeaseExpired(listener: RecordingJobLeaseExpirationListener) {
+  leaseExpirationListeners.add(listener);
+
+  return () => leaseExpirationListeners.delete(listener);
+}
 
 export async function listRecordingJobs() {
   return expireRecordingJobLeases();
@@ -336,8 +347,30 @@ export async function expireRecordingJobLeases(now = new Date()) {
   }
 
   await Promise.all(changedJobs.map((job) => recordingJobStore.save(job)));
+  await Promise.all(
+    changedJobs.map(async (job) => {
+      const terminalState = job.status === "cancelled" ? "cancelled" : "failed";
+
+      await notifyLeaseExpirationListeners(job, terminalState);
+    }),
+  );
 
   return jobs;
+}
+
+async function notifyLeaseExpirationListeners(
+  job: RecordingJob,
+  terminalState: "cancelled" | "failed",
+) {
+  await Promise.all(
+    Array.from(leaseExpirationListeners).map(async (listener) => {
+      try {
+        await listener({ job, terminalState });
+      } catch (error) {
+        console.warn("recording job lease expiration listener failed", error);
+      }
+    }),
+  );
 }
 
 class JsonRecordingJobStore implements RecordingJobStore {

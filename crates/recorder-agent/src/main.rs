@@ -1,3 +1,4 @@
+mod agent_recovery;
 mod alsa_device;
 mod cache_content_type;
 mod capture;
@@ -9,9 +10,11 @@ mod controller_http;
 mod health_log;
 mod inventory;
 mod meter_command;
+mod meter_health;
 mod monitor_sync;
 mod node_config;
 mod recorder_cache_retention;
+mod recording_job_recovery;
 mod state;
 mod system_health;
 mod telemetry;
@@ -22,15 +25,20 @@ use anyhow::Context;
 use clap::Parser;
 use config::{AgentConfig, CaptureBackend, MeterBackend};
 use meter_command::MeterCaptureConfig;
+use meter_health::{MeterFailureKind, update_meter_health};
 use serde_json::{Value, json};
 use telemetry::{
-    MeterFaultKind, MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample,
-    meter_fault_score, meter_max_rms_dbfs, meter_quality_evidence, synthetic_meter_frame,
+    MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample, synthetic_meter_frame,
     synthetic_meter_sample,
 };
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
+
+#[cfg(test)]
+use meter_health::{CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE, correlated_channel_pairs};
+#[cfg(test)]
+use telemetry::{MeterFaultKind, meter_fault_score, meter_max_rms_dbfs, meter_quality_evidence};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -125,12 +133,14 @@ async fn main() -> anyhow::Result<()> {
     let mut meter_capture_failure = None;
     let mut meter_channel_correlation_active = false;
     let mut meter_clipping_active = false;
+    let mut clock_skew_active = false;
     let mut meter_flatline_active = false;
     let mut meter_low_signal_active = false;
     let mut heartbeat_sync_failed = false;
     let mut monitor_sync_failed = false;
     let mut meter_sync_failed = false;
     let mut node_config_sync_failed = false;
+    let mut recording_job_recovery_pending = false;
     let mut recording_jobs = JoinSet::new();
     let mut recording_job_limit = config.max_concurrent_recordings.max(1);
     let mut system_health_state = system_health::SystemHealthState::default();
@@ -150,6 +160,16 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .context("append startup health event")?;
+
+    if let Some(token) = token {
+        match recording_job_recovery::reconcile_previous_recording_job(&config, token).await {
+            Ok(()) => {}
+            Err(error) => {
+                recording_job_recovery_pending = true;
+                warn!(error = %error, "failed to reconcile previous recording job state");
+            }
+        }
+    }
 
     loop {
         tokio::select! {
@@ -207,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
                     let heartbeat = inventory::heartbeat_snapshot(&inventory);
 
                     match controller::post_node_heartbeat(&active_config, token, &heartbeat).await {
-                        Ok(()) if heartbeat_sync_failed => {
+                        Ok(clock_skew_seconds) if heartbeat_sync_failed => {
                             heartbeat_sync_failed = false;
                             append_and_sync_health_event(
                                 &active_config,
@@ -218,8 +238,41 @@ async fn main() -> anyhow::Result<()> {
                             )
                             .await
                             .context("append node heartbeat sync recovery event")?;
+                            agent_recovery::update_clock_skew_health(
+                                &active_config,
+                                token,
+                                clock_skew_seconds,
+                                &mut clock_skew_active,
+                            ).await?;
+                            recording_job_recovery_pending = agent_recovery::reconcile_previous_recording_job_state(
+                                &active_config,
+                                token,
+                                recording_job_recovery_pending,
+                            )
+                            .await?;
                         }
-                        Ok(()) => {}
+                        Ok(clock_skew_seconds) if recording_job_recovery_pending => {
+                            agent_recovery::update_clock_skew_health(
+                                &active_config,
+                                token,
+                                clock_skew_seconds,
+                                &mut clock_skew_active,
+                            ).await?;
+                            recording_job_recovery_pending = agent_recovery::reconcile_previous_recording_job_state(
+                                &active_config,
+                                token,
+                                recording_job_recovery_pending,
+                            )
+                            .await?;
+                        }
+                        Ok(clock_skew_seconds) => {
+                            agent_recovery::update_clock_skew_health(
+                                &active_config,
+                                token,
+                                clock_skew_seconds,
+                                &mut clock_skew_active,
+                            ).await?;
+                        }
                         Err(error) if !heartbeat_sync_failed => {
                             heartbeat_sync_failed = true;
                             append_and_sync_health_event(
@@ -668,253 +721,6 @@ fn meter_capture_backend(config: &AgentConfig) -> CaptureBackend {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum MeterFailureKind {
-    CaptureFailed,
-    DeviceUnavailable,
-    Xrun,
-}
-
-impl MeterFailureKind {
-    fn classify(error: &str) -> Self {
-        let error = error.to_ascii_lowercase();
-
-        if error.contains("overrun")
-            || error.contains("underrun")
-            || error.contains("xrun")
-            || error.contains("broken pipe")
-        {
-            return Self::Xrun;
-        }
-
-        if error.contains("no such device")
-            || error.contains("no such file or directory")
-            || error.contains("unknown pcm")
-            || error.contains("cannot find card")
-            || error.contains("device or resource busy")
-            || error.contains("input/output error")
-        {
-            return Self::DeviceUnavailable;
-        }
-
-        Self::CaptureFailed
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::CaptureFailed => "capture_failed",
-            Self::DeviceUnavailable => "device_unavailable",
-            Self::Xrun => "xrun",
-        }
-    }
-
-    fn event_type(self) -> &'static str {
-        match self {
-            Self::CaptureFailed => "agent.meter.capture_failed",
-            Self::DeviceUnavailable => "agent.meter.device_unavailable",
-            Self::Xrun => "agent.meter.xrun",
-        }
-    }
-
-    fn severity(self) -> &'static str {
-        match self {
-            Self::CaptureFailed | Self::Xrun => "warning",
-            Self::DeviceUnavailable => "critical",
-        }
-    }
-}
-
-const CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE: f32 = 0.98;
-
-async fn update_meter_health(
-    config: &AgentConfig,
-    token: Option<&str>,
-    frame: &MeterFrame,
-    channel_correlation_active: &mut bool,
-    clipping_active: &mut bool,
-    flatline_active: &mut bool,
-    low_signal_active: &mut bool,
-) -> anyhow::Result<()> {
-    let correlated_pairs = correlated_channel_pairs(frame);
-    let quality_evidence = meter_quality_evidence(frame);
-    let clipping_channels = frame
-        .levels
-        .iter()
-        .filter(|level| level.clipping)
-        .collect::<Vec<_>>();
-    let frame_max_rms_dbfs = meter_max_rms_dbfs(frame);
-    let flatline = !frame.levels.is_empty()
-        && frame
-            .levels
-            .iter()
-            .all(|level| level.rms_dbfs <= config.meter_flatline_dbfs);
-    let low_signal = !frame.levels.is_empty()
-        && !flatline
-        && frame_max_rms_dbfs.is_some_and(|value| value <= config.meter_low_signal_dbfs);
-    let correlation_fault_score = meter_fault_score(
-        frame,
-        MeterFaultKind::ChannelCorrelation(CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE),
-    );
-
-    if !correlated_pairs.is_empty() && !*channel_correlation_active {
-        *channel_correlation_active = true;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.channel_correlation",
-            "warning",
-            json!({
-                "capturedAt": frame.captured_at,
-                "correlationAbsScore": CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE,
-                "faultScore": correlation_fault_score,
-                "interfaceId": frame.interface_id,
-                "nodeId": frame.node_id,
-                "pairs": correlated_pairs,
-                "quality": quality_evidence,
-            }),
-        )
-        .await
-        .context("append channel correlation health event")?;
-    } else if correlated_pairs.is_empty() && *channel_correlation_active {
-        *channel_correlation_active = false;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.channel_correlation_recovered",
-            "info",
-            json!({
-                "capturedAt": frame.captured_at,
-                "interfaceId": frame.interface_id,
-                "nodeId": frame.node_id,
-            }),
-        )
-        .await
-        .context("append channel correlation recovery health event")?;
-    }
-
-    if !clipping_channels.is_empty() && !*clipping_active {
-        *clipping_active = true;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.clipping",
-            "warning",
-            json!({
-                "capturedAt": frame.captured_at,
-                "channels": clipping_channels
-                    .iter()
-                    .map(|level| json!({
-                        "channelIndex": level.channel_index,
-                        "label": level.label,
-                        "peakDbfs": level.peak_dbfs,
-                    }))
-                    .collect::<Vec<_>>(),
-                "clipDbfs": config.meter_clip_dbfs,
-                "faultScore": meter_fault_score(frame, MeterFaultKind::Clipping(config.meter_clip_dbfs)),
-                "interfaceId": frame.interface_id,
-                "nodeId": frame.node_id,
-                "quality": quality_evidence,
-            }),
-        )
-        .await
-        .context("append clipping health event")?;
-    } else if clipping_channels.is_empty() && *clipping_active {
-        *clipping_active = false;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.clipping_recovered",
-            "info",
-            json!({
-                "capturedAt": frame.captured_at,
-                "interfaceId": frame.interface_id,
-                "nodeId": frame.node_id,
-            }),
-        )
-        .await
-        .context("append clipping recovery health event")?;
-    }
-
-    if flatline && !*flatline_active {
-        *flatline_active = true;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.flatline",
-            "warning",
-            json!({
-                "capturedAt": frame.captured_at,
-                "faultScore": meter_fault_score(frame, MeterFaultKind::Flatline(config.meter_flatline_dbfs)),
-                "flatlineDbfs": config.meter_flatline_dbfs,
-                "interfaceId": frame.interface_id,
-                "maxRmsDbfs": frame_max_rms_dbfs,
-                "nodeId": frame.node_id,
-            }),
-        )
-        .await
-        .context("append flatline health event")?;
-    } else if !flatline && *flatline_active {
-        *flatline_active = false;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.flatline_recovered",
-            "info",
-            json!({
-                "capturedAt": frame.captured_at,
-                "interfaceId": frame.interface_id,
-                "maxRmsDbfs": frame_max_rms_dbfs,
-                "nodeId": frame.node_id,
-                "quality": quality_evidence,
-            }),
-        )
-        .await
-        .context("append flatline recovery health event")?;
-    }
-
-    if low_signal && !*low_signal_active {
-        *low_signal_active = true;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.low_signal",
-            "warning",
-            json!({
-                "capturedAt": frame.captured_at,
-                "faultScore": meter_fault_score(frame, MeterFaultKind::LowSignal(config.meter_low_signal_dbfs)),
-                "interfaceId": frame.interface_id,
-                "lowSignalDbfs": config.meter_low_signal_dbfs,
-                "maxRmsDbfs": frame_max_rms_dbfs,
-                "maxSpeechScore": quality_evidence.max_speech_score,
-                "nodeId": frame.node_id,
-                "quality": quality_evidence,
-            }),
-        )
-        .await
-        .context("append low signal health event")?;
-    } else if !low_signal && *low_signal_active {
-        *low_signal_active = false;
-        append_and_sync_health_event(
-            config,
-            token,
-            "agent.meter.low_signal_recovered",
-            "info",
-            json!({
-                "capturedAt": frame.captured_at,
-                "interfaceId": frame.interface_id,
-                "maxRmsDbfs": frame_max_rms_dbfs,
-                "maxSpeechScore": quality_evidence.max_speech_score,
-                "nodeId": frame.node_id,
-                "quality": quality_evidence,
-            }),
-        )
-        .await
-        .context("append low signal recovery health event")?;
-    }
-
-    Ok(())
-}
-
 async fn update_system_health(
     config: &AgentConfig,
     token: Option<&str>,
@@ -936,7 +742,7 @@ async fn update_system_health(
     Ok(())
 }
 
-async fn append_and_sync_health_event(
+pub(crate) async fn append_and_sync_health_event(
     config: &AgentConfig,
     token: Option<&str>,
     event_type: &str,
@@ -952,39 +758,6 @@ async fn append_and_sync_health_event(
     }
 
     Ok(())
-}
-
-fn correlated_channel_pairs(frame: &MeterFrame) -> Vec<Value> {
-    let mut pairs: Vec<Value> = Vec::new();
-
-    for level in &frame.levels {
-        let Some(correlation) = &level.quality.channel_correlation else {
-            continue;
-        };
-
-        if correlation.score.abs() < CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE {
-            continue;
-        }
-
-        let left = level.channel_index.min(correlation.peer_channel_index);
-        let right = level.channel_index.max(correlation.peer_channel_index);
-
-        if pairs.iter().any(|pair| {
-            pair.get("leftChannelIndex").and_then(Value::as_u64) == Some(u64::from(left))
-                && pair.get("rightChannelIndex").and_then(Value::as_u64) == Some(u64::from(right))
-        }) {
-            continue;
-        }
-
-        pairs.push(json!({
-            "leftChannelIndex": left,
-            "phase": correlation.phase,
-            "rightChannelIndex": right,
-            "score": correlation.score,
-        }));
-    }
-
-    pairs
 }
 
 #[cfg(test)]

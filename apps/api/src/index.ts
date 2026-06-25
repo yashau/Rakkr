@@ -32,7 +32,8 @@ import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
-import { recordingJob } from "./recording-jobs.js";
+import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
+import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
@@ -61,6 +62,24 @@ const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
 const uploadProviderStore = createUploadProviderStore();
+onRecordingJobLeaseExpired(async ({ job, terminalState }) => {
+  const recording = await recordingStore.find(job.recordingId);
+
+  if (!recording) {
+    return;
+  }
+
+  await markAgentJobTerminalRecording(
+    recording,
+    {
+      jobId: job.id,
+      reason:
+        job.failureReason ?? (terminalState === "cancelled" ? "lease_cancelled" : "lease_expired"),
+      terminalState,
+    },
+    { healthEventStore, recordingStore },
+  );
+});
 export const { retentionRunner, scheduleRunner, uploadRunner, watchdogRunner } = createApiRunners({
   auditStore,
   healthEventStore,

@@ -224,6 +224,25 @@ pub fn spawn_capture_plan(plan: &CapturePlan) -> anyhow::Result<CaptureChild> {
     })
 }
 
+pub fn estimated_capture_bytes(plan: &CapturePlan) -> u64 {
+    const WAV_HEADER_SAFETY_BYTES: u64 = 4096;
+
+    u64::from(plan.sample_rate)
+        .saturating_mul(u64::from(plan.channels))
+        .saturating_mul(sample_format_bytes(&plan.format))
+        .saturating_mul(plan.seconds)
+        .saturating_add(WAV_HEADER_SAFETY_BYTES)
+}
+
+fn sample_format_bytes(format: &str) -> u64 {
+    match format {
+        "S8" | "U8" => 1,
+        "S24_LE" | "S24_BE" | "U24_LE" | "U24_BE" => 3,
+        "S32_LE" | "S32_BE" | "U32_LE" | "U32_BE" | "FLOAT_LE" | "FLOAT_BE" => 4,
+        _ => 2,
+    }
+}
+
 pub struct CaptureChild {
     child: Child,
     command: String,
@@ -638,6 +657,18 @@ mod tests {
                 "/tmp/rec.wav",
             ]
         );
+    }
+
+    #[test]
+    fn estimates_capture_bytes_from_format_rate_channels_and_duration() {
+        let mut config = config();
+        config.capture_channels = 2;
+        config.capture_format = "S32_LE".to_string();
+        config.capture_sample_rate = 48_000;
+        config.capture_seconds = 10;
+        let plan = capture_plan_from_config(&config).expect("plan");
+
+        assert_eq!(estimated_capture_bytes(&plan), 3_844_096);
     }
 
     #[test]
