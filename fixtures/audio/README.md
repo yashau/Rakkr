@@ -1,16 +1,23 @@
-# Rakkr Audio Fixtures
+# 🎙️ Rakkr Audio Fixtures
 
 Curated audio sources for recorder-agent, loopback, and health-watchdog validation.
 
-## Fixture Catalog
+## ✨ Why This Exists
+
+Rakkr needs repeatable "room-like" audio that can be replayed through Linux
+loopback and then intentionally damaged. The clean fixture gives the agent a
+human speech baseline; derived lanes prove the watchdog can score faults
+without relying on an LLM.
+
+## 📦 Fixture Catalog
 
 | Fixture | Purpose |
 | ------- | ------- |
 | `rakkr-golden-dialogue-clean.wav` | Clean multi-speaker speech baseline for loopback and watchdog smokes |
 | `rakkr-golden-dialogue-clean.mp3` | Compact listening/reference copy of the clean fixture |
-| `rakkr-golden-dialogue-clean.json` | Generation and fixture metadata |
+| `rakkr-golden-dialogue-clean.json` | Generation and fixture metadata, excluding provider secrets |
 
-## Golden Dialogue
+## 🗣️ Golden Dialogue
 
 `rakkr-golden-dialogue-clean.wav` is a clean, non-overlapping, multi-speaker speech fixture generated with the ElevenLabs text-to-speech API.
 
@@ -20,7 +27,7 @@ Curated audio sources for recorder-agent, loopback, and health-watchdog validati
 | Format | 48 kHz stereo PCM signed 16-bit WAV |
 | Intended baseline | Audible speech, no clipping, no flatline, low hum/static/broadband-noise likelihood |
 
-## Fault Permutations
+## 🧪 Fault Permutations
 
 Use the clean WAV as the source for deterministic fault lanes:
 
@@ -34,7 +41,18 @@ Use the clean WAV as the source for deterministic fault lanes:
 
 The ALSA loopback fixture smoke derives the healthy and fault lanes from this source, replays them through loopback, and checks daemon health logs for clipping, low signal, and channel-correlation behavior.
 
-## Handling
+## ✅ Current Validation Path
+
+```powershell
+mise run agent:loopback-fixture-smoke
+mise run agent:loopback-job-smoke
+```
+
+The first smoke checks current-agent meter quality fields and fault events. The
+second runs a full fake-controller job through ALSA loopback, uploads the
+captured WAV, and validates recorder-cache cleanup health.
+
+## 🧼 Handling
 
 - Keep source fixtures small enough for normal repository use.
 - Store generated metadata next to the audio fixture.

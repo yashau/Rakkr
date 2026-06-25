@@ -1,8 +1,16 @@
-# Rakkr Health Watchdog Baseline
+# 🩺 Rakkr Health Watchdog Baseline
 
 Status: Partial baseline checked.
 
-## Behavior
+## 🚦 Freshness Note
+
+This page reflects the current non-SOT health evidence: deterministic audio
+quality scoring is in the agent, speech/noise/fault fields are validated with
+synthetic calibration and ALSA loopback speech replay, and controller-synced
+health now covers audio-backend unavailable/recovery details, recorder-cache
+cleanup, capture/render failures, and hardware-derived meter faults.
+
+## 🚨 Behavior
 
 - Scheduled recording watchdog evaluates active recordings with configurable grace, window, metric, dBFS threshold, cumulative signal time, and repeat interval.
 - Low-signal events open, repeat, and auto-resolve, then sync recording health and write system audit events.
@@ -35,7 +43,7 @@ Status: Partial baseline checked.
 - Prometheus export covers health totals, active watchdog alerts, node-offline alerts, xrun totals, clipping, speech score, noise score, broadband-noise score, estimated SNR, intelligibility score, hum score, static score, and channel correlation score.
 - Remaining gaps: long-duration real-room validation is not complete.
 
-## Checked By
+## ✅ Checked By
 
 | Check | Evidence |
 | ----- | -------- |

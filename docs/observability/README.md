@@ -1,10 +1,18 @@
-# Rakkr Observability
+# 📈 Rakkr Observability
 
 Status: MVP baseline checked.
 
 Rakkr exposes both live metrics and investigation-grade event trails. Prometheus handles fast operational signals, Grafana gives operators a single board to scan, and central health/audit events keep the story attached to recordings, nodes, jobs, and settings.
 
-## Signal Map
+## ✨ Operator Promise
+
+When something degrades, Rakkr should answer three questions quickly:
+
+1. What changed?
+2. Which node, recording, or job is affected?
+3. Is there enough evidence to recover without guessing?
+
+## 🧭 Signal Map
 
 | Surface | Artifact |
 | ------- | -------- |
@@ -15,7 +23,7 @@ Rakkr exposes both live metrics and investigation-grade event trails. Prometheus
 | Agent local log | Rotating JSONL health log on recorder nodes |
 | Controller events | Central health and audit event tables |
 
-## Operator Path
+## 🧑‍💻 Operator Path
 
 1. Scrape the controller `GET /metrics` endpoint with TLS enabled.
 2. Load `docs/observability/rakkr-alerts.yml` into Prometheus.
@@ -24,7 +32,7 @@ Rakkr exposes both live metrics and investigation-grade event trails. Prometheus
 5. Use central health/audit events for incident context.
 6. Fall back to the Rotating JSONL health log on recorder nodes when a node is isolated.
 
-## What To Watch
+## 🚨 What To Watch
 
 | Category | Examples |
 | -------- | -------- |
@@ -33,7 +41,7 @@ Rakkr exposes both live metrics and investigation-grade event trails. Prometheus
 | Controller health | API availability, audit totals, health-event totals, queue state |
 | Capacity and storage | Recording duration, cache bytes, upload queue pressure |
 
-## Checked By
+## ✅ Checked By
 
 | Check | Command |
 | ----- | ------- |

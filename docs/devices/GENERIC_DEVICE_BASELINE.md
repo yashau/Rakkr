@@ -1,8 +1,15 @@
-# Rakkr Generic Device Baseline
+# 🔊 Rakkr Generic Device Baseline
 
 Status: Partial baseline checked.
 
-## Behavior
+## 🚦 Freshness Note
+
+This page reflects the current non-SOT device evidence: Rakkr is still X32-tested,
+but not X32-shaped. The active baseline now includes configurable inventory
+probes, ALSA loopback fixture replay, full-agent loopback jobs, X32 hardware
+jobs, onboard HDA jobs, and PipeWire/JACK command presets.
+
+## 🎚️ Behavior
 
 - X32 Rack is only the first test fixture; recorder nodes target generic Linux audio interfaces.
 - ALSA is the default capture and meter backend; PipeWire and JACK have first-class command presets for capture jobs and idle metering.
@@ -38,7 +45,7 @@ Status: Partial baseline checked.
 - Debian rig HDA Intel PCH full-agent hardware job smoke passed using `hw:CARD=PCH,DEV=0`, 2 channels, `S16_LE`, and 48 kHz.
 - Remaining gaps: broader physical-device validation beyond the Debian rig fixtures is not complete.
 
-## Checked By
+## ✅ Checked By
 
 | Check | Evidence |
 | ----- | -------- |
