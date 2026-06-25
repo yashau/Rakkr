@@ -80,7 +80,13 @@ onRecordingJobLeaseExpired(async ({ job, terminalState }) => {
     { healthEventStore, recordingStore },
   );
 });
-export const { retentionRunner, scheduleRunner, uploadRunner, watchdogRunner } = createApiRunners({
+export const {
+  recordingJobLeaseRunner,
+  retentionRunner,
+  scheduleRunner,
+  uploadRunner,
+  watchdogRunner,
+} = createApiRunners({
   auditStore,
   healthEventStore,
   meterFrameStore,
@@ -792,7 +798,13 @@ registerUploadRunnerRoutes({
 });
 
 if (process.env.RAKKR_API_NO_LISTEN !== "1") {
-  startApiRunners({ retentionRunner, scheduleRunner, uploadRunner, watchdogRunner });
+  startApiRunners({
+    recordingJobLeaseRunner,
+    retentionRunner,
+    scheduleRunner,
+    uploadRunner,
+    watchdogRunner,
+  });
   const listenConfig = apiListenConfig(app.fetch, port);
 
   serve(listenConfig.options, (info) => {

@@ -3,6 +3,7 @@ import type { AuditStore } from "./audit-store.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import type { NodeStore } from "./node-store.js";
+import { createRecordingJobLeaseRunner } from "./recording-job-lease-runner.js";
 import type { RecordingStore } from "./recording-store.js";
 import { createRetentionRunner } from "./retention-runner.js";
 import { createScheduleRunner } from "./schedule-runner.js";
@@ -34,6 +35,7 @@ export function createApiRunners({
   uploadProviderStore,
 }: ApiRunnerDependencies) {
   return {
+    recordingJobLeaseRunner: createRecordingJobLeaseRunner(),
     scheduleRunner: createScheduleRunner({
       auditStore,
       nodeStore,
@@ -62,6 +64,7 @@ export function createApiRunners({
 }
 
 export function startApiRunners({
+  recordingJobLeaseRunner,
   retentionRunner,
   scheduleRunner,
   uploadRunner,
@@ -77,6 +80,10 @@ export function startApiRunners({
 
   if (process.env.RAKKR_RETENTION_RUNNER_ENABLED !== "0") {
     retentionRunner.start();
+  }
+
+  if (process.env.RAKKR_RECORDING_JOB_LEASE_RUNNER_ENABLED !== "0") {
+    recordingJobLeaseRunner.start();
   }
 
   if (process.env.RAKKR_WATCHDOG_RUNNER_ENABLED !== "0") {
