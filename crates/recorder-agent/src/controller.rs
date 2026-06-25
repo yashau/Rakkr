@@ -15,10 +15,12 @@ use crate::config::AgentConfig;
 use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
+use crate::recording_job_disk::{
+    capture_disk_space_shortfall, ensure_capture_disk_space, report_capture_disk_space_shortfall,
+};
 use crate::recording_job_recovery::{
-    apply_recorder_cache_retention, capture_disk_space_shortfall, ensure_capture_disk_space,
-    recover_runtime_capture_device_loss, refresh_capture_device_from_inventory,
-    report_capture_command_failure, report_capture_disk_space_shortfall,
+    apply_recorder_cache_retention, recover_runtime_capture_device_loss,
+    refresh_capture_device_from_inventory, report_capture_command_failure,
     report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
     write_recoverable_job_state,
 };

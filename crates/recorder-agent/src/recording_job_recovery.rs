@@ -6,9 +6,7 @@ use std::time::Duration;
 use tracing::warn;
 
 use crate::cache_content_type::content_type_for_codec;
-use crate::capture::{
-    CaptureChild, CaptureGrowthSnapshot, CapturePlan, estimated_capture_bytes, spawn_capture_plan,
-};
+use crate::capture::{CaptureChild, CapturePlan, spawn_capture_plan};
 use crate::channel_map::channel_map_details;
 use crate::config::{AgentConfig, CaptureBackend};
 use crate::controller::{
@@ -24,7 +22,6 @@ use crate::recording_job_upload::apply_recovered_upload_retention;
 use crate::state::{
     AgentJobState, AgentRecoveredCaptureSegment, read_job_state, write_job_state_snapshot,
 };
-use crate::system_health;
 
 const RUNTIME_CAPTURE_RETRY_ATTEMPTS: u8 = 3;
 
@@ -399,122 +396,6 @@ pub(crate) async fn report_control_plane_sync_failure(
     Ok(true)
 }
 
-pub(crate) async fn ensure_capture_disk_space(
-    config: &AgentConfig,
-    token: &str,
-    job: &ControllerRecordingJob,
-    capture_plan: &CapturePlan,
-) -> anyhow::Result<()> {
-    let Some(disk_usage) = system_health::disk_usage(
-        &config.system_health_df_command,
-        &config.system_health_disk_path,
-    ) else {
-        return Ok(());
-    };
-    let required_bytes = estimated_capture_bytes(capture_plan);
-
-    if disk_usage.free_bytes >= required_bytes {
-        return Ok(());
-    }
-
-    let reason = "insufficient_capture_disk_space";
-    let _ = mark_recording_job_failed(config, token, &job.id, reason).await;
-    append_job_health_event(
-        config,
-        token,
-        job,
-        "agent.recording_job.disk_space_insufficient",
-        "critical",
-        json!({
-            "freeBytes": disk_usage.free_bytes,
-            "jobId": job.id.as_str(),
-            "outputPath": capture_plan.output_path.display().to_string(),
-            "recordingId": job.recording_id.as_str(),
-            "requiredBytes": required_bytes,
-            "systemHealthDiskPath": config.system_health_disk_path.display().to_string(),
-            "totalBytes": disk_usage.total_bytes,
-            "usedPercent": disk_usage.used_percent,
-        }),
-    )
-    .await?;
-
-    anyhow::bail!(
-        "{reason}: required {required_bytes} bytes but only {} bytes free at {}",
-        disk_usage.free_bytes,
-        config.system_health_disk_path.display()
-    );
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct CaptureDiskSpaceShortfall {
-    pub estimated_capture_bytes: u64,
-    pub free_bytes: u64,
-    pub remaining_bytes: u64,
-    pub written_bytes: u64,
-}
-
-impl CaptureDiskSpaceShortfall {
-    pub(crate) fn reason(&self) -> String {
-        format!(
-            "capture_disk_space_exhausted: required {} remaining bytes but only {} bytes free",
-            self.remaining_bytes, self.free_bytes
-        )
-    }
-}
-
-pub(crate) fn capture_disk_space_shortfall(
-    capture_plan: &CapturePlan,
-    growth: &CaptureGrowthSnapshot,
-    disk_usage: system_health::DiskUsage,
-) -> Option<CaptureDiskSpaceShortfall> {
-    let estimated_capture_bytes = estimated_capture_bytes(capture_plan);
-    let written_bytes = growth.size_bytes.unwrap_or(0);
-    let remaining_bytes = estimated_capture_bytes.saturating_sub(written_bytes);
-
-    if remaining_bytes == 0 || disk_usage.free_bytes >= remaining_bytes {
-        return None;
-    }
-
-    Some(CaptureDiskSpaceShortfall {
-        estimated_capture_bytes,
-        free_bytes: disk_usage.free_bytes,
-        remaining_bytes,
-        written_bytes,
-    })
-}
-
-pub(crate) async fn report_capture_disk_space_shortfall(
-    config: &AgentConfig,
-    token: &str,
-    job: &ControllerRecordingJob,
-    capture_plan: &CapturePlan,
-    growth: &CaptureGrowthSnapshot,
-    shortfall: &CaptureDiskSpaceShortfall,
-) -> anyhow::Result<()> {
-    let reason = shortfall.reason();
-
-    let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
-    append_job_health_event(
-        config,
-        token,
-        job,
-        "agent.recording_job.disk_space_exhausted",
-        "critical",
-        json!({
-            "estimatedCaptureBytes": shortfall.estimated_capture_bytes,
-            "freeBytes": shortfall.free_bytes,
-            "growthAgeSeconds": growth.age_seconds,
-            "jobId": job.id.as_str(),
-            "outputPath": capture_plan.output_path.display().to_string(),
-            "recordingId": job.recording_id.as_str(),
-            "remainingBytes": shortfall.remaining_bytes,
-            "systemHealthDiskPath": config.system_health_disk_path.display().to_string(),
-            "writtenBytes": shortfall.written_bytes,
-        }),
-    )
-    .await
-}
-
 pub(crate) fn is_capture_device_lost(error: &anyhow::Error) -> bool {
     let message = error.to_string().to_ascii_lowercase();
 
@@ -829,7 +710,6 @@ fn state_segment(segment: &RecoveredCaptureSegment) -> AgentRecoveredCaptureSegm
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn classifies_capture_device_unavailable_errors() {
@@ -860,70 +740,5 @@ mod tests {
         assert!(is_alsa_capture_device_ref("plughw:2,0"));
         assert!(!is_alsa_capture_device_ref("usb-1-1"));
         assert!(!is_alsa_capture_device_ref("jack:system:capture_1"));
-    }
-
-    #[test]
-    fn detects_inflight_capture_disk_shortfall() {
-        let plan = capture_plan();
-        let growth = CaptureGrowthSnapshot {
-            age_seconds: 4,
-            last_growth_seconds_ago: 1,
-            size_bytes: Some(100_000),
-        };
-        let disk_usage = system_health::DiskUsage {
-            free_bytes: 1_000,
-            free_percent: 1.0,
-            total_bytes: 10_000,
-            used_percent: 99.0,
-        };
-
-        let shortfall =
-            capture_disk_space_shortfall(&plan, &growth, disk_usage).expect("shortfall");
-
-        assert_eq!(shortfall.estimated_capture_bytes, 1_924_096);
-        assert_eq!(shortfall.written_bytes, 100_000);
-        assert_eq!(shortfall.remaining_bytes, 1_824_096);
-        assert!(shortfall.reason().contains("capture_disk_space_exhausted"));
-    }
-
-    #[test]
-    fn ignores_inflight_capture_when_remaining_space_is_available() {
-        let plan = capture_plan();
-        let growth = CaptureGrowthSnapshot {
-            age_seconds: 4,
-            last_growth_seconds_ago: 1,
-            size_bytes: Some(1_900_000),
-        };
-        let disk_usage = system_health::DiskUsage {
-            free_bytes: 30_000,
-            free_percent: 30.0,
-            total_bytes: 100_000,
-            used_percent: 70.0,
-        };
-
-        assert!(capture_disk_space_shortfall(&plan, &growth, disk_usage).is_none());
-    }
-
-    fn capture_plan() -> CapturePlan {
-        CapturePlan {
-            args_template: None,
-            backend: CaptureBackend::Alsa,
-            channel_map: None,
-            channels: 2,
-            command: "arecord".to_string(),
-            device: "hw:CARD=XUSB,DEV=0".to_string(),
-            final_output_path: PathBuf::from("capture.wav"),
-            format: "S16_LE".to_string(),
-            growth_grace_seconds: 1,
-            min_output_bytes: 128,
-            output_bitrate_kbps: None,
-            output_codec: "wav".to_string(),
-            output_path: PathBuf::from("capture.wav"),
-            output_vbr: false,
-            render_command: "ffmpeg".to_string(),
-            sample_rate: 48_000,
-            seconds: 10,
-            stalled_seconds: 30,
-        }
     }
 }

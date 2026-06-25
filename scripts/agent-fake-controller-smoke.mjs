@@ -803,13 +803,13 @@ function assertControllerStopScenario({ healthLogEvents, job, observed, scenario
 function createJob(scenario) {
   return {
     command: {
-      captureChannels: 1,
+      captureChannels: scenario.captureChannels ?? 1,
       captureDevice: "fake-device",
       captureFormat: "S16_LE",
       captureInterfaceId: scenario.captureInterfaceId ?? null,
       captureSampleRate: 48000,
       channelMap: scenario.channelMap ?? null,
-      durationSeconds: 1,
+      durationSeconds: scenario.durationSeconds ?? 1,
       outputBitrateKbps: 128,
       outputCodec: "mp3",
       outputFileName: scenario.outputFileName,
@@ -856,6 +856,20 @@ function minFreeSweepRetention() {
 }
 
 function recorderCachePoliciesForScenario(scenario) {
+  if (scenario.recorderCachePolicySequence) {
+    const index = Math.min(
+      scenario.recorderCachePolicySequenceIndex ?? 0,
+      scenario.recorderCachePolicySequence.length - 1,
+    );
+    scenario.recorderCachePolicySequenceIndex = index + 1;
+
+    return scenario.recorderCachePolicySequence[index];
+  }
+
+  if (scenario.recorderCachePolicies) {
+    return scenario.recorderCachePolicies;
+  }
+
   if (scenario.deferredSweep) {
     return [deferredSweepRetention()];
   }
