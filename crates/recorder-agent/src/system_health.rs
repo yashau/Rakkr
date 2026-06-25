@@ -109,25 +109,38 @@ pub fn collect_system_health_events(
         );
     }
 
-    let audio_level = if has_audio_backend(inventory) {
+    push_audio_backend_health_event(config, inventory, state, &mut events);
+
+    events
+}
+
+fn push_audio_backend_health_event(
+    config: &AgentConfig,
+    inventory: &NodeInventory,
+    state: &mut SystemHealthState,
+    events: &mut Vec<SystemHealthEvent>,
+) {
+    let available_audio_interfaces = available_audio_interface_count(inventory);
+    let audio_level = if available_audio_interfaces > 0 {
         SystemHealthLevel::Healthy
     } else {
         SystemHealthLevel::Warning
     };
 
     maybe_push_transition(
-        &mut events,
+        events,
         &mut state.audio_backend,
         audio_level,
         "agent.audio_backend.unavailable",
         "agent.audio_backend.recovered",
         json!({
+            "audioBackends": inventory.runtime.audio_backends.clone(),
+            "availableInterfaces": available_audio_interfaces,
+            "backendCount": inventory.runtime.audio_backends.len(),
             "interfaces": inventory.interfaces.len(),
             "nodeId": config.node_id,
         }),
     );
-
-    events
 }
 
 fn maybe_push_transition(
@@ -229,10 +242,14 @@ fn available_cores() -> f32 {
         .max(1.0)
 }
 
-fn has_audio_backend(inventory: &NodeInventory) -> bool {
-    inventory.interfaces.iter().any(|audio_interface| {
-        audio_interface.backend != "unknown" && audio_interface.channel_count > 0
-    })
+fn available_audio_interface_count(inventory: &NodeInventory) -> usize {
+    inventory
+        .interfaces
+        .iter()
+        .filter(|audio_interface| {
+            audio_interface.backend != "unknown" && audio_interface.channel_count > 0
+        })
+        .count()
 }
 
 fn round_one(value: f32) -> f32 {
@@ -242,6 +259,11 @@ fn round_one(value: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
+
+    use crate::inventory::{
+        AudioChannelInventory, AudioInterfaceInventory, NodeLocation, NodeRuntime,
+    };
 
     #[test]
     fn parses_df_disk_usage() {
@@ -305,5 +327,109 @@ Filesystem     1024-blocks    Used Available Capacity Mounted on
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].event_type, "problem");
         assert_eq!(events[1].event_type, "recovered");
+    }
+
+    #[test]
+    fn audio_backend_health_reports_unavailable_once_and_recovery() {
+        let mut config = AgentConfig::try_parse_from(["rakkr-recorder-agent"]).unwrap();
+        config.system_health_enabled = true;
+        config.system_health_disk_warning_percent = 101.0;
+        config.system_health_disk_critical_percent = 102.0;
+        config.system_health_load_warning_per_core = 1_000.0;
+        config.system_health_load_critical_per_core = 2_000.0;
+        let mut state = SystemHealthState::default();
+
+        let mut unavailable = Vec::new();
+        push_audio_backend_health_event(
+            &config,
+            &inventory(vec![audio_interface("unknown", 0)], vec![]),
+            &mut state,
+            &mut unavailable,
+        );
+        let mut unchanged = Vec::new();
+        push_audio_backend_health_event(
+            &config,
+            &inventory(vec![audio_interface("unknown", 0)], vec![]),
+            &mut state,
+            &mut unchanged,
+        );
+        let mut recovered = Vec::new();
+        push_audio_backend_health_event(
+            &config,
+            &inventory(vec![audio_interface("alsa", 2)], vec!["alsa"]),
+            &mut state,
+            &mut recovered,
+        );
+
+        let unavailable_event = unavailable
+            .iter()
+            .find(|event| event.event_type == "agent.audio_backend.unavailable")
+            .unwrap();
+        assert_eq!(unavailable_event.severity, "warning");
+        assert_eq!(unavailable_event.details["backendCount"], 0);
+        assert_eq!(unavailable_event.details["availableInterfaces"], 0);
+        assert_eq!(unavailable_event.details["interfaces"], 1);
+        assert!(
+            !unchanged
+                .iter()
+                .any(|event| event.event_type == "agent.audio_backend.unavailable")
+        );
+
+        let recovered_event = recovered
+            .iter()
+            .find(|event| event.event_type == "agent.audio_backend.recovered")
+            .unwrap();
+        assert_eq!(recovered_event.severity, "info");
+        assert_eq!(recovered_event.details["backendCount"], 1);
+        assert_eq!(recovered_event.details["availableInterfaces"], 1);
+        assert_eq!(recovered_event.details["audioBackends"][0], "alsa");
+    }
+
+    fn inventory(
+        interfaces: Vec<AudioInterfaceInventory>,
+        audio_backends: Vec<&str>,
+    ) -> NodeInventory {
+        NodeInventory {
+            agent_version: "test".to_string(),
+            alias: "test node".to_string(),
+            hostname: "test-host".to_string(),
+            id: "node_local_dev".to_string(),
+            interfaces,
+            ip_addresses: Vec::new(),
+            last_seen_at: "2026-06-25T00:00:00Z".to_string(),
+            location: NodeLocation {
+                room: "room".to_string(),
+                site: "site".to_string(),
+            },
+            runtime: NodeRuntime {
+                architecture: "test-arch".to_string(),
+                audio_backends: audio_backends.into_iter().map(str::to_string).collect(),
+                kernel_release: None,
+                os_name: None,
+                uptime_seconds: None,
+            },
+            status: "online".to_string(),
+            tags: Vec::new(),
+        }
+    }
+
+    fn audio_interface(backend: &str, channel_count: u16) -> AudioInterfaceInventory {
+        AudioInterfaceInventory {
+            alias: format!("{backend} input"),
+            backend: backend.to_string(),
+            channel_count,
+            channels: (0..channel_count)
+                .map(|index| AudioChannelInventory {
+                    alias: format!("ch {}", index + 1),
+                    index: index + 1,
+                })
+                .collect(),
+            hardware_path: None,
+            id: format!("{backend}_{channel_count}"),
+            sample_rates: vec![48_000],
+            serial_number: None,
+            system_name: backend.to_string(),
+            system_ref: None,
+        }
     }
 }
