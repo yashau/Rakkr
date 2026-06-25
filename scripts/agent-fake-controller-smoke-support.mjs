@@ -288,6 +288,76 @@ process.exit(32);
   return captureScript;
 }
 
+export async function writeFakeRecoveringDeviceLostCaptureCommand(directory) {
+  const captureScript = path.join(directory, "fake-recovering-device-lost-capture.mjs");
+  const stateFile = path.join(directory, "fake-recovering-device-lost-capture-state.txt");
+  await writeFile(
+    captureScript,
+    `#!/usr/bin/env node
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const outputPath = process.argv.at(-1);
+if (!outputPath || outputPath.startsWith("-")) {
+  console.error("missing output path");
+  process.exit(2);
+}
+
+const previousRuns = existsSync(${JSON.stringify(stateFile)})
+  ? Number(readFileSync(${JSON.stringify(stateFile)}, "utf8"))
+  : 0;
+writeFileSync(${JSON.stringify(stateFile)}, String(previousRuns + 1));
+mkdirSync(path.dirname(outputPath), { recursive: true });
+
+if (previousRuns === 0) {
+  writeFileSync(outputPath, Buffer.concat([Buffer.from("RIFF-device-lost"), Buffer.alloc(128)]));
+  console.error("arecord: pcm_read: Input/output error");
+  process.exit(32);
+}
+
+writeFileSync(outputPath, wavFile(1, [0, 12000, -12000, 6000, -6000, 3000]));
+await new Promise((resolve) => setTimeout(resolve, 750));
+
+function wavFile(channels, samples) {
+  const dataSize = samples.length * channels * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(channels, 22);
+  buffer.writeUInt32LE(48000, 24);
+  buffer.writeUInt32LE(48000 * channels * 2, 28);
+  buffer.writeUInt16LE(channels * 2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataSize, 40);
+  samples.forEach((sample, frameIndex) => {
+    for (let channel = 0; channel < channels; channel += 1) {
+      buffer.writeInt16LE(sample, 44 + (frameIndex * channels + channel) * 2);
+    }
+  });
+
+  return buffer;
+}
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-recovering-device-lost-capture.cmd");
+    await writeFile(commandPath, commandShim(captureScript));
+
+    return commandPath;
+  }
+
+  await chmod(captureScript, 0o755);
+
+  return captureScript;
+}
+
 export async function writeFakeTinyCaptureCommand(directory) {
   const captureScript = path.join(directory, "fake-tiny-capture.mjs");
   await writeFile(

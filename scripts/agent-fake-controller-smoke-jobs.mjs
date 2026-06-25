@@ -218,6 +218,7 @@ export async function runCaptureFailureScenarios({
   deviceLostCaptureCommand,
   failingCaptureCommand,
   missingCaptureCommand,
+  recoveringDeviceLostCaptureCommand,
   renderCommand,
   runScenario,
   tinyCaptureCommand,
@@ -259,6 +260,19 @@ export async function runCaptureFailureScenarios({
       name: "capture-device-lost",
       outputFileName: "rec_fake_controller_capture_device_lost.mp3",
       recordingId: "rec_fake_controller_capture_device_lost",
+    },
+  });
+  await runScenario({
+    address,
+    captureCommand: recoveringDeviceLostCaptureCommand,
+    renderCommand,
+    scenario: {
+      expectCaptureRuntimeRecovery: true,
+      expectSuccess: true,
+      jobId: "job_fake_controller_capture_device_recovered",
+      name: "capture-device-recovered",
+      outputFileName: "rec_fake_controller_capture_device_recovered.mp3",
+      recordingId: "rec_fake_controller_capture_device_recovered",
     },
   });
   await runScenario({

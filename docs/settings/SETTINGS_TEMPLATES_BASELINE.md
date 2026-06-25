@@ -41,7 +41,7 @@ Rakkr centralizes operator-managed recording settings and reusable channel-map t
 | Retention assignment | `apps/api/src/schedule-engine.ts`, `apps/api/src/schedule-store.ts`, `apps/api/test/schedule-routes.test.ts`, `apps/api/test/schedule-runner.test.ts`, `apps/web/src/lib/schedule-draft.ts` |
 | UI workflow | `apps/web/src/pages/settings.tsx`, `apps/web/src/components/recording-profile-settings-card.tsx`, `apps/web/src/components/watchdog-policy-card.tsx`, `apps/web/src/lib/settings-updates.ts`, `apps/web/src/lib/settings-updates.test.ts` |
 | Agent pinning | `apps/api/src/recording-job-targets.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/src/agent-routes.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/channel_map.rs` |
-| Recorder-cache execution | `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/controller.rs`, `crates/recorder-agent/src/main.rs`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs`, `crates/recorder-agent/src/system_health.rs`, `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-support.mjs` |
+| Recorder-cache execution | `apps/api/src/agent-node-config-route.ts`, `apps/api/src/recording-jobs.ts`, `apps/api/test/agent-routes.test.ts`, `crates/recorder-agent/src/controller.rs`, `crates/recorder-agent/src/main.rs`, `crates/recorder-agent/src/node_config.rs`, `crates/recorder-agent/src/recording_job_recovery.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs`, `crates/recorder-agent/src/system_health.rs`, `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-support.mjs` |
 
 ## Verification
 

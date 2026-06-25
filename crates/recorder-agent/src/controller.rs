@@ -15,9 +15,9 @@ use crate::config::AgentConfig;
 use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
-use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
 use crate::recording_job_recovery::{
-    capture_disk_space_shortfall, ensure_capture_disk_space, refresh_capture_device_from_inventory,
+    apply_recorder_cache_retention, capture_disk_space_shortfall, ensure_capture_disk_space,
+    recover_runtime_capture_device_loss, refresh_capture_device_from_inventory,
     report_capture_command_failure, report_capture_disk_space_shortfall,
     report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
 };
@@ -235,6 +235,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             }
         };
     let mut control_plane_sync_failed = false;
+    let mut capture_attempt = 1_u8;
     let raw_output_path = loop {
         match capture.try_complete() {
             Ok(Some(output_path)) => {
@@ -299,12 +300,47 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 }
             },
             Err(error) => {
-                let reason = error.to_string();
+                match recover_runtime_capture_device_loss(
+                    config,
+                    token,
+                    &job,
+                    &mut capture_plan,
+                    &error,
+                    capture_attempt,
+                )
+                .await
+                {
+                    Ok(Some(recovered_capture)) => {
+                        capture_attempt += 1;
+                        capture = recovered_capture;
+                        write_job_state(config, &job, "running", None, None)?;
+                        continue;
+                    }
+                    Ok(None) => {
+                        let reason = error.to_string();
 
-                report_capture_command_failure(config, token, &job, &capture_plan, &error).await?;
-                write_job_state(config, &job, "failed", None, Some(&reason))?;
+                        report_capture_command_failure(config, token, &job, &capture_plan, &error)
+                            .await?;
+                        write_job_state(config, &job, "failed", None, Some(&reason))?;
 
-                return Err(error);
+                        return Err(error);
+                    }
+                    Err(recovery_error) => {
+                        let reason = recovery_error.to_string();
+
+                        report_capture_command_failure(
+                            config,
+                            token,
+                            &job,
+                            &capture_plan,
+                            &recovery_error,
+                        )
+                        .await?;
+                        write_job_state(config, &job, "failed", None, Some(&reason))?;
+
+                        return Err(recovery_error);
+                    }
+                }
             }
         }
 
@@ -532,103 +568,6 @@ async fn handle_terminal_controller_job(
     }
 
     Ok(false)
-}
-
-async fn apply_recorder_cache_retention(
-    config: &AgentConfig,
-    token: &str,
-    job: &ControllerRecordingJob,
-    raw_output_path: &std::path::Path,
-    output_path: &std::path::Path,
-) -> anyhow::Result<()> {
-    let Some(retention) = &job.command.recorder_cache_retention else {
-        return Ok(());
-    };
-
-    if !retention.delete_after_upload {
-        let track_result = record_uploaded_cache_files(
-            &config.recorder_cache_manifest_file,
-            &job.recording_id,
-            retention,
-            raw_output_path,
-            output_path,
-        );
-
-        match track_result {
-            Ok(()) => {
-                append_job_health_event(
-                    config,
-                    token,
-                    job,
-                    "agent.recording_job.recorder_cache_tracked",
-                    "info",
-                    json!({
-                        "jobId": job.id.as_str(),
-                        "maxAgeDays": retention.max_age_days,
-                        "maxBytes": retention.max_bytes,
-                        "policyId": retention.policy_id.as_str(),
-                        "recordingId": job.recording_id.as_str(),
-                    }),
-                )
-                .await?;
-            }
-            Err(error) => {
-                append_job_health_event(
-                    config,
-                    token,
-                    job,
-                    "agent.recording_job.recorder_cache_track_failed",
-                    "warning",
-                    json!({
-                        "error": error.to_string(),
-                        "jobId": job.id.as_str(),
-                        "policyId": retention.policy_id.as_str(),
-                        "recordingId": job.recording_id.as_str(),
-                    }),
-                )
-                .await?;
-            }
-        }
-
-        return Ok(());
-    }
-
-    let cleanup = delete_recorder_cache_files(raw_output_path, output_path);
-
-    if cleanup.errors.is_empty() {
-        append_job_health_event(
-            config,
-            token,
-            job,
-            "agent.recording_job.recorder_cache_deleted",
-            "info",
-            json!({
-                "deletedPaths": cleanup.deleted_paths,
-                "jobId": job.id.as_str(),
-                "policyId": retention.policy_id.as_str(),
-                "recordingId": job.recording_id.as_str(),
-            }),
-        )
-        .await?;
-    } else {
-        append_job_health_event(
-            config,
-            token,
-            job,
-            "agent.recording_job.recorder_cache_delete_failed",
-            "warning",
-            json!({
-                "deletedPaths": cleanup.deleted_paths,
-                "errors": cleanup.errors,
-                "jobId": job.id.as_str(),
-                "policyId": retention.policy_id.as_str(),
-                "recordingId": job.recording_id.as_str(),
-            }),
-        )
-        .await?;
-    }
-
-    Ok(())
 }
 
 pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()> {

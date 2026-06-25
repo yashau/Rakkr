@@ -154,6 +154,63 @@ export function assertCaptureDeviceLostScenario({
   });
 }
 
+export function assertCaptureRuntimeRecoveryScenario({
+  healthLogEvents,
+  job,
+  observed,
+  renderedLocalEvent,
+  scenario,
+  state,
+}) {
+  const lostLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.capture_device_lost",
+  );
+  const lostSyncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.capture_device_lost",
+  );
+  const restartedLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.capture_runtime_restarted",
+  );
+  const restartedSyncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.capture_runtime_restarted",
+  );
+
+  invariant(job.status === "completed", "runtime capture recovery did not complete the job");
+  invariant(observed.failures === 0, "runtime capture recovery should not mark the job failed");
+  invariant(observed.cacheUpload, "agent did not upload cache after runtime capture recovery");
+  invariant(
+    state.status === "completed",
+    "runtime capture recovery state file did not end completed",
+  );
+  invariant(
+    state.reason === undefined || state.reason === null,
+    "runtime capture recovery should not retain a terminal reason",
+  );
+  invariant(lostLocalEvent, "agent local health log did not include transient device loss");
+  invariant(lostLocalEvent.severity === "warning", "transient device loss was not warning");
+  invariant(
+    String(lostLocalEvent.details?.error).includes("Input/output error"),
+    "transient device loss did not preserve capture stderr",
+  );
+  invariant(
+    lostLocalEvent.details?.willRetry === true,
+    "transient device loss did not record retry intent",
+  );
+  invariant(
+    lostLocalEvent.details?.nextAttempt === 2,
+    "transient device loss did not record the restart attempt",
+  );
+  invariant(lostSyncedEvent, "agent did not sync transient device loss health event");
+  invariant(
+    lostSyncedEvent.details?.willRetry === true,
+    "synced transient device loss did not preserve retry intent",
+  );
+  invariant(restartedLocalEvent, "agent local health log did not include runtime restart");
+  invariant(restartedLocalEvent.severity === "info", "runtime restart was not informational");
+  invariant(restartedSyncedEvent, "agent did not sync runtime restart health event");
+  assertRenderedOutputScenario({ healthLogEvents, observed, renderedLocalEvent, scenario });
+}
+
 export function assertTinyCaptureFailureScenario({
   healthLogEvents,
   job,
@@ -429,8 +486,12 @@ function assertCaptureFailureHealth({
   scenario,
   state,
 }) {
-  const localEvent = healthLogEvents.find((event) => event.type === eventType);
-  const syncedEvent = observed.healthEvents.find((event) => event.type === eventType);
+  const localEvent = healthLogEvents.find(
+    (event) => event.type === eventType && event.severity === "critical",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === eventType && event.severity === "critical",
+  );
 
   invariant(job.status === "failed", "fake controller did not mark capture job failed");
   invariant(observed.failures === 1, "agent did not mark capture job failed");

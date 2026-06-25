@@ -8,6 +8,7 @@ import {
   writeFakeFailingCaptureCommand,
   writeFakeCaptureCommand,
   writeFakeDeviceLostCaptureCommand,
+  writeFakeRecoveringDeviceLostCaptureCommand,
   writeFakeCaptureFailedMeterCommand,
   writeFakeDfCommand,
   writeFakeDeviceUnavailableMeterCommand,
@@ -26,6 +27,7 @@ import {
   assertCacheUploadFailureScenario,
   assertCaptureDeviceLostScenario,
   assertCaptureFailureScenario,
+  assertCaptureRuntimeRecoveryScenario,
   assertCaptureStartFailureScenario,
   assertControllerTerminalStatusScenario,
   assertControlPlaneFailureScenario,
@@ -131,6 +133,8 @@ try {
   const audioInventoryFixtures = await writeRecoveringAudioInventoryFixtures(smokeRoot);
   const systemHealthFixtures = await writeRecoveringSystemHealthFixtures(smokeRoot);
   const deviceLostCaptureCommand = await writeFakeDeviceLostCaptureCommand(smokeRoot);
+  const recoveringDeviceLostCaptureCommand =
+    await writeFakeRecoveringDeviceLostCaptureCommand(smokeRoot);
   const failingCaptureCommand = await writeFakeFailingCaptureCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
@@ -150,6 +154,7 @@ try {
     deviceLostCaptureCommand,
     failingCaptureCommand,
     missingCaptureCommand: path.join(smokeRoot, "missing-capture-command"),
+    recoveringDeviceLostCaptureCommand,
     renderCommand,
     runScenario,
     tinyCaptureCommand,
@@ -351,6 +356,15 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectCaptureDeviceLost) {
     assertCaptureDeviceLostScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectCaptureRuntimeRecovery) {
+    assertCaptureRuntimeRecoveryScenario({
+      healthLogEvents,
+      job,
+      observed,
+      renderedLocalEvent,
+      scenario,
+      state,
+    });
   } else if (scenario.expectTinyCaptureFailure) {
     assertTinyCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStalledCapture) {

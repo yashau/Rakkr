@@ -1,7 +1,7 @@
 use anyhow::Context;
 use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::warn;
 
@@ -16,8 +16,11 @@ use crate::controller::{
     sync_health_event, upload_cache_file,
 };
 use crate::health_log;
+use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
 use crate::state::{AgentJobState, read_job_state, write_job_state_snapshot};
 use crate::system_health;
+
+const RUNTIME_CAPTURE_RETRY_ATTEMPTS: u8 = 3;
 
 pub(crate) async fn reconcile_previous_recording_job(
     config: &AgentConfig,
@@ -397,6 +400,165 @@ pub(crate) async fn report_capture_command_failure(
         }),
     )
     .await
+}
+
+pub(crate) async fn apply_recorder_cache_retention(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    raw_output_path: &Path,
+    output_path: &Path,
+) -> anyhow::Result<()> {
+    let Some(retention) = &job.command.recorder_cache_retention else {
+        return Ok(());
+    };
+
+    if !retention.delete_after_upload {
+        let track_result = record_uploaded_cache_files(
+            &config.recorder_cache_manifest_file,
+            &job.recording_id,
+            retention,
+            raw_output_path,
+            output_path,
+        );
+
+        match track_result {
+            Ok(()) => {
+                append_job_health_event(
+                    config,
+                    token,
+                    job,
+                    "agent.recording_job.recorder_cache_tracked",
+                    "info",
+                    json!({
+                        "jobId": job.id.as_str(),
+                        "maxAgeDays": retention.max_age_days,
+                        "maxBytes": retention.max_bytes,
+                        "policyId": retention.policy_id.as_str(),
+                        "recordingId": job.recording_id.as_str(),
+                    }),
+                )
+                .await?;
+            }
+            Err(error) => {
+                append_job_health_event(
+                    config,
+                    token,
+                    job,
+                    "agent.recording_job.recorder_cache_track_failed",
+                    "warning",
+                    json!({
+                        "error": error.to_string(),
+                        "jobId": job.id.as_str(),
+                        "policyId": retention.policy_id.as_str(),
+                        "recordingId": job.recording_id.as_str(),
+                    }),
+                )
+                .await?;
+            }
+        }
+
+        return Ok(());
+    }
+
+    let cleanup = delete_recorder_cache_files(raw_output_path, output_path);
+
+    if cleanup.errors.is_empty() {
+        append_job_health_event(
+            config,
+            token,
+            job,
+            "agent.recording_job.recorder_cache_deleted",
+            "info",
+            json!({
+                "deletedPaths": cleanup.deleted_paths,
+                "jobId": job.id.as_str(),
+                "policyId": retention.policy_id.as_str(),
+                "recordingId": job.recording_id.as_str(),
+            }),
+        )
+        .await?;
+    } else {
+        append_job_health_event(
+            config,
+            token,
+            job,
+            "agent.recording_job.recorder_cache_delete_failed",
+            "warning",
+            json!({
+                "deletedPaths": cleanup.deleted_paths,
+                "errors": cleanup.errors,
+                "jobId": job.id.as_str(),
+                "policyId": retention.policy_id.as_str(),
+                "recordingId": job.recording_id.as_str(),
+            }),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn recover_runtime_capture_device_loss(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    capture_plan: &mut CapturePlan,
+    error: &anyhow::Error,
+    attempt: u8,
+) -> anyhow::Result<Option<CaptureChild>> {
+    if !is_capture_device_lost(error) || attempt >= RUNTIME_CAPTURE_RETRY_ATTEMPTS {
+        return Ok(None);
+    }
+
+    let reason = error.to_string();
+    let output_bytes = fs::metadata(&capture_plan.output_path)
+        .ok()
+        .map(|metadata| metadata.len());
+    append_job_health_event(
+        config,
+        token,
+        job,
+        "agent.recording_job.capture_device_lost",
+        "warning",
+        json!({
+            "attempt": attempt,
+            "backend": format!("{:?}", capture_plan.backend).to_ascii_lowercase(),
+            "device": capture_plan.device.as_str(),
+            "error": reason.as_str(),
+            "jobId": job.id.as_str(),
+            "nextAttempt": attempt + 1,
+            "outputBytes": output_bytes,
+            "outputPath": capture_plan.output_path.display().to_string(),
+            "recordingId": job.recording_id.as_str(),
+            "retryAttempts": RUNTIME_CAPTURE_RETRY_ATTEMPTS,
+            "willRetry": true,
+        }),
+    )
+    .await?;
+
+    let _ = fs::remove_file(&capture_plan.output_path);
+    refresh_capture_device_from_inventory(config, token, job, capture_plan).await?;
+    tokio::time::sleep(Duration::from_secs(config.job_poll_seconds.max(1))).await;
+    let capture = spawn_capture_plan_with_recovery(config, token, job, capture_plan).await?;
+
+    append_job_health_event(
+        config,
+        token,
+        job,
+        "agent.recording_job.capture_runtime_restarted",
+        "info",
+        json!({
+            "attempt": attempt + 1,
+            "device": capture_plan.device.as_str(),
+            "jobId": job.id.as_str(),
+            "outputPath": capture_plan.output_path.display().to_string(),
+            "recordingId": job.recording_id.as_str(),
+        }),
+    )
+    .await?;
+
+    Ok(Some(capture))
 }
 
 pub(crate) async fn spawn_capture_plan_with_recovery(
