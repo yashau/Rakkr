@@ -17,8 +17,9 @@ use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
 use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
 use crate::recording_job_recovery::{
-    ensure_capture_disk_space, refresh_capture_device_from_inventory,
-    report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
+    capture_disk_space_shortfall, ensure_capture_disk_space, refresh_capture_device_from_inventory,
+    report_capture_disk_space_shortfall, report_control_plane_sync_failure,
+    spawn_capture_plan_with_recovery,
 };
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
@@ -240,39 +241,63 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 write_job_state(config, &job, "captured", Some(&output_path), None)?;
                 break output_path;
             }
-            Ok(None) => {
-                if let Err(error) = capture.check_growth() {
+            Ok(None) => match capture.check_growth() {
+                Ok(growth) => {
+                    if let Some(disk_usage) = crate::system_health::disk_usage(
+                        &config.system_health_df_command,
+                        &config.system_health_disk_path,
+                    ) && let Some(shortfall) =
+                        capture_disk_space_shortfall(&capture_plan, &growth, disk_usage)
+                    {
+                        let reason = shortfall.reason();
+
+                        let _ = capture.stop();
+                        report_capture_disk_space_shortfall(
+                            config,
+                            token,
+                            &job,
+                            &capture_plan,
+                            &growth,
+                            &shortfall,
+                        )
+                        .await?;
+                        write_job_state(config, &job, "failed", None, Some(&reason))?;
+
+                        return Err(anyhow::anyhow!(reason));
+                    }
+                }
+                Err(error) => {
                     let reason = error.to_string();
                     let growth = error.snapshot();
 
                     let _ = capture.stop();
                     let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
                     append_job_health_event(
-                        config,
-                        token,
-                        &job,
-                        "agent.recording_job.capture_output_stalled",
-                        "critical",
-                        json!({
-                            "device": capture_plan.device.as_str(),
-                            "error": reason.as_str(),
-                            "growthAgeSeconds": growth.age_seconds,
-                            "growthGraceSeconds": capture_plan.growth_grace_seconds,
-                            "lastGrowthSecondsAgo": growth.last_growth_seconds_ago,
-                            "jobId": job.id.as_str(),
-                            "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
-                            "outputPath": capture_plan.output_path.display().to_string(),
-                            "recordingId": job.recording_id.as_str(),
-                            "sizeBytes": growth.size_bytes,
-                            "stalledSeconds": capture_plan.stalled_seconds,
-                        }),
-                    )
-                    .await?;
+                            config,
+                            token,
+                            &job,
+                            "agent.recording_job.capture_output_stalled",
+                            "critical",
+                            json!({
+                                "device": capture_plan.device.as_str(),
+                                "error": reason.as_str(),
+                                "growthAgeSeconds": growth.age_seconds,
+                                "growthGraceSeconds": capture_plan.growth_grace_seconds,
+                                "lastGrowthSecondsAgo": growth.last_growth_seconds_ago,
+                                "jobId": job.id.as_str(),
+                                "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
+                                "outputPath": capture_plan.output_path.display().to_string(),
+                                "recordingId": job.recording_id.as_str(),
+                                "sizeBytes": growth.size_bytes,
+                                "stalledSeconds": capture_plan.stalled_seconds,
+                            }),
+                        )
+                        .await?;
                     write_job_state(config, &job, "failed", None, Some(&reason))?;
 
                     return Err(error.into());
                 }
-            }
+            },
             Err(error) => {
                 let reason = error.to_string();
 
