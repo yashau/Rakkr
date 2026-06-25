@@ -133,8 +133,118 @@ if (previousRuns > 1) {
   };
 }
 
+export async function writeRenumberedAudioInventoryFixtures(directory) {
+  const fakeBin = path.join(directory, "fake-renumbered-audio-inventory-bin");
+  const arecordScript = path.join(fakeBin, "arecord");
+  const procAsoundPcmPath = path.join(directory, "missing-renumbered-proc-asound-pcm");
+
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(
+    arecordScript,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.includes("--dump-hw-params")) {
+  console.log('HW Params of device "hw:7,0":');
+  console.log("CHANNELS: [1 2]");
+  console.log("RATE: [48000 48000]");
+  process.exit(0);
+}
+
+console.log("**** List of CAPTURE Hardware Devices ****");
+console.log("card 7: SMOKE [Smoke Audio], device 0: Capture [Capture]");
+console.log("  Subdevices: 1/1");
+console.log("  Subdevice #0: subdevice #0");
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(fakeBin, "arecord.cmd");
+    await writeFile(commandPath, commandShim(arecordScript));
+
+    return {
+      fakeArecordCommand: commandPath,
+      fakeArecordPath: fakeBin,
+      fakeProcAsoundPcmPath: procAsoundPcmPath,
+    };
+  }
+
+  await chmod(arecordScript, 0o755);
+
+  return {
+    fakeArecordCommand: arecordScript,
+    fakeArecordPath: fakeBin,
+    fakeProcAsoundPcmPath: procAsoundPcmPath,
+  };
+}
+
 export async function writeFakeCaptureCommand(directory) {
   return writeFakeCaptureCommandScript(directory, "fake-capture", false);
+}
+
+export async function writeDeviceAssertCaptureCommand(directory, expectedDevice) {
+  const captureScript = path.join(directory, "fake-device-assert-capture.mjs");
+  await writeFile(
+    captureScript,
+    `#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const deviceIndex = process.argv.indexOf("-D");
+const device = deviceIndex >= 0 ? process.argv[deviceIndex + 1] : undefined;
+const outputPath = process.argv.at(-1);
+
+if (device !== ${JSON.stringify(expectedDevice)}) {
+  console.error(\`unexpected capture device: \${device ?? "<missing>"}\`);
+  process.exit(52);
+}
+
+if (!outputPath || outputPath.startsWith("-")) {
+  console.error("missing output path");
+  process.exit(2);
+}
+
+mkdirSync(path.dirname(outputPath), { recursive: true });
+writeFileSync(outputPath, wavFile(1, [0, 12000, -12000, 6000, -6000, 3000]));
+await new Promise((resolve) => setTimeout(resolve, 250));
+
+function wavFile(channels, samples) {
+  const dataSize = samples.length * channels * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(channels, 22);
+  buffer.writeUInt32LE(48000, 24);
+  buffer.writeUInt32LE(48000 * channels * 2, 28);
+  buffer.writeUInt16LE(channels * 2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataSize, 40);
+  samples.forEach((sample, frameIndex) => {
+    for (let channel = 0; channel < channels; channel += 1) {
+      buffer.writeInt16LE(sample, 44 + (frameIndex * channels + channel) * 2);
+    }
+  });
+
+  return buffer;
+}
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-device-assert-capture.cmd");
+    await writeFile(commandPath, commandShim(captureScript));
+
+    return commandPath;
+  }
+
+  await chmod(captureScript, 0o755);
+
+  return captureScript;
 }
 
 export async function writeFakeTemplateCaptureCommand(directory) {

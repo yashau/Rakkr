@@ -1,8 +1,11 @@
+import { existsSync, readFileSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
 import {
+  writeDeviceAssertCaptureCommand,
+  writeRenumberedAudioInventoryFixtures,
   writeRecoverableRestartCaptureFile,
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
@@ -16,6 +19,7 @@ export async function runUploadBoundaryRecoveryScenarios(deps) {
   await runUploadPendingRecoveryScenario(deps);
   await runUploadedRecoveryScenario(deps);
   await runDiskPreflightRecoveryScenario(deps);
+  await runCaptureDeviceRenumberingScenario(deps);
 }
 
 async function runUploadPendingRecoveryScenario({
@@ -350,6 +354,111 @@ async function runDiskPreflightRecoveryScenario({
   invariant(!(await fileExists(staleRawPath)), "disk preflight cleanup left stale raw cache");
   invariant(!(await fileExists(staleOutputPath)), "disk preflight cleanup left stale output cache");
   setActiveScenario(undefined);
+}
+
+async function runCaptureDeviceRenumberingScenario({
+  address,
+  agentContext,
+  createJob,
+  createObserved,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+}) {
+  const stateFile = path.join(smokeRoot, "capture-device-renumbering-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "capture-device-renumbering-health-events.jsonl");
+  const captureCommand = await writeDeviceAssertCaptureCommand(
+    smokeRoot,
+    "hw:CARD=SMOKE,DEV=0",
+  );
+  const inventory = await writeRenumberedAudioInventoryFixtures(smokeRoot);
+  const job = createJob({
+    captureInterfaceId: "alsa_card_smoke_dev_0",
+    expectSuccess: true,
+    jobId: "job_fake_controller_capture_device_renumbering",
+    name: "capture-device-renumbering",
+    outputFileName: "rec_fake_controller_capture_device_renumbering.mp3",
+    recordingId: "rec_fake_controller_capture_device_renumbering",
+  });
+  const observed = createObserved();
+  job.command.captureDevice = "hw:2,0";
+  setActiveScenario({
+    job,
+    jobs: [job],
+    observed,
+    scenario: {
+      expectSuccess: true,
+      name: "capture-device-renumbering",
+    },
+  });
+
+  const child = spawnDaemonAgent(
+    agentContext,
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+    {
+      PATH: `${inventory.fakeArecordPath}${path.delimiter}${process.env.PATH ?? ""}`,
+    },
+    [
+      "--inventory-arecord-command",
+      inventory.fakeArecordCommand,
+      "--inventory-proc-asound-pcm-path",
+      inventory.fakeProcAsoundPcmPath,
+    ],
+  );
+
+  try {
+    await waitFor(
+      () =>
+        job.status === "completed" &&
+        observed.cacheUpload &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.recording_job.capture_device_refreshed",
+        ) &&
+        agentStateStatus(stateFile) === "completed",
+      30_000,
+      () =>
+        `job=${job.status} upload=${Boolean(observed.cacheUpload)} state=${agentStateStatus(stateFile) ?? "<missing>"} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const state = JSON.parse(await readFile(stateFile, "utf8"));
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const refreshEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.capture_device_refreshed",
+  );
+
+  invariant(job.status === "completed", "capture device renumbering did not complete the job");
+  invariant(state.status === "completed", "capture device renumbering state did not complete");
+  invariant(observed.cacheUploads.length === 1, "capture device renumbering did not upload once");
+  invariant(refreshEvent, "capture device renumbering did not log refresh");
+  invariant(
+    refreshEvent.details?.captureInterfaceId === "alsa_card_smoke_dev_0",
+    "capture device renumbering used the wrong stable interface id",
+  );
+  invariant(
+    refreshEvent.details?.previousDevice === "hw:2,0",
+    "capture device renumbering did not record the stale device",
+  );
+  invariant(
+    refreshEvent.details?.refreshedDevice === "hw:CARD=SMOKE,DEV=0",
+    "capture device renumbering did not record the refreshed device",
+  );
+  setActiveScenario(undefined);
+}
+
+function agentStateStatus(stateFile) {
+  if (!existsSync(stateFile)) {
+    return undefined;
+  }
+
+  return JSON.parse(readFileSync(stateFile, "utf8")).status;
 }
 
 async function writeAgentState(stateFile, state) {

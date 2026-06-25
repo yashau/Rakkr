@@ -165,9 +165,9 @@ fn discover_arecord_interfaces(arecord_command: &str) -> Vec<AudioInterfaceInven
                 channel_count,
                 channels: channels(channel_count),
                 hardware_path: Some(alsa_hardware_path(device.card, device.device)),
-                id: format!("alsa_hw_{}_{}", device.card, device.device),
                 sample_rates,
                 serial_number: alsa_serial_number(device.card),
+                id: alsa_interface_id(&device),
                 system_name: device.system_name,
                 system_ref: Some(device.system_ref),
             }
@@ -246,6 +246,34 @@ fn alsa_hardware_path(card: u16, device: u16) -> String {
         .unwrap_or_else(|| PathBuf::from(format!("/proc/asound/card{card}/pcm{device}c")))
         .to_string_lossy()
         .to_string()
+}
+
+fn alsa_interface_id(device: &AlsaCaptureDevice) -> String {
+    let Some(card_id) = alsa_card_id(&device.system_ref) else {
+        return format!("alsa_hw_{}_{}", device.card, device.device);
+    };
+    let normalized = normalize_inventory_id_token(&card_id);
+
+    if normalized.is_empty() {
+        format!("alsa_hw_{}_{}", device.card, device.device)
+    } else {
+        format!("alsa_card_{normalized}_dev_{}", device.device)
+    }
+}
+
+fn alsa_card_id(system_ref: &str) -> Option<String> {
+    system_ref
+        .strip_prefix("hw:")?
+        .split(',')
+        .find_map(|part| part.trim().strip_prefix("CARD=").map(str::to_string))
+}
+
+fn normalize_inventory_id_token(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 fn alsa_serial_number(card: u16) -> Option<String> {
@@ -637,6 +665,18 @@ card 2: XUSB [X-USB], device 0: USB Audio [USB Audio]
                 system_name: "X-USB USB Audio".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn stable_alsa_interface_id_uses_card_name_when_available() {
+        let device = AlsaCaptureDevice {
+            card: 7,
+            device: 0,
+            system_ref: "hw:CARD=SMOKE,DEV=0".to_string(),
+            system_name: "Smoke Audio Capture".to_string(),
+        };
+
+        assert_eq!(alsa_interface_id(&device), "alsa_card_smoke_dev_0");
     }
 
     #[test]
