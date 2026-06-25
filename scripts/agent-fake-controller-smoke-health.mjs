@@ -288,13 +288,44 @@ export async function runMonitorChunkRecoveryScenario({
   const recoveredEvent = observed.healthEvents.find(
     (event) => event.type === "agent.listen_monitor.chunk_sync_recovered",
   );
+  const uploadedChunk = observed.monitorChunks.at(0);
 
   invariant(failedEvent?.severity === "warning", "monitor chunk failure was not warning");
   invariant(
     String(failedEvent?.details?.error).includes("controller rejected monitor chunk with 503"),
     "monitor chunk failure did not preserve controller rejection",
   );
+  invariant(
+    failedEvent?.details?.contentType === "audio/wav",
+    "monitor chunk failure did not preserve content type",
+  );
+  invariant(
+    failedEvent?.details?.durationMs === 1000,
+    "monitor chunk failure did not preserve duration",
+  );
+  invariant(
+    failedEvent?.details?.monitorBytes > 44,
+    "monitor chunk failure did not preserve monitor bytes",
+  );
+  invariant(
+    failedEvent?.details?.interfaceId === "iface_default_capture",
+    "monitor chunk failure did not preserve interface id",
+  );
   invariant(recoveredEvent?.severity === "info", "monitor chunk recovery was not info");
+  invariant(
+    recoveredEvent?.details?.contentType === "audio/wav",
+    "monitor chunk recovery did not preserve content type",
+  );
+  invariant(
+    recoveredEvent?.details?.monitorBytes > 44,
+    "monitor chunk recovery did not preserve monitor bytes",
+  );
+  invariant(
+    uploadedChunk?.contentType === "audio/wav",
+    "fake controller did not receive monitor chunk content type",
+  );
+  invariant(uploadedChunk?.durationMs === "1000", "fake controller did not receive duration");
+  invariant(uploadedChunk?.size > 44, "fake controller did not receive monitor bytes");
   invariant(
     healthLogEvents.some((event) => event.type === "agent.listen_monitor.chunk_sync_failed"),
     "monitor chunk failure event was not written locally",

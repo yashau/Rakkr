@@ -42,3 +42,19 @@ pub async fn post_monitor_chunk(
 
     Ok(())
 }
+
+pub fn monitor_chunk_health_details(
+    node_id: &str,
+    sample: &MeterSample,
+    error: Option<String>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "capturedAt": sample.frame.captured_at,
+        "contentType": "audio/wav",
+        "durationMs": sample.monitor_duration_ms,
+        "error": error,
+        "interfaceId": sample.frame.interface_id,
+        "monitorBytes": sample.monitor_wav.len(),
+        "nodeId": node_id,
+    })
+}

@@ -438,11 +438,7 @@ async fn sync_monitor_chunk(
                 Some(token),
                 "agent.listen_monitor.chunk_sync_recovered",
                 "info",
-                json!({
-                    "capturedAt": sample.frame.captured_at,
-                    "durationMs": sample.monitor_duration_ms,
-                    "nodeId": config.node_id,
-                }),
+                monitor_sync::monitor_chunk_health_details(&config.node_id, sample, None),
             )
             .await
             .context("append monitor chunk sync recovery event")?;
@@ -455,12 +451,11 @@ async fn sync_monitor_chunk(
                 Some(token),
                 "agent.listen_monitor.chunk_sync_failed",
                 "warning",
-                json!({
-                    "capturedAt": sample.frame.captured_at,
-                    "durationMs": sample.monitor_duration_ms,
-                    "error": error.to_string(),
-                    "nodeId": config.node_id,
-                }),
+                monitor_sync::monitor_chunk_health_details(
+                    &config.node_id,
+                    sample,
+                    Some(error.to_string()),
+                ),
             )
             .await
             .context("append monitor chunk sync failure event")?;
