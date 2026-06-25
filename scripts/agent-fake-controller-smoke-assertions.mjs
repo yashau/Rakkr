@@ -398,6 +398,9 @@ export function assertCacheUploadFailureScenario({
   const failedLocalEvent = healthLogEvents.find(
     (event) => event.type === "agent.recording_job.cache_upload_failed",
   );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.cache_upload_failed",
+  );
 
   invariant(job.status === "failed", "fake controller did not mark failed cache upload job failed");
   invariant(observed.failures === 1, "agent did not mark cache upload failure job failed");
@@ -418,10 +421,7 @@ export function assertCacheUploadFailureScenario({
     String(state.reason).includes("controller rejected cache file with 503"),
     "failed state did not retain cache upload rejection reason",
   );
-  invariant(
-    observed.healthEvents.some((event) => event.type === "agent.recording_job.cache_upload_failed"),
-    "agent did not report cache upload failure",
-  );
+  invariant(syncedEvent, "agent did not report cache upload failure");
   invariant(failedLocalEvent, "agent local health log did not include cache upload failure");
   invariant(
     failedLocalEvent.severity === "warning",
@@ -434,6 +434,34 @@ export function assertCacheUploadFailureScenario({
   invariant(
     failedLocalEvent.details?.jobId === scenario.jobId,
     "cache upload local health event recorded the wrong job",
+  );
+  invariant(
+    failedLocalEvent.details?.contentType === "audio/mpeg",
+    "cache upload failure did not include content type evidence",
+  );
+  invariant(
+    failedLocalEvent.details?.durationSeconds === 1,
+    "cache upload failure did not include duration evidence",
+  );
+  invariant(
+    failedLocalEvent.details?.fileName === scenario.outputFileName,
+    "cache upload failure did not include file name evidence",
+  );
+  invariant(
+    failedLocalEvent.details?.outputBytes > 44,
+    "cache upload failure did not include output byte evidence",
+  );
+  invariant(
+    failedLocalEvent.details?.outputCodec === "mp3",
+    "cache upload failure did not include output codec evidence",
+  );
+  invariant(
+    failedLocalEvent.details?.outputPath?.endsWith(scenario.outputFileName),
+    "cache upload failure did not include output path evidence",
+  );
+  invariant(
+    syncedEvent.details?.outputBytes === failedLocalEvent.details.outputBytes,
+    "synced cache upload failure did not preserve output byte evidence",
   );
 }
 

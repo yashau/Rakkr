@@ -460,13 +460,19 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         }
     };
 
+    let upload_content_type =
+        content_type_for_codec(job.command.output_codec.as_deref(), &output_path);
+    let upload_file_name = job.command.output_file_name.clone();
+    let upload_output_bytes = fs::metadata(&output_path)
+        .ok()
+        .map(|metadata| metadata.len());
     let upload_result = upload_cache_file(CacheFileUpload {
         allow_insecure_controller: config.allow_insecure_controller,
-        content_type: content_type_for_codec(job.command.output_codec.as_deref(), &output_path),
+        content_type: upload_content_type,
         controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
         controller_url: &config.controller_url,
         duration_seconds: Some(job.command.duration_seconds),
-        file_name: Some(job.command.output_file_name.clone()),
+        file_name: Some(upload_file_name.clone()),
         file_path: &output_path,
         job_id: Some(&job.id),
         recording_id: &job.recording_id,
@@ -491,9 +497,16 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 "agent.recording_job.cache_upload_failed",
                 "warning",
                 json!({
+                    "contentType": upload_content_type,
+                    "durationSeconds": job.command.duration_seconds,
                     "error": reason.as_str(),
+                    "fileName": upload_file_name.as_str(),
                     "jobId": job.id.as_str(),
+                    "outputBitrateKbps": capture_plan.output_bitrate_kbps,
+                    "outputBytes": upload_output_bytes,
+                    "outputCodec": capture_plan.output_codec.as_str(),
                     "outputPath": output_path.display().to_string(),
+                    "outputVbr": capture_plan.output_vbr,
                     "recordingId": job.recording_id.as_str(),
                 }),
             )

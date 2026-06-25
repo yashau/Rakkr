@@ -13,7 +13,7 @@ Status: MVP baseline checked.
 - Stop requests survive agent cancellation without falsely marking the recording unhealthy.
 - Failed and unexpectedly cancelled jobs update recording health and create central health events.
 - Recording jobs workbench shows scoped job status, status/search/node/backend/interface filters, node/recording relationships, capture settings, leases, heartbeats, and failures, plus filtered CSV export, RBAC-mirrored stop controls for active jobs, and audited retry controls for failed/cancelled jobs.
-- Fake-controller smoke and recorder-cache helper coverage prove agent job polling, claim-next/status-poll/control-plane/channel-map failure health, controller-terminal status handoff, controller capacity override, bounded concurrent jobs, capture start/runtime/too-small/stall/render-evidence failure, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, recorder-cache cleanup/delete-failure/tracking sync and tracking failure, and controller stop handling without hardware.
+- Fake-controller smoke and recorder-cache helper coverage prove agent job polling, claim-next/status-poll/control-plane/channel-map failure health, controller-terminal status handoff, controller capacity override, bounded concurrent jobs, capture start/runtime/too-small/stall/render/upload-evidence failure, capture/render handoff, concurrent-safe local health logging, MP3 VBR output, cache upload, cache-upload failure, recorder-cache cleanup/delete-failure/tracking sync and tracking failure, and controller stop handling without hardware.
 
 ## Checked By
 
