@@ -269,6 +269,7 @@ import path from "node:path";
 
 const outputFlagIndex = process.argv.indexOf("--write-output");
 const outputPath = outputFlagIndex >= 0 ? process.argv[outputFlagIndex + 1] : process.argv.at(-1);
+const channels = optionNumber(["-c", "--channels"], 1);
 
 if (!outputPath || outputPath.startsWith("-")) {
   console.error("missing output path");
@@ -281,11 +282,23 @@ if (${JSON.stringify(requireTemplateOutputFlag)} && outputFlagIndex < 0) {
 }
 
 mkdirSync(path.dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, wavFile([0, 12000, -12000, 6000, -6000, 3000]));
+writeFileSync(outputPath, wavFile(channels, [0, 12000, -12000, 6000, -6000, 3000]));
 await new Promise((resolve) => setTimeout(resolve, 750));
 
-function wavFile(samples) {
-  const dataSize = samples.length * 2;
+function optionNumber(flags, fallback) {
+  for (const flag of flags) {
+    const index = process.argv.indexOf(flag);
+    if (index >= 0) {
+      const value = Number(process.argv[index + 1]);
+      return Number.isInteger(value) && value > 0 ? value : fallback;
+    }
+  }
+
+  return fallback;
+}
+
+function wavFile(channels, samples) {
+  const dataSize = samples.length * channels * 2;
   const buffer = Buffer.alloc(44 + dataSize);
 
   buffer.write("RIFF", 0, "ascii");
@@ -294,14 +307,19 @@ function wavFile(samples) {
   buffer.write("fmt ", 12, "ascii");
   buffer.writeUInt32LE(16, 16);
   buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt16LE(channels, 22);
   buffer.writeUInt32LE(48000, 24);
-  buffer.writeUInt32LE(96000, 28);
-  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt32LE(48000 * channels * 2, 28);
+  buffer.writeUInt16LE(channels * 2, 32);
   buffer.writeUInt16LE(16, 34);
   buffer.write("data", 36, "ascii");
   buffer.writeUInt32LE(dataSize, 40);
-  samples.forEach((sample, index) => buffer.writeInt16LE(sample, 44 + index * 2));
+  samples.forEach((sample, frameIndex) => {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const channelSample = Math.max(-32768, Math.min(32767, sample - channel * 500));
+      buffer.writeInt16LE(channelSample, 44 + (frameIndex * channels + channel) * 2);
+    }
+  });
 
   return buffer;
 }

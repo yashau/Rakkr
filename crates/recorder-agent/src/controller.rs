@@ -180,6 +180,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 "captureChannels": channel_map.source_channels,
                 "channelMode": channel_map.channel_mode.as_str(),
                 "configuredCaptureChannels": job.command.capture_channels,
+                "entryCount": channel_map.entries.len(),
                 "jobId": job.id.as_str(),
                 "recordingId": job.recording_id.as_str(),
                 "targetId": channel_map.target_id.as_str(),

@@ -113,6 +113,66 @@ export async function runChannelMapLookupFailureScenario({
   });
 }
 
+export async function runChannelMapAppliedScenario({
+  address,
+  captureCommand,
+  renderCommand,
+  runScenario,
+}) {
+  await runScenario({
+    address,
+    captureCommand,
+    renderCommand,
+    scenario: {
+      captureInterfaceId: "iface_channel_map_smoke",
+      channelMapAssignments: [
+        {
+          assignment: {
+            assignedAt: "2026-06-25T00:00:00.000Z",
+            id: "assignment_channel_map_smoke",
+            targetId: "iface_channel_map_smoke",
+            targetType: "interface",
+            templateId: "template_channel_map_smoke",
+          },
+          template: {
+            channelMode: "stereo",
+            entries: [
+              {
+                included: true,
+                label: "Vocal left",
+                outputChannelIndex: 1,
+                sourceChannelIndex: 1,
+              },
+              {
+                included: true,
+                label: "Vocal right",
+                outputChannelIndex: 2,
+                sourceChannelIndex: 2,
+              },
+            ],
+            id: "template_channel_map_smoke",
+            name: "Smoke stereo vocal pair",
+            tags: ["smoke", "recording"],
+          },
+        },
+      ],
+      expectChannelMapApplied: true,
+      expectedChannelMap: {
+        assignmentId: "assignment_channel_map_smoke",
+        captureChannels: 2,
+        channelMode: "stereo",
+        entryCount: 2,
+        templateId: "template_channel_map_smoke",
+      },
+      expectSuccess: true,
+      jobId: "job_fake_controller_channel_map_applied",
+      name: "channel-map-applied",
+      outputFileName: "rec_fake_controller_channel_map_applied.mp3",
+      recordingId: "rec_fake_controller_channel_map_applied",
+    },
+  });
+}
+
 export async function runControllerTerminalStatusScenarios({
   address,
   captureCommand,

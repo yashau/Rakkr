@@ -32,7 +32,7 @@ import {
   assertTinyCaptureFailureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
-import { runCaptureFailureScenarios, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios, runRecorderCacheTrackFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
+import { runCaptureFailureScenarios, runChannelMapAppliedScenario, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios, runRecorderCacheTrackFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
@@ -158,6 +158,7 @@ try {
     },
   });
   await runControlPlaneFailureScenario({ address, captureCommand, renderCommand, runScenario });
+  await runChannelMapAppliedScenario({ address, captureCommand, renderCommand, runScenario });
   await runChannelMapLookupFailureScenario({ address, captureCommand, renderCommand, runScenario });
   await runScenario({
     address,
@@ -580,7 +581,9 @@ function createJob(scenario) {
       captureChannels: 1,
       captureDevice: "fake-device",
       captureFormat: "S16_LE",
+      captureInterfaceId: scenario.captureInterfaceId ?? null,
       captureSampleRate: 48000,
+      channelMap: scenario.channelMap ?? null,
       durationSeconds: 1,
       outputBitrateKbps: 128,
       outputCodec: "mp3",
@@ -797,7 +800,7 @@ async function handleControllerRequest(request, response) {
   ) {
     observed.channelMapReads += 1;
     if (scenario.channelMapFailuresRemaining-- > 0) { observed.channelMapFailures += 1; return json(response, 503, { error: "simulated channel-map failure" }); }
-    return json(response, 200, { data: [] });
+    return json(response, 200, { data: scenario.channelMapAssignments ?? [] });
   }
 
   if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/heartbeat`) {

@@ -291,6 +291,10 @@ export function assertRenderedOutputScenario({
     "rendered local health event did not record VBR output",
   );
 
+  if (scenario.expectChannelMapApplied) {
+    assertChannelMapAppliedScenario({ healthLogEvents, observed, scenario });
+  }
+
   if (scenario.expectChannelMapLookupFailure) {
     assertChannelMapLookupFailureScenario({ healthLogEvents, observed, scenario });
   }
@@ -347,6 +351,48 @@ function assertChannelMapLookupFailureScenario({ healthLogEvents, observed, scen
       "controller rejected channel map assignment request with 503",
     ),
     "channel-map health event did not preserve controller rejection",
+  );
+}
+
+function assertChannelMapAppliedScenario({ healthLogEvents, observed, scenario }) {
+  const localEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.channel_map_applied",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.channel_map_applied",
+  );
+
+  invariant(observed.channelMapReads === 1, "agent did not read channel-map assignments");
+  invariant(localEvent, "agent local health log did not include channel-map application");
+  invariant(localEvent.severity === "info", "channel-map application was not informational");
+  invariant(
+    localEvent.recordingId === scenario.recordingId,
+    "channel-map application recorded the wrong recording",
+  );
+  invariant(
+    localEvent.details?.assignmentId === scenario.expectedChannelMap.assignmentId,
+    "channel-map application recorded the wrong assignment",
+  );
+  invariant(
+    localEvent.details?.templateId === scenario.expectedChannelMap.templateId,
+    "channel-map application recorded the wrong template",
+  );
+  invariant(
+    localEvent.details?.captureChannels === scenario.expectedChannelMap.captureChannels,
+    "channel-map application did not preserve capture channel count",
+  );
+  invariant(
+    localEvent.details?.channelMode === scenario.expectedChannelMap.channelMode,
+    "channel-map application recorded the wrong channel mode",
+  );
+  invariant(
+    localEvent.details?.entryCount === scenario.expectedChannelMap.entryCount,
+    "channel-map application recorded the wrong entry count",
+  );
+  invariant(syncedEvent, "agent did not sync channel-map application health event");
+  invariant(
+    syncedEvent.details?.assignmentId === localEvent.details.assignmentId,
+    "synced channel-map application did not preserve assignment evidence",
   );
 }
 
