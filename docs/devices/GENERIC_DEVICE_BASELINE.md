@@ -20,7 +20,7 @@ Status: Partial baseline checked.
 - Inventory discovers ALSA capture devices from `arecord -l` and `/proc/asound/pcm`, then adds channel count, sample rates, sysfs hardware paths, and serials when available.
 - When `/proc/asound/card*/stream0` lacks capture capability details, inventory falls back to `arecord --dump-hw-params` for ALSA channel and sample-rate metadata.
 - Meter target selection maps numeric, named, and `CARD=`/`DEV=` `hw:`/`plughw:` ALSA capture devices, including `hw:Loopback,1,0`, to collected inventory interfaces when possible.
-- Runtime inventory reports detected PipeWire and JACK command availability alongside collected audio interface backends; PipeWire and JACK can be selected as managed capture/meter backends.
+- Runtime inventory reports detected PipeWire and JACK command availability alongside collected concrete audio interface backends, keeping `unknown` only when no real backend is known; PipeWire and JACK can be selected as managed capture/meter backends.
 - Node inventory can filter visible recorder nodes by audio backend from runtime availability or collected interface metadata.
 - Synthetic meters and fake-controller capture/render smoke tests validate agent workflows, including template-driven capture arguments, without hardware.
 - Linux `snd-aloop` smoke tasks can validate WAV capture, agent meters, render/channel-map output, clean/clipping/low-volume/channel-correlation fixture replay plus daemon health-log events, and short or longer full fake-controller agent jobs that capture, upload, and clean up loopback WAVs.

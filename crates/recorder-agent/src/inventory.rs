@@ -288,6 +288,10 @@ fn runtime_audio_backends(
         audio_backends.push("jack".to_string());
     }
 
+    if audio_backends.iter().any(|backend| backend != "unknown") {
+        audio_backends.retain(|backend| backend != "unknown");
+    }
+
     audio_backends.sort();
     audio_backends.dedup();
     audio_backends
@@ -742,6 +746,14 @@ PERIOD_SIZE: [32 8192]
         assert_eq!(
             runtime_audio_backends(&[fallback_interface()], |_| false),
             vec!["unknown"]
+        );
+    }
+
+    #[test]
+    fn runtime_audio_backends_drop_unknown_when_real_backend_available() {
+        assert_eq!(
+            runtime_audio_backends(&[fallback_interface()], |command| command == "pipewire"),
+            vec!["pipewire"]
         );
     }
 
