@@ -25,13 +25,14 @@ import {
   assertControllerTerminalStatusScenario,
   assertControlPlaneFailureScenario,
   assertRenderedOutputScenario,
+  assertRecorderCacheTrackFailureScenario,
   assertRenderFailureScenario,
   assertStatusPollFailureScenario,
   assertStalledCaptureScenario,
   assertTinyCaptureFailureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
-import { runCaptureFailureScenarios, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios } from "./agent-fake-controller-smoke-jobs.mjs";
+import { runCaptureFailureScenarios, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios, runRecorderCacheTrackFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
@@ -187,6 +188,7 @@ try {
   });
   await runConcurrentScenario({ address, captureCommand, renderCommand });
   await runDeferredSweepScenario({ address, captureCommand, renderCommand });
+  await runRecorderCacheTrackFailureScenario({ address, captureCommand, deferredSweepRetention, renderCommand, runScenario, smokeRoot });
   await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
   await runSystemHealthScenario(
     healthScenarioDeps({ address, captureCommand, fakeDfPath, renderCommand }),
@@ -238,6 +240,10 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
 
   if (scenario.captureArgsTemplate) {
     agentArgs.push("--capture-args-template", scenario.captureArgsTemplate);
+  }
+
+  if (scenario.recorderCacheManifestFile) {
+    agentArgs.push("--recorder-cache-manifest-file", scenario.recorderCacheManifestFile);
   }
 
   agentArgs.push(
@@ -306,11 +312,13 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertControllerTerminalStatusScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.controllerStopRequested) {
     assertControllerStopScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectRecorderCacheTrackFailure) {
+    assertRecorderCacheTrackFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else {
     assertRenderedOutputScenario({ healthLogEvents, observed, renderedLocalEvent, scenario });
   }
 
-  if (scenario.expectSuccess && !scenario.controllerStopRequested && !scenario.controllerTerminalStatus) {
+  if (scenario.expectSuccess && !scenario.controllerStopRequested && !scenario.controllerTerminalStatus && !scenario.expectRecorderCacheTrackFailure) {
     await assertCompletedScenario({ job, retentionLocalEvent, scenario, state });
   } else if (scenario.cacheUploadFails) {
     assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });

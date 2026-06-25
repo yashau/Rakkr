@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { invariant, readJsonLines, run } from "./agent-fake-controller-smoke-utils.mjs";
@@ -197,6 +198,33 @@ export async function runCaptureFailureScenarios({
       name: "tiny-capture-failure",
       outputFileName: "rec_fake_controller_tiny_capture_failure.mp3",
       recordingId: "rec_fake_controller_tiny_capture_failure",
+    },
+  });
+}
+
+export async function runRecorderCacheTrackFailureScenario({
+  address,
+  captureCommand,
+  deferredSweepRetention,
+  renderCommand,
+  runScenario,
+  smokeRoot,
+}) {
+  const manifestDirectory = path.join(smokeRoot, "manifest-as-directory");
+  await mkdir(manifestDirectory);
+  await runScenario({
+    address,
+    captureCommand,
+    renderCommand,
+    scenario: {
+      expectRecorderCacheTrackFailure: true,
+      expectSuccess: true,
+      jobId: "job_fake_controller_recorder_cache_track_failure",
+      name: "recorder-cache-track-failure",
+      outputFileName: "rec_fake_controller_recorder_cache_track_failure.mp3",
+      recorderCacheManifestFile: manifestDirectory,
+      recorderCacheRetention: deferredSweepRetention(),
+      recordingId: "rec_fake_controller_recorder_cache_track_failure",
     },
   });
 }

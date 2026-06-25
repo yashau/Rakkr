@@ -390,3 +390,41 @@ export function assertCacheUploadFailureScenario({
     "cache upload local health event recorded the wrong job",
   );
 }
+
+export function assertRecorderCacheTrackFailureScenario({
+  healthLogEvents,
+  job,
+  observed,
+  scenario,
+  state,
+}) {
+  const localEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.recorder_cache_track_failed",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.recorder_cache_track_failed",
+  );
+
+  invariant(job.status === "completed", "track-failure job did not complete");
+  invariant(state.status === "completed", "track-failure state file did not end completed");
+  invariant(state.jobId === scenario.jobId, "track-failure state recorded the wrong job id");
+  invariant(
+    observed.cacheUpload?.recordingId === scenario.recordingId,
+    "track-failure job did not upload cache",
+  );
+  invariant(localEvent, "agent local health log did not include recorder-cache track failure");
+  invariant(localEvent.severity === "warning", "recorder-cache track failure was not warning");
+  invariant(
+    localEvent.recordingId === scenario.recordingId,
+    "track failure recorded the wrong recording",
+  );
+  invariant(
+    localEvent.details?.policyId === scenario.recorderCacheRetention.policyId,
+    "track failure recorded wrong policy",
+  );
+  invariant(syncedEvent, "agent did not sync recorder-cache track failure health event");
+  invariant(
+    String(syncedEvent.details?.error).includes("recorder cache manifest"),
+    "recorder-cache track failure did not preserve manifest error",
+  );
+}
