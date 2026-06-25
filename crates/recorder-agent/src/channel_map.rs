@@ -874,6 +874,8 @@ mod tests {
             controller_token: None,
             controller_url: "http://localhost:8787".to_string(),
             heartbeat_seconds: 5,
+            inventory_arecord_command: "arecord".to_string(),
+            inventory_proc_asound_pcm_path: PathBuf::from("/proc/asound/pcm"),
             job_poll_seconds: 2,
             meter_backend: crate::config::MeterBackend::Synthetic,
             meter_args_template: None,

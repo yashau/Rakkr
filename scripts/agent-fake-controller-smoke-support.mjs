@@ -79,6 +79,60 @@ if (pressureActive) {
   return { fakeDfPath: fakeBin, fakeLoadavgPath: loadavgPath };
 }
 
+export async function writeRecoveringAudioInventoryFixtures(directory) {
+  const fakeBin = path.join(directory, "fake-audio-inventory-bin");
+  const arecordScript = path.join(fakeBin, "arecord");
+  const stateFile = path.join(directory, "fake-audio-inventory-state.txt");
+  const procAsoundPcmPath = path.join(directory, "missing-proc-asound-pcm");
+
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(
+    arecordScript,
+    `#!/usr/bin/env node
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+if (args.includes("--dump-hw-params")) {
+  console.log('HW Params of device "hw:7,0":');
+  console.log("CHANNELS: [1 2]");
+  console.log("RATE: [48000 48000]");
+  process.exit(0);
+}
+
+const previousRuns = existsSync(${JSON.stringify(stateFile)})
+  ? Number(readFileSync(${JSON.stringify(stateFile)}, "utf8"))
+  : 0;
+writeFileSync(${JSON.stringify(stateFile)}, String(previousRuns + 1));
+
+console.log("**** List of CAPTURE Hardware Devices ****");
+if (previousRuns > 1) {
+  console.log("card 7: SMOKE [Smoke Audio], device 0: Capture [Capture]");
+  console.log("  Subdevices: 1/1");
+  console.log("  Subdevice #0: subdevice #0");
+}
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(fakeBin, "arecord.cmd");
+    await writeFile(commandPath, commandShim(arecordScript));
+
+    return {
+      fakeArecordCommand: commandPath,
+      fakeArecordPath: fakeBin,
+      fakeProcAsoundPcmPath: procAsoundPcmPath,
+    };
+  } else {
+    await chmod(arecordScript, 0o755);
+  }
+
+  return {
+    fakeArecordCommand: arecordScript,
+    fakeArecordPath: fakeBin,
+    fakeProcAsoundPcmPath: procAsoundPcmPath,
+  };
+}
+
 export async function writeFakeCaptureCommand(directory) {
   return writeFakeCaptureCommandScript(directory, "fake-capture", false);
 }

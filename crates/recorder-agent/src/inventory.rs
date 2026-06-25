@@ -74,7 +74,7 @@ pub fn collect(config: &AgentConfig) -> NodeInventory {
         .and_then(|value| value.into_string().ok())
         .unwrap_or_else(|| "unknown-host".to_string());
 
-    let interfaces = discover_audio_interfaces();
+    let interfaces = discover_audio_interfaces(config);
     let runtime = runtime_details(&interfaces);
 
     NodeInventory {
@@ -120,11 +120,14 @@ pub fn heartbeat_health_details(
     })
 }
 
-fn discover_audio_interfaces() -> Vec<AudioInterfaceInventory> {
-    let mut alsa_interfaces = discover_arecord_interfaces();
+fn discover_audio_interfaces(config: &AgentConfig) -> Vec<AudioInterfaceInventory> {
+    let mut alsa_interfaces = discover_arecord_interfaces(&config.inventory_arecord_command);
 
     if alsa_interfaces.is_empty() {
-        alsa_interfaces = discover_proc_asound_interfaces();
+        alsa_interfaces = discover_proc_asound_interfaces(
+            &config.inventory_proc_asound_pcm_path,
+            &config.inventory_arecord_command,
+        );
     }
 
     if alsa_interfaces.is_empty() {
@@ -134,8 +137,8 @@ fn discover_audio_interfaces() -> Vec<AudioInterfaceInventory> {
     }
 }
 
-fn discover_arecord_interfaces() -> Vec<AudioInterfaceInventory> {
-    let Ok(output) = Command::new("arecord").arg("-l").output() else {
+fn discover_arecord_interfaces(arecord_command: &str) -> Vec<AudioInterfaceInventory> {
+    let Ok(output) = Command::new(arecord_command).arg("-l").output() else {
         return Vec::new();
     };
 
@@ -148,7 +151,7 @@ fn discover_arecord_interfaces() -> Vec<AudioInterfaceInventory> {
     parse_alsa_capture_devices(&list_output)
         .into_iter()
         .map(|device| {
-            let metadata = read_alsa_metadata(device.card, device.device);
+            let metadata = read_alsa_metadata(device.card, device.device, arecord_command);
             let channel_count = metadata.channel_count.unwrap_or(2);
             let sample_rates = if metadata.sample_rates.is_empty() {
                 vec![48_000]
@@ -172,13 +175,16 @@ fn discover_arecord_interfaces() -> Vec<AudioInterfaceInventory> {
         .collect()
 }
 
-fn discover_proc_asound_interfaces() -> Vec<AudioInterfaceInventory> {
-    fs::read_to_string("/proc/asound/pcm")
+fn discover_proc_asound_interfaces(
+    path: &Path,
+    arecord_command: &str,
+) -> Vec<AudioInterfaceInventory> {
+    fs::read_to_string(path)
         .map(|content| {
             parse_proc_asound_pcm_devices(&content)
                 .into_iter()
                 .map(|device| {
-                    let metadata = read_alsa_metadata(device.card, device.device);
+                    let metadata = read_alsa_metadata(device.card, device.device, arecord_command);
                     let channel_count = metadata.channel_count.unwrap_or(2);
                     let sample_rates = if metadata.sample_rates.is_empty() {
                         vec![48_000]
@@ -481,18 +487,22 @@ fn read_alsa_stream_metadata(card: u16) -> AlsaStreamMetadata {
         .unwrap_or_default()
 }
 
-fn read_alsa_metadata(card: u16, device: u16) -> AlsaStreamMetadata {
+fn read_alsa_metadata(card: u16, device: u16, arecord_command: &str) -> AlsaStreamMetadata {
     let metadata = read_alsa_stream_metadata(card);
 
     if metadata.is_complete() {
         metadata
     } else {
-        metadata.with_fallback(read_alsa_hw_params_metadata(card, device))
+        metadata.with_fallback(read_alsa_hw_params_metadata(card, device, arecord_command))
     }
 }
 
-fn read_alsa_hw_params_metadata(card: u16, device: u16) -> AlsaStreamMetadata {
-    let Ok(output) = Command::new("arecord")
+fn read_alsa_hw_params_metadata(
+    card: u16,
+    device: u16,
+    arecord_command: &str,
+) -> AlsaStreamMetadata {
+    let Ok(output) = Command::new(arecord_command)
         .arg("-D")
         .arg(format!("hw:{card},{device}"))
         .arg("--dump-hw-params")

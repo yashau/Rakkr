@@ -258,6 +258,20 @@ pub struct AgentConfig {
         default_value = "/proc/loadavg"
     )]
     pub system_health_loadavg_path: PathBuf,
+
+    #[arg(
+        long,
+        env = "RAKKR_INVENTORY_PROC_ASOUND_PCM_PATH",
+        default_value = "/proc/asound/pcm"
+    )]
+    pub inventory_proc_asound_pcm_path: PathBuf,
+
+    #[arg(
+        long,
+        env = "RAKKR_INVENTORY_ARECORD_COMMAND",
+        default_value = "arecord"
+    )]
+    pub inventory_arecord_command: String,
 }
 
 impl AgentConfig {

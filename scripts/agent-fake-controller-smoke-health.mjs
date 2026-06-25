@@ -744,3 +744,97 @@ export async function runNodeConfigRecoveryScenario({
 function fakeDfCommandPath(fakeDfPath) {
   return path.join(fakeDfPath, process.platform === "win32" ? "df.cmd" : "df");
 }
+
+export async function runAudioBackendRecoveryScenario({
+  address,
+  captureCommand,
+  createObserved,
+  fakeArecordCommand,
+  fakeArecordPath,
+  fakeProcAsoundPcmPath,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "audio-backend-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "audio-backend-recovery-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: { expectSuccess: true, name: "audio-backend-recovery" },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand,
+    extraAgentArgs: [
+      "--inventory-arecord-command",
+      fakeArecordCommand,
+      "--inventory-proc-asound-pcm-path",
+      fakeProcAsoundPcmPath,
+    ],
+    extraEnv: {
+      PATH: `${fakeArecordPath}${path.delimiter}${process.env.PATH ?? ""}`,
+    },
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.audio_backend.unavailable") &&
+        observed.healthEvents.some((event) => event.type === "agent.audio_backend.recovered") &&
+        observed.nodeHeartbeats >= 1 &&
+        observed.meterFrames >= 1,
+      20_000,
+      () =>
+        `heartbeats=${observed.nodeHeartbeats} meters=${observed.meterFrames} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const unavailableEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.audio_backend.unavailable",
+  );
+  const recoveredEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.audio_backend.recovered",
+  );
+
+  invariant(unavailableEvent?.severity === "warning", "audio backend unavailable was not warning");
+  invariant(
+    unavailableEvent?.details?.availableInterfaces === 0,
+    "audio backend unavailable did not report zero available interfaces",
+  );
+  invariant(
+    unavailableEvent?.details?.interfaces === 1,
+    "audio backend unavailable did not preserve fallback interface count",
+  );
+  invariant(
+    unavailableEvent?.details?.audioBackends?.includes("unknown"),
+    "audio backend unavailable did not preserve unknown backend evidence",
+  );
+  invariant(recoveredEvent?.severity === "info", "audio backend recovery was not info");
+  invariant(
+    recoveredEvent?.details?.availableInterfaces === 1,
+    "audio backend recovery did not report available interface",
+  );
+  invariant(
+    recoveredEvent?.details?.audioBackends?.includes("alsa"),
+    "audio backend recovery did not preserve recovered ALSA backend",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.audio_backend.unavailable"),
+    "audio backend unavailable event was not written locally",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.audio_backend.recovered"),
+    "audio backend recovery event was not written locally",
+  );
+  setActiveScenario(undefined);
+}

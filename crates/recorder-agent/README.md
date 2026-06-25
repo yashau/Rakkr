@@ -12,6 +12,7 @@ Current capabilities:
 - polls controller node capacity and runs bounded simultaneous recording jobs with `--max-concurrent-recordings` as the local fallback;
 - detects meter capture failure/recovery, device-unavailable/xrun failures, clipping, flatline, and suspicious same/inverted channel correlation transitions;
 - samples disk pressure, Linux load average, and audio-backend availability transitions;
+- refreshes audio inventory during the daemon heartbeat so backend recovery can be reported without restarting the agent;
 - writes a lifecycle-managed local JSONL health log with size-based retention and syncs node health events to the controller when a node token is configured;
 - reports ALSA interfaces plus PipeWire/JACK command availability in runtime inventory, with managed PipeWire and JACK capture/meter presets.
 
@@ -28,3 +29,8 @@ Useful health-log controls:
 Useful recording controls:
 
 - `--max-concurrent-recordings` / `RAKKR_MAX_CONCURRENT_RECORDINGS`
+
+Useful inventory controls:
+
+- `--inventory-arecord-command` / `RAKKR_INVENTORY_ARECORD_COMMAND`
+- `--inventory-proc-asound-pcm-path` / `RAKKR_INVENTORY_PROC_ASOUND_PCM_PATH`

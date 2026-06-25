@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = AgentConfig::parse();
-    let inventory = inventory::collect(&config);
+    let mut inventory = inventory::collect(&config);
 
     if config.print_inventory {
         println!("{}", serde_json::to_string_pretty(&inventory)?);
@@ -159,6 +159,7 @@ async fn main() -> anyhow::Result<()> {
             }
             _ = ticker.tick() => {
                 tick += 1;
+                inventory = inventory::collect(&active_config);
                 let (meter_interface_id, meter_channel_count) =
                     meter_target(&active_config, &inventory);
                 let meter_capture = meter_capture_config(&active_config, meter_channel_count);
