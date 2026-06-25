@@ -18,8 +18,8 @@ use crate::inventory::NodeInventory;
 use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
 use crate::recording_job_recovery::{
     capture_disk_space_shortfall, ensure_capture_disk_space, refresh_capture_device_from_inventory,
-    report_capture_disk_space_shortfall, report_control_plane_sync_failure,
-    spawn_capture_plan_with_recovery,
+    report_capture_command_failure, report_capture_disk_space_shortfall,
+    report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
 };
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
@@ -301,23 +301,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             Err(error) => {
                 let reason = error.to_string();
 
-                let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
-                append_job_health_event(
-                    config,
-                    token,
-                    &job,
-                    "agent.recording_job.capture_failed",
-                    "critical",
-                    json!({
-                        "device": capture_plan.device.as_str(),
-                        "error": reason.as_str(),
-                        "jobId": job.id.as_str(),
-                        "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
-                        "outputPath": capture_plan.output_path.display().to_string(),
-                        "recordingId": job.recording_id.as_str(),
-                    }),
-                )
-                .await?;
+                report_capture_command_failure(config, token, &job, &capture_plan, &error).await?;
                 write_job_state(config, &job, "failed", None, Some(&reason))?;
 
                 return Err(error);

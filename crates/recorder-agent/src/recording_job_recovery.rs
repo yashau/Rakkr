@@ -9,6 +9,7 @@ use crate::cache_content_type::content_type_for_codec;
 use crate::capture::{
     CaptureChild, CaptureGrowthSnapshot, CapturePlan, estimated_capture_bytes, spawn_capture_plan,
 };
+use crate::channel_map::channel_map_details;
 use crate::config::{AgentConfig, CaptureBackend};
 use crate::controller::{
     CacheFileUpload, ControllerRecordingJob, append_job_health_event, mark_recording_job_failed,
@@ -328,6 +329,76 @@ pub(crate) async fn report_capture_disk_space_shortfall(
     .await
 }
 
+pub(crate) fn is_capture_device_lost(error: &anyhow::Error) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+
+    message.contains("input/output error")
+        || message.contains("no such device")
+        || message.contains("device disconnected")
+        || message.contains("device removed")
+        || message.contains("cannot find card")
+        || message.contains("unknown pcm")
+        || message.contains("broken pipe")
+}
+
+pub(crate) async fn report_capture_device_lost(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    capture_plan: &CapturePlan,
+    reason: &str,
+) -> anyhow::Result<()> {
+    let _ = mark_recording_job_failed(config, token, &job.id, reason).await;
+    append_job_health_event(
+        config,
+        token,
+        job,
+        "agent.recording_job.capture_device_lost",
+        "critical",
+        json!({
+            "backend": format!("{:?}", capture_plan.backend).to_ascii_lowercase(),
+            "device": capture_plan.device.as_str(),
+            "error": reason,
+            "jobId": job.id.as_str(),
+            "outputPath": capture_plan.output_path.display().to_string(),
+            "recordingId": job.recording_id.as_str(),
+        }),
+    )
+    .await
+}
+
+pub(crate) async fn report_capture_command_failure(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    capture_plan: &CapturePlan,
+    error: &anyhow::Error,
+) -> anyhow::Result<()> {
+    let reason = error.to_string();
+
+    if is_capture_device_lost(error) {
+        return report_capture_device_lost(config, token, job, capture_plan, &reason).await;
+    }
+
+    let _ = mark_recording_job_failed(config, token, &job.id, &reason).await;
+    append_job_health_event(
+        config,
+        token,
+        job,
+        "agent.recording_job.capture_failed",
+        "critical",
+        json!({
+            "device": capture_plan.device.as_str(),
+            "error": reason.as_str(),
+            "jobId": job.id.as_str(),
+            "channelMap": capture_plan.channel_map.as_ref().map(channel_map_details),
+            "outputPath": capture_plan.output_path.display().to_string(),
+            "recordingId": job.recording_id.as_str(),
+        }),
+    )
+    .await
+}
+
 pub(crate) async fn spawn_capture_plan_with_recovery(
     config: &AgentConfig,
     token: &str,
@@ -409,6 +480,19 @@ mod tests {
         )));
         assert!(!is_capture_device_unavailable(&anyhow::anyhow!(
             "run capture command arecord: permission denied"
+        )));
+    }
+
+    #[test]
+    fn classifies_mid_capture_device_lost_errors() {
+        assert!(is_capture_device_lost(&anyhow::anyhow!(
+            "capture command arecord failed with status exit code: 1: arecord: pcm_read: Input/output error"
+        )));
+        assert!(is_capture_device_lost(&anyhow::anyhow!(
+            "capture command pw-record failed with status exit code: 1: Broken pipe"
+        )));
+        assert!(!is_capture_device_lost(&anyhow::anyhow!(
+            "capture command fake failed with status exit code: 43: simulated capture failure"
         )));
     }
 

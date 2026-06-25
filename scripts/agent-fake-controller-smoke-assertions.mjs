@@ -136,6 +136,24 @@ export function assertCaptureFailureScenario({ healthLogEvents, job, observed, s
   });
 }
 
+export function assertCaptureDeviceLostScenario({
+  healthLogEvents,
+  job,
+  observed,
+  scenario,
+  state,
+}) {
+  assertCaptureFailureHealth({
+    eventType: "agent.recording_job.capture_device_lost",
+    healthLogEvents,
+    job,
+    observed,
+    reasonFragment: "Input/output error",
+    scenario,
+    state,
+  });
+}
+
 export function assertTinyCaptureFailureScenario({
   healthLogEvents,
   job,
@@ -214,10 +232,16 @@ export function assertControlPlaneFailureScenario({
   );
 
   invariant(job.status === "completed", "control-plane retry did not complete the job");
-  invariant(observed.failures === 0, "agent should not mark transient control-plane failure failed");
+  invariant(
+    observed.failures === 0,
+    "agent should not mark transient control-plane failure failed",
+  );
   invariant(observed.jobHeartbeatFailures === 1, "fake controller did not fail heartbeat once");
   invariant(observed.cacheUpload, "agent did not upload cache after control-plane recovery");
-  invariant(state.status === "completed", "control-plane recovery state file did not end completed");
+  invariant(
+    state.status === "completed",
+    "control-plane recovery state file did not end completed",
+  );
   invariant(state.jobId === scenario.jobId, "control-plane state recorded the wrong job id");
   invariant(
     state.reason === undefined || state.reason === null,

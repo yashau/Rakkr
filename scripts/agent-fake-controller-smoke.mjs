@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   writeFakeFailingCaptureCommand,
   writeFakeCaptureCommand,
+  writeFakeDeviceLostCaptureCommand,
   writeFakeCaptureFailedMeterCommand,
   writeFakeDfCommand,
   writeFakeDeviceUnavailableMeterCommand,
@@ -23,6 +24,7 @@ import {
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
   assertCacheUploadFailureScenario,
+  assertCaptureDeviceLostScenario,
   assertCaptureFailureScenario,
   assertCaptureStartFailureScenario,
   assertControllerTerminalStatusScenario,
@@ -35,22 +37,38 @@ import {
   assertTinyCaptureFailureScenario,
 } from "./agent-fake-controller-smoke-assertions.mjs";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
-import { runCaptureFailureScenarios, runChannelMapAppliedScenario, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios, runRecorderCacheTrackFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
-import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
-import { runAudioBackendRecoveryScenario, runMeterCaptureFailedScenario, runMeterDeviceUnavailableScenario, runMeterFrameSyncRecoveryScenario, runMeterRecoveryScenario, runMeterXrunScenario, runMonitorChunkRecoveryScenario, runNodeHeartbeatRecoveryScenario, runNodeConfigRecoveryScenario, runSystemHealthScenario } from "./agent-fake-controller-smoke-health.mjs";
 import {
-  empty,
+  runCaptureFailureScenarios,
+  runChannelMapAppliedScenario,
+  runChannelMapLookupFailureScenario,
+  runClaimNextFailureScenario,
+  runControlPlaneFailureScenario,
+  runControllerTerminalStatusScenarios,
+  runRecorderCacheTrackFailureScenario,
+} from "./agent-fake-controller-smoke-jobs.mjs";
+import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
+import {
+  runAudioBackendRecoveryScenario,
+  runMeterCaptureFailedScenario,
+  runMeterDeviceUnavailableScenario,
+  runMeterFrameSyncRecoveryScenario,
+  runMeterRecoveryScenario,
+  runMeterXrunScenario,
+  runMonitorChunkRecoveryScenario,
+  runNodeHeartbeatRecoveryScenario,
+  runNodeConfigRecoveryScenario,
+  runSystemHealthScenario,
+} from "./agent-fake-controller-smoke-health.mjs";
+import {
   fileExists,
   invariant,
-  json,
   listen,
   localRecorderCachePaths,
-  readBody,
   readJsonLines,
   run,
   waitFor,
 } from "./agent-fake-controller-smoke-utils.mjs";
-
+import { createFakeControllerHandler } from "./agent-fake-controller-smoke-controller.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const smokeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-agent-fake-controller-"));
@@ -84,7 +102,12 @@ const scenarios = [
   },
 ];
 let activeScenario;
-
+const handleControllerRequest = createFakeControllerHandler({
+  activeScenario: () => activeScenario,
+  nodeId,
+  recorderCachePoliciesForScenario,
+  token,
+});
 const server = createServer(async (request, response) => {
   try {
     await handleControllerRequest(request, response);
@@ -107,6 +130,7 @@ try {
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
   const audioInventoryFixtures = await writeRecoveringAudioInventoryFixtures(smokeRoot);
   const systemHealthFixtures = await writeRecoveringSystemHealthFixtures(smokeRoot);
+  const deviceLostCaptureCommand = await writeFakeDeviceLostCaptureCommand(smokeRoot);
   const failingCaptureCommand = await writeFakeFailingCaptureCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
@@ -115,9 +139,15 @@ try {
   for (const scenario of scenarios) {
     await runScenario({ address, captureCommand, renderCommand, scenario });
   }
-  await runControllerTerminalStatusScenarios({ address, captureCommand, renderCommand, runScenario });
+  await runControllerTerminalStatusScenarios({
+    address,
+    captureCommand,
+    renderCommand,
+    runScenario,
+  });
   await runCaptureFailureScenarios({
     address,
+    deviceLostCaptureCommand,
     failingCaptureCommand,
     missingCaptureCommand: path.join(smokeRoot, "missing-capture-command"),
     renderCommand,
@@ -187,14 +217,31 @@ try {
   });
   await runConcurrentScenario({ address, captureCommand, renderCommand });
   await runDeferredSweepScenario({ address, captureCommand, renderCommand });
-  await runRecorderCacheTrackFailureScenario({ address, captureCommand, deferredSweepRetention, renderCommand, runScenario, smokeRoot });
+  await runRecorderCacheTrackFailureScenario({
+    address,
+    captureCommand,
+    deferredSweepRetention,
+    renderCommand,
+    runScenario,
+    smokeRoot,
+  });
   await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
-  await runSystemHealthScenario(healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }));
-  await runAudioBackendRecoveryScenario(healthScenarioDeps({ address, captureCommand, ...audioInventoryFixtures, renderCommand }));
-  await runMeterFrameSyncRecoveryScenario(healthScenarioDeps({ address, captureCommand, renderCommand }));
+  await runSystemHealthScenario(
+    healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }),
+  );
+  await runAudioBackendRecoveryScenario(
+    healthScenarioDeps({ address, captureCommand, ...audioInventoryFixtures, renderCommand }),
+  );
+  await runMeterFrameSyncRecoveryScenario(
+    healthScenarioDeps({ address, captureCommand, renderCommand }),
+  );
   await runMeterXrunScenario(healthScenarioDeps({ address, renderCommand, xrunMeterCommand }));
-  await runMeterCaptureFailedScenario(healthScenarioDeps({ address, captureFailedMeterCommand, renderCommand }));
-  await runMeterDeviceUnavailableScenario(healthScenarioDeps({ address, deviceUnavailableMeterCommand, renderCommand }));
+  await runMeterCaptureFailedScenario(
+    healthScenarioDeps({ address, captureFailedMeterCommand, renderCommand }),
+  );
+  await runMeterDeviceUnavailableScenario(
+    healthScenarioDeps({ address, deviceUnavailableMeterCommand, renderCommand }),
+  );
   await runMeterRecoveryScenario(
     healthScenarioDeps({ address, recoveringMeterCommand, renderCommand }),
   );
@@ -286,7 +333,11 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
 
   invariant(observed.claimNextReads === 1, "agent did not claim the next queued job");
   invariant(observed.claims === 1, "agent did not claim exactly one queued job");
-  if (!scenario.expectCaptureStartFailure && !scenario.expectCaptureFailure && !scenario.expectTinyCaptureFailure) {
+  if (
+    !scenario.expectCaptureStartFailure &&
+    !scenario.expectCaptureFailure &&
+    !scenario.expectTinyCaptureFailure
+  ) {
     invariant(observed.heartbeats >= 1, "agent did not heartbeat the running job");
     invariant(observed.jobStatusReads >= 1, "agent did not poll the running job status");
   }
@@ -298,6 +349,8 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertCaptureStartFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectCaptureFailure) {
     assertCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state });
+  } else if (scenario.expectCaptureDeviceLost) {
+    assertCaptureDeviceLostScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectTinyCaptureFailure) {
     assertTinyCaptureFailureScenario({ healthLogEvents, job, observed, scenario, state });
   } else if (scenario.expectStalledCapture) {
@@ -316,7 +369,12 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     assertRenderedOutputScenario({ healthLogEvents, observed, renderedLocalEvent, scenario });
   }
 
-  if (scenario.expectSuccess && !scenario.controllerStopRequested && !scenario.controllerTerminalStatus && !scenario.expectRecorderCacheTrackFailure) {
+  if (
+    scenario.expectSuccess &&
+    !scenario.controllerStopRequested &&
+    !scenario.controllerTerminalStatus &&
+    !scenario.expectRecorderCacheTrackFailure
+  ) {
     await assertCompletedScenario({ job, observed, retentionLocalEvent, scenario, state });
   } else if (scenario.cacheUploadFails) {
     assertCacheUploadFailureScenario({ healthLogEvents, job, observed, scenario, state });
@@ -456,9 +514,24 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
     (event) => event.type === "agent.recording_job.recorder_cache_tracked",
   );
 
-  invariant(healthLogEvents.filter((event) => event.type === "agent.recording_job.recorder_cache_tracked").length === 2, "deferred retention jobs were not tracked in the local health log");
-  invariant(trackedSyncedEvents.length === 2 && trackedSyncedEvents.every((event) => event.details?.policyId === deferredSweepRetention().policyId && event.details?.maxBytes === 1), "agent did not sync deferred recorder-cache tracking policy");
-  invariant(sweepEvent?.details?.deleted >= 1, "deferred recorder-cache sweep did not delete files");
+  invariant(
+    healthLogEvents.filter((event) => event.type === "agent.recording_job.recorder_cache_tracked")
+      .length === 2,
+    "deferred retention jobs were not tracked in the local health log",
+  );
+  invariant(
+    trackedSyncedEvents.length === 2 &&
+      trackedSyncedEvents.every(
+        (event) =>
+          event.details?.policyId === deferredSweepRetention().policyId &&
+          event.details?.maxBytes === 1,
+      ),
+    "agent did not sync deferred recorder-cache tracking policy",
+  );
+  invariant(
+    sweepEvent?.details?.deleted >= 1,
+    "deferred recorder-cache sweep did not delete files",
+  );
 
   activeScenario = undefined;
 }
@@ -534,16 +607,29 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
 }
 
 async function assertCompletedScenario({ job, observed, retentionLocalEvent, scenario, state }) {
-  const retentionSyncedEvent = observed.healthEvents.find((event) => event.type === "agent.recording_job.recorder_cache_deleted");
+  const retentionSyncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.recorder_cache_deleted",
+  );
   invariant(job.status === "completed", "fake controller did not mark job completed");
   invariant(state.status === "completed", "agent state file did not end completed");
   invariant(state.jobId === scenario.jobId, "agent state file recorded the wrong job id");
-  invariant(state.outputPath?.endsWith(scenario.outputFileName), "agent state did not end on rendered MP3");
-  invariant(retentionLocalEvent, "agent did not log recorder-cache retention cleanup");
-  invariant(retentionLocalEvent.details?.policyId === job.command.recorderCacheRetention.policyId, "recorder-cache cleanup did not include the retention policy id");
-  invariant(retentionSyncedEvent?.details?.policyId === job.command.recorderCacheRetention.policyId, "agent did not sync recorder-cache retention cleanup policy");
   invariant(
-    retentionSyncedEvent?.details?.deletedPaths?.some((deletedPath) => deletedPath.endsWith(scenario.outputFileName)),
+    state.outputPath?.endsWith(scenario.outputFileName),
+    "agent state did not end on rendered MP3",
+  );
+  invariant(retentionLocalEvent, "agent did not log recorder-cache retention cleanup");
+  invariant(
+    retentionLocalEvent.details?.policyId === job.command.recorderCacheRetention.policyId,
+    "recorder-cache cleanup did not include the retention policy id",
+  );
+  invariant(
+    retentionSyncedEvent?.details?.policyId === job.command.recorderCacheRetention.policyId,
+    "agent did not sync recorder-cache retention cleanup policy",
+  );
+  invariant(
+    retentionSyncedEvent?.details?.deletedPaths?.some((deletedPath) =>
+      deletedPath.endsWith(scenario.outputFileName),
+    ),
     "synced recorder-cache cleanup did not include rendered cache path",
   );
   await assertLocalRecorderCacheDeleted(scenario.outputFileName);
@@ -695,7 +781,9 @@ function jobScenarioDeps(overrides) {
   return { ...overrides, createObserved, nodeId, repoRoot, setActiveScenario, smokeRoot, token };
 }
 
-function setActiveScenario(scenario) { activeScenario = scenario; }
+function setActiveScenario(scenario) {
+  activeScenario = scenario;
+}
 
 function createObserved() {
   return {
@@ -725,271 +813,4 @@ function createObserved() {
     nodeHeartbeatFailures: 0,
     nodeHeartbeats: 0,
   };
-}
-
-async function handleControllerRequest(request, response) {
-  const url = new URL(request.url ?? "/", "http://127.0.0.1");
-  const context = activeScenario;
-
-  if (request.headers.authorization !== `Bearer ${token}`) {
-    return json(response, 401, { error: "invalid token" });
-  }
-
-  if (!context) {
-    await readBody(request);
-    return json(response, 503, { error: "no active smoke scenario" });
-  }
-
-  const { observed, scenario } = context;
-  const jobs = context.jobs ?? [context.job];
-
-  if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/config`) {
-    observed.configReads += 1;
-    if (scenario.nodeConfigFailuresRemaining > 0) {
-      scenario.nodeConfigFailuresRemaining -= 1;
-      observed.nodeConfigFailures += 1;
-      return json(response, 503, { error: "simulated node config failure" });
-    }
-
-    return json(response, 200, {
-      data: {
-        recordingCapacity: {
-          maxConcurrentRecordings: scenario.concurrent ? 2 : 1,
-        },
-        recorderCachePolicies: recorderCachePoliciesForScenario(scenario),
-      },
-    });
-  }
-
-  if (request.method === "GET" && url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/next`) {
-    observed.nextReads += 1;
-    const job = nextQueuedJob(jobs);
-
-    return job ? json(response, 200, { data: job }) : empty(response);
-  }
-
-  if (
-    request.method === "POST" &&
-    url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/claim-next`
-  ) {
-    observed.claimNextReads += 1;
-    if (scenario.claimNextFailuresRemaining > 0) {
-      scenario.claimNextFailuresRemaining -= 1;
-      observed.claimNextReadFailures += 1;
-      return json(response, 503, { error: "simulated claim-next failure" });
-    }
-
-    const job = nextQueuedJob(jobs);
-
-    if (!job) {
-      return empty(response);
-    }
-
-    observed.claims += 1;
-    job.status = "running";
-    rememberRunningJobs(observed, jobs);
-    return json(response, 200, { data: job });
-  }
-
-  if (
-    request.method === "GET" &&
-    url.pathname === `/api/v1/nodes/${nodeId}/channel-map-assignments`
-  ) {
-    observed.channelMapReads += 1;
-    if (scenario.channelMapFailuresRemaining-- > 0) { observed.channelMapFailures += 1; return json(response, 503, { error: "simulated channel-map failure" }); }
-    return json(response, 200, { data: scenario.channelMapAssignments ?? [] });
-  }
-
-  if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/heartbeat`) {
-    await readBody(request);
-    if (scenario.nodeHeartbeatFailuresRemaining > 0) {
-      scenario.nodeHeartbeatFailuresRemaining -= 1;
-      observed.nodeHeartbeatFailures += 1;
-      return json(response, 503, { error: "simulated node heartbeat failure" });
-    }
-
-    observed.nodeHeartbeats += 1;
-    return json(response, 202, { data: { ok: true } });
-  }
-
-  if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/meter-frame`) {
-    await readBody(request);
-    if (scenario.meterFrameFailuresRemaining > 0) { scenario.meterFrameFailuresRemaining -= 1; observed.meterFrameFailures = (observed.meterFrameFailures ?? 0) + 1; return json(response, 503, { error: "simulated meter-frame failure" }); }
-    observed.meterFrames += 1;
-    return json(response, 202, { data: { ok: true } });
-  }
-
-  if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/listen/chunk`) {
-    const body = await readBody(request);
-    if (scenario.monitorChunkFailuresRemaining > 0) {
-      scenario.monitorChunkFailuresRemaining -= 1;
-      observed.monitorChunkFailures += 1;
-      return json(response, 503, { error: "simulated monitor chunk failure" });
-    }
-
-    observed.monitorChunks.push({
-      capturedAt: request.headers["x-rakkr-captured-at"],
-      contentType: request.headers["content-type"],
-      durationMs: request.headers["x-rakkr-duration-ms"],
-      size: body.byteLength,
-    });
-    return json(response, 202, { data: { ok: true } });
-  }
-
-  const claimMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/claim$/);
-
-  if (request.method === "POST" && claimMatch) {
-    const job = jobById(jobs, claimMatch[1]);
-
-    if (!job) {
-      await readBody(request);
-      return json(response, 404, { error: "job not found" });
-    }
-
-    observed.claims += 1;
-    job.status = "running";
-    rememberRunningJobs(observed, jobs);
-    return json(response, 200, { data: job });
-  }
-
-  const heartbeatMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/heartbeat$/);
-
-  if (request.method === "POST" && heartbeatMatch) {
-    const job = jobById(jobs, heartbeatMatch[1]);
-
-    if (!job) {
-      await readBody(request);
-      return json(response, 404, { error: "job not found" });
-    }
-
-    observed.heartbeats += 1;
-    if (scenario.jobHeartbeatFailuresRemaining > 0) {
-      scenario.jobHeartbeatFailuresRemaining -= 1;
-      observed.jobHeartbeatFailures += 1;
-      return json(response, 503, { error: "simulated job heartbeat failure" });
-    }
-
-    return json(response, 200, { data: job });
-  }
-
-  const readMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)$/);
-
-  if (request.method === "GET" && readMatch) {
-    const job = jobById(jobs, readMatch[1]);
-
-    if (!job) {
-      return json(response, 404, { error: "job not found" });
-    }
-
-    observed.jobStatusReads += 1;
-    if (scenario.jobStatusFailuresRemaining > 0) {
-      scenario.jobStatusFailuresRemaining -= 1;
-      observed.jobStatusReadFailures += 1;
-      return json(response, 503, { error: "simulated job status failure" });
-    }
-
-    if (scenario.controllerStopRequested) {
-      job.status = "stop_requested";
-    }
-    if (scenario.controllerTerminalStatus) {
-      job.status = scenario.controllerTerminalStatus;
-      job.failureReason = scenario.controllerTerminalReason;
-    }
-
-    return json(response, 200, { data: job });
-  }
-
-  const cancelledMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/cancelled$/);
-
-  if (request.method === "POST" && cancelledMatch) {
-    const job = jobById(jobs, cancelledMatch[1]);
-
-    if (!job) {
-      await readBody(request);
-      return json(response, 404, { error: "job not found" });
-    }
-
-    observed.cancellations += 1;
-    observed.cancelReason = request.headers["x-rakkr-reason"];
-    job.failureReason = observed.cancelReason;
-    job.status = "cancelled";
-    return json(response, 200, { data: job });
-  }
-
-  const failedMatch = url.pathname.match(/^\/api\/v1\/recording-jobs\/([^/]+)\/failed$/);
-
-  if (request.method === "POST" && failedMatch) {
-    const job = jobById(jobs, failedMatch[1]);
-
-    if (!job) {
-      await readBody(request);
-      return json(response, 404, { error: "job not found" });
-    }
-
-    observed.failures += 1;
-    observed.failureReason = request.headers["x-rakkr-reason"];
-    job.failureReason = observed.failureReason;
-    job.status = "failed";
-    return json(response, 200, { data: job });
-  }
-
-  if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/health-events`) {
-    const event = JSON.parse((await readBody(request)).toString("utf8"));
-    observed.healthEvents.push(event);
-    return json(response, 201, { data: { id: `health_${observed.healthEvents.length}` } });
-  }
-
-  const cacheMatch = url.pathname.match(/^\/api\/v1\/recordings\/([^/]+)\/cache-file$/);
-
-  if (request.method === "PUT" && cacheMatch) {
-    const job = jobByRecordingId(jobs, cacheMatch[1]);
-
-    if (!job) {
-      await readBody(request);
-      return json(response, 404, { error: "recording job not found" });
-    }
-
-    const body = await readBody(request);
-
-    const upload = {
-      contentType: request.headers["content-type"],
-      durationSeconds: request.headers["x-rakkr-duration-seconds"],
-      fileName: request.headers["x-rakkr-file-name"],
-      jobId: request.headers["x-rakkr-recording-job-id"],
-      recordingId: job.recordingId,
-      size: body.byteLength,
-    };
-    observed.cacheUpload = upload;
-    observed.cacheUploads.push(upload);
-
-    if (scenario.cacheUploadFails) {
-      return json(response, 503, { error: "simulated cache upload failure" });
-    }
-
-    job.status = "completed";
-
-    return json(response, 201, { data: { ok: true } });
-  }
-
-  await readBody(request);
-  return json(response, 404, { error: `unexpected route ${request.method} ${url.pathname}` });
-}
-
-function nextQueuedJob(jobs) {
-  return jobs.find((job) => job.status === "queued");
-}
-
-function jobById(jobs, jobId) {
-  return jobs.find((job) => job.id === jobId);
-}
-
-function jobByRecordingId(jobs, recordingId) {
-  return jobs.find((job) => job.recordingId === recordingId);
-}
-
-function rememberRunningJobs(observed, jobs) {
-  observed.maxRunningJobs = Math.max(
-    observed.maxRunningJobs,
-    jobs.filter((job) => job.status === "running").length,
-  );
 }

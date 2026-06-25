@@ -1,7 +1,8 @@
 use std::fmt;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -208,6 +209,7 @@ pub fn spawn_capture_plan(plan: &CapturePlan) -> anyhow::Result<CaptureChild> {
     let args = capture_command_args(plan, &output_text)?;
     let child = Command::new(&plan.command)
         .args(&args)
+        .stderr(Stdio::piped())
         .spawn()
         .with_context(|| format!("run capture command {}", plan.command))?;
 
@@ -262,10 +264,7 @@ impl CaptureChild {
         };
 
         if !status.success() {
-            anyhow::bail!(
-                "capture command {} failed with status {status}",
-                self.command
-            );
+            anyhow::bail!("{}", self.failure_message(status));
         }
 
         verify_capture_output(&self.output_path, self.min_output_bytes)?;
@@ -297,15 +296,38 @@ impl CaptureChild {
             .with_context(|| format!("wait for capture command {}", self.command))?;
 
         if !status.success() {
-            anyhow::bail!(
-                "capture command {} failed with status {status}",
-                self.command
-            );
+            anyhow::bail!("{}", self.failure_message(status));
         }
 
         verify_capture_output(&self.output_path, self.min_output_bytes)?;
 
         Ok(self.output_path)
+    }
+
+    fn failure_message(&mut self, status: ExitStatus) -> String {
+        let stderr = self.capture_stderr();
+
+        if stderr.is_empty() {
+            return format!(
+                "capture command {} failed with status {status}",
+                self.command
+            );
+        }
+
+        format!(
+            "capture command {} failed with status {status}: {stderr}",
+            self.command
+        )
+    }
+
+    fn capture_stderr(&mut self) -> String {
+        let Some(mut stderr) = self.child.stderr.take() else {
+            return String::new();
+        };
+        let mut output = String::new();
+        let _ = stderr.read_to_string(&mut output);
+
+        output.trim().to_string()
     }
 }
 

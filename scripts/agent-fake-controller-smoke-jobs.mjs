@@ -215,6 +215,7 @@ export async function runControllerTerminalStatusScenarios({
 
 export async function runCaptureFailureScenarios({
   address,
+  deviceLostCaptureCommand,
   failingCaptureCommand,
   missingCaptureCommand,
   renderCommand,
@@ -245,6 +246,19 @@ export async function runCaptureFailureScenarios({
       name: "capture-failure",
       outputFileName: "rec_fake_controller_capture_failure.mp3",
       recordingId: "rec_fake_controller_capture_failure",
+    },
+  });
+  await runScenario({
+    address,
+    captureCommand: deviceLostCaptureCommand,
+    renderCommand,
+    scenario: {
+      expectCaptureDeviceLost: true,
+      expectSuccess: false,
+      jobId: "job_fake_controller_capture_device_lost",
+      name: "capture-device-lost",
+      outputFileName: "rec_fake_controller_capture_device_lost.mp3",
+      recordingId: "rec_fake_controller_capture_device_lost",
     },
   });
   await runScenario({
