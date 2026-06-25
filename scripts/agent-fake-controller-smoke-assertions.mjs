@@ -4,6 +4,9 @@ export function assertStalledCaptureScenario({ healthLogEvents, job, observed, s
   const stalledLocalEvent = healthLogEvents.find(
     (event) => event.type === "agent.recording_job.capture_output_stalled",
   );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.capture_output_stalled",
+  );
 
   invariant(job.status === "failed", "fake controller did not mark stalled capture job failed");
   invariant(observed.failures === 1, "agent did not mark stalled capture job failed");
@@ -21,8 +24,31 @@ export function assertStalledCaptureScenario({ healthLogEvents, job, observed, s
   invariant(stalledLocalEvent, "agent local health log did not include capture output stall");
   invariant(stalledLocalEvent.severity === "critical", "stalled capture was not critical");
   invariant(
-    observed.healthEvents.some((event) => event.type === stalledLocalEvent.type),
-    "agent did not sync capture output stall health event",
+    stalledLocalEvent.details?.growthGraceSeconds === 0,
+    "stalled capture did not include the configured growth grace",
+  );
+  invariant(
+    stalledLocalEvent.details?.stalledSeconds === scenario.captureStalledSeconds,
+    "stalled capture did not include the configured stalled threshold",
+  );
+  invariant(
+    Number.isFinite(stalledLocalEvent.details?.growthAgeSeconds) &&
+      stalledLocalEvent.details.growthAgeSeconds >= scenario.captureStalledSeconds,
+    "stalled capture did not include finite growth age evidence",
+  );
+  invariant(
+    Number.isFinite(stalledLocalEvent.details?.lastGrowthSecondsAgo) &&
+      stalledLocalEvent.details.lastGrowthSecondsAgo >= scenario.captureStalledSeconds,
+    "stalled capture did not include finite last-growth evidence",
+  );
+  invariant(
+    stalledLocalEvent.details?.sizeBytes > 0,
+    "stalled capture did not include observed output size",
+  );
+  invariant(syncedEvent, "agent did not sync capture output stall health event");
+  invariant(
+    syncedEvent.details?.lastGrowthSecondsAgo === stalledLocalEvent.details.lastGrowthSecondsAgo,
+    "synced stalled capture health event did not preserve last-growth evidence",
   );
 }
 

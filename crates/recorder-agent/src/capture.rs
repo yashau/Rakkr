@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -253,7 +254,7 @@ impl CaptureChild {
         Ok(Some(self.output_path.clone()))
     }
 
-    pub fn check_growth(&mut self) -> anyhow::Result<CaptureGrowthSnapshot> {
+    pub fn check_growth(&mut self) -> Result<CaptureGrowthSnapshot, CaptureGrowthError> {
         let size_bytes = fs::metadata(&self.output_path)
             .ok()
             .map(|metadata| metadata.len());
@@ -289,12 +290,38 @@ impl CaptureChild {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptureGrowthSnapshot {
     pub age_seconds: u64,
     pub last_growth_seconds_ago: u64,
     pub size_bytes: Option<u64>,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CaptureGrowthError {
+    snapshot: CaptureGrowthSnapshot,
+}
+
+impl CaptureGrowthError {
+    pub fn snapshot(&self) -> &CaptureGrowthSnapshot {
+        &self.snapshot
+    }
+}
+
+impl fmt::Display for CaptureGrowthError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "capture output stalled: size={:?} age={}s unchanged={}s",
+            self.snapshot.size_bytes,
+            self.snapshot.age_seconds,
+            self.snapshot.last_growth_seconds_ago
+        )
+    }
+}
+
+impl std::error::Error for CaptureGrowthError {}
 
 #[derive(Debug)]
 struct CaptureGrowthMonitor {
@@ -320,7 +347,7 @@ impl CaptureGrowthMonitor {
         &mut self,
         size_bytes: Option<u64>,
         now: Instant,
-    ) -> anyhow::Result<CaptureGrowthSnapshot> {
+    ) -> Result<CaptureGrowthSnapshot, CaptureGrowthError> {
         if let Some(size) = size_bytes
             && size > self.last_size_bytes.unwrap_or(0)
         {
@@ -341,12 +368,7 @@ impl CaptureGrowthMonitor {
         }
 
         if last_growth_age >= self.stalled_period {
-            anyhow::bail!(
-                "capture output stalled: size={:?} age={}s unchanged={}s",
-                snapshot.size_bytes,
-                snapshot.age_seconds,
-                snapshot.last_growth_seconds_ago
-            );
+            return Err(CaptureGrowthError { snapshot });
         }
 
         Ok(snapshot)
@@ -691,5 +713,13 @@ mod tests {
             .expect_err("missing output should stall");
 
         assert!(error.to_string().contains("capture output stalled"));
+        assert_eq!(
+            error.snapshot(),
+            &CaptureGrowthSnapshot {
+                age_seconds: 16,
+                last_growth_seconds_ago: 16,
+                size_bytes: None,
+            },
+        );
     }
 }
