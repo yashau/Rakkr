@@ -29,6 +29,13 @@ console.log(${JSON.stringify(output)});
   return fakeBin;
 }
 
+export async function writeFakeLoadavgFile(directory) {
+  const loadavgPath = path.join(directory, "fake-loadavg");
+  await writeFile(loadavgPath, "12.50 0.42 0.10 1/200 1234\n");
+
+  return loadavgPath;
+}
+
 export async function writeFakeCaptureCommand(directory) {
   return writeFakeCaptureCommandScript(directory, "fake-capture", false);
 }

@@ -251,6 +251,13 @@ pub struct AgentConfig {
         default_value_t = 4.0
     )]
     pub system_health_load_critical_per_core: f32,
+
+    #[arg(
+        long,
+        env = "RAKKR_SYSTEM_HEALTH_LOADAVG_PATH",
+        default_value = "/proc/loadavg"
+    )]
+    pub system_health_loadavg_path: PathBuf,
 }
 
 impl AgentConfig {
@@ -382,5 +389,20 @@ mod tests {
             Some("--write-output {output}")
         );
         assert_eq!(config.meter_args_template.as_deref(), Some("--raw -"));
+    }
+
+    #[test]
+    fn accepts_system_health_loadavg_path() {
+        let config = AgentConfig::try_parse_from([
+            "rakkr-recorder-agent",
+            "--system-health-loadavg-path",
+            "/run/rakkr/loadavg",
+        ])
+        .expect("system health loadavg path should parse");
+
+        assert_eq!(
+            config.system_health_loadavg_path.as_path(),
+            std::path::Path::new("/run/rakkr/loadavg")
+        );
     }
 }

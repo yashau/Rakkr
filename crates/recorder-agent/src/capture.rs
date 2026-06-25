@@ -523,6 +523,7 @@ mod tests {
             system_health_enabled: true,
             system_health_load_critical_per_core: 4.0,
             system_health_load_warning_per_core: 2.0,
+            system_health_loadavg_path: PathBuf::from("/proc/loadavg"),
         }
     }
 

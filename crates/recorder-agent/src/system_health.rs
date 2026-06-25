@@ -83,7 +83,7 @@ pub fn collect_system_health_events(
         );
     }
 
-    if let Some(load_average) = load_average_one_minute() {
+    if let Some(load_average) = load_average_one_minute(&config.system_health_loadavg_path) {
         let cores = available_cores();
         let load_per_core = load_average / cores;
         let level = pressure_level(
@@ -225,8 +225,8 @@ fn parse_df_disk_usage(input: &str) -> Option<DiskUsage> {
     })
 }
 
-fn load_average_one_minute() -> Option<f32> {
-    let content = fs::read_to_string("/proc/loadavg").ok()?;
+fn load_average_one_minute(path: &Path) -> Option<f32> {
+    let content = fs::read_to_string(path).ok()?;
 
     parse_load_average_one_minute(&content)
 }
@@ -337,6 +337,7 @@ Filesystem     1024-blocks    Used Available Capacity Mounted on
         config.system_health_disk_critical_percent = 102.0;
         config.system_health_load_warning_per_core = 1_000.0;
         config.system_health_load_critical_per_core = 2_000.0;
+        config.system_health_loadavg_path = Path::new("/missing-loadavg").to_path_buf();
         let mut state = SystemHealthState::default();
 
         let mut unavailable = Vec::new();

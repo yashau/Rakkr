@@ -10,6 +10,7 @@ import {
   writeFakeDfCommand,
   writeFakeDeviceUnavailableMeterCommand,
   writeFakeFailingRenderCommand,
+  writeFakeLoadavgFile,
   writeFakeRecoveringMeterCommand,
   writeFakeRenderCommand,
   writeFakeStalledCaptureCommand,
@@ -109,6 +110,7 @@ try {
   const recoveringMeterCommand = await writeFakeRecoveringMeterCommand(smokeRoot);
   const xrunMeterCommand = await writeFakeXrunMeterCommand(smokeRoot);
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
+  const fakeLoadavgPath = await writeFakeLoadavgFile(smokeRoot);
   const failingCaptureCommand = await writeFakeFailingCaptureCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
@@ -192,7 +194,7 @@ try {
   await runRecorderCacheTrackFailureScenario({ address, captureCommand, deferredSweepRetention, renderCommand, runScenario, smokeRoot });
   await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
   await runSystemHealthScenario(
-    healthScenarioDeps({ address, captureCommand, fakeDfPath, renderCommand }),
+    healthScenarioDeps({ address, captureCommand, fakeDfPath, fakeLoadavgPath, renderCommand }),
   );
   await runMeterXrunScenario(healthScenarioDeps({ address, renderCommand, xrunMeterCommand }));
   await runMeterDeviceUnavailableScenario(

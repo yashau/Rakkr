@@ -7,6 +7,7 @@ export async function runSystemHealthScenario({
   captureCommand,
   createObserved,
   fakeDfPath,
+  fakeLoadavgPath,
   renderCommand,
   setActiveScenario,
   smokeRoot,
@@ -26,7 +27,16 @@ export async function runSystemHealthScenario({
   const child = spawnDaemonAgent({
     address,
     captureCommand,
-    extraAgentArgs: ["--system-health-df-command", fakeDfCommandPath(fakeDfPath)],
+    extraAgentArgs: [
+      "--system-health-df-command",
+      fakeDfCommandPath(fakeDfPath),
+      "--system-health-load-warning-per-core",
+      "0.01",
+      "--system-health-load-critical-per-core",
+      "1000",
+      "--system-health-loadavg-path",
+      fakeLoadavgPath,
+    ],
     extraEnv: {
       PATH: `${fakeDfPath}${path.delimiter}${process.env.PATH ?? ""}`,
     },
@@ -39,6 +49,7 @@ export async function runSystemHealthScenario({
     await waitFor(
       () =>
         observed.healthEvents.some((event) => event.type === "agent.system.disk_pressure") &&
+        observed.healthEvents.some((event) => event.type === "agent.system.cpu_pressure") &&
         observed.nodeHeartbeats >= 1 &&
         observed.meterFrames >= 1,
       20_000,
@@ -53,14 +64,30 @@ export async function runSystemHealthScenario({
   const syncedEvent = observed.healthEvents.find(
     (event) => event.type === "agent.system.disk_pressure",
   );
+  const cpuEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.system.cpu_pressure",
+  );
   const localEvent = healthLogEvents.find((event) => event.type === "agent.system.disk_pressure");
+  const localCpuEvent = healthLogEvents.find(
+    (event) => event.type === "agent.system.cpu_pressure",
+  );
 
   invariant(syncedEvent?.severity === "warning", "system health disk event was not warning");
   invariant(
     syncedEvent?.details?.usedPercent === 90,
     "system health disk event did not use fake df pressure",
   );
+  invariant(cpuEvent?.severity === "warning", "system health CPU event was not warning");
+  invariant(
+    cpuEvent?.details?.loadAverageOneMinute === 12.5,
+    "system health CPU event did not use fake loadavg pressure",
+  );
+  invariant(
+    cpuEvent?.details?.loadPerCore >= 0.1,
+    "system health CPU event did not preserve per-core pressure",
+  );
   invariant(localEvent, "system health disk pressure event was not written locally");
+  invariant(localCpuEvent, "system health CPU pressure event was not written locally");
   setActiveScenario(undefined);
 }
 
