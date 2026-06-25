@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   writeFakeFailingCaptureCommand,
   writeFakeCaptureCommand,
+  writeFakeCaptureFailedMeterCommand,
   writeFakeDfCommand,
   writeFakeDeviceUnavailableMeterCommand,
   writeFakeFailingRenderCommand,
@@ -35,16 +36,7 @@ import {
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
 import { runCaptureFailureScenarios, runChannelMapAppliedScenario, runChannelMapLookupFailureScenario, runClaimNextFailureScenario, runControlPlaneFailureScenario, runControllerTerminalStatusScenarios, runRecorderCacheTrackFailureScenario } from "./agent-fake-controller-smoke-jobs.mjs";
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
-import {
-  runMeterDeviceUnavailableScenario,
-  runMeterFrameSyncRecoveryScenario,
-  runMeterRecoveryScenario,
-  runMeterXrunScenario,
-  runMonitorChunkRecoveryScenario,
-  runNodeHeartbeatRecoveryScenario,
-  runNodeConfigRecoveryScenario,
-  runSystemHealthScenario,
-} from "./agent-fake-controller-smoke-health.mjs";
+import { runMeterCaptureFailedScenario, runMeterDeviceUnavailableScenario, runMeterFrameSyncRecoveryScenario, runMeterRecoveryScenario, runMeterXrunScenario, runMonitorChunkRecoveryScenario, runNodeHeartbeatRecoveryScenario, runNodeConfigRecoveryScenario, runSystemHealthScenario } from "./agent-fake-controller-smoke-health.mjs";
 import {
   empty,
   fileExists,
@@ -110,6 +102,7 @@ try {
   const deviceUnavailableMeterCommand = await writeFakeDeviceUnavailableMeterCommand(smokeRoot);
   const recoveringMeterCommand = await writeFakeRecoveringMeterCommand(smokeRoot);
   const xrunMeterCommand = await writeFakeXrunMeterCommand(smokeRoot);
+  const captureFailedMeterCommand = await writeFakeCaptureFailedMeterCommand(smokeRoot);
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
   const systemHealthFixtures = await writeRecoveringSystemHealthFixtures(smokeRoot);
   const failingCaptureCommand = await writeFakeFailingCaptureCommand(smokeRoot);
@@ -197,6 +190,7 @@ try {
   await runSystemHealthScenario(healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }));
   await runMeterFrameSyncRecoveryScenario(healthScenarioDeps({ address, captureCommand, renderCommand }));
   await runMeterXrunScenario(healthScenarioDeps({ address, renderCommand, xrunMeterCommand }));
+  await runMeterCaptureFailedScenario(healthScenarioDeps({ address, captureFailedMeterCommand, renderCommand }));
   await runMeterDeviceUnavailableScenario(healthScenarioDeps({ address, deviceUnavailableMeterCommand, renderCommand }));
   await runMeterRecoveryScenario(
     healthScenarioDeps({ address, recoveringMeterCommand, renderCommand }),

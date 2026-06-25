@@ -314,6 +314,75 @@ export async function runMeterDeviceUnavailableScenario({
   setActiveScenario(undefined);
 }
 
+export async function runMeterCaptureFailedScenario({
+  address,
+  captureFailedMeterCommand,
+  createObserved,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "meter-capture-failed-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "meter-capture-failed-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: { expectSuccess: true, name: "meter-capture-failed" },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand: captureFailedMeterCommand,
+    extraAgentArgs: ["--meter-backend", "alsa"],
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.meter.capture_failed") &&
+        observed.meterFrames >= 1 &&
+        observed.monitorChunks.length >= 1,
+      20_000,
+      () =>
+        `meters=${observed.meterFrames} monitor=${observed.monitorChunks.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.meter.capture_failed",
+  );
+
+  invariant(syncedEvent?.severity === "warning", "meter capture failure was not warning");
+  invariant(
+    syncedEvent?.details?.classification === "capture_failed",
+    "meter capture failure did not preserve generic classification",
+  );
+  invariant(
+    syncedEvent?.details?.usingSyntheticFallback === true,
+    "meter capture failure did not report synthetic fallback",
+  );
+  invariant(
+    !observed.healthEvents.some((event) => event.type === "agent.meter.xrun"),
+    "generic meter capture failure was misclassified as xrun",
+  );
+  invariant(
+    !observed.healthEvents.some((event) => event.type === "agent.meter.device_unavailable"),
+    "generic meter capture failure was misclassified as device unavailable",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.meter.capture_failed"),
+    "meter capture failure event was not written locally",
+  );
+  setActiveScenario(undefined);
+}
+
 export async function runMeterRecoveryScenario({
   address,
   createObserved,

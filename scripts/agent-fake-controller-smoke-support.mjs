@@ -254,6 +254,28 @@ process.exit(1);
   return meterScript;
 }
 
+export async function writeFakeCaptureFailedMeterCommand(directory) {
+  const meterScript = path.join(directory, "fake-capture-failed-meter.mjs");
+  await writeFile(
+    meterScript,
+    `#!/usr/bin/env node
+console.error("simulated meter capture failure");
+process.exit(1);
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-capture-failed-meter.cmd");
+    await writeFile(commandPath, commandShim(meterScript));
+
+    return commandPath;
+  }
+
+  await chmod(meterScript, 0o755);
+
+  return meterScript;
+}
+
 export async function writeFakeRecoveringMeterCommand(directory) {
   const meterScript = path.join(directory, "fake-recovering-meter.mjs");
   const stateFile = path.join(directory, "fake-recovering-meter-state.txt");
