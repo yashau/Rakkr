@@ -609,7 +609,11 @@ function agentStateStatus(stateFile) {
     return undefined;
   }
 
-  return JSON.parse(readFileSync(stateFile, "utf8")).status;
+  try {
+    return JSON.parse(readFileSync(stateFile, "utf8")).status;
+  } catch {
+    return undefined;
+  }
 }
 
 async function writeAgentState(stateFile, state) {

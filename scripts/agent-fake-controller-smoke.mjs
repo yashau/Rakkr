@@ -52,6 +52,7 @@ import {
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runAudioBackendRecoveryScenario,
+  runClockSkewRecoveryScenario,
   runMeterCaptureFailedScenario,
   runMeterDeviceUnavailableScenario,
   runMeterFrameSyncRecoveryScenario,
@@ -248,6 +249,7 @@ try {
   await runSystemHealthScenario(
     healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }),
   );
+  await runClockSkewRecoveryScenario(healthScenarioDeps({ address, captureCommand, renderCommand }));
   await runAudioBackendRecoveryScenario(
     healthScenarioDeps({ address, captureCommand, ...audioInventoryFixtures, renderCommand }),
   );

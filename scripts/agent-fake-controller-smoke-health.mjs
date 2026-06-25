@@ -117,6 +117,88 @@ export async function runSystemHealthScenario({
   setActiveScenario(undefined);
 }
 
+export async function runClockSkewRecoveryScenario({
+  address,
+  captureCommand,
+  createObserved,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "clock-skew-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "clock-skew-recovery-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: {
+      expectSuccess: true,
+      name: "clock-skew-recovery",
+      nodeHeartbeatDateHeaders: [
+        () => new Date(Date.now() + 10_000).toUTCString(),
+        () => new Date().toUTCString(),
+      ],
+    },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.system.clock_skew") &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.system.clock_skew_recovered",
+        ) &&
+        observed.nodeHeartbeats >= 2,
+      20_000,
+      () =>
+        `heartbeats=${observed.nodeHeartbeats} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const skewEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.system.clock_skew",
+  );
+  const recoveredEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.system.clock_skew_recovered",
+  );
+  const localSkewEvent = healthLogEvents.find(
+    (event) => event.type === "agent.system.clock_skew",
+  );
+  const localRecoveredEvent = healthLogEvents.find(
+    (event) => event.type === "agent.system.clock_skew_recovered",
+  );
+
+  invariant(skewEvent?.severity === "warning", "clock skew event was not warning");
+  invariant(
+    skewEvent?.details?.absoluteSkewSeconds > 5,
+    "clock skew event did not preserve warning skew evidence",
+  );
+  invariant(
+    skewEvent?.details?.warningSeconds === 5,
+    "clock skew event did not include warning threshold",
+  );
+  invariant(recoveredEvent?.severity === "info", "clock skew recovery was not info");
+  invariant(
+    recoveredEvent?.details?.absoluteSkewSeconds <= 2,
+    "clock skew recovery did not preserve recovered skew evidence",
+  );
+  invariant(localSkewEvent, "clock skew event was not written locally");
+  invariant(localRecoveredEvent, "clock skew recovery event was not written locally");
+  setActiveScenario(undefined);
+}
+
 export async function runMeterXrunScenario({
   address,
   createObserved,

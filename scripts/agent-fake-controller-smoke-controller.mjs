@@ -94,6 +94,13 @@ export function createFakeControllerHandler({
       }
 
       observed.nodeHeartbeats += 1;
+      if (scenario.nodeHeartbeatDateHeaders?.length > 0) {
+        const index = Math.min(
+          observed.nodeHeartbeats - 1,
+          scenario.nodeHeartbeatDateHeaders.length - 1,
+        );
+        response.setHeader("date", scenario.nodeHeartbeatDateHeaders[index]());
+      }
       return json(response, 202, { data: { ok: true } });
     }
 
