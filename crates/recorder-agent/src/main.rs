@@ -213,7 +213,7 @@ async fn main() -> anyhow::Result<()> {
                                 Some(token),
                                 "agent.node_heartbeat.sync_recovered",
                                 "info",
-                                json!({ "nodeId": inventory.id }),
+                                inventory::heartbeat_health_details(&heartbeat, None),
                             )
                             .await
                             .context("append node heartbeat sync recovery event")?;
@@ -226,10 +226,7 @@ async fn main() -> anyhow::Result<()> {
                                 Some(token),
                                 "agent.node_heartbeat.sync_failed",
                                 "warning",
-                                json!({
-                                    "error": error.to_string(),
-                                    "nodeId": inventory.id,
-                                }),
+                                inventory::heartbeat_health_details(&heartbeat, Some(error.to_string())),
                             )
                             .await
                             .context("append node heartbeat sync failure event")?;
@@ -320,9 +317,7 @@ async fn main() -> anyhow::Result<()> {
                                     Some(token),
                                     "agent.node_config.sync_recovered",
                                     "info",
-                                    json!({
-                                        "nodeId": inventory.id,
-                                    }),
+                                    node_config.health_details(&inventory.id, None),
                                 )
                                 .await
                                 .context("append node config sync recovery event")?;
@@ -341,10 +336,10 @@ async fn main() -> anyhow::Result<()> {
                                 Some(token),
                                 "agent.node_config.sync_failed",
                                 "warning",
-                                json!({
-                                    "error": error.to_string(),
-                                    "nodeId": inventory.id,
-                                }),
+                                node_config::ControllerNodeConfig::failure_health_details(
+                                    &inventory.id,
+                                    error.to_string(),
+                                ),
                             )
                             .await
                             .context("append node config sync failure event")?;

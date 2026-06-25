@@ -54,6 +54,26 @@ impl ControllerNodeConfig {
 
         before != audio_default_signature(config)
     }
+
+    pub fn health_details(&self, node_id: &str, error: Option<String>) -> serde_json::Value {
+        serde_json::json!({
+            "audioDefaultsConfigured": self.audio_defaults.is_some(),
+            "error": error,
+            "maxConcurrentRecordings": self.max_concurrent_recordings(),
+            "nodeId": node_id,
+            "recorderCachePolicyCount": self.recorder_cache_policies.len(),
+        })
+    }
+
+    pub fn failure_health_details(node_id: &str, error: String) -> serde_json::Value {
+        serde_json::json!({
+            "audioDefaultsConfigured": null,
+            "error": error,
+            "maxConcurrentRecordings": null,
+            "nodeId": node_id,
+            "recorderCachePolicyCount": null,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]

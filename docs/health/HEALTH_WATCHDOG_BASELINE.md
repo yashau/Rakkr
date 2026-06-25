@@ -18,7 +18,7 @@ Status: Partial baseline checked.
 - Disk pressure sampling can use an explicit `df` command path for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
 - Agent system-health coverage exercises disk-pressure plus audio-backend unavailable/recovery detail transitions, and fake-controller smoke exercises stalled-capture structured growth evidence and render-failure command/output evidence without audio hardware.
-- Fake-controller smoke coverage exercises controller-synced node-heartbeat, listen-monitor chunk metadata failure and recovery, and node-config polling failure and recovery without audio hardware.
+- Fake-controller smoke coverage exercises controller-synced node-heartbeat, listen-monitor chunk metadata, and node-config polling failure/recovery evidence without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
 - A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields plus daemon health-log clipping, low-signal, and channel-correlation behavior.
 - A full-agent ALSA loopback job smoke records looped speech through `arecord`, uploads the captured WAV to a fake controller, and asserts controller-synced recorder-cache cleanup health without synthetic capture.

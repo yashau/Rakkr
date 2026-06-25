@@ -104,6 +104,22 @@ pub fn heartbeat_snapshot(inventory: &NodeInventory) -> NodeInventory {
     snapshot
 }
 
+pub fn heartbeat_health_details(
+    heartbeat: &NodeInventory,
+    error: Option<String>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "alias": heartbeat.alias.as_str(),
+        "audioBackends": heartbeat.runtime.audio_backends.clone(),
+        "error": error,
+        "hostname": heartbeat.hostname.as_str(),
+        "interfaceCount": heartbeat.interfaces.len(),
+        "lastSeenAt": heartbeat.last_seen_at.as_str(),
+        "nodeId": heartbeat.id.as_str(),
+        "status": heartbeat.status.as_str(),
+    })
+}
+
 fn discover_audio_interfaces() -> Vec<AudioInterfaceInventory> {
     let mut alsa_interfaces = discover_arecord_interfaces();
 

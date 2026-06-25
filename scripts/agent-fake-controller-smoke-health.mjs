@@ -397,7 +397,35 @@ export async function runNodeHeartbeatRecoveryScenario({
     String(failedEvent?.details?.error).includes("controller rejected node heartbeat with 503"),
     "node heartbeat sync failure did not preserve controller rejection",
   );
+  invariant(
+    failedEvent?.details?.nodeId === "node_fake_controller_smoke",
+    "node heartbeat sync failure did not preserve node id",
+  );
+  invariant(
+    failedEvent?.details?.alias === "Local Recorder Node",
+    "node heartbeat sync failure did not preserve node alias",
+  );
+  invariant(
+    failedEvent?.details?.status === "online",
+    "node heartbeat sync failure did not preserve node status",
+  );
+  invariant(
+    failedEvent?.details?.interfaceCount >= 1,
+    "node heartbeat sync failure did not preserve interface count",
+  );
+  invariant(
+    Array.isArray(failedEvent?.details?.audioBackends),
+    "node heartbeat sync failure did not preserve audio backends",
+  );
   invariant(recoveredEvent?.severity === "info", "node heartbeat sync recovery was not info");
+  invariant(
+    recoveredEvent?.details?.nodeId === failedEvent.details.nodeId,
+    "node heartbeat sync recovery did not preserve node id",
+  );
+  invariant(
+    recoveredEvent?.details?.interfaceCount >= 1,
+    "node heartbeat sync recovery did not preserve interface count",
+  );
   invariant(
     healthLogEvents.some((event) => event.type === "agent.node_heartbeat.sync_failed"),
     "node heartbeat sync failure event was not written locally",
@@ -469,7 +497,31 @@ export async function runNodeConfigRecoveryScenario({
     ),
     "node config sync failure did not preserve controller rejection",
   );
+  invariant(
+    failedEvent?.details?.nodeId === "node_fake_controller_smoke",
+    "node config sync failure did not preserve node id",
+  );
+  invariant(
+    failedEvent?.details?.maxConcurrentRecordings === null,
+    "node config sync failure should not invent capacity evidence",
+  );
   invariant(recoveredEvent?.severity === "info", "node config sync recovery was not info");
+  invariant(
+    recoveredEvent?.details?.nodeId === failedEvent.details.nodeId,
+    "node config sync recovery did not preserve node id",
+  );
+  invariant(
+    recoveredEvent?.details?.maxConcurrentRecordings === 1,
+    "node config sync recovery did not preserve capacity",
+  );
+  invariant(
+    recoveredEvent?.details?.recorderCachePolicyCount === 0,
+    "node config sync recovery did not preserve recorder-cache policy count",
+  );
+  invariant(
+    recoveredEvent?.details?.audioDefaultsConfigured === false,
+    "node config sync recovery did not preserve audio-default state",
+  );
   invariant(
     healthLogEvents.some((event) => event.type === "agent.node_config.sync_failed"),
     "node config sync failure event was not written locally",
