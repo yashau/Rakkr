@@ -48,9 +48,13 @@ fn meter_health_score_helpers_track_max_signal_values() {
         ],
         node_id: "node_1".to_string(),
     };
+    let quality = meter_quality_evidence(&frame);
 
     assert_eq!(max_rms_dbfs(&frame), Some(-62.0));
-    assert_eq!(max_speech_score(&frame), Some(0.47));
+    assert_eq!(quality.max_speech_score, Some(0.47));
+    assert_eq!(quality.max_noise_score, Some(0.12));
+    assert_eq!(quality.min_estimated_snr_db, Some(8.0));
+    assert_eq!(quality.min_intelligibility_score, Some(0.35));
 }
 
 #[tokio::test]
@@ -115,6 +119,17 @@ async fn meter_health_logs_low_signal_and_recovery() {
     assert!(contents.contains(r#""type":"agent.meter.low_signal_recovered""#));
     assert!(contents.contains(r#""lowSignalDbfs":-55.0"#));
     assert!(contents.contains(r#""maxRmsDbfs":-62.0"#));
+    let low_signal = contents
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("parse health event"))
+        .find(|event| event["type"] == "agent.meter.low_signal")
+        .expect("low-signal event");
+    assert_json_f32(&low_signal["details"]["maxSpeechScore"], 0.47);
+    assert_json_f32(
+        &low_signal["details"]["quality"]["maxBroadbandNoiseScore"],
+        0.02,
+    );
+    assert_json_f32(&low_signal["details"]["quality"]["minEstimatedSnrDb"], 8.0);
 }
 
 fn level_with_correlation(
@@ -175,9 +190,20 @@ fn level_with_signal(channel_index: u16, rms_dbfs: f32, speech_score: f32) -> Au
 fn temp_health_log_path(name: &str) -> std::path::PathBuf {
     static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let directory =
-        std::path::PathBuf::from("target").join(format!("rakkr-agent-main-test-{name}-{counter}"));
+    let process_id = std::process::id();
+    let directory = std::path::PathBuf::from("target").join(format!(
+        "rakkr-agent-main-test-{name}-{process_id}-{counter}"
+    ));
     std::fs::create_dir_all(&directory).expect("create temp health log directory");
 
     directory.join("health-events.jsonl")
+}
+
+fn assert_json_f32(value: &Value, expected: f64) {
+    let actual = value.as_f64().expect("json number");
+
+    assert!(
+        (actual - expected).abs() < 0.001,
+        "expected {expected}, got {actual}"
+    );
 }

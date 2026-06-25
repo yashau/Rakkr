@@ -24,8 +24,8 @@ use config::{AgentConfig, CaptureBackend, MeterBackend};
 use meter_command::MeterCaptureConfig;
 use serde_json::{Value, json};
 use telemetry::{
-    MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample, synthetic_meter_frame,
-    synthetic_meter_sample,
+    MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample, meter_quality_evidence,
+    synthetic_meter_frame, synthetic_meter_sample,
 };
 use tokio::task::JoinSet;
 use tracing::{info, warn};
@@ -740,6 +740,7 @@ async fn update_meter_health(
     low_signal_active: &mut bool,
 ) -> anyhow::Result<()> {
     let correlated_pairs = correlated_channel_pairs(frame);
+    let quality_evidence = meter_quality_evidence(frame);
     let clipping_channels = frame
         .levels
         .iter()
@@ -768,6 +769,7 @@ async fn update_meter_health(
                 "interfaceId": frame.interface_id,
                 "nodeId": frame.node_id,
                 "pairs": correlated_pairs,
+                "quality": quality_evidence,
             }),
         )
         .await
@@ -843,6 +845,7 @@ async fn update_meter_health(
                 "interfaceId": frame.interface_id,
                 "maxRmsDbfs": frame_max_rms_dbfs,
                 "nodeId": frame.node_id,
+                "quality": quality_evidence,
             }),
         )
         .await
@@ -859,6 +862,7 @@ async fn update_meter_health(
                 "interfaceId": frame.interface_id,
                 "maxRmsDbfs": frame_max_rms_dbfs,
                 "nodeId": frame.node_id,
+                "quality": quality_evidence,
             }),
         )
         .await
@@ -877,8 +881,9 @@ async fn update_meter_health(
                 "interfaceId": frame.interface_id,
                 "lowSignalDbfs": config.meter_low_signal_dbfs,
                 "maxRmsDbfs": frame_max_rms_dbfs,
-                "maxSpeechScore": max_speech_score(frame),
+                "maxSpeechScore": quality_evidence.max_speech_score,
                 "nodeId": frame.node_id,
+                "quality": quality_evidence,
             }),
         )
         .await
@@ -894,8 +899,9 @@ async fn update_meter_health(
                 "capturedAt": frame.captured_at,
                 "interfaceId": frame.interface_id,
                 "maxRmsDbfs": frame_max_rms_dbfs,
-                "maxSpeechScore": max_speech_score(frame),
+                "maxSpeechScore": quality_evidence.max_speech_score,
                 "nodeId": frame.node_id,
+                "quality": quality_evidence,
             }),
         )
         .await
@@ -949,14 +955,6 @@ fn max_rms_dbfs(frame: &MeterFrame) -> Option<f32> {
         .levels
         .iter()
         .map(|level| level.rms_dbfs)
-        .max_by(f32::total_cmp)
-}
-
-fn max_speech_score(frame: &MeterFrame) -> Option<f32> {
-    frame
-        .levels
-        .iter()
-        .map(|level| level.quality.speech_score)
         .max_by(f32::total_cmp)
 }
 

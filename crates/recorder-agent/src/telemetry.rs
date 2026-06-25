@@ -50,6 +50,18 @@ pub struct AudioQuality {
     pub zero_crossing_rate: f32,
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterQualityEvidence {
+    pub max_broadband_noise_score: Option<f32>,
+    pub max_hum_score: Option<f32>,
+    pub max_noise_score: Option<f32>,
+    pub max_speech_score: Option<f32>,
+    pub max_static_score: Option<f32>,
+    pub min_estimated_snr_db: Option<f32>,
+    pub min_intelligibility_score: Option<f32>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelCorrelation {
@@ -334,6 +346,34 @@ pub fn synthetic_meter_sample(
         monitor_duration_ms,
         monitor_wav,
     })
+}
+
+pub fn meter_quality_evidence(frame: &MeterFrame) -> MeterQualityEvidence {
+    MeterQualityEvidence {
+        max_broadband_noise_score: max_quality_by(frame, |quality| quality.broadband_noise_score),
+        max_hum_score: max_quality_by(frame, |quality| quality.hum_score),
+        max_noise_score: max_quality_by(frame, |quality| quality.noise_score),
+        max_speech_score: max_quality_by(frame, |quality| quality.speech_score),
+        max_static_score: max_quality_by(frame, |quality| quality.static_score),
+        min_estimated_snr_db: min_quality_by(frame, |quality| quality.estimated_snr_db),
+        min_intelligibility_score: min_quality_by(frame, |quality| quality.intelligibility_score),
+    }
+}
+
+fn max_quality_by(frame: &MeterFrame, value: impl Fn(&AudioQuality) -> f32) -> Option<f32> {
+    frame
+        .levels
+        .iter()
+        .map(|level| value(&level.quality))
+        .max_by(f32::total_cmp)
+}
+
+fn min_quality_by(frame: &MeterFrame, value: impl Fn(&AudioQuality) -> f32) -> Option<f32> {
+    frame
+        .levels
+        .iter()
+        .map(|level| value(&level.quality))
+        .min_by(f32::total_cmp)
 }
 
 #[cfg(test)]
