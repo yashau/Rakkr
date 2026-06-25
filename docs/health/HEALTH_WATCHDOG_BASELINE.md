@@ -17,7 +17,7 @@ Status: Partial baseline checked.
 - Upload runner terminal queue failures create controller health events and sync recording health.
 - Disk and CPU pressure sampling can use explicit `df` command and loadavg paths for constrained recorder environments and deterministic smoke coverage.
 - Fake-controller smoke coverage exercises controller-synced meter xrun, device-unavailable, and recovery health with synthetic fallback without audio hardware.
-- Agent system-health coverage exercises disk/CPU pressure plus audio-backend unavailable/recovery detail transitions, and fake-controller smoke exercises stalled-capture structured growth evidence and render-failure command/output evidence without audio hardware.
+- Agent system-health coverage exercises disk/CPU pressure and recovery plus audio-backend unavailable/recovery detail transitions, and fake-controller smoke exercises stalled-capture structured growth evidence and render-failure command/output evidence without audio hardware.
 - Fake-controller smoke coverage exercises controller-synced node-heartbeat, listen-monitor chunk metadata, and node-config polling failure/recovery evidence without audio hardware.
 - Synthetic PCM calibration fixtures assert voice, silence, estimated SNR, intelligibility, hum/static likelihood, broadband-noise likelihood, and independent-channel behavior for local quality scoring.
 - A clean multi-speaker speech fixture is checked in at `fixtures/audio/rakkr-golden-dialogue-clean.wav`; the ALSA loopback fixture smoke replays healthy delayed-stereo speech, clipped/noisy speech, low-volume speech, and duplicated-channel speech, then asserts current-agent speech/noise quality fields plus daemon health-log clipping, low-signal, and channel-correlation behavior.

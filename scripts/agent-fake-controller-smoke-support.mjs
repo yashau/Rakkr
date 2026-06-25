@@ -36,6 +36,49 @@ export async function writeFakeLoadavgFile(directory) {
   return loadavgPath;
 }
 
+export async function writeRecoveringSystemHealthFixtures(directory) {
+  const fakeBin = path.join(directory, "fake-system-health-bin");
+  const dfScript = path.join(fakeBin, "df");
+  const stateFile = path.join(directory, "fake-system-health-state.txt");
+  const loadavgPath = path.join(directory, "fake-system-health-loadavg");
+
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(loadavgPath, "12.50 0.42 0.10 1/200 1234\n");
+  await writeFile(
+    dfScript,
+    `#!/usr/bin/env node
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const stateFile = ${JSON.stringify(stateFile)};
+const loadavgPath = ${JSON.stringify(loadavgPath)};
+const previousRuns = existsSync(stateFile) ? Number(readFileSync(stateFile, "utf8")) : 0;
+const pressureActive = previousRuns === 0;
+writeFileSync(stateFile, String(previousRuns + 1));
+
+if (pressureActive) {
+  writeFileSync(loadavgPath, "12.50 0.42 0.10 1/200 1234\\n");
+  console.log("Filesystem 1024-blocks Used Available Capacity Mounted on");
+  console.log("rakkr-smoke 1000 900 100 90% /");
+} else {
+  writeFileSync(loadavgPath, "0.00 0.00 0.00 1/200 1234\\n");
+  console.log("Filesystem 1024-blocks Used Available Capacity Mounted on");
+  console.log("rakkr-smoke 1000 100 900 10% /");
+}
+`,
+  );
+
+  if (process.platform === "win32") {
+    await writeFile(
+      path.join(fakeBin, "df.cmd"),
+      `@echo off\r\n"${process.execPath}" "${dfScript}" %*\r\n`,
+    );
+  } else {
+    await chmod(dfScript, 0o755);
+  }
+
+  return { fakeDfPath: fakeBin, fakeLoadavgPath: loadavgPath };
+}
+
 export async function writeFakeCaptureCommand(directory) {
   return writeFakeCaptureCommandScript(directory, "fake-capture", false);
 }

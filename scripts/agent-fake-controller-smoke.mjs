@@ -10,7 +10,6 @@ import {
   writeFakeDfCommand,
   writeFakeDeviceUnavailableMeterCommand,
   writeFakeFailingRenderCommand,
-  writeFakeLoadavgFile,
   writeFakeRecoveringMeterCommand,
   writeFakeRenderCommand,
   writeFakeStalledCaptureCommand,
@@ -18,6 +17,7 @@ import {
   writeFakeTemplateMeterCommand,
   writeFakeTinyCaptureCommand,
   writeFakeXrunMeterCommand,
+  writeRecoveringSystemHealthFixtures,
 } from "./agent-fake-controller-smoke-support.mjs";
 import {
   assertCacheUploadFailureScenario,
@@ -110,7 +110,7 @@ try {
   const recoveringMeterCommand = await writeFakeRecoveringMeterCommand(smokeRoot);
   const xrunMeterCommand = await writeFakeXrunMeterCommand(smokeRoot);
   const fakeDfPath = await writeFakeDfCommand(smokeRoot);
-  const fakeLoadavgPath = await writeFakeLoadavgFile(smokeRoot);
+  const systemHealthFixtures = await writeRecoveringSystemHealthFixtures(smokeRoot);
   const failingCaptureCommand = await writeFakeFailingCaptureCommand(smokeRoot);
   const failingRenderCommand = await writeFakeFailingRenderCommand(smokeRoot);
   const renderCommand = await writeFakeRenderCommand(smokeRoot);
@@ -194,7 +194,7 @@ try {
   await runRecorderCacheTrackFailureScenario({ address, captureCommand, deferredSweepRetention, renderCommand, runScenario, smokeRoot });
   await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
   await runSystemHealthScenario(
-    healthScenarioDeps({ address, captureCommand, fakeDfPath, fakeLoadavgPath, renderCommand }),
+    healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }),
   );
   await runMeterXrunScenario(healthScenarioDeps({ address, renderCommand, xrunMeterCommand }));
   await runMeterDeviceUnavailableScenario(

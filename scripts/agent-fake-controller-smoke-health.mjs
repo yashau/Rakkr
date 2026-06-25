@@ -50,8 +50,10 @@ export async function runSystemHealthScenario({
       () =>
         observed.healthEvents.some((event) => event.type === "agent.system.disk_pressure") &&
         observed.healthEvents.some((event) => event.type === "agent.system.cpu_pressure") &&
-        observed.nodeHeartbeats >= 1 &&
-        observed.meterFrames >= 1,
+        observed.healthEvents.some((event) => event.type === "agent.system.disk_recovered") &&
+        observed.healthEvents.some((event) => event.type === "agent.system.cpu_recovered") &&
+        observed.nodeHeartbeats >= 2 &&
+        observed.meterFrames >= 2,
       20_000,
       () =>
         `heartbeats=${observed.nodeHeartbeats} meters=${observed.meterFrames} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
@@ -67,9 +69,21 @@ export async function runSystemHealthScenario({
   const cpuEvent = observed.healthEvents.find(
     (event) => event.type === "agent.system.cpu_pressure",
   );
+  const diskRecoveryEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.system.disk_recovered",
+  );
+  const cpuRecoveryEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.system.cpu_recovered",
+  );
   const localEvent = healthLogEvents.find((event) => event.type === "agent.system.disk_pressure");
   const localCpuEvent = healthLogEvents.find(
     (event) => event.type === "agent.system.cpu_pressure",
+  );
+  const localDiskRecoveryEvent = healthLogEvents.find(
+    (event) => event.type === "agent.system.disk_recovered",
+  );
+  const localCpuRecoveryEvent = healthLogEvents.find(
+    (event) => event.type === "agent.system.cpu_recovered",
   );
 
   invariant(syncedEvent?.severity === "warning", "system health disk event was not warning");
@@ -86,8 +100,20 @@ export async function runSystemHealthScenario({
     cpuEvent?.details?.loadPerCore >= 0.1,
     "system health CPU event did not preserve per-core pressure",
   );
+  invariant(diskRecoveryEvent?.severity === "info", "system health disk recovery was not info");
+  invariant(
+    diskRecoveryEvent?.details?.usedPercent === 10,
+    "system health disk recovery did not use fake df recovery",
+  );
+  invariant(cpuRecoveryEvent?.severity === "info", "system health CPU recovery was not info");
+  invariant(
+    cpuRecoveryEvent?.details?.loadAverageOneMinute === 0,
+    "system health CPU recovery did not use fake loadavg recovery",
+  );
   invariant(localEvent, "system health disk pressure event was not written locally");
   invariant(localCpuEvent, "system health CPU pressure event was not written locally");
+  invariant(localDiskRecoveryEvent, "system health disk recovery event was not written locally");
+  invariant(localCpuRecoveryEvent, "system health CPU recovery event was not written locally");
   setActiveScenario(undefined);
 }
 
