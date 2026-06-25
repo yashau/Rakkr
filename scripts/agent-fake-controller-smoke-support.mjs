@@ -310,7 +310,7 @@ writeFileSync(${JSON.stringify(stateFile)}, String(previousRuns + 1));
 mkdirSync(path.dirname(outputPath), { recursive: true });
 
 if (previousRuns === 0) {
-  writeFileSync(outputPath, Buffer.concat([Buffer.from("RIFF-device-lost"), Buffer.alloc(128)]));
+  writeFileSync(outputPath, wavFile(1, [0, 8000, -8000, 4000, -4000, 2000]));
   console.error("arecord: pcm_read: Input/output error");
   process.exit(32);
 }

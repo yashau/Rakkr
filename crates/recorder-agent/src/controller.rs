@@ -20,6 +20,7 @@ use crate::recording_job_recovery::{
     recover_runtime_capture_device_loss, refresh_capture_device_from_inventory,
     report_capture_command_failure, report_capture_disk_space_shortfall,
     report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
+    stitch_recovered_capture_segments,
 };
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
@@ -236,6 +237,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         };
     let mut control_plane_sync_failed = false;
     let mut capture_attempt = 1_u8;
+    let mut recovered_segments = Vec::new();
     let raw_output_path = loop {
         match capture.try_complete() {
             Ok(Some(output_path)) => {
@@ -312,7 +314,10 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                 {
                     Ok(Some(recovered_capture)) => {
                         capture_attempt += 1;
-                        capture = recovered_capture;
+                        if let Some(segment) = recovered_capture.segment {
+                            recovered_segments.push(segment);
+                        }
+                        capture = recovered_capture.capture;
                         write_job_state(config, &job, "running", None, None)?;
                         continue;
                     }
@@ -406,6 +411,15 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
 
         tokio::time::sleep(Duration::from_secs(config.job_poll_seconds.max(1))).await;
     };
+    let raw_output_path = stitch_recovered_capture_segments(
+        config,
+        token,
+        &job,
+        &capture_plan,
+        &recovered_segments,
+        &raw_output_path,
+    )
+    .await?;
     let output_path = match render_capture_output(&capture_plan, &raw_output_path) {
         Ok(rendered_path) => {
             if rendered_path != raw_output_path {

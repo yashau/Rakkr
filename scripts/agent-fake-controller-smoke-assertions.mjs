@@ -174,6 +174,12 @@ export function assertCaptureRuntimeRecoveryScenario({
   const restartedSyncedEvent = observed.healthEvents.find(
     (event) => event.type === "agent.recording_job.capture_runtime_restarted",
   );
+  const stitchedLocalEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.capture_segments_stitched",
+  );
+  const stitchedSyncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.capture_segments_stitched",
+  );
 
   invariant(job.status === "completed", "runtime capture recovery did not complete the job");
   invariant(observed.failures === 0, "runtime capture recovery should not mark the job failed");
@@ -208,6 +214,19 @@ export function assertCaptureRuntimeRecoveryScenario({
   invariant(restartedLocalEvent, "agent local health log did not include runtime restart");
   invariant(restartedLocalEvent.severity === "info", "runtime restart was not informational");
   invariant(restartedSyncedEvent, "agent did not sync runtime restart health event");
+  invariant(stitchedLocalEvent, "agent local health log did not include stitched segments");
+  invariant(stitchedLocalEvent.severity === "info", "stitched segments event was not info");
+  invariant(stitchedLocalEvent.details?.segmentCount === 1, "stitched event lost segment count");
+  invariant(stitchedLocalEvent.details?.gapCount === 1, "stitched event lost gap count");
+  invariant(
+    stitchedLocalEvent.details?.stitchedBytes > stitchedLocalEvent.details?.segmentBytes,
+    "stitched event did not include combined output byte evidence",
+  );
+  invariant(stitchedSyncedEvent, "agent did not sync stitched segment health event");
+  invariant(
+    stitchedSyncedEvent.details?.segmentCount === stitchedLocalEvent.details.segmentCount,
+    "synced stitched event did not preserve segment count",
+  );
   assertRenderedOutputScenario({ healthLogEvents, observed, renderedLocalEvent, scenario });
 }
 
