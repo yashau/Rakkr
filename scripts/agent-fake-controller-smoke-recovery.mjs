@@ -16,11 +16,121 @@ import {
 } from "./agent-fake-controller-smoke-utils.mjs";
 
 export async function runUploadBoundaryRecoveryScenarios(deps) {
+  await runPowerLossTinyPartialRecoveryScenario(deps);
   await runUploadPendingRecoveryScenario(deps);
   await runUploadedRecoveryScenario(deps);
   await runDiskPreflightRecoveryScenario(deps);
   await runRuntimeDiskRecoveryScenario(deps);
   await runCaptureDeviceRenumberingScenario(deps);
+}
+
+async function runPowerLossTinyPartialRecoveryScenario({
+  address,
+  agentContext,
+  captureCommand,
+  createJob,
+  createObserved,
+  nodeId,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+}) {
+  const stateFile = path.join(smokeRoot, "power-loss-tiny-partial-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "power-loss-tiny-partial-health-events.jsonl");
+  const outputPath = path.join(
+    smokeRoot,
+    "data",
+    "recordings",
+    "local-captures",
+    "rec_fake_controller_power_loss_tiny_partial.raw.wav",
+  );
+  const job = createJob({
+    expectSuccess: false,
+    jobId: "job_fake_controller_power_loss_tiny_partial",
+    name: "power-loss-tiny-partial",
+    outputFileName: "rec_fake_controller_power_loss_tiny_partial.mp3",
+    recordingId: "rec_fake_controller_power_loss_tiny_partial",
+  });
+  const observed = createObserved();
+  job.status = "running";
+
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, Buffer.from("tiny"));
+  await writeAgentState(stateFile, {
+    jobId: job.id,
+    nodeId,
+    outputPath,
+    reason: null,
+    recordingId: job.recordingId,
+    status: "running",
+  });
+  setActiveScenario({
+    job,
+    jobs: [job],
+    observed,
+    scenario: { expectSuccess: false, name: "power-loss-tiny-partial" },
+  });
+
+  const child = spawnDaemonAgent(
+    agentContext,
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  );
+
+  try {
+    await waitFor(
+      () =>
+        job.status === "failed" &&
+        observed.failures === 1 &&
+        !observed.cacheUpload &&
+        observed.healthEvents.some(
+          (event) => event.type === "agent.recording_job.recovered_after_restart",
+        ) &&
+        agentStateStatus(stateFile) === "failed",
+      30_000,
+      () =>
+        `job=${job.status} failures=${observed.failures} upload=${Boolean(observed.cacheUpload)} state=${agentStateStatus(stateFile) ?? "<missing>"} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const state = JSON.parse(await readFile(stateFile, "utf8"));
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const recoveryEvent = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.recovered_after_restart",
+  );
+  const syncedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.recovered_after_restart",
+  );
+
+  invariant(job.status === "failed", "power-loss tiny partial did not fail the job");
+  invariant(observed.failures === 1, "power-loss tiny partial did not mark controller failed");
+  invariant(!observed.cacheUpload, "power-loss tiny partial uploaded invalid cache");
+  invariant(state.status === "failed", "power-loss tiny partial state did not fail");
+  invariant(
+    state.reason === "agent_restarted_during_recording",
+    "power-loss tiny partial did not preserve restart failure reason",
+  );
+  invariant(recoveryEvent, "power-loss tiny partial did not log restart recovery");
+  invariant(
+    recoveryEvent.details?.outputBytes === 4,
+    "power-loss tiny partial did not preserve tiny output byte evidence",
+  );
+  invariant(
+    recoveryEvent.details?.previousStatus === "running",
+    "power-loss tiny partial did not preserve previous state",
+  );
+  invariant(
+    String(observed.failureReason).includes("agent_restarted_during_recording"),
+    "power-loss tiny partial did not send restart failure reason",
+  );
+  invariant(syncedEvent, "power-loss tiny partial did not sync restart recovery");
+  setActiveScenario(undefined);
 }
 
 async function runUploadPendingRecoveryScenario({

@@ -100,7 +100,7 @@ pub(crate) async fn reconcile_previous_recording_job(
         return Ok(());
     }
 
-    if let Some(output_path) = recoverable_restart_output_path(&state) {
+    if let Some(output_path) = recoverable_restart_output_path(config, &state) {
         let output_bytes = fs::metadata(&output_path)
             .ok()
             .map(|metadata| metadata.len());
@@ -263,7 +263,7 @@ pub(crate) async fn reconcile_previous_recording_job(
     )
 }
 
-fn recoverable_restart_output_path(state: &AgentJobState) -> Option<PathBuf> {
+fn recoverable_restart_output_path(config: &AgentConfig, state: &AgentJobState) -> Option<PathBuf> {
     if !matches!(
         state.status.as_str(),
         "running" | "captured" | "rendered" | "upload_pending"
@@ -273,10 +273,13 @@ fn recoverable_restart_output_path(state: &AgentJobState) -> Option<PathBuf> {
 
     let output_path = state.output_path.as_deref().map(PathBuf::from)?;
 
-    fs::metadata(&output_path)
-        .ok()
-        .filter(|metadata| metadata.len() > 0)
-        .map(|_| output_path)
+    let metadata = fs::metadata(&output_path).ok()?;
+
+    if metadata.len() < config.capture_min_output_bytes {
+        return None;
+    }
+
+    Some(output_path)
 }
 
 pub(crate) fn write_recoverable_job_state(
@@ -710,6 +713,7 @@ fn state_segment(segment: &RecoveredCaptureSegment) -> AgentRecoveredCaptureSegm
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     #[test]
     fn classifies_capture_device_unavailable_errors() {
@@ -740,5 +744,43 @@ mod tests {
         assert!(is_alsa_capture_device_ref("plughw:2,0"));
         assert!(!is_alsa_capture_device_ref("usb-1-1"));
         assert!(!is_alsa_capture_device_ref("jack:system:capture_1"));
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn restart_recovery_rejects_tiny_partial_capture() {
+        let root = PathBuf::from("target").join("rakkr-restart-tiny-partial");
+        let output_path = root.join("partial.wav");
+        fs::create_dir_all(&root).expect("create temp root");
+        fs::write(&output_path, b"tiny").expect("write tiny output");
+        let state_file = root.join("state.json");
+        let state_file_arg = state_file.to_string_lossy().into_owned();
+        let output_path_arg = output_path.to_string_lossy().into_owned();
+        let config = AgentConfig::parse_from([
+            "test",
+            "--agent-state-file",
+            state_file_arg.as_str(),
+            "--capture-min-output-bytes",
+            "44",
+        ]);
+        let state = AgentJobState {
+            job_id: "job_tiny_partial".to_string(),
+            node_id: "node_tiny_partial".to_string(),
+            output_path: Some(output_path_arg),
+            reason: None,
+            raw_output_path: None,
+            recording_id: "rec_tiny_partial".to_string(),
+            recorder_cache_retention: None,
+            recovered_segments: Vec::new(),
+            status: "running".to_string(),
+            updated_at: "2026-06-25T00:00:00Z".to_string(),
+            upload_content_type: None,
+            upload_duration_seconds: None,
+            upload_file_name: None,
+        };
+
+        assert!(recoverable_restart_output_path(&config, &state).is_none());
+
+        let _ = fs::remove_dir_all(root);
     }
 }
