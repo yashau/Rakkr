@@ -40,7 +40,7 @@ interface UploadQueueStore {
   fail(itemId: string, reason: string): Promise<UploadQueueItem | undefined>;
   list(): Promise<UploadQueueItem[]>;
   retry(itemId: string): Promise<UploadQueueItem | undefined>;
-  start(itemId: string): Promise<UploadQueueItem | undefined>;
+  start(itemId: string, now?: Date): Promise<UploadQueueItem | undefined>;
   succeed(itemId: string): Promise<UploadQueueItem | undefined>;
 }
 
@@ -99,7 +99,7 @@ class JsonUploadQueueStore implements UploadQueueStore {
       .sort((left, right) => left.nextAttemptAt.localeCompare(right.nextAttemptAt));
   }
 
-  async start(itemId: string) {
+  async start(itemId: string, now = new Date()) {
     const item = this.items.find(
       (candidate) => candidate.id === itemId && dueStatuses.has(candidate.status),
     );
@@ -108,13 +108,13 @@ class JsonUploadQueueStore implements UploadQueueStore {
       return undefined;
     }
 
-    const now = new Date().toISOString();
+    const nowIso = now.toISOString();
 
     item.attemptCount += 1;
     item.lastError = undefined;
-    item.nextAttemptAt = now;
+    item.nextAttemptAt = uploadLeaseExpiresAt(now);
     item.status = "retrying";
-    item.updatedAt = now;
+    item.updatedAt = nowIso;
     this.persist();
 
     return item;
@@ -301,9 +301,9 @@ class PostgresUploadQueueStore implements UploadQueueStore {
     }
   }
 
-  async start(itemId: string) {
+  async start(itemId: string, now = new Date()) {
     if (!this.dbAvailable) {
-      return this.fallback.start(itemId);
+      return this.fallback.start(itemId, now);
     }
 
     try {
@@ -313,14 +313,14 @@ class PostgresUploadQueueStore implements UploadQueueStore {
         return undefined;
       }
 
-      const now = new Date().toISOString();
+      const nowIso = now.toISOString();
       const updated = uploadQueueItemSchema.parse({
         ...item,
         attemptCount: item.attemptCount + 1,
         lastError: undefined,
-        nextAttemptAt: now,
+        nextAttemptAt: uploadLeaseExpiresAt(now),
         status: "retrying",
-        updatedAt: now,
+        updatedAt: nowIso,
       });
 
       await this.writeItem(updated);
@@ -328,7 +328,7 @@ class PostgresUploadQueueStore implements UploadQueueStore {
       return updated;
     } catch (error) {
       await this.failover("upload queue start unavailable; using JSON store", error);
-      return this.fallback.start(itemId);
+      return this.fallback.start(itemId, now);
     }
   }
 
@@ -485,8 +485,8 @@ export function listDueUploadQueueItems(now?: Date) {
   return uploadQueueStore.due(now);
 }
 
-export function startUploadQueueItem(itemId: string) {
-  return uploadQueueStore.start(itemId);
+export function startUploadQueueItem(itemId: string, now?: Date) {
+  return uploadQueueStore.start(itemId, now);
 }
 
 export function succeedUploadQueueItem(itemId: string) {
@@ -505,6 +505,20 @@ function retryAt(attemptCount: number) {
   const seconds = Math.min(3600, 60 * 2 ** Math.max(0, attemptCount - 1));
 
   return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function uploadLeaseExpiresAt(now: Date) {
+  return new Date(now.getTime() + uploadQueueLeaseSeconds() * 1_000).toISOString();
+}
+
+function uploadQueueLeaseSeconds() {
+  return positiveInteger(process.env.RAKKR_UPLOAD_QUEUE_LEASE_SECONDS, 15 * 60);
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function reusableUploadQueueItem(

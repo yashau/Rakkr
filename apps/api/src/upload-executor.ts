@@ -48,7 +48,7 @@ export async function runUploadQueueOnce(
   const items: UploadQueueRunItem[] = [];
 
   for (const dueItem of dueItems) {
-    const item = await startUploadQueueItem(dueItem.id);
+    const item = await startUploadQueueItem(dueItem.id, options.now);
 
     if (!item) {
       continue;

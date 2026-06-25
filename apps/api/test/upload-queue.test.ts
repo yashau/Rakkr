@@ -7,12 +7,15 @@ import type { RecordingSummary } from "@rakkr/shared";
 
 const queueRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-queue-"));
 process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS = "2";
+process.env.RAKKR_UPLOAD_QUEUE_LEASE_SECONDS = "300";
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(queueRoot, "queue.json");
 
 const {
   enqueueRecordingUpload,
+  listDueUploadQueueItems,
   listUploadQueueItems,
   retryUploadQueueItem,
+  startUploadQueueItem,
   succeedUploadQueueItem,
 } = await import("../src/upload-queue.js");
 
@@ -80,6 +83,25 @@ test("reuses succeeded upload queue item for the same cached artifact", async ()
       .length,
     2,
   );
+});
+
+test("leases started upload queue items until crash recovery makes them due again", async () => {
+  const startedAt = new Date("2026-06-18T12:00:00.000Z");
+  const beforeLeaseExpiry = new Date("2026-06-18T12:04:59.000Z");
+  const afterLeaseExpiry = new Date("2026-06-18T12:05:00.000Z");
+  const queued = await enqueueRecordingUpload(recording("rec_upload_lease_recovery"), {
+    target: "s3://future-bucket/lease-recovery",
+  });
+  const started = await startUploadQueueItem(queued.id, startedAt);
+  const deferred = await listDueUploadQueueItems(beforeLeaseExpiry);
+  const recovered = await listDueUploadQueueItems(afterLeaseExpiry);
+
+  assert.equal(started?.attemptCount, 1);
+  assert.equal(started?.lastError, undefined);
+  assert.equal(started?.nextAttemptAt, "2026-06-18T12:05:00.000Z");
+  assert.equal(started?.status, "retrying");
+  assert.ok(!deferred.some((item) => item.id === queued.id));
+  assert.ok(recovered.some((item) => item.id === queued.id));
 });
 
 function recording(id = "rec_upload_test"): RecordingSummary {

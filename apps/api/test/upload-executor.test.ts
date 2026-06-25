@@ -13,7 +13,8 @@ process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(uploadRoot, "queue.json");
 
 const { createUploadProviderStore } = await import("../src/upload-providers.js");
 const { runUploadQueueOnce } = await import("../src/upload-executor.js");
-const { enqueueRecordingUpload, listUploadQueueItems } = await import("../src/upload-queue.js");
+const { enqueueRecordingUpload, listUploadQueueItems, startUploadQueueItem } =
+  await import("../src/upload-queue.js");
 
 test.after(async () => {
   await rm(uploadRoot, { force: true, recursive: true });
@@ -33,6 +34,28 @@ test("runs due stub upload queue items to success", async () => {
   assert.equal(result.deferred, 0);
   assert.equal(item?.attemptCount, 1);
   assert.equal(item?.lastError, undefined);
+  assert.equal(item?.status, "succeeded");
+});
+
+test("skips in-flight upload items until their recovery lease expires", async () => {
+  const startedAt = new Date("2026-06-18T12:00:00.000Z");
+  const beforeLeaseExpiry = new Date("2026-06-18T12:14:59.000Z");
+  const afterLeaseExpiry = new Date("2026-06-18T12:15:00.000Z");
+  const queued = await enqueueRecordingUpload(recording("rec_stub_upload_lease"), {
+    provider: "stub",
+    target: "stub://queue-only",
+  });
+
+  await startUploadQueueItem(queued.id, startedAt);
+
+  const deferred = await runUploadQueueOnce({ limit: 5, now: beforeLeaseExpiry });
+  const recovered = await runUploadQueueOnce({ limit: 5, now: afterLeaseExpiry });
+  const item = (await listUploadQueueItems()).find((candidate) => candidate.id === queued.id);
+
+  assert.equal(deferred.attempted, 0);
+  assert.equal(recovered.attempted, 1);
+  assert.equal(recovered.succeeded, 1);
+  assert.equal(item?.attemptCount, 2);
   assert.equal(item?.status, "succeeded");
 });
 
