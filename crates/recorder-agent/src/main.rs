@@ -248,6 +248,8 @@ async fn main() -> anyhow::Result<()> {
                                 "info",
                                 json!({
                                     "capturedAt": frame.captured_at,
+                                    "channelCount": frame.levels.len(),
+                                    "interfaceId": frame.interface_id,
                                     "nodeId": inventory.id,
                                 }),
                             )
@@ -264,7 +266,9 @@ async fn main() -> anyhow::Result<()> {
                                 "warning",
                                 json!({
                                     "capturedAt": frame.captured_at,
+                                    "channelCount": frame.levels.len(),
                                     "error": error.to_string(),
+                                    "interfaceId": frame.interface_id,
                                     "nodeId": inventory.id,
                                 }),
                             )

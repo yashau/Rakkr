@@ -37,6 +37,7 @@ import { runCaptureFailureScenarios, runChannelMapAppliedScenario, runChannelMap
 import { runTemplateMeterScenario } from "./agent-fake-controller-smoke-devices.mjs";
 import {
   runMeterDeviceUnavailableScenario,
+  runMeterFrameSyncRecoveryScenario,
   runMeterRecoveryScenario,
   runMeterXrunScenario,
   runMonitorChunkRecoveryScenario,
@@ -193,13 +194,10 @@ try {
   await runDeferredSweepScenario({ address, captureCommand, renderCommand });
   await runRecorderCacheTrackFailureScenario({ address, captureCommand, deferredSweepRetention, renderCommand, runScenario, smokeRoot });
   await runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, renderCommand });
-  await runSystemHealthScenario(
-    healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }),
-  );
+  await runSystemHealthScenario(healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }));
+  await runMeterFrameSyncRecoveryScenario(healthScenarioDeps({ address, captureCommand, renderCommand }));
   await runMeterXrunScenario(healthScenarioDeps({ address, renderCommand, xrunMeterCommand }));
-  await runMeterDeviceUnavailableScenario(
-    healthScenarioDeps({ address, deviceUnavailableMeterCommand, renderCommand }),
-  );
+  await runMeterDeviceUnavailableScenario(healthScenarioDeps({ address, deviceUnavailableMeterCommand, renderCommand }));
   await runMeterRecoveryScenario(
     healthScenarioDeps({ address, recoveringMeterCommand, renderCommand }),
   );
@@ -819,6 +817,7 @@ async function handleControllerRequest(request, response) {
 
   if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/meter-frame`) {
     await readBody(request);
+    if (scenario.meterFrameFailuresRemaining > 0) { scenario.meterFrameFailuresRemaining -= 1; observed.meterFrameFailures = (observed.meterFrameFailures ?? 0) + 1; return json(response, 503, { error: "simulated meter-frame failure" }); }
     observed.meterFrames += 1;
     return json(response, 202, { data: { ok: true } });
   }

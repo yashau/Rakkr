@@ -168,6 +168,92 @@ export async function runMeterXrunScenario({
   setActiveScenario(undefined);
 }
 
+export async function runMeterFrameSyncRecoveryScenario({
+  address,
+  captureCommand,
+  createObserved,
+  renderCommand,
+  setActiveScenario,
+  smokeRoot,
+  spawnDaemonAgent,
+}) {
+  const stateFile = path.join(smokeRoot, "meter-frame-sync-recovery-agent-state.json");
+  const healthLogFile = path.join(smokeRoot, "meter-frame-sync-recovery-health-events.jsonl");
+  const observed = createObserved();
+  setActiveScenario({
+    jobs: [],
+    observed,
+    scenario: {
+      expectSuccess: true,
+      meterFrameFailuresRemaining: 1,
+      name: "meter-frame-sync-recovery",
+    },
+  });
+  const child = spawnDaemonAgent({
+    address,
+    captureCommand,
+    healthLogFile,
+    renderCommand,
+    stateFile,
+  });
+
+  try {
+    await waitFor(
+      () =>
+        observed.healthEvents.some((event) => event.type === "agent.meter_frame.sync_failed") &&
+        observed.healthEvents.some((event) => event.type === "agent.meter_frame.sync_recovered") &&
+        observed.meterFrameFailures === 1 &&
+        observed.meterFrames >= 1,
+      20_000,
+      () =>
+        `meterFailures=${observed.meterFrameFailures} meters=${observed.meterFrames} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    );
+  } finally {
+    child.kill();
+    await child.closed;
+  }
+
+  const healthLogEvents = await readJsonLines(healthLogFile);
+  const failedEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.meter_frame.sync_failed",
+  );
+  const recoveredEvent = observed.healthEvents.find(
+    (event) => event.type === "agent.meter_frame.sync_recovered",
+  );
+
+  invariant(failedEvent?.severity === "warning", "meter-frame sync failure was not warning");
+  invariant(
+    String(failedEvent?.details?.error).includes("controller rejected meter frame with 503"),
+    "meter-frame sync failure did not preserve controller rejection",
+  );
+  invariant(
+    failedEvent?.details?.interfaceId === "iface_default_capture",
+    "meter-frame sync failure did not preserve interface id",
+  );
+  invariant(
+    failedEvent?.details?.channelCount === 2,
+    "meter-frame sync failure did not preserve channel count",
+  );
+  invariant(recoveredEvent?.severity === "info", "meter-frame sync recovery was not info");
+  invariant(
+    recoveredEvent?.details?.interfaceId === failedEvent.details.interfaceId,
+    "meter-frame sync recovery did not preserve interface id",
+  );
+  invariant(
+    recoveredEvent?.details?.channelCount === failedEvent.details.channelCount,
+    "meter-frame sync recovery did not preserve channel count",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.meter_frame.sync_failed"),
+    "meter-frame sync failure event was not written locally",
+  );
+  invariant(
+    healthLogEvents.some((event) => event.type === "agent.meter_frame.sync_recovered"),
+    "meter-frame sync recovery event was not written locally",
+  );
+  setActiveScenario(undefined);
+}
+
 export async function runMeterDeviceUnavailableScenario({
   address,
   createObserved,
