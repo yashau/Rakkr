@@ -1,13 +1,4 @@
 mod types;
-
-use anyhow::Context;
-use reqwest::header::{CONTENT_TYPE, DATE, HeaderName, HeaderValue};
-use serde_json::json;
-use std::fs;
-use std::time::Duration;
-use time::{OffsetDateTime, format_description::well_known::Rfc2822};
-use tracing::{info, warn};
-
 use crate::cache_content_type::content_type_for_codec;
 use crate::capture::CaptureChild;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
@@ -16,7 +7,8 @@ use crate::controller_http::{controller_http_client, controller_http_client_with
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
 use crate::recording_job_disk::{
-    capture_disk_space_shortfall, ensure_capture_disk_space, report_capture_disk_space_shortfall,
+    RuntimeCaptureDiskRecoveryEvidence, capture_disk_space_shortfall, ensure_capture_disk_space,
+    recover_runtime_capture_disk_space, report_capture_disk_space_shortfall,
 };
 use crate::recording_job_recovery::{
     apply_recorder_cache_retention, recover_runtime_capture_device_loss,
@@ -28,6 +20,13 @@ use crate::recording_job_segments::stitch_recovered_capture_segments;
 use crate::recording_job_upload::{UploadCheckpoint, write_upload_checkpoint_state};
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
+use anyhow::Context;
+use reqwest::header::{CONTENT_TYPE, DATE, HeaderName, HeaderValue};
+use serde_json::json;
+use std::fs;
+use std::time::Duration;
+use time::{OffsetDateTime, format_description::well_known::Rfc2822};
+use tracing::{info, warn};
 use types::DataEnvelope;
 pub use types::{
     CacheFileUpload, ControllerCaptureCommand, ControllerChannelMapBundle,
@@ -35,12 +34,10 @@ pub use types::{
 };
 #[cfg(test)]
 pub use types::{ControllerChannelMapAssignment, ControllerChannelMapTemplate};
-
 const DURATION_HEADER: &str = "x-rakkr-duration-seconds";
 const FILE_NAME_HEADER: &str = "x-rakkr-file-name";
 const AGENT_ID_HEADER: &str = "x-rakkr-agent-id";
 const JOB_ID_HEADER: &str = "x-rakkr-recording-job-id";
-
 pub async fn fetch_channel_map_assignments(
     config: &AgentConfig,
     token: &str,
@@ -61,7 +58,6 @@ pub async fn fetch_channel_map_assignments(
 
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-
         anyhow::bail!("controller rejected channel map assignment request with {status}: {body}");
     }
 
@@ -250,6 +246,7 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         };
     let mut control_plane_sync_failed = false;
     let mut capture_attempt = 1_u8;
+    let mut runtime_disk_recovery_attempted = false;
     let mut recovered_segments = Vec::new();
     let raw_output_path = loop {
         match capture.try_complete() {
@@ -275,6 +272,37 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
                         let reason = shortfall.reason();
 
                         let _ = capture.stop();
+                        if !runtime_disk_recovery_attempted
+                            && let Some(recovered_capture) = recover_runtime_capture_disk_space(
+                                config,
+                                token,
+                                &job,
+                                &capture_plan,
+                                RuntimeCaptureDiskRecoveryEvidence {
+                                    disk_usage,
+                                    growth: growth.clone(),
+                                    shortfall: shortfall.clone(),
+                                },
+                                capture_attempt,
+                            )
+                            .await?
+                        {
+                            runtime_disk_recovery_attempted = true;
+                            capture_attempt += 1;
+                            if let Some(segment) = recovered_capture.segment {
+                                recovered_segments.push(segment);
+                            }
+                            capture = recovered_capture.capture;
+                            write_recoverable_job_state(
+                                config,
+                                &job,
+                                "running",
+                                Some(&capture_plan.output_path),
+                                None,
+                                &recovered_segments,
+                            )?;
+                            continue;
+                        }
                         report_capture_disk_space_shortfall(
                             config,
                             token,

@@ -5,6 +5,8 @@ use crate::config::AgentConfig;
 use crate::controller::{
     ControllerRecordingJob, append_job_health_event, mark_recording_job_failed,
 };
+use crate::recording_job_recovery::spawn_capture_plan_with_recovery;
+use crate::recording_job_segments::{RuntimeCaptureRecovery, preserve_recovered_capture_segment};
 use crate::{node_config, recorder_cache_retention, system_health};
 
 pub(crate) async fn ensure_capture_disk_space(
@@ -59,7 +61,7 @@ pub(crate) async fn ensure_capture_disk_space(
     );
 }
 
-async fn recover_capture_disk_space(
+pub(crate) async fn recover_capture_disk_space(
     config: &AgentConfig,
     token: &str,
     job: &ControllerRecordingJob,
@@ -164,12 +166,92 @@ async fn recover_capture_disk_space(
     Ok(true)
 }
 
+pub(crate) async fn recover_runtime_capture_disk_space(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    capture_plan: &CapturePlan,
+    evidence: RuntimeCaptureDiskRecoveryEvidence,
+    attempt: u8,
+) -> anyhow::Result<Option<RuntimeCaptureRecovery>> {
+    let growth = evidence.growth;
+    let disk_usage = evidence.disk_usage;
+    let shortfall = evidence.shortfall;
+
+    append_job_health_event(
+        config,
+        token,
+        job,
+        "agent.recording_job.disk_space_exhausted",
+        "warning",
+        json!({
+            "estimatedCaptureBytes": shortfall.estimated_capture_bytes,
+            "freeBytes": shortfall.free_bytes,
+            "growthAgeSeconds": growth.age_seconds,
+            "jobId": job.id.as_str(),
+            "outputPath": capture_plan.output_path.display().to_string(),
+            "recordingId": job.recording_id.as_str(),
+            "remainingBytes": shortfall.remaining_bytes,
+            "systemHealthDiskPath": config.system_health_disk_path.display().to_string(),
+            "willRetry": true,
+            "writtenBytes": shortfall.written_bytes,
+        }),
+    )
+    .await?;
+
+    let recovered = recover_capture_disk_space(
+        config,
+        token,
+        job,
+        capture_plan,
+        disk_usage,
+        estimated_capture_bytes(capture_plan),
+    )
+    .await?;
+
+    if recovered {
+        append_job_health_event(
+            config,
+            token,
+            job,
+            "agent.recording_job.disk_space_runtime_recovered",
+            "info",
+            json!({
+                "estimatedCaptureBytes": shortfall.estimated_capture_bytes,
+                "freeBytes": shortfall.free_bytes,
+                "jobId": job.id.as_str(),
+                "outputPath": capture_plan.output_path.display().to_string(),
+                "recordingId": job.recording_id.as_str(),
+                "remainingBytes": shortfall.remaining_bytes,
+                "requiredBytes": estimated_capture_bytes(capture_plan),
+                "systemHealthDiskPath": config.system_health_disk_path.display().to_string(),
+                "writtenBytes": shortfall.written_bytes,
+            }),
+        )
+        .await?;
+
+        let segment =
+            preserve_recovered_capture_segment(capture_plan, attempt, &shortfall.reason());
+        let capture = spawn_capture_plan_with_recovery(config, token, job, capture_plan).await?;
+
+        return Ok(Some(RuntimeCaptureRecovery { capture, segment }));
+    }
+
+    Ok(None)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CaptureDiskSpaceShortfall {
     pub estimated_capture_bytes: u64,
     pub free_bytes: u64,
     pub remaining_bytes: u64,
     pub written_bytes: u64,
+}
+
+pub(crate) struct RuntimeCaptureDiskRecoveryEvidence {
+    pub disk_usage: system_health::DiskUsage,
+    pub growth: CaptureGrowthSnapshot,
+    pub shortfall: CaptureDiskSpaceShortfall,
 }
 
 impl CaptureDiskSpaceShortfall {
