@@ -3,19 +3,9 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser, MeterFrame, Permission, RecorderNode } from "@rakkr/shared";
-import type { AuthResult } from "../src/auth-service.js";
-import type {
-  AppBindings,
-  AuditTarget,
-  RecordAuditEvent,
-  RequirePermission,
-} from "../src/http-types.js";
+import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 import type { MeterFrameStore } from "../src/meter-store.js";
-import type {
-  NodeLifecycleAction,
-  NodeLifecycleJob,
-  NodeLifecycleService,
-} from "../src/node-lifecycle.js";
+import type { NodeLifecycleJob, NodeLifecycleService } from "../src/node-lifecycle.js";
 import type { NodeStore } from "../src/node-store.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");

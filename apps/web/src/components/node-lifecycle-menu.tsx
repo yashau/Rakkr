@@ -59,7 +59,7 @@ export function NodeLifecycleMenu({ canManage, node }: NodeLifecycleMenuProps) {
 
   return (
     <details className="justify-self-start md:justify-self-end">
-      <summary className="list-none">
+      <summary aria-label="Node lifecycle actions" className="list-none">
         <Button asChild disabled={runMutation.isPending} variant="outline">
           <span>
             <CheckCircle2 className="size-4" />
