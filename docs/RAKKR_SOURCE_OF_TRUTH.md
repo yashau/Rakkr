@@ -71,7 +71,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Health watchdog | 🟨 | Checked scheduled and agent low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, deterministic agent meter-health quality evidence/fault scores, policy-tuned broadband quality alerts, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, node health lifecycle controls, controller-synced audio-backend unavailable/recovery details, generic meter capture-failed fallback, system disk/CPU pressure/recovery, node heartbeat/config/meter-frame/monitor chunk sync failure/recovery evidence, recording-job capture start/runtime/too-small/stall/render/upload evidence, recorder-cache cleanup/delete-failure/tracking sync, claim-next/status-poll/control-plane/channel-map failure and controller-terminal handoff, X32 hardware low-signal local/synced health, and PCH hardware flatline local/synced health; long-duration real-room validation remains |
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
-| Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, checked baseline |
+| Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, certificate-rotation scaffold, optional/required mTLS listener config, checked baseline |
 | Observability | ✅ | Local logs, central events, metrics, alerts, Mimir config, Grafana baseline |
 
 ---
@@ -434,7 +434,7 @@ Current implementation baseline:
 - Node enrollment uses one-time tokens and stores only hashes.
 - Controller/node traffic must be transport-layer encrypted.
 - Development can use a local CA or trusted dev certificates.
-- Production should support certificate rotation and a path to mutual TLS or equivalent node identity.
+- Production should support live certificate rotation and deployed mutual TLS or equivalent node identity.
 
 Required encrypted flows:
 
@@ -449,11 +449,11 @@ Required encrypted flows:
 
 Current implementation baseline:
 
-- Controller can start HTTPS when TLS cert/key paths are configured.
+- Controller can start HTTPS when TLS cert/key paths are configured, load next cert/key material for planned rotation, and request or require recorder client certificates with a configured client CA.
 - Agent rejects non-loopback `http://` controller URLs unless explicitly allowed for development.
 - Agent can trust an internal controller CA bundle for all controller requests.
 - Localhost HTTP remains available for local development.
-- `docs/security/TRANSPORT_SECURITY_BASELINE.md` defines the checked MVP transport baseline.
+- `docs/security/TRANSPORT_SECURITY_BASELINE.md` defines the checked transport baseline.
 
 ---
 
@@ -987,7 +987,7 @@ Current implementation baseline:
 342. ✅ Add Debian ALSA loopback short/long, repeated X32 S32 and PCH S16 meters, X32 low-signal/PCH flatline health, X32 hardware short/long, and onboard HDA full-agent job smokes.
 343. ✅ Add fake-controller sync assertions for X32 low-signal and PCH flatline hardware health smokes.
 344. ✅ Add fake-controller smoke coverage for agent node-config, node-heartbeat, meter-frame, monitor chunk, generic meter capture-failed/xrun/device-unavailable/recovery, system disk/CPU pressure/recovery, recording-job capture start/runtime/too-small/stall/render/upload evidence, channel-map application sync, recorder-cache cleanup/tracking sync and tracking failure, claim-next/status-poll/control-plane/channel-map failure/recovery health, controller-terminal handoff, deterministic agent meter-health fault scores, and recorder-cache delete-failure helper coverage.
-345. ✅ Add refreshed daemon inventory probes, fake-controller smoke coverage for controller-synced audio-backend unavailable/recovery health, and direct recorder-agent capture output codec controls with raw WAV intermediate rendering and codec-aware uploads.
+345. ✅ Add refreshed daemon inventory probes, fake-controller smoke coverage for controller-synced audio-backend unavailable/recovery health, direct recorder-agent capture output codec controls, and controller certificate-rotation/mTLS listener scaffolding with local TLS fixtures and checked configuration tests.
 ## Open Questions
 | Question | Current Lean |
 | -------- | ------------ |
