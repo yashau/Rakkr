@@ -4,9 +4,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::Context;
+#[cfg(not(miri))]
+use rusqlite::{Connection, params};
 use serde::Serialize;
 
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, AgentHealthLogStore};
 use crate::telemetry::now_rfc3339;
 
 static HEALTH_LOG_LOCK: Mutex<()> = Mutex::new(());
@@ -60,12 +62,19 @@ pub fn append_health_event_with_targets(
         .lock()
         .map_err(|error| anyhow::anyhow!("health log lock poisoned: {error}"))?;
 
-    rotate_if_needed(
-        &config.agent_health_log_file,
-        config.agent_health_log_max_bytes,
-        config.agent_health_log_retained_files,
-    )?;
-    append_json_line(&config.agent_health_log_file, &event)?;
+    match config.agent_health_log_store {
+        AgentHealthLogStore::Jsonl => {
+            rotate_if_needed(
+                &config.agent_health_log_file,
+                config.agent_health_log_max_bytes,
+                config.agent_health_log_retained_files,
+            )?;
+            append_json_line(&config.agent_health_log_file, &event)?;
+        }
+        AgentHealthLogStore::Sqlite => {
+            append_sqlite_event(&config.agent_health_sqlite_file, &config.node_id, &event)?;
+        }
+    }
 
     Ok(event)
 }
@@ -87,6 +96,81 @@ fn append_json_line(path: &Path, event: &AgentHealthEvent) -> anyhow::Result<()>
         .context("write health event newline")?;
 
     Ok(())
+}
+
+#[cfg(not(miri))]
+fn append_sqlite_event(path: &Path, node_id: &str, event: &AgentHealthEvent) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create health SQLite directory {}", parent.display()))?;
+    }
+
+    let connection = Connection::open(path)
+        .with_context(|| format!("open health SQLite store {}", path.display()))?;
+
+    initialize_sqlite_store(&connection)?;
+
+    let details_json =
+        serde_json::to_string(&event.details).context("encode health event details")?;
+
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO agent_health_events (
+                id,
+                node_id,
+                type,
+                severity,
+                opened_at,
+                recording_id,
+                schedule_id,
+                details_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                event.id.as_str(),
+                node_id,
+                event.r#type.as_str(),
+                event.severity.as_str(),
+                event.opened_at.as_str(),
+                event.recording_id.as_deref(),
+                event.schedule_id.as_deref(),
+                details_json,
+            ],
+        )
+        .context("insert health event into SQLite store")?;
+
+    Ok(())
+}
+
+#[cfg(miri)]
+fn append_sqlite_event(
+    _path: &Path,
+    _node_id: &str,
+    _event: &AgentHealthEvent,
+) -> anyhow::Result<()> {
+    anyhow::bail!("SQLite health log store is not available under Miri")
+}
+
+#[cfg(not(miri))]
+fn initialize_sqlite_store(connection: &Connection) -> anyhow::Result<()> {
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS agent_health_events (
+                id TEXT PRIMARY KEY NOT NULL,
+                node_id TEXT NOT NULL,
+                type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                opened_at TEXT NOT NULL,
+                recording_id TEXT,
+                schedule_id TEXT,
+                details_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS agent_health_events_opened_at_idx
+                ON agent_health_events(opened_at);
+            CREATE INDEX IF NOT EXISTS agent_health_events_type_severity_idx
+                ON agent_health_events(type, severity);",
+        )
+        .context("initialize health SQLite schema")
 }
 
 fn rotate_if_needed(path: &Path, max_bytes: u64, retained_files: u16) -> anyhow::Result<()> {
@@ -152,6 +236,8 @@ fn rotated_log_path(path: &Path, index: u16) -> PathBuf {
 mod tests {
     use super::*;
     use clap::Parser;
+    #[cfg(not(miri))]
+    use rusqlite::Connection;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -250,6 +336,64 @@ mod tests {
         cleanup(&path);
     }
 
+    #[test]
+    #[cfg(not(miri))]
+    fn sqlite_store_initializes_schema_and_writes_health_events() {
+        let path = temp_health_sqlite_path("sqlite");
+        let path_arg = path.to_string_lossy().into_owned();
+        let config = AgentConfig::parse_from([
+            "test",
+            "--agent-health-log-store",
+            "sqlite",
+            "--agent-health-sqlite-file",
+            path_arg.as_str(),
+        ]);
+
+        let event = append_health_event_with_targets(
+            &config,
+            "agent.sqlite_append",
+            "warning",
+            serde_json::json!({ "source": "unit-test" }),
+            Some("rec_test".to_string()),
+            Some("sched_test".to_string()),
+        )
+        .expect("append SQLite health event");
+
+        let connection = Connection::open(&path).expect("open SQLite health store");
+        let stored: (String, String, String, String, String, String, String) = connection
+            .query_row(
+                "SELECT node_id, type, severity, opened_at, recording_id, schedule_id, details_json
+                 FROM agent_health_events
+                 WHERE id = ?1",
+                [event.id.as_str()],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("read SQLite health event");
+
+        assert_eq!(stored.0, config.node_id);
+        assert_eq!(stored.1, "agent.sqlite_append");
+        assert_eq!(stored.2, "warning");
+        assert_eq!(stored.3, event.opened_at);
+        assert_eq!(stored.4, "rec_test");
+        assert_eq!(stored.5, "sched_test");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&stored.6).unwrap(),
+            serde_json::json!({ "source": "unit-test" })
+        );
+
+        cleanup(&path);
+    }
+
     fn temp_health_log_path(name: &str) -> PathBuf {
         let counter = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
         let directory =
@@ -258,6 +402,17 @@ mod tests {
         fs::create_dir_all(&directory).expect("create temp health log directory");
 
         directory.join("health-events.jsonl")
+    }
+
+    #[cfg(not(miri))]
+    fn temp_health_sqlite_path(name: &str) -> PathBuf {
+        let counter = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let directory =
+            PathBuf::from("target").join(format!("rakkr-agent-health-log-{name}-{counter}"));
+
+        fs::create_dir_all(&directory).expect("create temp health SQLite directory");
+
+        directory.join("health-events.sqlite3")
     }
 
     fn cleanup(path: &Path) {

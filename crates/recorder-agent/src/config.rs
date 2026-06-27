@@ -42,6 +42,12 @@ impl MeterBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum AgentHealthLogStore {
+    Jsonl,
+    Sqlite,
+}
+
 #[derive(Clone, Debug, Parser)]
 #[command(author, version, about = "Rakkr recorder node agent")]
 pub struct AgentConfig {
@@ -214,6 +220,21 @@ pub struct AgentConfig {
         default_value = "data/agent/health-events.jsonl"
     )]
     pub agent_health_log_file: PathBuf,
+
+    #[arg(
+        long,
+        env = "RAKKR_AGENT_HEALTH_LOG_STORE",
+        value_enum,
+        default_value_t = AgentHealthLogStore::Jsonl
+    )]
+    pub agent_health_log_store: AgentHealthLogStore,
+
+    #[arg(
+        long,
+        env = "RAKKR_AGENT_HEALTH_SQLITE_FILE",
+        default_value = "data/agent/health-events.sqlite3"
+    )]
+    pub agent_health_sqlite_file: PathBuf,
 
     #[arg(
         long,
@@ -448,6 +469,24 @@ mod tests {
         assert_eq!(
             config.system_health_loadavg_path.as_path(),
             std::path::Path::new("/run/rakkr/loadavg")
+        );
+    }
+
+    #[test]
+    fn accepts_sqlite_health_log_store() {
+        let config = AgentConfig::try_parse_from([
+            "rakkr-recorder-agent",
+            "--agent-health-log-store",
+            "sqlite",
+            "--agent-health-sqlite-file",
+            "/var/lib/rakkr/agent-health.sqlite3",
+        ])
+        .expect("SQLite health log store should parse");
+
+        assert_eq!(config.agent_health_log_store, AgentHealthLogStore::Sqlite);
+        assert_eq!(
+            config.agent_health_sqlite_file.as_path(),
+            std::path::Path::new("/var/lib/rakkr/agent-health.sqlite3")
         );
     }
 }

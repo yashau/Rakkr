@@ -20,7 +20,7 @@ When something degrades, Rakkr should answer three questions quickly:
 | Prometheus alerts | `docs/observability/rakkr-alerts.yml` |
 | Prometheus + Mimir | `docs/observability/prometheus-mimir.example.yml` |
 | Grafana dashboard | `docs/observability/grafana-dashboard.example.json` |
-| Agent local log | Rotating JSONL health log on recorder nodes |
+| Agent local log | Rotating JSONL health log or SQLite health-event store on recorder nodes |
 | Controller events | Central health and audit event tables |
 
 ## 🧑‍💻 Operator Path
@@ -30,7 +30,7 @@ When something degrades, Rakkr should answer three questions quickly:
 3. Send long-term metrics to Mimir with `docs/observability/prometheus-mimir.example.yml`.
 4. Import `docs/observability/grafana-dashboard.example.json` into Grafana.
 5. Use central health/audit events for incident context.
-6. Fall back to the Rotating JSONL health log on recorder nodes when a node is isolated.
+6. Fall back to the rotating JSONL health log or SQLite health-event store on recorder nodes when a node is isolated.
 
 ## 🚨 What To Watch
 

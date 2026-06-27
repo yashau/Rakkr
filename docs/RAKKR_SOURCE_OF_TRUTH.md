@@ -72,7 +72,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, certificate-rotation scaffold, optional/required mTLS listener config, checked baseline |
-| Observability | ✅ | Local logs, central events, metrics, alerts, Mimir config, Grafana baseline |
+| Observability | ✅ | Local JSONL/SQLite logs, central events, metrics, alerts, Mimir config, Grafana baseline |
 
 ---
 
@@ -604,7 +604,7 @@ Current implementation:
 - `docs/observability/prometheus-mimir.example.yml` defines a checked HTTPS controller scrape and Mimir `remote_write` path using a secret file.
 - `docs/observability/grafana-dashboard.example.json` defines a checked operations dashboard for node status, audio levels, recordings, uploads, XRUNs, and denied actions.
 - `docs/observability/README.md` documents the operator path and checked observability artifacts.
-- Recorder agent local JSONL health logs rotate by size and keep a configured number of retained files.
+- Recorder agent local health events can use rotating JSONL logs or a SQLite store with typed indexes for isolated-node investigation.
 - Fake-controller agent smoke coverage verifies local JSONL health events for rendered output metadata, channel-map application, and cache-upload failures.
 
 ## Date And Time Rules
@@ -994,6 +994,6 @@ Current implementation baseline:
 | JACK role | Supported for pro-audio graph setups; PipeWire is the preferred modern routed path |
 | Rust MP3 encoder path | External renderer path now covers controller-managed and direct MP3 VBR; native Rust encoder evaluation remains later if deployment warrants |
 | Live monitor protocol | Agent audio chunk polling now; encrypted WebSocket session control later |
-| Node local log store | JSONL now; SQLite likely later |
+| Node local log store | JSONL and SQLite health-event stores now; long-term compaction policy can wait |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 Last updated: `2026-06-27`

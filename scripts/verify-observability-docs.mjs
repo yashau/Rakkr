@@ -46,7 +46,7 @@ if (!runbook.includes("GET /metrics")) {
   errors.push(`${runbookFile} must mention the controller metrics endpoint`);
 }
 
-if (!runbook.includes("Rotating JSONL health log")) {
+if (!runbook.includes("Rotating JSONL health log") || !runbook.includes("SQLite health-event store")) {
   errors.push(`${runbookFile} must mention the recorder node local health log`);
 }
 

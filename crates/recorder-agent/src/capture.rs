@@ -571,6 +571,8 @@ mod tests {
             agent_health_log_file: PathBuf::from("health-events.jsonl"),
             agent_health_log_max_bytes: 1_048_576,
             agent_health_log_retained_files: 3,
+            agent_health_log_store: crate::config::AgentHealthLogStore::Jsonl,
+            agent_health_sqlite_file: PathBuf::from("health-events.sqlite3"),
             allow_insecure_controller: false,
             alias: "Node".to_string(),
             attach_cache_content_type: "audio/mpeg".to_string(),
