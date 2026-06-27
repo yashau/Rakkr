@@ -1,0 +1,6 @@
+apiVersion: v2
+name: rakkr-controller
+description: Rakkr controller API and web console
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

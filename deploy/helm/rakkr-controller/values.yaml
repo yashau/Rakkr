@@ -1,0 +1,121 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+appSecret:
+  create: true
+  name: ""
+
+api:
+  replicaCount: 1
+  image:
+    repository: rakkr/controller-api
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8787
+  podAnnotations: {}
+  resources: {}
+  migrateOnStartup: true
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+  env:
+    NODE_ENV: production
+    PORT: "8787"
+    RAKKR_WEB_ORIGIN: http://localhost
+    RAKKR_ALLOW_INSECURE_CONTROLLER: "0"
+    RAKKR_LOCAL_ADMIN_EMAIL: admin@rakkr.local
+    RAKKR_LOCAL_ADMIN_ID: 00000000-0000-4000-8000-000000000001
+    RAKKR_LOCAL_ADMIN_NAME: Local Admin
+    RAKKR_LOCAL_ADMIN_GROUPS: ""
+    RAKKR_LOCAL_RESOURCE_GRANTS: '{"node":["node_x32_test"],"recording":["rec_demo_001"]}'
+    RAKKR_LOCAL_ACCESS_POLICIES: "[]"
+    RAKKR_OIDC_ENABLED: "0"
+    RAKKR_OIDC_AZURE_TENANT_ID: ""
+    RAKKR_OIDC_CLIENT_ID: ""
+    RAKKR_OIDC_REDIRECT_URI: http://localhost/api/v1/auth/oidc/callback
+    RAKKR_OIDC_SCOPES: openid profile email
+    RAKKR_RECORDING_CACHE_DIR: /var/lib/rakkr/recordings
+    RAKKR_RECORDING_JOB_STORE_PATH: /var/lib/rakkr/controller/recording-jobs.json
+    RAKKR_RECORDING_METADATA_STORE_PATH: /var/lib/rakkr/controller/recordings-metadata.json
+    RAKKR_SCHEDULE_STORE_PATH: /var/lib/rakkr/controller/schedules.json
+    RAKKR_UPLOAD_POLICY_STORE_PATH: /var/lib/rakkr/controller/upload-policies.json
+    RAKKR_UPLOAD_PROVIDER_STORE_PATH: /var/lib/rakkr/controller/upload-providers.json
+    RAKKR_UPLOAD_QUEUE_STORE_PATH: /var/lib/rakkr/controller/upload-queue.json
+    RAKKR_RETENTION_POLICY_STORE_PATH: /var/lib/rakkr/controller/retention-policies.json
+    RAKKR_RECORDING_PROFILE_STORE_PATH: /var/lib/rakkr/controller/recording-profiles.json
+    RAKKR_WATCHDOG_POLICY_STORE_PATH: /var/lib/rakkr/controller/watchdog-policies.json
+    RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH: /var/lib/rakkr/controller/channel-map-templates.json
+    RAKKR_CHANNEL_MAP_ASSIGNMENT_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignments.json
+    RAKKR_CHANNEL_MAP_ASSIGNMENT_PLAN_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignment-plans.json
+  secretEnv:
+    RAKKR_LOCAL_ADMIN_PASSWORD: rakkr-local-dev-password
+    RAKKR_OIDC_CLIENT_SECRET: ""
+  extraEnv: []
+  extraEnvFrom: []
+
+web:
+  replicaCount: 1
+  image:
+    repository: rakkr/controller-web
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  podAnnotations: {}
+  resources: {}
+  extraEnv: []
+
+database:
+  externalUrl: ""
+  existingSecret:
+    name: ""
+    key: DATABASE_URL
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  auth:
+    database: rakkr
+    username: rakkr
+    password: rakkr
+    existingSecret: ""
+    passwordKey: POSTGRES_PASSWORD
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+  resources: {}
+
+migrations:
+  job:
+    enabled: false
+    backoffLimit: 3
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: rakkr.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []

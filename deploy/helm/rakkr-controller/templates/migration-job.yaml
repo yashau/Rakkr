@@ -1,0 +1,37 @@
+{{- if .Values.migrations.job.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "rakkr-controller.fullname" . }}-migrate
+  labels:
+    {{- include "rakkr-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+spec:
+  backoffLimit: {{ .Values.migrations.job.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "rakkr-controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "rakkr-controller.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command:
+            - sh
+            - -lc
+            - cd packages/db && ./node_modules/.bin/drizzle-kit migrate
+          {{- include "rakkr-controller.apiEnvFrom" . | nindent 10 }}
+          env:
+            {{- include "rakkr-controller.databaseEnv" . | nindent 12 }}
+            {{- with .Values.api.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+{{- end }}

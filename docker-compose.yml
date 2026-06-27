@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: rakkr-postgres
     environment:
       POSTGRES_DB: rakkr
       POSTGRES_USER: rakkr
@@ -16,5 +15,93 @@ services:
       timeout: 5s
       retries: 12
 
+  controller-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: rakkr/controller-api:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://rakkr:rakkr@postgres:5432/rakkr
+    command:
+      ["sh", "-lc", "cd packages/db && ./node_modules/.bin/drizzle-kit migrate"]
+    restart: "no"
+
+  controller-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: rakkr/controller-api:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      controller-migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      DATABASE_URL: postgres://rakkr:rakkr@postgres:5432/rakkr
+      RAKKR_WEB_ORIGIN: ${RAKKR_WEB_ORIGIN:-http://localhost:5173}
+      RAKKR_LOCAL_ADMIN_EMAIL: ${RAKKR_LOCAL_ADMIN_EMAIL:-admin@rakkr.local}
+      RAKKR_LOCAL_ADMIN_ID: ${RAKKR_LOCAL_ADMIN_ID:-00000000-0000-4000-8000-000000000001}
+      RAKKR_LOCAL_ADMIN_PASSWORD: ${RAKKR_LOCAL_ADMIN_PASSWORD:-rakkr-local-dev-password}
+      RAKKR_LOCAL_ADMIN_NAME: ${RAKKR_LOCAL_ADMIN_NAME:-Local Admin}
+      RAKKR_LOCAL_ADMIN_GROUPS: ${RAKKR_LOCAL_ADMIN_GROUPS:-}
+      RAKKR_LOCAL_RESOURCE_GRANTS: ${RAKKR_LOCAL_RESOURCE_GRANTS:-{"node":["node_x32_test"],"recording":["rec_demo_001"]}}
+      RAKKR_LOCAL_ACCESS_POLICIES: ${RAKKR_LOCAL_ACCESS_POLICIES:-[]}
+      RAKKR_OIDC_ENABLED: ${RAKKR_OIDC_ENABLED:-0}
+      RAKKR_OIDC_AZURE_TENANT_ID: ${RAKKR_OIDC_AZURE_TENANT_ID:-}
+      RAKKR_OIDC_CLIENT_ID: ${RAKKR_OIDC_CLIENT_ID:-}
+      RAKKR_OIDC_CLIENT_SECRET: ${RAKKR_OIDC_CLIENT_SECRET:-}
+      RAKKR_OIDC_REDIRECT_URI: ${RAKKR_OIDC_REDIRECT_URI:-http://localhost:8787/api/v1/auth/oidc/callback}
+      RAKKR_OIDC_SCOPES: ${RAKKR_OIDC_SCOPES:-openid profile email}
+      RAKKR_RECORDING_CACHE_DIR: /var/lib/rakkr/recordings
+      RAKKR_RECORDING_JOB_STORE_PATH: /var/lib/rakkr/controller/recording-jobs.json
+      RAKKR_RECORDING_METADATA_STORE_PATH: /var/lib/rakkr/controller/recordings-metadata.json
+      RAKKR_SCHEDULE_STORE_PATH: /var/lib/rakkr/controller/schedules.json
+      RAKKR_UPLOAD_POLICY_STORE_PATH: /var/lib/rakkr/controller/upload-policies.json
+      RAKKR_UPLOAD_PROVIDER_STORE_PATH: /var/lib/rakkr/controller/upload-providers.json
+      RAKKR_UPLOAD_QUEUE_STORE_PATH: /var/lib/rakkr/controller/upload-queue.json
+      RAKKR_RETENTION_POLICY_STORE_PATH: /var/lib/rakkr/controller/retention-policies.json
+      RAKKR_RECORDING_PROFILE_STORE_PATH: /var/lib/rakkr/controller/recording-profiles.json
+      RAKKR_WATCHDOG_POLICY_STORE_PATH: /var/lib/rakkr/controller/watchdog-policies.json
+      RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH: /var/lib/rakkr/controller/channel-map-templates.json
+      RAKKR_CHANNEL_MAP_ASSIGNMENT_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignments.json
+      RAKKR_CHANNEL_MAP_ASSIGNMENT_PLAN_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignment-plans.json
+    ports:
+      - "8787:8787"
+    volumes:
+      - rakkr-controller-data:/var/lib/rakkr
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:8787/healthz'').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  controller-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: rakkr/controller-web:local
+    depends_on:
+      controller-api:
+        condition: service_healthy
+    environment:
+      RAKKR_API_UPSTREAM: http://controller-api:8787
+    ports:
+      - "5173:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
 volumes:
+  rakkr-controller-data:
   rakkr-postgres-data:

@@ -116,6 +116,18 @@ Override local identity with `RAKKR_LOCAL_ADMIN_EMAIL`,
 `RAKKR_LOCAL_ADMIN_ID`, `RAKKR_LOCAL_ADMIN_PASSWORD`, and
 `RAKKR_LOCAL_ADMIN_NAME`.
 
+To run the controller as a container stack instead of the local dev servers:
+
+```powershell
+docker compose up --build
+```
+
+The Compose stack builds the API and web images, starts Postgres, runs Drizzle
+migrations, serves the web console at <http://localhost:5173>, and exposes the
+API at <http://localhost:8787>. Kubernetes manifests live in the Helm chart at
+`deploy/helm/rakkr-controller`; see
+[docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md).
+
 For non-admin local roles, scoped resource access can be seeded with
 `RAKKR_LOCAL_RESOURCE_GRANTS`, for example:
 

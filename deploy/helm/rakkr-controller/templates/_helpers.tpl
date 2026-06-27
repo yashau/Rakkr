@@ -1,0 +1,83 @@
+{{- define "rakkr-controller.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "rakkr-controller.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "rakkr-controller.labels" -}}
+helm.sh/chart: {{ include "rakkr-controller.name" . }}-{{ .Chart.Version | replace "+" "_" }}
+app.kubernetes.io/name: {{ include "rakkr-controller.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
+{{- define "rakkr-controller.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "rakkr-controller.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "rakkr-controller.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "rakkr-controller.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "rakkr-controller.appSecretName" -}}
+{{- default (printf "%s-app" (include "rakkr-controller.fullname" .)) .Values.appSecret.name -}}
+{{- end -}}
+
+{{- define "rakkr-controller.postgresSecretName" -}}
+{{- default (printf "%s-postgres" (include "rakkr-controller.fullname" .)) .Values.postgres.auth.existingSecret -}}
+{{- end -}}
+
+{{- define "rakkr-controller.postgresServiceName" -}}
+{{- printf "%s-postgres" (include "rakkr-controller.fullname" .) -}}
+{{- end -}}
+
+{{- define "rakkr-controller.databaseUrl" -}}
+{{- if .Values.database.externalUrl -}}
+{{- .Values.database.externalUrl -}}
+{{- else -}}
+{{- printf "postgres://%s:%s@%s:5432/%s" .Values.postgres.auth.username .Values.postgres.auth.password (include "rakkr-controller.postgresServiceName" .) .Values.postgres.auth.database -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "rakkr-controller.databaseEnv" -}}
+- name: DATABASE_URL
+{{- if .Values.database.existingSecret.name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.database.existingSecret.name | quote }}
+      key: {{ .Values.database.existingSecret.key | quote }}
+{{- else }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "rakkr-controller.appSecretName" . | quote }}
+      key: DATABASE_URL
+{{- end }}
+{{- end -}}
+
+{{- define "rakkr-controller.apiEnvFrom" -}}
+envFrom:
+  - configMapRef:
+      name: {{ include "rakkr-controller.fullname" . }}-api
+  - secretRef:
+      name: {{ include "rakkr-controller.appSecretName" . }}
+{{- with .Values.api.extraEnvFrom }}
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
