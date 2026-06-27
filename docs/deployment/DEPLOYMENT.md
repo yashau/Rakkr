@@ -79,8 +79,25 @@ Supported controller actions:
 - `smoke_check`
 
 For local smoke validation, compose also starts `recorder-test-rig`, a Debian
-SSH target. `RAKKR_ANSIBLE_HOST_OVERRIDES` maps the seeded `node_x32_test`
-record to that service without changing the real test-rig metadata.
+SSH target. The default `RAKKR_ANSIBLE_TARGETS` maps the seeded
+`node_x32_test` record to that service without changing the real test-rig
+metadata.
+
+For physical rig validation, prefer `RAKKR_ANSIBLE_TARGETS` with per-node SSH
+settings and a key mounted into the runner container. For the X32 test rig,
+mount the Windows user profile SSH directory and target root with the container
+path to the key:
+
+```powershell
+$env:RAKKR_ANSIBLE_SSH_DIR = "$env:USERPROFILE\.ssh"
+$env:RAKKR_ANSIBLE_TARGETS = '{"node_x32_test":{"host":"172.22.145.152","sshUser":"root","sshKeyFile":"/run/rakkr-ssh/id_ed25519","smokeCommand":"/tmp/rakkr-recorder-agent --print-inventory"}}'
+docker compose up -d --build ansible-runner
+mise run ansible:x32-smoke
+```
+
+`mise run ansible:x32-smoke` runs a safe `smoke_check` against
+`172.22.145.152` without deploying binaries. Use `update_binary` only after
+`RAKKR_ANSIBLE_BINARY_SRC` points at the intended Linux recorder-agent artifact.
 
 ## Helm
 

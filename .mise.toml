@@ -253,6 +253,14 @@ run = "env RAKKR_ALSA_HEALTH_EXPECT_CARD=PCH RAKKR_ALSA_HEALTH_DEVICE=hw:CARD=PC
 description = "Run a full recorder-agent job against the Debian rig HDA Intel PCH ALSA hardware device"
 run = "env RAKKR_ALSA_JOB_EXPECT_CARD=PCH RAKKR_ALSA_JOB_DEVICE=hw:CARD=PCH,DEV=0 RAKKR_ALSA_JOB_FORMAT=S16_LE RAKKR_ALSA_JOB_CHANNELS=2 RAKKR_ALSA_JOB_SECONDS=${RAKKR_ALSA_PCH_JOB_SECONDS:-5} RAKKR_ALSA_JOB_WORK_DIR=${RAKKR_ALSA_PCH_JOB_WORK_DIR:-/tmp/rakkr-alsa-pch-job-test} RAKKR_ALSA_JOB_SMOKE_LABEL='ALSA PCH full-agent job smoke' bash scripts/agent-alsa-job-smoke.sh"
 
+[tasks."ansible:runner-smoke"]
+description = "Run the Dockerized Ansible lifecycle runner against the local compose SSH test rig"
+run = "env RAKKR_ANSIBLE_SMOKE_SEQUENCE=update_binary,smoke_check node scripts/ansible-lifecycle-smoke.mjs"
+
+[tasks."ansible:x32-smoke"]
+description = "Run a safe Ansible smoke_check against the X32 test rig without deploying binaries"
+run = "env RAKKR_ANSIBLE_SMOKE_HOST=${RAKKR_X32_ANSIBLE_HOST:-172.22.145.152} RAKKR_ANSIBLE_SMOKE_NODE_ID=node_x32_test node scripts/ansible-lifecycle-smoke.mjs"
+
 [tasks."agent:fake-controller-smoke"]
 depends = ["node:test", "rust:check", "rust:miri"]
 description = "Run the recorder agent against a local fake controller and fake capture command"

@@ -100,10 +100,14 @@ services:
     environment:
       RAKKR_ANSIBLE_DEFAULT_SSH_USER: ${RAKKR_ANSIBLE_DEFAULT_SSH_USER:-rakkr}
       RAKKR_ANSIBLE_HOST_OVERRIDES: ${RAKKR_ANSIBLE_HOST_OVERRIDES:-{"node_x32_test":"recorder-test-rig"}}
+      RAKKR_ANSIBLE_TARGETS: ${RAKKR_ANSIBLE_TARGETS:-{"node_x32_test":{"host":"recorder-test-rig","sshUser":"rakkr","sshPassword":"rakkr","becomePassword":"rakkr"}}}
       RAKKR_ANSIBLE_ROLLOUT_SERIAL: ${RAKKR_ANSIBLE_ROLLOUT_SERIAL:-1}
       RAKKR_ANSIBLE_SSH_PASSWORD: ${RAKKR_ANSIBLE_SSH_PASSWORD:-rakkr}
+      RAKKR_ANSIBLE_SSH_KEY_FILE: ${RAKKR_ANSIBLE_SSH_KEY_FILE:-}
     ports:
       - "8790:8790"
+    volumes:
+      - ${RAKKR_ANSIBLE_SSH_DIR:-./deploy/ansible/empty-ssh}:/run/rakkr-ssh:ro
     healthcheck:
       test:
         [

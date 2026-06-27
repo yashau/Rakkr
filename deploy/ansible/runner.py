@@ -1,9 +1,9 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import shutil
 import subprocess
 import tempfile
-import time
 import uuid
 
 ACTIONS = {
@@ -63,7 +63,8 @@ def run_lifecycle(payload):
     action = payload.get("action")
     target = payload.get("target") or {}
     options = payload.get("options") or {}
-    host = host_override(target.get("nodeId")) or target.get("host")
+    config = target_config(target.get("nodeId"))
+    host = config_value(config, "host") or host_override(target.get("nodeId")) or target.get("host")
 
     if action not in ACTIONS:
         raise ValueError("unsupported_lifecycle_action")
@@ -73,10 +74,10 @@ def run_lifecycle(payload):
 
     run_id = f"ansible_{uuid.uuid4()}"
     with tempfile.TemporaryDirectory() as tmpdir:
-        inventory = os.path.join(tmpdir, "inventory.ini")
-        write_inventory(inventory, host.strip(), options)
+        inventory = os.path.join(tmpdir, "inventory.json")
+        write_inventory(inventory, host.strip(), options, config, tmpdir)
         process = subprocess.run(
-            ansible_command(inventory, action, target, options),
+            ansible_command(inventory, action, target, options, config),
             capture_output=True,
             env=ansible_env(),
             text=True,
@@ -92,26 +93,87 @@ def run_lifecycle(payload):
     }
 
 
-def write_inventory(path, host, options):
-    user = options.get("sshUser") or os.environ.get("RAKKR_ANSIBLE_DEFAULT_SSH_USER", "rakkr")
-    password = os.environ.get("RAKKR_ANSIBLE_SSH_PASSWORD")
-    key_file = os.environ.get("RAKKR_ANSIBLE_SSH_KEY_FILE")
-    lines = [
-        "[rakkr_targets]",
-        f"target ansible_host={host} ansible_user={user} ansible_python_interpreter=/usr/bin/python3 ansible_remote_tmp=/tmp/.ansible-rakkr",
-    ]
+def write_inventory(path, host, options, config, tmpdir):
+    user = (
+        options.get("sshUser")
+        or config_value(config, "sshUser")
+        or os.environ.get("RAKKR_ANSIBLE_DEFAULT_SSH_USER", "rakkr")
+    )
+    key_file = prepare_key_file(
+        config_value(config, "sshKeyFile") or os.environ.get("RAKKR_ANSIBLE_SSH_KEY_FILE"),
+        tmpdir,
+    )
+    password = config_value(config, "sshPassword") or (
+        None if key_file else os.environ.get("RAKKR_ANSIBLE_SSH_PASSWORD")
+    )
+    become_password = (
+        config_value(config, "becomePassword")
+        or os.environ.get("RAKKR_ANSIBLE_BECOME_PASSWORD")
+        or password
+    )
+    host_vars = {
+        "ansible_host": host,
+        "ansible_python_interpreter": "/usr/bin/python3",
+        "ansible_remote_tmp": "/tmp/.ansible-rakkr",
+        "ansible_user": user,
+    }
 
     if password:
-        lines[-1] += " ansible_password={0} ansible_become_password={0}".format(password)
+        host_vars["ansible_password"] = password
+
+    if become_password:
+        host_vars["ansible_become_password"] = become_password
 
     if key_file:
-        lines[-1] += f" ansible_ssh_private_key_file={key_file}"
+        host_vars["ansible_ssh_private_key_file"] = key_file
 
-    with open(path, "w", encoding="utf-8") as inventory:
-        inventory.write("\n".join(lines) + "\n")
+    inventory_data = {
+        "rakkr_targets": {
+            "hosts": {
+                "target": host_vars,
+            },
+        },
+    }
+    with open(path, "w", encoding="utf-8") as inventory_file:
+        json.dump(inventory_data, inventory_file)
+        inventory_file.write("\n")
 
 
-def ansible_command(inventory, action, target, options):
+def prepare_key_file(key_file, tmpdir):
+    if not key_file:
+        return None
+
+    if not os.path.exists(key_file):
+        raise ValueError("ssh_key_file_not_found")
+
+    target = os.path.join(tmpdir, "ssh_private_key")
+    shutil.copyfile(key_file, target)
+    os.chmod(target, 0o600)
+    return target
+
+
+def ansible_command(inventory, action, target, options, config):
+    extra_vars = {
+        "rakkr_agent_binary_src": os.environ.get(
+            "RAKKR_ANSIBLE_BINARY_SRC",
+            "/opt/rakkr-artifacts/rakkr-recorder-agent",
+        ),
+        "rakkr_lifecycle_action": action,
+        "rakkr_node_alias": target.get("nodeAlias"),
+        "rakkr_node_id": target.get("nodeId"),
+        "rakkr_rollout_serial": os.environ.get("RAKKR_ANSIBLE_ROLLOUT_SERIAL", "1"),
+    }
+    optional_vars = {
+        "rakkr_agent_version": options.get("agentVersion"),
+        "rakkr_controller_ca_src": os.environ.get("RAKKR_ANSIBLE_CONTROLLER_CA_SRC"),
+        "rakkr_node_smoke_command": config_value(config, "smokeCommand")
+        or os.environ.get("RAKKR_ANSIBLE_SMOKE_COMMAND"),
+    }
+
+    for key, value in optional_vars.items():
+        if isinstance(value, str) and value.strip():
+            extra_vars[key] = value
+
     command = [
         "ansible-playbook",
         os.environ.get("RAKKR_ANSIBLE_PLAYBOOK", "/opt/rakkr/deploy/ansible/playbooks/node-lifecycle.yml"),
@@ -122,20 +184,7 @@ def ansible_command(inventory, action, target, options):
         "--ssh-common-args",
         ssh_common_args(),
         "-e",
-        json.dumps(
-            {
-                "rakkr_lifecycle_action": action,
-                "rakkr_agent_binary_src": os.environ.get(
-                    "RAKKR_ANSIBLE_BINARY_SRC",
-                    "/opt/rakkr-artifacts/rakkr-recorder-agent",
-                ),
-                "rakkr_agent_version": options.get("agentVersion"),
-                "rakkr_controller_ca_src": os.environ.get("RAKKR_ANSIBLE_CONTROLLER_CA_SRC"),
-                "rakkr_node_alias": target.get("nodeAlias"),
-                "rakkr_node_id": target.get("nodeId"),
-                "rakkr_rollout_serial": os.environ.get("RAKKR_ANSIBLE_ROLLOUT_SERIAL", "1"),
-            }
-        ),
+        json.dumps(extra_vars),
     ]
 
     return command
@@ -174,6 +223,26 @@ def host_override(node_id):
         return None
 
     value = overrides.get(node_id)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def target_config(node_id):
+    raw = os.environ.get("RAKKR_ANSIBLE_TARGETS", "{}")
+
+    try:
+        targets = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+    if not isinstance(targets, dict) or not isinstance(node_id, str):
+        return {}
+
+    value = targets.get(node_id)
+    return value if isinstance(value, dict) else {}
+
+
+def config_value(config, key):
+    value = config.get(key)
     return value if isinstance(value, str) and value.strip() else None
 
 
