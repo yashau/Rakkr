@@ -168,7 +168,7 @@ class HttpNodeLifecycleRunner implements NodeLifecycleRunner {
         action: input.action,
         options: {
           agentVersion: input.options?.agentVersion,
-          sshUser: input.options?.sshUser ?? process.env.RAKKR_ANSIBLE_DEFAULT_SSH_USER,
+          sshUser: input.options?.sshUser,
         },
         target: {
           host: input.targetHost,
