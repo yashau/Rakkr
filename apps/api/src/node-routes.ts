@@ -24,6 +24,8 @@ import type { ListenSessionStore } from "./listen-session-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { registerNodeActionRoutes } from "./node-action-routes.js";
 import { registerNodeInventoryRoutes } from "./node-inventory-routes.js";
+import { nodeLifecycleService, type NodeLifecycleService } from "./node-lifecycle.js";
+import { registerNodeLifecycleRoutes } from "./node-lifecycle-routes.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
 
@@ -38,6 +40,7 @@ interface NodeRouteDependencies {
   listenMonitorStore: ListenMonitorStore;
   listenSessionStore: ListenSessionStore;
   meterFrameStore: MeterFrameStore;
+  nodeLifecycleService?: NodeLifecycleService;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
@@ -135,6 +138,7 @@ export function registerNodeRoutes({
   listenMonitorStore,
   listenSessionStore,
   meterFrameStore,
+  nodeLifecycleService: lifecycleService = nodeLifecycleService(),
   nodeStore,
   recordAuditEvent,
   requirePermission,
@@ -153,6 +157,15 @@ export function registerNodeRoutes({
     currentUser,
     listenMonitorStore,
     meterFrameStore,
+    recordAuditEvent,
+    requirePermission,
+    scopedNodes,
+  });
+  registerNodeLifecycleRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    nodeLifecycleService: lifecycleService,
     recordAuditEvent,
     requirePermission,
     scopedNodes,

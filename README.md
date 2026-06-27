@@ -87,6 +87,7 @@ visible while the session can still be saved**.
 | 🗄️ Database | Postgres, Drizzle |
 | 🤝 Shared contracts | TypeScript schemas in `packages/shared` |
 | 🦀 Recorder agent | Rust |
+| 🧰 Node lifecycle | Optional Dockerized Ansible runner for Linux recorder provisioning and updates |
 | 🔊 Audio backends | ALSA, PipeWire, JACK, synthetic/dev fallback |
 | 📈 Observability | Prometheus, Mimir example config, Grafana example dashboard |
 
@@ -122,10 +123,12 @@ To run the controller as a container stack instead of the local dev servers:
 docker compose up --build
 ```
 
-The Compose stack builds the API and web images, starts Postgres, runs Drizzle
-migrations, serves the web console at <http://localhost:5173>, and exposes the
-API at <http://localhost:8787>. Kubernetes manifests live in the Helm chart at
-`deploy/helm/rakkr-controller`; see
+The Compose stack builds the API, web, and optional Ansible runner images,
+starts Postgres, runs Drizzle migrations, serves the web console at
+<http://localhost:5173>, exposes the API at <http://localhost:8787>, and
+exposes the Ansible runner health endpoint at <http://localhost:8790/healthz>.
+Kubernetes manifests live in the Helm chart at `deploy/helm/rakkr-controller`;
+see
 [docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md).
 
 For non-admin local roles, scoped resource access can be seeded with

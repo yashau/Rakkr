@@ -40,6 +40,8 @@ test("node routes deny users without required permissions", async () => {
     }),
     app.request(`/api/v1/nodes/${node().id}`),
     app.request(`/api/v1/nodes/${node().id}/actions`),
+    app.request(`/api/v1/nodes/${node().id}/lifecycle-jobs`),
+    app.request(`/api/v1/nodes/${node().id}/lifecycle/update_binary`, { method: "POST" }),
     app.request(`/api/v1/nodes/${node().id}/meters`),
     app.request("/api/v1/meter-events"),
     app.request(`/api/v1/nodes/${node().id}/listen`, { method: "POST" }),
@@ -73,7 +75,7 @@ test("node routes deny users without required permissions", async () => {
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
     "listen.monitor.start",
@@ -88,6 +90,8 @@ test("node routes deny users without required permissions", async () => {
     "nodes.export",
     "nodes.export_selected",
     "nodes.interfaces.update",
+    "nodes.lifecycle.run",
+    "nodes.lifecycle_jobs.read",
     "nodes.read",
     "nodes.update",
   ]);

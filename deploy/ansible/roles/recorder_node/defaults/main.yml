@@ -1,0 +1,16 @@
+---
+rakkr_agent_binary_src: /opt/rakkr-artifacts/rakkr-recorder-agent
+rakkr_agent_env_file: /etc/rakkr/recorder-agent.env
+rakkr_agent_service_enabled: true
+rakkr_agent_service_state: started
+rakkr_controller_ca_dest: /usr/local/share/ca-certificates/rakkr-controller-ca.crt
+rakkr_controller_ca_src: ""
+rakkr_node_smoke_command: /opt/rakkr/bin/rakkr-recorder-agent --print-inventory
+rakkr_recorder_packages_common:
+  - alsa-utils
+  - ca-certificates
+  - curl
+  - ffmpeg
+  - jq
+  - python3
+  - sudo

@@ -10,8 +10,6 @@ Rakkr is a centrally managed Linux/Docker audio recorder platform for reliable v
 
 This document is the short source of truth: product intent, non-negotiables, current status, and next work.
 
----
-
 ## Executive Snapshot
 
 | Area | Decision |
@@ -19,6 +17,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Primary use | Reliable voice recording for meetings and long-running rooms |
 | Controller | Hono API, React, TanStack Router, TanStack Query, shadcn/ui |
 | Agent | Rust recorder node service |
+| Node lifecycle | Optional Dockerized Ansible runner for recorder host provisioning and updates |
 | Database | Postgres with Drizzle |
 | Auth | Local auth first; Azure AD OIDC-ready |
 | Access | Default-deny RBAC plus resource-scoped allow/deny policies |
@@ -51,8 +50,6 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | ⏳ | Not started |
 | 🧊 | Deferred intentionally |
 
-Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required scope.
-
 ## Progress Dashboard
 
 | Workstream | Status | Current State |
@@ -62,6 +59,7 @@ Promotion rule: 🟦 scaffold, 🟨 useful checked workflow, ✅ full required s
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | ✅ | Audited Auth/OIDC read/detail/action summaries, RBAC, audited audit list/detail/action summaries/exports/facets, audited node detail/list/meter/action summaries and agent meter-frame/job polling reads with location/backend/last-seen filters/exports, capacity, scoped audited aggregate status and metrics reads, audited recording detail/context/list/facets/action summaries/actions, ad-hoc and scheduled backend/interface selection, audited schedule list/detail/occurrence reads and filters/action summaries/exports, jobs, lifecycle coverage, audited settings and retention list/detail/action summaries/update, searchable audited health filters/detail/action summaries/bulk lifecycle controls/exports, audited recording-job detail/list/action summaries/date/relationship/capture filters and controls/exports, scoped audited upload queue reads/action summaries and runner status/actions |
 | Controller UI | 🟨 | Dashboard with selectable meter source, active incidents, selected-node recording controls, and global quick-record start, access, audit filters/exports/active chips, nodes with location/backend/last-seen filters/exports/active chips, capacity, recordings with ad-hoc backend/interface selection, jobs, schedules with list filters/active chips/backend/interface selection, settings, searchable central health workbench with active filter chips, bulk health lifecycle controls/exports, recording-job date/relationship/capture filters/active chips and controls/exports, quality timelines |
+| Node lifecycle | 🚧 | Optional Dockerized Ansible runner scaffold for SSH-based package install/update, recorder binary deployment, systemd management, privilege escalation, distro-specific tasks, idempotent role execution, rolling serial playbook execution, and controller-triggered node card actions |
 | Recorder agent | 🟨 | Inventory with refreshed daemon probes, S16/S32 meters, controller capacity polling, bounded concurrent jobs, capture start/runtime/too-small/growth guards with structured stall/render/upload evidence, profile rendering, channel-map application sync, controller-terminal job handoff, recorder-cache cleanup/delete-failure/tracking sync and tracking failure, meter capture-failed/xrun/device-unavailable/recovery, clipping/flatline/low-signal/channel-correlation/heartbeat/node-config/meter-frame/claim-next/status-poll/control-plane/channel-map/disk/CPU/audio-backend recovery health, concurrent-safe health log, hardware-derived health-event controller sync |
 | Test rig | 🟨 | Debian node reachable; X32 X-USB visible and stable-name ALSA capture passed as `hw:XUSB,0` with non-silent 32-channel 48 kHz audio; ALSA loopback capture/render smoke passed; current agent binary deployed and clean multi-speaker speech fixture replayed through ALSA loopback with quality fields plus clipping, low-volume, duplicated-channel daemon health-event detection, X32 repeated S32_LE meter and low-signal health validation with fake-controller sync, PCH S16_LE meter and flatline health validation with fake-controller sync, short/long full fake-controller loopback job capture/upload validation, short/long X32 full-agent hardware job capture/upload validation, and onboard HDA full-agent hardware job validation; longer real-room validation remains |
 | Generic devices | 🟨 | Checked generic ALSA config/inventory with pinned probe paths, controller-managed node audio defaults, node backend filters, ad-hoc and schedule-level backend/interface selection, template-driven capture/meter args, ALSA device matching, PipeWire/JACK capture/meter presets, clean backend availability reporting, Linux loopback capture/render/full-agent short and long job execution, generic ALSA full-agent hardware job execution, X32 stable-name ALSA capture and repeated S32_LE meter smoke, PCH S16_LE meter smoke, X32 hardware low-signal sync, PCH hardware flatline sync, X32 long-run hardware job execution, and onboard HDA hardware job execution; broader physical-device validation remains |

@@ -28,6 +28,7 @@ import {
 } from "@/components/node-inventory-filters";
 import { NodeInventoryActions } from "@/components/node-inventory-actions";
 import { NodeHealthEvents } from "@/components/node-health-events";
+import { NodeLifecycleMenu } from "@/components/node-lifecycle-menu";
 import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -560,6 +561,7 @@ export function NodesPage() {
                     Rotate Token
                   </Button>
                 ) : null}
+                <NodeLifecycleMenu canManage={actionPermissions.canManage} node={node} />
                 <NodeIdentityEditor canManage={actionPermissions.canManage} node={node} />
                 <NodeAudioDefaultsEditor canManage={actionPermissions.canManage} node={node} />
                 {node.interfaces.map((audioInterface) => (

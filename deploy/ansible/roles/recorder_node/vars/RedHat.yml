@@ -1,0 +1,4 @@
+---
+rakkr_recorder_packages: "{{ rakkr_recorder_packages_common + ['pipewire', 'jack-audio-connection-kit'] }}"
+rakkr_service_reload_command: systemctl daemon-reload
+rakkr_trust_update_command: update-ca-trust

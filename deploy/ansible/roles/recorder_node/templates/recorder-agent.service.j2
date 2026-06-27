@@ -1,0 +1,18 @@
+[Unit]
+Description=Rakkr Recorder Agent
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ rakkr_agent_user }}
+Group={{ rakkr_agent_group }}
+EnvironmentFile={{ rakkr_agent_env_file }}
+ExecStart={{ rakkr_agent_install_dir }}/rakkr-recorder-agent
+Restart=always
+RestartSec=5
+StateDirectory=rakkr/agent
+WorkingDirectory={{ rakkr_agent_state_dir }}
+
+[Install]
+WantedBy=multi-user.target

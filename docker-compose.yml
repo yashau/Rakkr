@@ -35,6 +35,8 @@ services:
       dockerfile: Dockerfile.api
     image: rakkr/controller-api:local
     depends_on:
+      ansible-runner:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       controller-migrate:
@@ -70,6 +72,9 @@ services:
       RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH: /var/lib/rakkr/controller/channel-map-templates.json
       RAKKR_CHANNEL_MAP_ASSIGNMENT_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignments.json
       RAKKR_CHANNEL_MAP_ASSIGNMENT_PLAN_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignment-plans.json
+      RAKKR_NODE_LIFECYCLE_STORE_PATH: /var/lib/rakkr/controller/node-lifecycle-jobs.json
+      RAKKR_ANSIBLE_RUNNER_URL: http://ansible-runner:8790
+      RAKKR_ANSIBLE_DEFAULT_SSH_USER: ${RAKKR_ANSIBLE_DEFAULT_SSH_USER:-rakkr}
     ports:
       - "8787:8787"
     volumes:
@@ -80,6 +85,44 @@ services:
           "CMD-SHELL",
           'node -e "fetch(''http://127.0.0.1:8787/healthz'').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
         ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ansible-runner:
+    build:
+      context: .
+      dockerfile: deploy/ansible/Dockerfile.runner
+    image: rakkr/ansible-runner:local
+    depends_on:
+      recorder-test-rig:
+        condition: service_started
+    environment:
+      RAKKR_ANSIBLE_DEFAULT_SSH_USER: ${RAKKR_ANSIBLE_DEFAULT_SSH_USER:-rakkr}
+      RAKKR_ANSIBLE_HOST_OVERRIDES: ${RAKKR_ANSIBLE_HOST_OVERRIDES:-{"node_x32_test":"recorder-test-rig"}}
+      RAKKR_ANSIBLE_ROLLOUT_SERIAL: ${RAKKR_ANSIBLE_ROLLOUT_SERIAL:-1}
+      RAKKR_ANSIBLE_SSH_PASSWORD: ${RAKKR_ANSIBLE_SSH_PASSWORD:-rakkr}
+    ports:
+      - "8790:8790"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:8790/healthz'', timeout=2)"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  recorder-test-rig:
+    build:
+      context: .
+      dockerfile: deploy/ansible/test-rig/Dockerfile
+    image: rakkr/recorder-test-rig:local
+    ports:
+      - "2222:22"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12

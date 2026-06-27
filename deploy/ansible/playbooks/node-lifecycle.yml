@@ -1,0 +1,16 @@
+---
+- name: Rakkr recorder node lifecycle
+  hosts: rakkr_targets
+  become: true
+  gather_facts: true
+  serial: "{{ rakkr_rollout_serial | default(1) }}"
+  vars:
+    rakkr_agent_group: rakkr
+    rakkr_agent_user: rakkr
+    rakkr_agent_install_dir: /opt/rakkr/bin
+    rakkr_agent_service_name: rakkr-recorder-agent
+    rakkr_agent_state_dir: /var/lib/rakkr/agent
+    rakkr_agent_config_dir: /etc/rakkr
+    rakkr_lifecycle_action: smoke_check
+  roles:
+    - role: recorder_node

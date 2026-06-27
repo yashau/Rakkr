@@ -1,0 +1,128 @@
+---
+- name: Load distro-specific lifecycle defaults
+  ansible.builtin.include_vars:
+    file: "{{ ansible_os_family }}.yml"
+  when: ansible_os_family in ["Debian", "RedHat"]
+
+- name: Fail unsupported lifecycle actions
+  ansible.builtin.fail:
+    msg: "Unsupported Rakkr lifecycle action: {{ rakkr_lifecycle_action }}"
+  when: >
+    rakkr_lifecycle_action not in [
+      "install_dependencies",
+      "update_binary",
+      "restart_service",
+      "rotate_trust",
+      "smoke_check",
+    ]
+
+- name: Install or update recorder node dependencies
+  ansible.builtin.package:
+    name: "{{ rakkr_recorder_packages | default(rakkr_recorder_packages_common) }}"
+    state: present
+    update_cache: true
+  when: rakkr_lifecycle_action == "install_dependencies"
+
+- name: Ensure Rakkr recorder group exists
+  ansible.builtin.group:
+    name: "{{ rakkr_agent_group }}"
+    system: true
+  when: rakkr_lifecycle_action in ["install_dependencies", "update_binary"]
+
+- name: Ensure Rakkr recorder user exists
+  ansible.builtin.user:
+    create_home: false
+    group: "{{ rakkr_agent_group }}"
+    home: "{{ rakkr_agent_state_dir }}"
+    name: "{{ rakkr_agent_user }}"
+    shell: /usr/sbin/nologin
+    system: true
+  when: rakkr_lifecycle_action in ["install_dependencies", "update_binary"]
+
+- name: Ensure Rakkr recorder directories exist
+  ansible.builtin.file:
+    group: "{{ rakkr_agent_group }}"
+    mode: "0755"
+    owner: "{{ rakkr_agent_user }}"
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ rakkr_agent_install_dir }}"
+    - "{{ rakkr_agent_state_dir }}"
+    - "{{ rakkr_agent_config_dir }}"
+  when: rakkr_lifecycle_action in ["install_dependencies", "update_binary", "rotate_trust"]
+
+- name: Deploy recorder-agent binary
+  ansible.builtin.copy:
+    dest: "{{ rakkr_agent_install_dir }}/rakkr-recorder-agent"
+    group: "{{ rakkr_agent_group }}"
+    mode: "0755"
+    owner: "{{ rakkr_agent_user }}"
+    src: "{{ rakkr_agent_binary_src }}"
+  notify: Restart recorder agent
+  when: rakkr_lifecycle_action == "update_binary"
+
+- name: Deploy recorder-agent environment
+  ansible.builtin.template:
+    dest: "{{ rakkr_agent_env_file }}"
+    group: "{{ rakkr_agent_group }}"
+    mode: "0640"
+    owner: root
+    src: recorder-agent.env.j2
+  notify: Restart recorder agent
+  when: rakkr_lifecycle_action in ["install_dependencies", "update_binary"]
+
+- name: Deploy recorder-agent systemd unit
+  ansible.builtin.template:
+    dest: "/etc/systemd/system/{{ rakkr_agent_service_name }}.service"
+    group: root
+    mode: "0644"
+    owner: root
+    src: recorder-agent.service.j2
+  notify:
+    - Reload systemd
+    - Restart recorder agent
+  when:
+    - ansible_service_mgr == "systemd"
+    - rakkr_lifecycle_action in ["install_dependencies", "update_binary"]
+
+- name: Install controller CA bundle
+  ansible.builtin.copy:
+    dest: "{{ rakkr_controller_ca_dest }}"
+    group: root
+    mode: "0644"
+    owner: root
+    src: "{{ rakkr_controller_ca_src }}"
+  notify: Update CA trust
+  when:
+    - rakkr_lifecycle_action == "rotate_trust"
+    - rakkr_controller_ca_src | length > 0
+
+- name: Restart recorder-agent service
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    enabled: "{{ rakkr_agent_service_enabled }}"
+    name: "{{ rakkr_agent_service_name }}"
+    state: restarted
+  when:
+    - ansible_service_mgr == "systemd"
+    - rakkr_lifecycle_action == "restart_service"
+
+- name: Run recorder node smoke check
+  ansible.builtin.command:
+    cmd: "{{ rakkr_node_smoke_command }}"
+  changed_when: false
+  register: rakkr_node_smoke_result
+  when: rakkr_lifecycle_action == "smoke_check"
+
+- name: Report smoke check output
+  ansible.builtin.debug:
+    var: rakkr_node_smoke_result.stdout
+  when: rakkr_lifecycle_action == "smoke_check"
+
+- name: Flush lifecycle handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Confirm lifecycle action reached node
+  ansible.builtin.debug:
+    msg: "Rakkr lifecycle action {{ rakkr_lifecycle_action }} completed for {{ rakkr_node_id | default(inventory_hostname) }}"

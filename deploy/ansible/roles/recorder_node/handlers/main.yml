@@ -1,0 +1,18 @@
+---
+- name: Reload systemd
+  ansible.builtin.command:
+    cmd: "{{ rakkr_service_reload_command }}"
+  changed_when: true
+  when: ansible_service_mgr == "systemd"
+
+- name: Restart recorder agent
+  ansible.builtin.systemd_service:
+    enabled: "{{ rakkr_agent_service_enabled }}"
+    name: "{{ rakkr_agent_service_name }}"
+    state: restarted
+  when: ansible_service_mgr == "systemd"
+
+- name: Update CA trust
+  ansible.builtin.command:
+    cmd: "{{ rakkr_trust_update_command }}"
+  changed_when: true

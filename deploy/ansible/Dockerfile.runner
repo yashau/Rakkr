@@ -1,0 +1,24 @@
+FROM python:3.13-slim
+
+WORKDIR /opt/rakkr
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssh-client sshpass \
+  && pip install --no-cache-dir ansible-core==2.19.4 \
+  && mkdir -p /opt/rakkr-artifacts /root/.ssh \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/ansible /opt/rakkr/deploy/ansible
+
+RUN printf '#!/bin/sh\nprintf "rakkr-recorder-agent test artifact\\n"\n' \
+    > /opt/rakkr-artifacts/rakkr-recorder-agent \
+  && chmod +x /opt/rakkr-artifacts/rakkr-recorder-agent
+
+ENV RAKKR_ANSIBLE_PLAYBOOK=/opt/rakkr/deploy/ansible/playbooks/node-lifecycle.yml
+ENV RAKKR_ANSIBLE_BINARY_SRC=/opt/rakkr-artifacts/rakkr-recorder-agent
+ENV RAKKR_ANSIBLE_HOST_KEY_CHECKING=0
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8790
+
+CMD ["python", "/opt/rakkr/deploy/ansible/runner.py"]
