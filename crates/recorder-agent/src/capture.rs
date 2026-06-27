@@ -56,7 +56,18 @@ pub struct CapturePlan {
 }
 
 pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CapturePlan> {
-    let output_path = capture_output_path(config)?;
+    let final_output_path = capture_output_path(config)?;
+    let output_codec =
+        capture_output_codec(config.capture_output_codec.as_deref(), &final_output_path);
+    let output_path = if output_codec == "wav" {
+        final_output_path.clone()
+    } else {
+        raw_capture_path(&final_output_path)
+    };
+    let output_bitrate_kbps = config
+        .capture_output_bitrate_kbps
+        .or_else(|| (output_codec == "mp3").then_some(128));
+    let output_vbr = config.capture_output_vbr && output_codec == "mp3";
 
     Ok(CapturePlan {
         args_template: config.capture_args_template.clone(),
@@ -67,14 +78,14 @@ pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CaptureP
             .effective_capture_command(config.capture_backend)
             .to_string(),
         device: config.capture_device.clone(),
-        final_output_path: output_path.clone(),
+        final_output_path,
         format: config.capture_format.clone(),
         growth_grace_seconds: config.capture_growth_grace_seconds,
         min_output_bytes: config.capture_min_output_bytes,
-        output_bitrate_kbps: None,
-        output_codec: "wav".to_string(),
+        output_bitrate_kbps,
+        output_codec,
         output_path,
-        output_vbr: false,
+        output_vbr,
         render_command: config.channel_render_command.clone(),
         sample_rate: config.capture_sample_rate,
         seconds: config.capture_seconds,
@@ -84,7 +95,13 @@ pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CaptureP
 
 pub fn capture_output_path(config: &AgentConfig) -> anyhow::Result<PathBuf> {
     if let Some(path) = &config.capture_output {
-        return Ok(path.clone());
+        return Ok(
+            match default_capture_extension(config.capture_output_codec.as_deref()) {
+                "flac" => path.with_extension("flac"),
+                "mp3" => path.with_extension("mp3"),
+                _ => path.clone(),
+            },
+        );
     }
 
     let recording_id = config
@@ -96,9 +113,53 @@ pub fn capture_output_path(config: &AgentConfig) -> anyhow::Result<PathBuf> {
         .join("recordings")
         .join("local-captures")
         .join(format!(
-            "rakkr-capture-{}.wav",
-            safe_file_stem(recording_id)
+            "rakkr-capture-{}.{}",
+            safe_file_stem(recording_id),
+            default_capture_extension(config.capture_output_codec.as_deref())
         )))
+}
+
+fn capture_output_codec(codec: Option<&str>, output_path: &Path) -> String {
+    codec
+        .map(str::to_ascii_lowercase)
+        .filter(|value| supported_output_codec(value))
+        .or_else(|| {
+            output_path
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(str::to_ascii_lowercase)
+        })
+        .filter(|value| supported_output_codec(value))
+        .unwrap_or_else(|| "wav".to_string())
+}
+
+fn default_capture_extension(codec: Option<&str>) -> &'static str {
+    codec
+        .map(str::to_ascii_lowercase)
+        .filter(|value| supported_output_codec(value))
+        .map_or("wav", |value| match value.as_str() {
+            "flac" => "flac",
+            "mp3" => "mp3",
+            _ => "wav",
+        })
+}
+
+fn supported_output_codec(codec: &str) -> bool {
+    matches!(codec, "flac" | "mp3" | "wav")
+}
+
+fn raw_capture_path(final_output_path: &Path) -> PathBuf {
+    let stem = final_output_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("recording");
+    let file_name = format!("{stem}.raw.wav");
+
+    final_output_path.parent().map_or_else(
+        || PathBuf::from(file_name.as_str()),
+        |parent| parent.join(file_name.as_str()),
+    )
 }
 
 pub fn local_capture_path(file_name: &str) -> PathBuf {
@@ -179,10 +240,6 @@ fn jack_capture_port_args(device: &str) -> Vec<String> {
     } else {
         vec!["--port".to_string(), device.to_string()]
     }
-}
-
-pub fn run_capture_job(config: &AgentConfig) -> anyhow::Result<PathBuf> {
-    run_capture_plan(&capture_plan_from_config(config)?)
 }
 
 pub fn run_capture_plan(plan: &CapturePlan) -> anyhow::Result<PathBuf> {
@@ -532,6 +589,9 @@ mod tests {
             capture_growth_grace_seconds: 10,
             capture_min_output_bytes: 128,
             capture_output: Some(PathBuf::from("/tmp/rec.wav")),
+            capture_output_bitrate_kbps: None,
+            capture_output_codec: None,
+            capture_output_vbr: true,
             capture_recording_id: Some("rec_123".to_string()),
             capture_sample_rate: 48_000,
             capture_seconds: 15,
@@ -738,6 +798,65 @@ mod tests {
                 .unwrap()
                 .ends_with("rakkr-capture-rec_with_spaces.wav")
         );
+    }
+
+    #[test]
+    fn direct_capture_defaults_to_wav_without_render_step() {
+        let mut config = config();
+
+        config.capture_output = None;
+        config.capture_recording_id = Some("rec_default".to_string());
+        let plan = capture_plan_from_config(&config).expect("plan");
+
+        assert!(plan.output_path.ends_with("rakkr-capture-rec_default.wav"));
+        assert_eq!(plan.output_path, plan.final_output_path);
+        assert_eq!(plan.output_codec, "wav");
+        assert_eq!(plan.output_bitrate_kbps, None);
+        assert!(!plan.output_vbr);
+    }
+
+    #[test]
+    fn direct_mp3_capture_uses_raw_wav_and_profile_encoding_defaults() {
+        let mut config = config();
+
+        config.capture_output = None;
+        config.capture_output_codec = Some("mp3".to_string());
+        config.capture_recording_id = Some("rec_mp3".to_string());
+        let plan = capture_plan_from_config(&config).expect("plan");
+
+        assert!(
+            plan.final_output_path
+                .ends_with("rakkr-capture-rec_mp3.mp3")
+        );
+        assert!(plan.output_path.ends_with("rakkr-capture-rec_mp3.raw.wav"));
+        assert_eq!(plan.output_codec, "mp3");
+        assert_eq!(plan.output_bitrate_kbps, Some(128));
+        assert!(plan.output_vbr);
+    }
+
+    #[test]
+    fn direct_capture_codec_can_follow_output_extension() {
+        let mut config = config();
+
+        config.capture_output = Some(PathBuf::from("/tmp/meeting.flac"));
+        let plan = capture_plan_from_config(&config).expect("plan");
+
+        assert!(plan.final_output_path.ends_with("meeting.flac"));
+        assert!(plan.output_path.ends_with("meeting.raw.wav"));
+        assert_eq!(plan.output_codec, "flac");
+    }
+
+    #[test]
+    fn direct_capture_explicit_codec_normalizes_final_extension() {
+        let mut config = config();
+
+        config.capture_output = Some(PathBuf::from("/tmp/meeting.wav"));
+        config.capture_output_codec = Some("mp3".to_string());
+        let plan = capture_plan_from_config(&config).expect("plan");
+
+        assert!(plan.final_output_path.ends_with("meeting.mp3"));
+        assert!(plan.output_path.ends_with("meeting.raw.wav"));
+        assert_eq!(plan.output_codec, "mp3");
     }
 
     #[test]

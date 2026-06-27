@@ -99,11 +99,17 @@ async fn main() -> anyhow::Result<()> {
             .controller_token
             .as_deref()
             .context("missing --controller-token or RAKKR_CONTROLLER_TOKEN")?;
-        let output_path = capture::run_capture_job(&config)?;
+        let capture_plan = capture::capture_plan_from_config(&config)?;
+        let raw_output_path = capture::run_capture_plan(&capture_plan)?;
+        let output_path = channel_map::render_capture_output(&capture_plan, &raw_output_path)?;
+        let content_type = cache_content_type::content_type_for_codec(
+            Some(capture_plan.output_codec.as_str()),
+            &output_path,
+        );
 
         controller::upload_cache_file(controller::CacheFileUpload {
             allow_insecure_controller: config.allow_insecure_controller,
-            content_type: "audio/wav",
+            content_type,
             controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
             controller_url: &config.controller_url,
             duration_seconds: Some(config.capture_seconds),

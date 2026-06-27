@@ -987,13 +987,13 @@ Current implementation baseline:
 342. ✅ Add Debian ALSA loopback short/long, repeated X32 S32 and PCH S16 meters, X32 low-signal/PCH flatline health, X32 hardware short/long, and onboard HDA full-agent job smokes.
 343. ✅ Add fake-controller sync assertions for X32 low-signal and PCH flatline hardware health smokes.
 344. ✅ Add fake-controller smoke coverage for agent node-config, node-heartbeat, meter-frame, monitor chunk, generic meter capture-failed/xrun/device-unavailable/recovery, system disk/CPU pressure/recovery, recording-job capture start/runtime/too-small/stall/render/upload evidence, channel-map application sync, recorder-cache cleanup/tracking sync and tracking failure, claim-next/status-poll/control-plane/channel-map failure/recovery health, controller-terminal handoff, deterministic agent meter-health fault scores, and recorder-cache delete-failure helper coverage.
-345. ✅ Add refreshed daemon inventory probes and fake-controller smoke coverage for controller-synced audio-backend unavailable/recovery health.
+345. ✅ Add refreshed daemon inventory probes, fake-controller smoke coverage for controller-synced audio-backend unavailable/recovery health, and direct recorder-agent capture output codec controls with raw WAV intermediate rendering and codec-aware uploads.
 ## Open Questions
 | Question | Current Lean |
 | -------- | ------------ |
 | JACK role | Supported for pro-audio graph setups; PipeWire is the preferred modern routed path |
-| Rust MP3 encoder path | Evaluate during agent recording pipeline hardening |
+| Rust MP3 encoder path | External renderer path now covers controller-managed and direct MP3 VBR; native Rust encoder evaluation remains later if deployment warrants |
 | Live monitor protocol | Agent audio chunk polling now; encrypted WebSocket session control later |
 | Node local log store | JSONL now; SQLite likely later |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
-Last updated: `2026-06-25`
+Last updated: `2026-06-27`

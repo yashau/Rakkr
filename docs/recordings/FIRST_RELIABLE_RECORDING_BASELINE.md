@@ -8,6 +8,7 @@ Status: MVP baseline checked.
 - Scheduled due runs create schedule-owned recordings and jobs with schedule-owned name, folder, tags, profile, watchdog policy, and upload policy.
 - Recorder nodes can claim jobs, heartbeat running jobs, attach cached audio, complete jobs, and auto-queue cached recordings for upload.
 - Long-running recorder agents can claim-next and run bounded simultaneous jobs from controller node capacity, with `RAKKR_MAX_CONCURRENT_RECORDINGS` as the local fallback.
+- Direct recorder-agent captures can request MP3/FLAC/WAV output with bitrate/VBR options; encoded direct captures use a raw WAV intermediate, the shared renderer, and codec-aware upload content types.
 - Cached recordings store checksum, duration, waveform preview, content type, file name, and cache path.
 - Cached media supports playback sessions, download preparation, inline stream, and attachment file responses.
 - Stop requests survive agent cancellation without falsely marking the recording unhealthy.
@@ -25,7 +26,7 @@ Status: MVP baseline checked.
 | Cache checksum, duration, waveform preview, file size | `apps/api/test/recording-cache.test.ts` |
 | Failed/cancelled/lease-expired job health transitions | `apps/api/test/agent-routes.test.ts`, `apps/api/test/recording-job-lease-runner.test.ts` |
 | Stop-request lifecycle | `apps/api/test/agent-routes.test.ts` |
-| Agent capture/render/cache/channel-map application/retention/stop/controller-terminal/claim-next-status-poll-control-plane-channel-map failure/controller-capacity/concurrency smoke | `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-recovery.mjs`, `scripts/agent-fake-controller-smoke-support.mjs`, `crates/recorder-agent/src/inventory.rs`, `crates/recorder-agent/src/recording_job_disk.rs`, `crates/recorder-agent/src/recording_job_recovery.rs`, `crates/recorder-agent/src/recording_job_segments.rs`, `crates/recorder-agent/src/recording_job_upload.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs` |
+| Agent capture/render/cache/channel-map application/retention/stop/controller-terminal/claim-next-status-poll-control-plane-channel-map failure/controller-capacity/concurrency smoke and direct capture output encoding | `scripts/agent-fake-controller-smoke.mjs`, `scripts/agent-fake-controller-smoke-recovery.mjs`, `scripts/agent-fake-controller-smoke-support.mjs`, `crates/recorder-agent/src/capture.rs`, `crates/recorder-agent/src/config.rs`, `crates/recorder-agent/src/main.rs`, `crates/recorder-agent/src/inventory.rs`, `crates/recorder-agent/src/recording_job_disk.rs`, `crates/recorder-agent/src/recording_job_recovery.rs`, `crates/recorder-agent/src/recording_job_segments.rs`, `crates/recorder-agent/src/recording_job_upload.rs`, `crates/recorder-agent/src/recorder_cache_retention.rs` |
 | Playback/download UI readiness and cleanup | `apps/web/src/lib/recording-page-helpers.test.ts` |
 | Schedule detail playback/download controls | `apps/web/src/lib/schedule-detail-page-helpers.test.ts` |
 | Recording jobs workbench, export, stop, and retry controls | `apps/api/test/recording-job-export.test.ts`, `apps/api/test/recording-jobs.test.ts`, `apps/web/src/pages/jobs.tsx`, `apps/web/src/lib/jobs-page-helpers.test.ts`, `apps/web/src/lib/root-layout-helpers.test.ts` |

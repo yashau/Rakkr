@@ -114,6 +114,20 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CAPTURE_OUTPUT")]
     pub capture_output: Option<PathBuf>,
 
+    #[arg(long, env = "RAKKR_CAPTURE_OUTPUT_CODEC")]
+    pub capture_output_codec: Option<String>,
+
+    #[arg(long, env = "RAKKR_CAPTURE_OUTPUT_BITRATE_KBPS")]
+    pub capture_output_bitrate_kbps: Option<u32>,
+
+    #[arg(
+        long,
+        env = "RAKKR_CAPTURE_OUTPUT_VBR",
+        default_value_t = true,
+        action = clap::ArgAction::Set
+    )]
+    pub capture_output_vbr: bool,
+
     #[arg(long, env = "RAKKR_CAPTURE_DEVICE", default_value = "default")]
     pub capture_device: String,
 
@@ -403,6 +417,23 @@ mod tests {
             Some("--write-output {output}")
         );
         assert_eq!(config.meter_args_template.as_deref(), Some("--raw -"));
+    }
+
+    #[test]
+    fn accepts_direct_capture_output_codec_options() {
+        let config = AgentConfig::try_parse_from([
+            "rakkr-recorder-agent",
+            "--capture-output-codec",
+            "mp3",
+            "--capture-output-bitrate-kbps",
+            "192",
+            "--capture-output-vbr=false",
+        ])
+        .expect("direct capture output options should parse");
+
+        assert_eq!(config.capture_output_codec.as_deref(), Some("mp3"));
+        assert_eq!(config.capture_output_bitrate_kbps, Some(192));
+        assert!(!config.capture_output_vbr);
     }
 
     #[test]
