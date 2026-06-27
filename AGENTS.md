@@ -35,7 +35,9 @@ Runtime/tool versions should follow the checked config files, especially
 - Recorder agent: Rust workspace crate at `crates/recorder-agent`
 - Rust checks: cargo check, rustfmt, clippy, Miri via `mise`
 - Lint/format: oxlint, oxlint-tailwindcss, oxfmt
-- Deployment: Docker Compose, API and web Dockerfiles, Helm chart under
+- Recorder node lifecycle: optional Dockerized Ansible runner under
+  `deploy/ansible`, called by controller node lifecycle routes and the nodes UI
+- Deployment: Docker Compose, API/web/Ansible Dockerfiles, Helm chart under
   `deploy/helm/rakkr-controller`
 - Observability: `/metrics`, Prometheus/Mimir examples, Grafana dashboard,
   JSONL/health-event evidence
@@ -48,6 +50,7 @@ apps/web/                 React/Vite operator console and UI helper tests
 packages/shared/          Shared TypeScript schemas/contracts
 packages/db/              Drizzle schema, migrations, migration verifier
 crates/recorder-agent/    Rust recorder node agent
+deploy/ansible/           Optional Ansible lifecycle runner, playbooks, role
 docs/                     Source of truth and checked baseline docs
 fixtures/audio/           Golden speech fixture and metadata
 scripts/                  Gate scripts, smoke tests, baseline verifiers
@@ -115,6 +118,7 @@ Default URLs:
 - Web UI: `http://localhost:5173`
 - API health: `http://localhost:8787/healthz`
 - Metrics: `http://localhost:8787/metrics`
+- Ansible runner health: `http://localhost:8790/healthz`
 
 Stop local services:
 
@@ -128,8 +132,10 @@ Run the controller as containers instead of local dev servers:
 docker compose up --build
 ```
 
-Compose starts Postgres, runs migrations, serves the API on port `8787`, and
-serves the web console on port `5173`.
+Compose starts Postgres, runs migrations, serves the API on port `8787`, serves
+the web console on port `5173`, exposes the optional Ansible runner on port
+`8790`, and includes a disposable Debian SSH target named `recorder-test-rig`
+for lifecycle smoke validation.
 
 ## Database Workflow
 
@@ -254,6 +260,22 @@ Fake-controller smoke:
 mise run agent:fake-controller-smoke
 ```
 
+Ansible recorder-node lifecycle smokes:
+
+```powershell
+docker compose up -d --build ansible-runner recorder-test-rig
+mise run ansible:runner-smoke
+```
+
+The local runner smoke deploys the disposable recorder-agent artifact into the
+Compose `recorder-test-rig` target, then runs `smoke_check`. For the physical
+X32 rig, set `RAKKR_ANSIBLE_SSH_DIR` and `RAKKR_ANSIBLE_TARGETS` as documented
+in `deploy/ansible/README.md`, then run:
+
+```powershell
+mise run ansible:x32-smoke
+```
+
 Linux audio smoke tests exist for ALSA loopback, generic ALSA hardware, X32, and
 PCH hardware. These are host/hardware dependent and should not be treated as
 portable Windows gates:
@@ -298,6 +320,10 @@ available.
   events, and scoped resource visibility.
 - Keep service-action and denied-attempt audit behavior intact.
 - Watch for route families that are mirrored in UI permission boundaries.
+- Node lifecycle work lives in `apps/api/src/node-lifecycle.ts` and
+  `apps/api/src/node-lifecycle-routes.ts`; keep actions allowlisted,
+  `node:manage`-gated, scoped to visible nodes, and audited with runner run IDs,
+  exit codes, target hosts, stdout, and stderr.
 - If adding new settings, recordings, schedules, health, upload, or node
   behavior, check whether a baseline doc and verifier script also need updates.
 
@@ -316,6 +342,11 @@ available.
   style already in the app.
 - Keep dense operational screens usable for scanning, filtering, and repeated
   action.
+- Recorder-node lifecycle controls live in
+  `apps/web/src/components/node-lifecycle-menu.tsx` and call
+  `apps/web/src/lib/node-lifecycle-api.ts`; preserve the node-card placement,
+  `node:manage` boundary, compact operations-console styling, and accessible
+  controls.
 
 ## Rust Agent Guidance
 
@@ -359,6 +390,16 @@ and evidence support the promotion.
 - `Dockerfile.api` builds the API image and supports migration execution.
 - `Dockerfile.web` builds the web console and serves it with nginx.
 - `docker-compose.yml` is the local controller stack.
+- `deploy/ansible/Dockerfile.runner` builds the optional Ansible lifecycle
+  runner image; `deploy/ansible/runner.py` exposes `/healthz` and `POST /runs`.
+- `deploy/ansible/playbooks/node-lifecycle.yml` and
+  `deploy/ansible/roles/recorder_node` own SSH-target lifecycle work: package
+  install/update, recorder binary deployment, systemd unit management, CA trust
+  rotation, smoke checks, distro vars, privilege escalation, idempotency, and
+  serial rollout.
+- Keep lifecycle credentials out of node metadata. Use runner environment such
+  as `RAKKR_ANSIBLE_TARGETS`, `RAKKR_ANSIBLE_SSH_DIR`, and mounted key paths
+  for per-node SSH settings.
 - `deploy/nginx/default.conf.template` handles web/API proxying for the web
   container.
 - `deploy/helm/rakkr-controller` contains Kubernetes resources.

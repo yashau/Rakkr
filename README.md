@@ -17,6 +17,7 @@
   <a href="#-current-flight-status">Status</a> ·
   <a href="#-quick-start">Quick start</a> ·
   <a href="#-recorder-agent">Agent</a> ·
+  <a href="#-recorder-node-lifecycle">Lifecycle</a> ·
   <a href="#-evidence-map">Evidence</a>
 </p>
 
@@ -37,14 +38,15 @@ cache, upload, and audit recordings from generic Linux audio interfaces.
 
 ## 🚦 Current Flight Status
 
-| Area | State | What Is Real Today |
-| ---- | ----- | ------------------ |
-| 🧠 Controller API | ✅ Checked | Auth, OIDC, RBAC, audit, nodes, recordings, jobs, schedules, settings, health, uploads, metrics |
-| 🖥️ Controller UI | 🟨 Focused | Useful operator workbench; polish is intentionally behind core workflow validation |
-| 🎛️ Recorder agent | 🟨 Active | Inventory, ALSA/PipeWire/JACK capture, meters, local health log, cache, controller sync |
-| 🧪 Test rig | 🟨 Active | Debian rig, X32 X-USB, onboard HDA, ALSA loopback, speech fixture replay, fake-controller smokes |
-| 🩺 Health watchdog | 🟨 Active | Low signal, clipping, flatline, noise, speech, SNR, correlation, backend loss/recovery, disk/CPU pressure |
-| 📈 Observability | ✅ Checked | Prometheus metrics, alert rules, Grafana dashboard, audit events, central health events, rotating JSONL logs |
+| Area               | State         | What Is Real Today                                                                                                                   |
+| ------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 🧠 Controller API  | ✅ Checked    | Auth, OIDC, RBAC, audit, nodes, recordings, jobs, schedules, settings, health, uploads, metrics                                      |
+| 🖥️ Controller UI   | 🟨 Focused    | Useful operator workbench; polish is intentionally behind core workflow validation                                                   |
+| 🎛️ Recorder agent  | 🟨 Active     | Inventory, ALSA/PipeWire/JACK capture, meters, local health log, cache, controller sync                                              |
+| 🧰 Node lifecycle  | 🚧 Scaffolded | Optional Dockerized Ansible runner for recorder-node SSH, dependencies, binary deployment, systemd, trust rotation, and smoke checks |
+| 🧪 Test rig        | 🟨 Active     | Debian rig, X32 X-USB, onboard HDA, ALSA loopback, speech fixture replay, fake-controller smokes                                     |
+| 🩺 Health watchdog | 🟨 Active     | Low signal, clipping, flatline, noise, speech, SNR, correlation, backend loss/recovery, disk/CPU pressure                            |
+| 📈 Observability   | ✅ Checked    | Prometheus metrics, alert rules, Grafana dashboard, audit events, central health events, rotating JSONL logs                         |
 
 ## 🎚️ Core Loop
 
@@ -68,28 +70,28 @@ flowchart LR
 Rakkr is built around one stubborn idea: **recording failures should become
 visible while the session can still be saved**.
 
-| Need | Rakkr Response |
-| ---- | -------------- |
-| Know which node is alive | Heartbeats, runtime inventory, IP/runtime/backend reporting |
-| Trust the audio path | ALSA-first capture, PipeWire/JACK presets, pinned command templates |
-| Catch bad input | Clipping, flatline, low signal, channel correlation, noise, speech, SNR, intelligibility scoring |
-| Recover with evidence | Local JSONL health logs, synced controller events, audit trails, job state transitions |
-| Test without drama | Fake-controller smokes, ALSA loopback, golden speech fixture, deterministic fault lanes |
-| Keep outputs moving | Local cache, upload queue, stub/SMB/S3 providers, recorder-cache cleanup evidence |
+| Need                     | Rakkr Response                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| Know which node is alive | Heartbeats, runtime inventory, IP/runtime/backend reporting                                      |
+| Trust the audio path     | ALSA-first capture, PipeWire/JACK presets, pinned command templates                              |
+| Catch bad input          | Clipping, flatline, low signal, channel correlation, noise, speech, SNR, intelligibility scoring |
+| Recover with evidence    | Local JSONL health logs, synced controller events, audit trails, job state transitions           |
+| Test without drama       | Fake-controller smokes, ALSA loopback, golden speech fixture, deterministic fault lanes          |
+| Keep outputs moving      | Local cache, upload queue, stub/SMB/S3 providers, recorder-cache cleanup evidence                |
 
 ## 🧰 Stack
 
-| Layer | Choice |
-| ----- | ------ |
-| 🪄 Workspace orchestration | `mise` |
-| 🧠 Controller API | Node.js, Hono |
-| 🖥️ Controller UI | React, TanStack Router, TanStack Query, shadcn/ui-style components |
-| 🗄️ Database | Postgres, Drizzle |
-| 🤝 Shared contracts | TypeScript schemas in `packages/shared` |
-| 🦀 Recorder agent | Rust |
-| 🧰 Node lifecycle | Optional Dockerized Ansible runner for Linux recorder provisioning and updates |
-| 🔊 Audio backends | ALSA, PipeWire, JACK, synthetic/dev fallback |
-| 📈 Observability | Prometheus, Mimir example config, Grafana example dashboard |
+| Layer                      | Choice                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| 🪄 Workspace orchestration | `mise`                                                                         |
+| 🧠 Controller API          | Node.js, Hono                                                                  |
+| 🖥️ Controller UI           | React, TanStack Router, TanStack Query, shadcn/ui-style components             |
+| 🗄️ Database                | Postgres, Drizzle                                                              |
+| 🤝 Shared contracts        | TypeScript schemas in `packages/shared`                                        |
+| 🦀 Recorder agent          | Rust                                                                           |
+| 🧰 Node lifecycle          | Optional Dockerized Ansible runner for Linux recorder provisioning and updates |
+| 🔊 Audio backends          | ALSA, PipeWire, JACK, synthetic/dev fallback                                   |
+| 📈 Observability           | Prometheus, Mimir example config, Grafana example dashboard                    |
 
 ## 🚀 Quick Start
 
@@ -100,17 +102,17 @@ mise run services:up
 mise run dev
 ```
 
-| Surface | URL |
-| ------- | --- |
-| 🖥️ Web UI | <http://localhost:5173> |
+| Surface       | URL                             |
+| ------------- | ------------------------------- |
+| 🖥️ Web UI     | <http://localhost:5173>         |
 | 🩺 API health | <http://localhost:8787/healthz> |
-| 📈 Metrics | <http://localhost:8787/metrics> |
+| 📈 Metrics    | <http://localhost:8787/metrics> |
 
 Local dev sign-in defaults come from `.env.example`:
 
-| Field | Default |
-| ----- | ------- |
-| Email | `admin@rakkr.local` |
+| Field    | Default                    |
+| -------- | -------------------------- |
+| Email    | `admin@rakkr.local`        |
 | Password | `rakkr-local-dev-password` |
 
 Override local identity with `RAKKR_LOCAL_ADMIN_EMAIL`,
@@ -127,6 +129,8 @@ The Compose stack builds the API, web, and optional Ansible runner images,
 starts Postgres, runs Drizzle migrations, serves the web console at
 <http://localhost:5173>, exposes the API at <http://localhost:8787>, and
 exposes the Ansible runner health endpoint at <http://localhost:8790/healthz>.
+It also includes a disposable Debian SSH target, `recorder-test-rig`, for local
+Ansible lifecycle validation.
 Kubernetes manifests live in the Helm chart at `deploy/helm/rakkr-controller`;
 see
 [docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md).
@@ -135,7 +139,7 @@ For non-admin local roles, scoped resource access can be seeded with
 `RAKKR_LOCAL_RESOURCE_GRANTS`, for example:
 
 ```json
-{"node":["node_x32_test"]}
+{ "node": ["node_x32_test"] }
 ```
 
 ## 🗺️ Workspace Map
@@ -162,6 +166,8 @@ docs/
   security/            RBAC and transport baselines
   settings/            Settings/template baseline
   storage/             Upload provider baseline
+deploy/
+  ansible/             Optional recorder-node lifecycle runner, playbooks, role
 ```
 
 ## ⚡ Command Deck
@@ -185,6 +191,14 @@ mise run node:format
 mise run rust:fmt
 ```
 
+Ansible lifecycle smoke helpers:
+
+```powershell
+docker compose up -d --build ansible-runner recorder-test-rig
+mise run ansible:runner-smoke
+mise run ansible:x32-smoke
+```
+
 ## 🎛️ Recorder Agent
 
 The recorder agent authenticates with node credentials, samples PCM for live
@@ -192,16 +206,40 @@ meter frames, posts those frames to the controller, writes a rotating JSONL
 health log, captures jobs, renders outputs, applies recorder-cache retention,
 and syncs health events.
 
-| Area | Useful Controls |
-| ---- | --------------- |
-| 🎙️ Capture | `RAKKR_CAPTURE_BACKEND`, `RAKKR_CAPTURE_COMMAND`, `RAKKR_CAPTURE_DEVICE`, `RAKKR_CAPTURE_FORMAT`, `RAKKR_CAPTURE_SAMPLE_RATE`, `RAKKR_CAPTURE_CHANNELS` |
-| 📊 Metering | `RAKKR_METER_BACKEND`, `RAKKR_METER_SAMPLE_SECONDS`, `RAKKR_METER_CLIP_DBFS`, `RAKKR_METER_FLATLINE_DBFS`, `RAKKR_METER_LOW_SIGNAL_DBFS` |
-| 📝 Health log | `RAKKR_AGENT_HEALTH_LOG_FILE`, `RAKKR_AGENT_HEALTH_LOG_MAX_BYTES`, `RAKKR_AGENT_HEALTH_LOG_RETAINED_FILES` |
-| 🩺 System health | `RAKKR_SYSTEM_HEALTH_ENABLED`, `RAKKR_SYSTEM_HEALTH_DISK_PATH`, disk warning/critical percentages, load warning/critical per-core thresholds |
-| 🔎 Inventory probes | `RAKKR_INVENTORY_ARECORD_COMMAND`, `RAKKR_INVENTORY_PROC_ASOUND_PCM_PATH` |
+| Area                | Useful Controls                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🎙️ Capture          | `RAKKR_CAPTURE_BACKEND`, `RAKKR_CAPTURE_COMMAND`, `RAKKR_CAPTURE_DEVICE`, `RAKKR_CAPTURE_FORMAT`, `RAKKR_CAPTURE_SAMPLE_RATE`, `RAKKR_CAPTURE_CHANNELS` |
+| 📊 Metering         | `RAKKR_METER_BACKEND`, `RAKKR_METER_SAMPLE_SECONDS`, `RAKKR_METER_CLIP_DBFS`, `RAKKR_METER_FLATLINE_DBFS`, `RAKKR_METER_LOW_SIGNAL_DBFS`                |
+| 📝 Health log       | `RAKKR_AGENT_HEALTH_LOG_FILE`, `RAKKR_AGENT_HEALTH_LOG_MAX_BYTES`, `RAKKR_AGENT_HEALTH_LOG_RETAINED_FILES`                                              |
+| 🩺 System health    | `RAKKR_SYSTEM_HEALTH_ENABLED`, `RAKKR_SYSTEM_HEALTH_DISK_PATH`, disk warning/critical percentages, load warning/critical per-core thresholds            |
+| 🔎 Inventory probes | `RAKKR_INVENTORY_ARECORD_COMMAND`, `RAKKR_INVENTORY_PROC_ASOUND_PCM_PATH`                                                                               |
 
 See [crates/recorder-agent/README.md](crates/recorder-agent/README.md) for
 the agent-focused quick reference.
+
+## 🧰 Recorder Node Lifecycle
+
+Rakkr can optionally delegate recorder-node lifecycle work to a Dockerized
+Ansible runner. The controller records RBAC/audit context and exposes node-card
+actions in the operations console; Ansible owns the host work: SSH, package
+install/update, recorder-agent binary deployment, systemd units, privilege
+escalation, distro-specific vars, idempotent execution, and serial rollout.
+
+Supported actions are:
+
+- `install_dependencies`
+- `update_binary`
+- `restart_service`
+- `rotate_trust`
+- `smoke_check`
+
+Local Compose maps the seeded `node_x32_test` node to the disposable
+`recorder-test-rig` SSH container by default. Physical rig validation can mount
+the host SSH directory into the runner and use per-node `RAKKR_ANSIBLE_TARGETS`
+for root/key auth and custom smoke commands. See
+[deploy/ansible/README.md](deploy/ansible/README.md) and
+[docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) for the exact
+environment variables and X32 example.
 
 ## 🧪 Loopback And Fault Fixtures
 
@@ -247,25 +285,25 @@ References:
 
 ## ☁️ Upload Providers
 
-| Provider | Target |
-| -------- | ------ |
-| 🧪 Stub | `stub://queue-only` for dry-run queue processing |
-| 🗂️ SMB | Mounted filesystem target such as `/mnt/rakkr-recordings` or `file:///mnt/rakkr-recordings` |
-| 🪣 S3 | `s3://bucket/prefix`; AWS credentials and region come from the normal AWS SDK environment or instance configuration |
+| Provider | Target                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| 🧪 Stub  | `stub://queue-only` for dry-run queue processing                                                                    |
+| 🗂️ SMB   | Mounted filesystem target such as `/mnt/rakkr-recordings` or `file:///mnt/rakkr-recordings`                         |
+| 🪣 S3    | `s3://bucket/prefix`; AWS credentials and region come from the normal AWS SDK environment or instance configuration |
 
 Local cached recording files are served from `RAKKR_RECORDING_CACHE_DIR`,
 defaulting to `data/recordings`.
 
 ## 🧾 Evidence Map
 
-| Area | Entry Point |
-| ---- | ----------- |
-| 📌 Source of truth | [docs/RAKKR_SOURCE_OF_TRUTH.md](docs/RAKKR_SOURCE_OF_TRUTH.md) |
-| 🔊 Generic devices | [docs/devices/GENERIC_DEVICE_BASELINE.md](docs/devices/GENERIC_DEVICE_BASELINE.md) |
-| 🩺 Health watchdog | [docs/health/HEALTH_WATCHDOG_BASELINE.md](docs/health/HEALTH_WATCHDOG_BASELINE.md) |
-| 📈 Observability | [docs/observability/README.md](docs/observability/README.md) |
-| 🎙️ Audio fixtures | [fixtures/audio/README.md](fixtures/audio/README.md) |
-| 💾 Storage upload | [docs/storage/STORAGE_UPLOAD_BASELINE.md](docs/storage/STORAGE_UPLOAD_BASELINE.md) |
+| Area                  | Entry Point                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| 📌 Source of truth    | [docs/RAKKR_SOURCE_OF_TRUTH.md](docs/RAKKR_SOURCE_OF_TRUTH.md)                               |
+| 🔊 Generic devices    | [docs/devices/GENERIC_DEVICE_BASELINE.md](docs/devices/GENERIC_DEVICE_BASELINE.md)           |
+| 🩺 Health watchdog    | [docs/health/HEALTH_WATCHDOG_BASELINE.md](docs/health/HEALTH_WATCHDOG_BASELINE.md)           |
+| 📈 Observability      | [docs/observability/README.md](docs/observability/README.md)                                 |
+| 🎙️ Audio fixtures     | [fixtures/audio/README.md](fixtures/audio/README.md)                                         |
+| 💾 Storage upload     | [docs/storage/STORAGE_UPLOAD_BASELINE.md](docs/storage/STORAGE_UPLOAD_BASELINE.md)           |
 | 🔐 Transport security | [docs/security/TRANSPORT_SECURITY_BASELINE.md](docs/security/TRANSPORT_SECURITY_BASELINE.md) |
 
 ---
