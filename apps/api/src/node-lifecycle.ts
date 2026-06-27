@@ -49,6 +49,7 @@ interface NodeLifecycleRunnerResult {
   runId?: string;
   stderr?: string;
   stdout?: string;
+  targetHost?: string;
 }
 
 interface NodeLifecycleRunner {
@@ -116,6 +117,7 @@ export function createNodeLifecycleService({
           status,
           stderr: result.stderr,
           stdout: result.stdout,
+          targetHost: result.targetHost ?? job.targetHost,
         };
 
         await store.save(completed);

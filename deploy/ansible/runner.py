@@ -88,6 +88,7 @@ def run_lifecycle(payload):
         "runId": run_id,
         "stderr": process.stderr[-12000:],
         "stdout": process.stdout[-20000:],
+        "targetHost": host.strip(),
     }
 
 
