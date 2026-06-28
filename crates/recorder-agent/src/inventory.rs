@@ -78,7 +78,7 @@ pub fn collect(config: &AgentConfig) -> NodeInventory {
     let runtime = runtime_details(&interfaces);
 
     NodeInventory {
-        agent_version: env!("CARGO_PKG_VERSION").to_string(),
+        agent_version: crate::version::AGENT_VERSION.to_string(),
         alias: config.alias.clone(),
         hostname,
         id: config.node_id.clone(),

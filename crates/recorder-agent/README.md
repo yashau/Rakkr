@@ -48,6 +48,33 @@ cargo run -p rakkr-recorder-agent -- `
   --node-id node_local_dev
 ```
 
+## 🏷️ Versioning & Releases
+
+The agent uses calendar versioning in `YYYY.MM.DD-N` format: the build date plus
+a same-day release counter that starts at `1` (for example `2026.06.28-1`, then
+`2026.06.28-2` for a second release on the same day).
+
+- The version lives in [`VERSION`](VERSION) and is the single source of truth.
+  `src/version.rs` embeds it at compile time with `include_str!`, so `--version`
+  and the inventory `agent_version` always report the version the binary was
+  built from.
+- `mise run agent:version` validates the format and prints the current version.
+  The same check runs as part of `mise run check`.
+
+```powershell
+cargo run -p rakkr-recorder-agent -- --version
+```
+
+To cut a release, bump [`VERSION`](VERSION) to the next `YYYY.MM.DD-N` and merge
+to `main`. The `Release recorder agent` workflow
+([`.github/workflows/release-agent.yml`](../../.github/workflows/release-agent.yml))
+compares the value against the GitHub release history; when it names a version
+that does not exist yet, it cross-compiles static musl binaries for
+`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` with
+`cargo-zigbuild` and publishes a GitHub release (tagged with the version) that
+attaches both `.tar.gz` artifacts and their `.sha256` checksums. If the version
+already has a release, the workflow is a no-op.
+
 ## 🎚️ Configuration Highlights
 
 | Area | CLI / Environment |

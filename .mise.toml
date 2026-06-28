@@ -51,6 +51,7 @@ depends = [
   "storage:check",
   "operations:check",
   "time:check",
+  "agent:version",
   "node:check",
   "node:test",
   "node:lint",
@@ -177,6 +178,10 @@ run = "pnpm --filter @rakkr/db db:migrate"
 [tasks."db:verify"]
 description = "Replay Drizzle migrations against a fresh throwaway Postgres database"
 run = "pnpm --filter @rakkr/db db:verify"
+
+[tasks."agent:version"]
+description = "Print and validate the recorder-agent release version (YYYY.MM.DD-N)"
+run = "node scripts/agent-version.mjs"
 
 [tasks."agent:loopback-smoke"]
 description = "Exercise a Linux ALSA snd-aloop fake capture device"
