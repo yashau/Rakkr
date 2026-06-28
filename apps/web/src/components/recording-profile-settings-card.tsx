@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { toneBadgeClass } from "@/lib/status-colors";
 import { optionalPositiveNumber, recordingProfileUpdate } from "@/lib/settings-updates";
 
 export function RecordingProfileSettingsCard({
@@ -49,7 +50,7 @@ export function RecordingProfileSettingsCard({
           <div className="mb-2 flex items-center gap-2">
             <SlidersHorizontal className="size-4" />
             <h3 className="text-base font-semibold">{profile.name}</h3>
-            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700" variant="outline">
+            <Badge className={toneBadgeClass("healthy")} variant="outline">
               {profile.id}
             </Badge>
           </div>

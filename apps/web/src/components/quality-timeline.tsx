@@ -35,7 +35,7 @@ export function QualityTimeline({
           <div>
             <h3 className="text-sm font-semibold">Quality Timeline</h3>
             <p className="text-xs text-muted-foreground">
-              {formatDateTime(new Date(window.startMs).toISOString())} /{" "}
+              {formatDateTime(new Date(window.startMs))} /{" "}
               {formatDuration(Math.round((window.endMs - window.startMs) / 1000))}
             </p>
           </div>

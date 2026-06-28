@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
+import { toneBadgeClass } from "@/lib/status-colors";
 import {
   clearPlaybackPreview,
   downloadBlob,
@@ -718,44 +719,44 @@ function auditEventLine(event: AuditEvent) {
 
 function healthStatusClass(status: RecordingSummary["healthStatus"]) {
   if (status === "healthy") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
   if (status === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
   if (status === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return toneBadgeClass("warning");
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return toneBadgeClass("neutral");
 }
 
 function healthSeverityClass(severity: HealthEvent["severity"]) {
   return severity === "critical"
-    ? "border-rose-200 bg-rose-50 text-rose-700"
+    ? toneBadgeClass("critical")
     : severity === "warning"
-      ? "border-amber-200 bg-amber-50 text-amber-700"
-      : "border-sky-200 bg-sky-50 text-sky-700";
+      ? toneBadgeClass("warning")
+      : toneBadgeClass("info");
 }
 
 function jobStatusClass(status: RecordingJob["status"]) {
   if (status === "running") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return toneBadgeClass("info");
   }
 
   if (status === "completed") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
   if (status === "failed" || status === "cancelled") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
   if (status === "stop_requested") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return toneBadgeClass("warning");
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return toneBadgeClass("neutral");
 }

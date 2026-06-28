@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { toneBadgeClass } from "@/lib/status-colors";
 import {
   emptyHealthPageFilters,
   healthEventBulkActionTargets,
@@ -662,14 +663,14 @@ function actionLabel(action: HealthLifecycleAction) {
 
 function severityClass(severity: HealthEvent["severity"]) {
   if (severity === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
   if (severity === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return toneBadgeClass("warning");
   }
 
-  return "border-sky-200 bg-sky-50 text-sky-700";
+  return toneBadgeClass("info");
 }
 
 function summaryToneClass(tone: "critical" | "healthy" | "neutral" | "warning") {

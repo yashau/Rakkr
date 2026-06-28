@@ -40,9 +40,11 @@ import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { WatchdogPolicyCard } from "@/components/watchdog-policy-card";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { toneBadgeClass } from "@/lib/status-colors";
 import { settingsPagePermissions } from "@/lib/settings-page-helpers";
 import { uploadProviderUpdate } from "@/lib/settings-updates";
 import { uploadProviderStatusClass } from "@/lib/upload-status";
+import { cn } from "@/lib/utils";
 
 export function SettingsPage() {
   const currentUserQuery = useQuery({
@@ -116,7 +118,7 @@ export function SettingsPage() {
           <h2 className="text-lg font-semibold">Recording Profiles</h2>
           <p className="text-sm text-muted-foreground">Central audio defaults and templates.</p>
         </div>
-        <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
+        <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
           {profilesQuery.data?.data.length ?? 0} profiles
         </Badge>
       </section>
@@ -136,7 +138,7 @@ export function SettingsPage() {
           <h2 className="text-lg font-semibold">Watchdog Policies</h2>
           <p className="text-sm text-muted-foreground">Scheduled signal health thresholds.</p>
         </div>
-        <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
+        <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
           {watchdogPoliciesQuery.data?.data.length ?? 0} policies
         </Badge>
       </section>
@@ -160,7 +162,7 @@ export function SettingsPage() {
             Storage targets and credential references.
           </p>
         </div>
-        <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
+        <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
           {(uploadProvidersQuery.data?.data ?? []).filter((provider) => provider.enabled).length}{" "}
           enabled
         </Badge>
@@ -188,7 +190,7 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground">Reusable node and interface routing.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
+          <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
             {channelMapsQuery.data?.data.length ?? 0} templates
           </Badge>
           <HintButton
@@ -460,7 +462,7 @@ function ChannelMapTemplateCard({
           <div className="mb-2 flex items-center gap-2">
             <Cable className="size-4" />
             <h3 className="text-base font-semibold">{template.name}</h3>
-            <Badge className="border-sky-200 bg-sky-50 text-sky-700" variant="outline">
+            <Badge className={toneBadgeClass("info")} variant="outline">
               {assignedTargets.length} targets
             </Badge>
             <Badge className="border-violet-200 bg-violet-50 text-violet-700" variant="outline">

@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { toneBadgeClass } from "@/lib/status-colors";
+import { cn } from "@/lib/utils";
 
 export function UploadPolicyPanel({
   canManage,
@@ -50,7 +52,7 @@ export function UploadPolicyPanel({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
+          <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
             {policies.length} policies
           </Badge>
           <Tooltip>
@@ -105,11 +107,7 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
             <UploadCloud className="size-4" />
             <h3 className="text-base font-semibold">{policy.name}</h3>
             <Badge
-              className={
-                policy.enabled
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-slate-200 bg-slate-50 text-slate-700"
-              }
+              className={policy.enabled ? toneBadgeClass("healthy") : toneBadgeClass("neutral")}
               variant="outline"
             >
               {policy.enabled ? "enabled" : "disabled"}

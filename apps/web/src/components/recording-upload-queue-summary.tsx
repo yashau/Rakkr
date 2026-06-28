@@ -3,6 +3,7 @@ import type { UploadQueueStatus } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
 import type { UploadQueueStatusCount } from "@/lib/recording-page-helpers";
+import { toneBadgeClass } from "@/lib/status-colors";
 
 const statusLabels: Record<UploadQueueStatus, string> = {
   cancelled: "cancelled",
@@ -13,11 +14,11 @@ const statusLabels: Record<UploadQueueStatus, string> = {
 };
 
 const statusClasses: Record<UploadQueueStatus, string> = {
-  cancelled: "border-slate-200 bg-slate-50 text-slate-700",
-  failed: "border-rose-200 bg-rose-50 text-rose-700",
-  queued: "border-sky-200 bg-sky-50 text-sky-700",
-  retrying: "border-amber-200 bg-amber-50 text-amber-700",
-  succeeded: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  cancelled: toneBadgeClass("neutral"),
+  failed: toneBadgeClass("critical"),
+  queued: toneBadgeClass("info"),
+  retrying: toneBadgeClass("warning"),
+  succeeded: toneBadgeClass("healthy"),
 };
 
 const statusIcons = {

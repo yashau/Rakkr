@@ -2,6 +2,7 @@ import type { CurrentUser, RecorderNode, RecordingJob, RecordingSummary } from "
 
 import type { RecordingJobFilters } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { toneBadgeClass } from "@/lib/status-colors";
 
 export type RecordingJobFilterKey = keyof RecordingJobFilters;
 
@@ -269,22 +270,22 @@ export function recordingJobCaptureDetails(job: RecordingJob) {
 
 export function recordingJobStatusClass(status: RecordingJob["status"]) {
   if (status === "running") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return toneBadgeClass("info");
   }
 
   if (status === "completed") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
   if (status === "failed" || status === "cancelled") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
   if (status === "stop_requested") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return toneBadgeClass("warning");
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return toneBadgeClass("neutral");
 }
 
 function outputProfileLabel(job: RecordingJob) {

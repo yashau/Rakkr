@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { toneBadgeClass } from "@/lib/status-colors";
 import { watchdogCalibrationActionState } from "@/lib/settings-page-helpers";
 import { watchdogPolicyUpdate } from "@/lib/settings-updates";
 
@@ -81,7 +82,7 @@ export function WatchdogPolicyCard({
           <div className="mb-2 flex items-center gap-2">
             <ShieldAlert className="size-4" />
             <h3 className="text-base font-semibold">{policy.name}</h3>
-            <Badge className="border-amber-200 bg-amber-50 text-amber-700" variant="outline">
+            <Badge className={toneBadgeClass("warning")} variant="outline">
               {policy.id}
             </Badge>
           </div>

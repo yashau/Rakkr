@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api, type AuditEventFilters } from "@/lib/api";
+import { toneBadgeClass } from "@/lib/status-colors";
 import {
   auditFilterChips,
   auditFiltersFromDraft,
@@ -60,14 +61,14 @@ const auditFilterDraftKeys: Record<AuditFilterKey, keyof AuditFilterDraft> = {
 
 function outcomeClass(outcome: string) {
   if (outcome === "denied" || outcome === "failed") {
-    return "border-red-200 bg-red-50 text-red-700";
+    return toneBadgeClass("critical");
   }
 
   if (outcome === "allowed" || outcome === "succeeded") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
-  return "border-amber-200 bg-amber-50 text-amber-700";
+  return toneBadgeClass("warning");
 }
 
 export function AuditPage() {

@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { toneBadgeClass } from "@/lib/status-colors";
 import {
   emptyUploadQueueFilterDraft,
   uploadQueueFilterChips,
@@ -349,22 +350,22 @@ function removeQueueFilter(draft: UploadQueueFilterDraft, key: UploadQueueFilter
 
 function uploadQueueStatusClass(status: UploadQueueStatus) {
   if (status === "succeeded") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
   if (status === "failed") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
   if (status === "retrying") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return toneBadgeClass("warning");
   }
 
   if (status === "queued") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return toneBadgeClass("info");
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return toneBadgeClass("neutral");
 }
 
 function runnerStatusClass(
@@ -373,14 +374,12 @@ function runnerStatusClass(
   canRead: boolean,
 ) {
   if (!canRead) {
-    return "border-slate-200 bg-slate-50 text-slate-700";
+    return toneBadgeClass("neutral");
   }
 
   if (running) {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return toneBadgeClass("info");
   }
 
-  return started
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-    : "border-slate-200 bg-slate-50 text-slate-700";
+  return started ? toneBadgeClass("healthy") : toneBadgeClass("neutral");
 }
