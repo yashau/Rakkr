@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   emptySchedulePageFilters,
   scheduleFilterChips,
   scheduleFiltersFromDraft,
@@ -59,32 +66,43 @@ export function ScheduleFiltersPanel({
             />
           </FilterField>
           <FilterField label="State">
-            <select
-              className={selectClass}
-              onChange={(event) =>
-                updateFilter("enabled", event.target.value as SchedulePageFilterDraft["enabled"])
+            <Select
+              onValueChange={(value) =>
+                updateFilter(
+                  "enabled",
+                  (value === "__all__" ? "" : value) as SchedulePageFilterDraft["enabled"],
+                )
               }
-              value={filters.enabled}
+              value={filters.enabled || "__all__"}
             >
-              <option value="">all states</option>
-              <option value="true">enabled</option>
-              <option value="false">disabled</option>
-            </select>
+              <SelectTrigger className={selectClass}>
+                <SelectValue placeholder="all states" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">all states</SelectItem>
+                <SelectItem value="true">enabled</SelectItem>
+                <SelectItem value="false">disabled</SelectItem>
+              </SelectContent>
+            </Select>
           </FilterField>
           <FilterField label="Node">
             {nodes.length > 0 ? (
-              <select
-                className={selectClass}
-                onChange={(event) => updateFilter("nodeId", event.target.value)}
-                value={filters.nodeId}
+              <Select
+                onValueChange={(value) => updateFilter("nodeId", value === "__all__" ? "" : value)}
+                value={filters.nodeId || "__all__"}
               >
-                <option value="">all nodes</option>
-                {nodes.map((node) => (
-                  <option key={node.id} value={node.id}>
-                    {node.alias}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className={selectClass}>
+                  <SelectValue placeholder="all nodes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">all nodes</SelectItem>
+                  {nodes.map((node) => (
+                    <SelectItem key={node.id} value={node.id}>
+                      {node.alias}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <Input
                 onChange={(event) => updateFilter("nodeId", event.target.value)}
@@ -94,22 +112,26 @@ export function ScheduleFiltersPanel({
             )}
           </FilterField>
           <FilterField label="Backend">
-            <select
-              className={selectClass}
-              onChange={(event) =>
+            <Select
+              onValueChange={(value) =>
                 updateFilter(
                   "captureBackend",
-                  event.target.value as SchedulePageFilterDraft["captureBackend"],
+                  (value === "__all__" ? "" : value) as SchedulePageFilterDraft["captureBackend"],
                 )
               }
-              value={filters.captureBackend}
+              value={filters.captureBackend || "__all__"}
             >
-              {captureBackends.map((backend) => (
-                <option key={backend || "all"} value={backend}>
-                  {backend || "all backends"}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={selectClass}>
+                <SelectValue placeholder="all backends" />
+              </SelectTrigger>
+              <SelectContent>
+                {captureBackends.map((backend) => (
+                  <SelectItem key={backend || "all"} value={backend || "__all__"}>
+                    {backend || "all backends"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FilterField>
           <FilterField label="Interface">
             <Input

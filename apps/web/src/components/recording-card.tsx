@@ -20,12 +20,21 @@ import type {
   UploadQueueItem,
 } from "@rakkr/shared";
 
+import { ConfirmButton } from "@/components/confirm-button";
 import { QualityTimeline } from "@/components/quality-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { RecordingMetadataUpdate } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
@@ -134,8 +143,8 @@ export function RecordingCard({
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0 flex-1">
+      <div className="grid gap-4">
+        <div className="min-w-0">
           {isEditing ? (
             <form
               className="grid gap-3"
@@ -224,12 +233,10 @@ export function RecordingCard({
             <>
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 {onSelectedChange ? (
-                  <input
+                  <Checkbox
                     aria-label={`Select ${recording.name}`}
                     checked={selected}
-                    className="size-4 rounded border-input accent-primary"
-                    onChange={(event) => onSelectedChange(event.target.checked)}
-                    type="checkbox"
+                    onCheckedChange={(value) => onSelectedChange(value === true)}
                   />
                 ) : null}
                 <h2 className="truncate text-base font-semibold">{recording.name}</h2>
@@ -398,63 +405,81 @@ export function RecordingCard({
             <p className="mt-3 text-xs text-muted-foreground">Quality timeline unavailable.</p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:justify-end">
-          {canEdit && !isEditing ? (
-            <Button disabled={editPending} onClick={() => setIsEditing(true)} variant="outline">
-              <Pencil className="size-4" />
-              Edit
-            </Button>
-          ) : null}
-          {canControl && recording.status === "recording" ? (
-            <Button disabled={stopPending} onClick={onStop} variant="outline">
-              <Square className="size-4" />
-              Stop
-            </Button>
-          ) : null}
-          {canPlayback ? (
-            <Button disabled={!fileReady || playbackPending} onClick={onPlayback} variant="outline">
-              <Play className="size-4" />
-              Play
-            </Button>
-          ) : null}
-          {canDownload ? (
-            <Button disabled={!fileReady || downloadPending} onClick={onDownload} variant="outline">
-              <Download className="size-4" />
-              Download
-            </Button>
-          ) : null}
-          {canDelete ? (
-            <Button disabled={deleteDisabled} onClick={onDelete} variant="destructive">
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-          ) : null}
-          {canControl ? (
-            <>
-              {uploadPolicies.length > 0 ? (
-                <select
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                  onChange={(event) => setSelectedUploadPolicyId(event.target.value)}
-                  value={selectedUploadPolicyId}
-                >
-                  {uploadPolicies.map((policy) => (
-                    <option key={policy.id} value={policy.id}>
-                      {policy.name}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
+        {!isEditing ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            {canEdit ? (
+              <Button disabled={editPending} onClick={() => setIsEditing(true)} variant="outline">
+                <Pencil className="size-4" />
+                Edit
+              </Button>
+            ) : null}
+            {canControl && recording.status === "recording" ? (
+              <Button disabled={stopPending} onClick={onStop} variant="outline">
+                <Square className="size-4" />
+                Stop
+              </Button>
+            ) : null}
+            {canPlayback ? (
               <Button
-                disabled={!fileReady || uploadPending}
-                onClick={() => onQueueUpload(selectedUploadPolicyId || undefined)}
+                disabled={!fileReady || playbackPending}
+                onClick={onPlayback}
                 variant="outline"
               >
-                <UploadCloud className="size-4" />
-                Queue Upload
+                <Play className="size-4" />
+                Play
               </Button>
-            </>
-          ) : null}
-        </div>
+            ) : null}
+            {canDownload ? (
+              <Button
+                disabled={!fileReady || downloadPending}
+                onClick={onDownload}
+                variant="outline"
+              >
+                <Download className="size-4" />
+                Download
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <ConfirmButton
+                confirmLabel="Delete"
+                description="This permanently deletes the recording metadata and its cached file."
+                disabled={deleteDisabled}
+                onConfirm={onDelete}
+                title={`Delete "${recording.name}"?`}
+                variant="destructive"
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </ConfirmButton>
+            ) : null}
+            {canControl ? (
+              <>
+                {uploadPolicies.length > 0 ? (
+                  <Select onValueChange={setSelectedUploadPolicyId} value={selectedUploadPolicyId}>
+                    <SelectTrigger className="h-9 w-44">
+                      <SelectValue placeholder="Upload policy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {uploadPolicies.map((policy) => (
+                        <SelectItem key={policy.id} value={policy.id}>
+                          {policy.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                <Button
+                  disabled={!fileReady || uploadPending}
+                  onClick={() => onQueueUpload(selectedUploadPolicyId || undefined)}
+                  variant="outline"
+                >
+                  <UploadCloud className="size-4" />
+                  Queue Upload
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </Card>
   );

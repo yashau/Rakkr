@@ -1,5 +1,12 @@
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   recordingCacheStateOptions,
   selectClassName,
   type RecordingFilterDraft,
@@ -15,19 +22,24 @@ export function RecordingCacheStateFilter({
   return (
     <div className="grid gap-1.5">
       <Label htmlFor="recording-cache-state-filter">Cache</Label>
-      <select
-        className={selectClassName}
-        id="recording-cache-state-filter"
-        onChange={(event) => onChange(event.target.value as RecordingFilterDraft["cacheState"])}
-        value={value}
+      <Select
+        onValueChange={(next) =>
+          onChange((next === "__all__" ? "" : next) as RecordingFilterDraft["cacheState"])
+        }
+        value={value || "__all__"}
       >
-        <option value="">Any cache</option>
-        {recordingCacheStateOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className={selectClassName} id="recording-cache-state-filter">
+          <SelectValue placeholder="Any cache" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">Any cache</SelectItem>
+          {recordingCacheStateOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

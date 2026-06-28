@@ -1,6 +1,5 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HealthEvent } from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
@@ -12,7 +11,6 @@ import {
   Network,
   PlusCircle,
   ShieldCheck,
-  TrendingUp,
   WifiOff,
   X,
 } from "lucide-react";
@@ -27,22 +25,42 @@ import {
   NodeInventoryFilters,
 } from "@/components/node-inventory-filters";
 import { NodeInventoryActions } from "@/components/node-inventory-actions";
+import {
+  healthBadgeClass,
+  healthEventDetails,
+  HealthSummaryTile,
+  healthTone,
+  NodeHealthTrend,
+  nodeHealthSummary,
+  readableHealthType,
+} from "@/components/node-health";
 import { NodeHealthEvents } from "@/components/node-health-events";
 import { NodeLifecycleMenu } from "@/components/node-lifecycle-menu";
 import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   api,
   type NodeEnrollmentInput,
   type NodeEnrollmentResult,
   type NodeFilters,
 } from "@/lib/api";
-import { formatDateTime, localDateBoundaryIso, localIsoDate, startOfLocalDay } from "@/lib/dates";
+import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 import {
   nextNodeSelection,
   nodeFilterChips,
@@ -207,18 +225,16 @@ export function NodesPage() {
   const selection = nodeSelectionState(nodes, selectedNodeIds);
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading nodes.</p>;
+    return <LoadingSkeleton label="Loading nodes" />;
   }
 
   if (!actionPermissions.canRead) {
     return (
-      <Card className="rounded-lg p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Nodes</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Node inventory is unavailable.</p>
-      </Card>
+      <Alert>
+        <ShieldCheck className="size-4" />
+        <AlertTitle>Nodes</AlertTitle>
+        <AlertDescription>Node inventory is unavailable.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -309,22 +325,22 @@ export function NodesPage() {
                 />
               </Field>
               <Field label="Backend">
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  onChange={(event) =>
-                    setDraftValue(
-                      setDraft,
-                      "backend",
-                      event.target.value as EnrollmentDraft["backend"],
-                    )
+                <Select
+                  onValueChange={(value) =>
+                    setDraftValue(setDraft, "backend", value as EnrollmentDraft["backend"])
                   }
                   value={draft.backend}
                 >
-                  <option value="unknown">unknown</option>
-                  <option value="alsa">alsa</option>
-                  <option value="jack">jack</option>
-                  <option value="pipewire">pipewire</option>
-                </select>
+                  <SelectTrigger className="h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unknown">unknown</SelectItem>
+                    <SelectItem value="alsa">alsa</SelectItem>
+                    <SelectItem value="jack">jack</SelectItem>
+                    <SelectItem value="pipewire">pipewire</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
               <Field label="Channels">
                 <Input
@@ -440,9 +456,9 @@ export function NodesPage() {
       </section>
 
       {nodesQuery.isSuccess && nodes.length === 0 ? (
-        <Card className="rounded-lg p-4 text-sm text-muted-foreground shadow-sm">
-          No nodes match the current filters.
-        </Card>
+        <Alert>
+          <AlertDescription>No nodes match the current filters.</AlertDescription>
+        </Alert>
       ) : null}
 
       {nodes.map((node) => {
@@ -453,20 +469,18 @@ export function NodesPage() {
 
         return (
           <Card className="rounded-lg p-4 shadow-sm" key={node.id}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="grid flex-1 gap-4">
-                <div>
+            <div className="grid gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
                   <div className="mb-2 flex items-center gap-2">
-                    <input
+                    <Checkbox
+                      aria-label={`Select ${node.alias}`}
                       checked={selection.selectedVisibleNodeIds.includes(node.id)}
-                      className="size-4"
-                      onChange={(event) =>
+                      onCheckedChange={(value) =>
                         setSelectedNodeIds((current) =>
-                          nextNodeSelection(current, node.id, event.target.checked),
+                          nextNodeSelection(current, node.id, value === true),
                         )
                       }
-                      title="Select node"
-                      type="checkbox"
                     />
                     <h2 className="text-lg font-semibold">{node.alias}</h2>
                     <Badge className={nodeStatusBadgeClass(node.status)} variant="outline">
@@ -497,71 +511,84 @@ export function NodesPage() {
                     ) : null}
                   </div>
                 </div>
-
-                <div className="grid gap-2 sm:grid-cols-4">
-                  <HealthSummaryTile
-                    event={healthSummary.connectivity}
-                    icon={<WifiOff className="size-4" />}
-                    label="Connectivity"
-                  />
-                  <HealthSummaryTile
-                    event={healthSummary.disk}
-                    icon={<HardDrive className="size-4" />}
-                    label="Disk"
-                  />
-                  <HealthSummaryTile
-                    event={healthSummary.cpu}
-                    icon={<Activity className="size-4" />}
-                    label="CPU"
-                  />
-                  <HealthSummaryTile
-                    event={healthSummary.audio}
-                    icon={<AudioLines className="size-4" />}
-                    label="Audio"
-                  />
+                <div className="flex flex-wrap items-center gap-2">
+                  {actionPermissions.canListen ? (
+                    <Button
+                      disabled={listenMutation.isPending}
+                      onClick={() => listenMutation.mutate({ alias: node.alias, id: node.id })}
+                      variant="outline"
+                    >
+                      <Headphones className="size-4" />
+                      Listen
+                    </Button>
+                  ) : null}
+                  {actionPermissions.canManage ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex">
+                          <Button
+                            disabled={rotateMutation.isPending || !isUuid(node.id)}
+                            onClick={() => rotateMutation.mutate(node.id)}
+                            variant="outline"
+                          >
+                            <KeyRound className="size-4" />
+                            Rotate Token
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {rotateNodeTokenTitle(actionPermissions.canManage, isUuid(node.id))}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                  <NodeLifecycleMenu canManage={actionPermissions.canManage} node={node} />
                 </div>
-
-                <NodeHealthTrend events={healthEvents} />
-                <NodeHealthEvents
-                  canManage={actionPermissions.canAcknowledgeHealth}
-                  events={healthEvents}
-                  healthBadgeClass={healthBadgeClass}
-                  healthEventDetails={healthEventDetails}
-                  healthTone={healthTone}
-                  onAction={(event, action) =>
-                    healthLifecycleMutation.mutate(nodeHealthLifecycleInput(event.id, action))
-                  }
-                  pending={healthLifecycleMutation.isPending}
-                  readableHealthType={readableHealthType}
-                  renderDateTime={formatDateTime}
-                />
               </div>
 
-              <div className="grid gap-3 text-sm md:min-w-72">
-                {actionPermissions.canListen ? (
-                  <Button
-                    className="justify-self-start md:justify-self-end"
-                    disabled={listenMutation.isPending}
-                    onClick={() => listenMutation.mutate({ alias: node.alias, id: node.id })}
-                    variant="outline"
-                  >
-                    <Headphones className="size-4" />
-                    Listen
-                  </Button>
-                ) : null}
-                {actionPermissions.canManage ? (
-                  <Button
-                    className="justify-self-start md:justify-self-end"
-                    disabled={rotateMutation.isPending || !isUuid(node.id)}
-                    onClick={() => rotateMutation.mutate(node.id)}
-                    title={rotateNodeTokenTitle(actionPermissions.canManage, isUuid(node.id))}
-                    variant="outline"
-                  >
-                    <KeyRound className="size-4" />
-                    Rotate Token
-                  </Button>
-                ) : null}
-                <NodeLifecycleMenu canManage={actionPermissions.canManage} node={node} />
+              <div className="grid gap-2 sm:grid-cols-4">
+                {[
+                  {
+                    event: healthSummary.connectivity,
+                    icon: <WifiOff className="size-4" />,
+                    label: "Connectivity",
+                  },
+                  {
+                    event: healthSummary.disk,
+                    icon: <HardDrive className="size-4" />,
+                    label: "Disk",
+                  },
+                  { event: healthSummary.cpu, icon: <Activity className="size-4" />, label: "CPU" },
+                  {
+                    event: healthSummary.audio,
+                    icon: <AudioLines className="size-4" />,
+                    label: "Audio",
+                  },
+                ].map((tile) => (
+                  <HealthSummaryTile
+                    event={tile.event}
+                    icon={tile.icon}
+                    key={tile.label}
+                    label={tile.label}
+                  />
+                ))}
+              </div>
+
+              <NodeHealthTrend events={healthEvents} />
+              <NodeHealthEvents
+                canManage={actionPermissions.canAcknowledgeHealth}
+                events={healthEvents}
+                healthBadgeClass={healthBadgeClass}
+                healthEventDetails={healthEventDetails}
+                healthTone={healthTone}
+                onAction={(event, action) =>
+                  healthLifecycleMutation.mutate(nodeHealthLifecycleInput(event.id, action))
+                }
+                pending={healthLifecycleMutation.isPending}
+                readableHealthType={readableHealthType}
+                renderDateTime={formatDateTime}
+              />
+
+              <div className="grid gap-3 border-t border-border pt-3 text-sm">
                 <NodeIdentityEditor canManage={actionPermissions.canManage} node={node} />
                 <NodeAudioDefaultsEditor canManage={actionPermissions.canManage} node={node} />
                 {node.interfaces.map((audioInterface) => (
@@ -649,341 +676,6 @@ function parseNumbers(value: string) {
   return parseList(value)
     .map(Number)
     .filter((item) => Number.isInteger(item) && item > 0);
-}
-
-function HealthSummaryTile({
-  event,
-  icon,
-  label,
-}: {
-  event: HealthEvent | undefined;
-  icon: ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="rounded-md border border-border bg-muted/20 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          {icon}
-          {label}
-        </div>
-        <Badge className={healthBadgeClass(healthTone(event))} variant="outline">
-          {healthLabel(event)}
-        </Badge>
-      </div>
-      <p className="text-xs text-muted-foreground">{healthDetail(event)}</p>
-    </div>
-  );
-}
-
-function NodeHealthTrend({ events }: { events: HealthEvent[] }) {
-  const buckets = healthTrendBuckets(events);
-  const maxCount = Math.max(1, ...buckets.map((bucket) => bucket.count));
-  const totalCount = buckets.reduce((total, bucket) => total + bucket.count, 0);
-  const tone = buckets.reduce<HealthTone>(
-    (current, bucket) => highestTone(current, bucket.tone),
-    totalCount > 0 ? "healthy" : "unknown",
-  );
-
-  return (
-    <div className="rounded-md border border-border bg-background p-3">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <TrendingUp className="size-4" />
-          7-Day Health Trend
-        </div>
-        <Badge className={healthBadgeClass(tone)} variant="outline">
-          {totalCount} events
-        </Badge>
-      </div>
-      <div className="grid gap-2 md:grid-cols-7">
-        {buckets.map((bucket) => {
-          const percent = bucket.count === 0 ? 0 : Math.max(8, (bucket.count / maxCount) * 100);
-
-          return (
-            <div
-              className="grid gap-1 rounded-md border border-border bg-muted/20 p-2"
-              key={bucket.date}
-              title={`${bucket.date}: ${bucket.count} health events`}
-            >
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-medium tabular-nums">{bucket.date}</span>
-                <span className="text-muted-foreground tabular-nums">{bucket.count}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={`h-full rounded-full ${healthBarClass(bucket.tone)}`}
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function nodeHealthSummary(events: HealthEvent[]) {
-  const connectivity = latestHealthEvent(events, ["watchdog.node_offline"]);
-  const disk = latestHealthEvent(events, [
-    "agent.system.disk_pressure",
-    "agent.system.disk_recovered",
-  ]);
-  const cpu = latestHealthEvent(events, [
-    "agent.system.cpu_pressure",
-    "agent.system.cpu_recovered",
-  ]);
-  const audio = latestHealthEvent(events, [
-    "agent.audio_backend.unavailable",
-    "agent.audio_backend.recovered",
-  ]);
-  const tone = [connectivity, disk, cpu, audio].reduce<
-    "critical" | "healthy" | "unknown" | "warning"
-  >((current, event) => highestTone(current, healthTone(event)), "unknown");
-
-  return {
-    audio,
-    connectivity,
-    cpu,
-    disk,
-    label: healthSummaryLabel(tone),
-    tone,
-  };
-}
-
-type HealthTone = "critical" | "healthy" | "unknown" | "warning";
-
-interface HealthTrendBucket {
-  count: number;
-  date: string;
-  tone: HealthTone;
-}
-
-function healthTrendBuckets(events: HealthEvent[]) {
-  const today = startOfLocalDay(new Date());
-  const buckets: HealthTrendBucket[] = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
-
-    return {
-      count: 0,
-      date: localIsoDate(date),
-      tone: "unknown",
-    };
-  });
-  const bucketByDate = new Map(buckets.map((bucket) => [bucket.date, bucket]));
-
-  for (const event of events) {
-    const eventDate = new Date(event.openedAt);
-
-    if (Number.isNaN(eventDate.getTime())) {
-      continue;
-    }
-
-    const bucket = bucketByDate.get(localIsoDate(eventDate));
-
-    if (!bucket) {
-      continue;
-    }
-
-    const eventTone = healthTone(event);
-    bucket.tone = bucket.count === 0 ? eventTone : highestTone(bucket.tone, eventTone);
-    bucket.count += 1;
-  }
-
-  return buckets;
-}
-
-function latestHealthEvent(events: HealthEvent[], types: string[]) {
-  const candidates = events.filter((event) => types.includes(event.type));
-
-  return candidates.sort(
-    (left, right) => Date.parse(right.openedAt) - Date.parse(left.openedAt),
-  )[0];
-}
-
-function healthTone(event: HealthEvent | undefined) {
-  if (!event) {
-    return "unknown";
-  }
-
-  if (event.status === "resolved") {
-    return "healthy";
-  }
-
-  if (event.type.endsWith("_recovered") || event.severity === "info") {
-    return "healthy";
-  }
-
-  return event.severity;
-}
-
-function highestTone(current: HealthTone, next: HealthTone) {
-  const order = { critical: 3, warning: 2, unknown: 1, healthy: 0 };
-
-  return order[next] > order[current] ? next : current;
-}
-
-function healthSummaryLabel(tone: HealthTone) {
-  if (tone === "critical") {
-    return "Critical";
-  }
-
-  if (tone === "warning") {
-    return "Warning";
-  }
-
-  if (tone === "healthy") {
-    return "Healthy";
-  }
-
-  return "No samples";
-}
-
-function healthLabel(event: HealthEvent | undefined) {
-  return healthSummaryLabel(healthTone(event));
-}
-
-function healthDetail(event: HealthEvent | undefined) {
-  if (!event) {
-    return "Waiting for node sample";
-  }
-
-  const value = healthMetric(event);
-  const observed = formatDateTime(event.openedAt);
-
-  return value ? `${value} / ${observed}` : `${readableHealthType(event.type)} / ${observed}`;
-}
-
-function healthMetric(event: HealthEvent) {
-  if (event.type === "watchdog.node_offline") {
-    const offlineForSeconds = numericDetail(event.details.offlineForSeconds);
-
-    if (offlineForSeconds !== undefined) {
-      return `${durationLabel(offlineForSeconds)} offline`;
-    }
-
-    const lastSeenAt = stringDetail(event.details.lastSeenAt);
-
-    return lastSeenAt ? `last seen ${formatDateTime(lastSeenAt)}` : undefined;
-  }
-
-  if (event.type.includes("disk")) {
-    const usedPercent = numericDetail(event.details.usedPercent);
-
-    return usedPercent === undefined ? undefined : `${usedPercent.toFixed(1)}% used`;
-  }
-
-  if (event.type.includes("cpu")) {
-    const loadPerCore = numericDetail(event.details.loadPerCore);
-    const loadAverage = numericDetail(event.details.loadAverageOneMinute);
-
-    if (loadPerCore !== undefined) {
-      return `${loadPerCore.toFixed(1)} load/core`;
-    }
-
-    return loadAverage === undefined ? undefined : `${loadAverage.toFixed(1)} load`;
-  }
-
-  if (event.type.includes("audio_backend")) {
-    const interfaces = numericDetail(event.details.interfaces);
-
-    return interfaces === undefined ? undefined : `${interfaces} interfaces`;
-  }
-
-  return undefined;
-}
-
-function healthEventDetails(event: HealthEvent) {
-  const metric = healthMetric(event);
-
-  if (metric) {
-    return metric;
-  }
-
-  const reason = stringDetail(event.details.reason);
-  const error = stringDetail(event.details.error);
-
-  return reason ?? error ?? readableHealthType(event.type);
-}
-
-function readableHealthType(type: string) {
-  if (type === "watchdog.node_offline") {
-    return "node offline";
-  }
-
-  return type
-    .replace(/^agent\./, "")
-    .replaceAll("_", " ")
-    .replaceAll(".", " ");
-}
-
-function durationLabel(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-
-  if (safeSeconds >= 86_400) {
-    const days = Math.floor(safeSeconds / 86_400);
-    const hours = Math.floor((safeSeconds % 86_400) / 3600);
-
-    return `${days}d ${hours}h`;
-  }
-
-  if (safeSeconds >= 3600) {
-    const hours = Math.floor(safeSeconds / 3600);
-    const minutes = Math.floor((safeSeconds % 3600) / 60);
-
-    return `${hours}h ${minutes}m`;
-  }
-
-  if (safeSeconds >= 60) {
-    const minutes = Math.floor(safeSeconds / 60);
-    const remainingSeconds = safeSeconds % 60;
-
-    return `${minutes}m ${remainingSeconds}s`;
-  }
-
-  return `${safeSeconds}s`;
-}
-
-function healthBadgeClass(tone: HealthTone) {
-  if (tone === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
-  }
-
-  if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  if (tone === "healthy") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function healthBarClass(tone: HealthTone) {
-  if (tone === "critical") {
-    return "bg-rose-500";
-  }
-
-  if (tone === "warning") {
-    return "bg-amber-500";
-  }
-
-  if (tone === "healthy") {
-    return "bg-emerald-500";
-  }
-
-  return "bg-slate-300";
-}
-
-function numericDetail(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function stringDetail(value: unknown) {
-  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function isUuid(value: string) {

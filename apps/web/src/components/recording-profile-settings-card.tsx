@@ -6,8 +6,17 @@ import { Save, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { optionalPositiveNumber, recordingProfileUpdate } from "@/lib/settings-updates";
 
@@ -48,14 +57,19 @@ export function RecordingProfileSettingsCard({
             {profile.codec.toUpperCase()} / {profile.bitrateKbps} kbps / {profile.channelMode}
           </p>
         </div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          title={canManage ? "Save recording profile" : "Requires settings manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save recording profile" : "Requires settings manage"}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -67,21 +81,25 @@ export function RecordingProfileSettingsCard({
           />
         </Field>
         <Field label="Codec">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                codec: event.target.value as RecordingProfile["codec"],
+                codec: value as RecordingProfile["codec"],
               }))
             }
             value={draft.codec}
           >
-            <option value="mp3">MP3</option>
-            <option value="flac">FLAC</option>
-            <option value="wav">WAV</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mp3">MP3</SelectItem>
+              <SelectItem value="flac">FLAC</SelectItem>
+              <SelectItem value="wav">WAV</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Bitrate">
           <Input
@@ -110,22 +128,26 @@ export function RecordingProfileSettingsCard({
           />
         </Field>
         <Field label="Channel Mode">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                channelMode: event.target.value as RecordingProfile["channelMode"],
+                channelMode: value as RecordingProfile["channelMode"],
               }))
             }
             value={draft.channelMode}
           >
-            <option value="mono">Mono</option>
-            <option value="stereo">Stereo</option>
-            <option value="mono_to_stereo_mix">Mono To Stereo Mix</option>
-            <option value="multichannel">Multichannel</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mono">Mono</SelectItem>
+              <SelectItem value="stereo">Stereo</SelectItem>
+              <SelectItem value="mono_to_stereo_mix">Mono To Stereo Mix</SelectItem>
+              <SelectItem value="multichannel">Multichannel</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Toggle
           checked={draft.vbr}
@@ -178,12 +200,10 @@ function Toggle({
 }) {
   return (
     <label className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
-      <input
+      <Checkbox
         checked={checked}
-        className="size-4"
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        type="checkbox"
+        onCheckedChange={(value) => onChange(value === true)}
       />
       {label}
     </label>

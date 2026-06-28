@@ -5,6 +5,13 @@ import type { AccessPolicyInput } from "@rakkr/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type AccessPolicyEffect = AccessPolicyInput["effect"];
 type AccessPolicySubjectType = AccessPolicyInput["subjectType"];
@@ -53,44 +60,56 @@ export function AccessPolicyComposer({ onAppend }: { onAppend: (line: string) =>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <div className="grid gap-1.5">
           <Label htmlFor="policy-effect">Effect</Label>
-          <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-            id="policy-effect"
-            onChange={(event) =>
+          <Select
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                effect: event.target.value as AccessPolicyEffect,
+                effect: value as AccessPolicyEffect,
               }))
             }
             value={draft.effect}
           >
-            {policyEffects.map((effect) => (
-              <option key={effect} value={effect}>
-                {effect}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              id="policy-effect"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {policyEffects.map((effect) => (
+                <SelectItem key={effect} value={effect}>
+                  {effect}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="policy-subject-type">Subject</Label>
-          <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-            id="policy-subject-type"
-            onChange={(event) =>
+          <Select
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                subjectId: event.target.value === "everyone" ? "" : current.subjectId,
-                subjectType: event.target.value as AccessPolicySubjectType,
+                subjectId: value === "everyone" ? "" : current.subjectId,
+                subjectType: value as AccessPolicySubjectType,
               }))
             }
             value={draft.subjectType}
           >
-            {subjectTypes.map((subjectType) => (
-              <option key={subjectType} value={subjectType}>
-                {subjectType}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              id="policy-subject-type"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {subjectTypes.map((subjectType) => (
+                <SelectItem key={subjectType} value={subjectType}>
+                  {subjectType}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="policy-subject-id">Subject ID</Label>
@@ -105,20 +124,24 @@ export function AccessPolicyComposer({ onAppend }: { onAppend: (line: string) =>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="policy-resource-type">Resource</Label>
-          <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-            id="policy-resource-type"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, resourceType: event.target.value }))
-            }
+          <Select
+            onValueChange={(value) => setDraft((current) => ({ ...current, resourceType: value }))}
             value={draft.resourceType}
           >
-            {resourceTypes.map((resourceType) => (
-              <option key={resourceType} value={resourceType}>
-                {resourceType}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              id="policy-resource-type"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {resourceTypes.map((resourceType) => (
+                <SelectItem key={resourceType} value={resourceType}>
+                  {resourceType}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="policy-resource-id">Resource ID</Label>

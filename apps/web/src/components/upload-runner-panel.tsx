@@ -7,6 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import {
@@ -103,14 +112,22 @@ export function UploadRunnerPanel() {
             <RefreshCw className="size-4" />
             Refresh
           </Button>
-          <Button
-            disabled={runMutation.isPending || !permissions.canRun}
-            onClick={() => runMutation.mutate()}
-            title={permissions.canRun ? "Run upload queue now" : "Requires recording control"}
-          >
-            <Play className="size-4" />
-            Run now
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  disabled={runMutation.isPending || !permissions.canRun}
+                  onClick={() => runMutation.mutate()}
+                >
+                  <Play className="size-4" />
+                  Run now
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {permissions.canRun ? "Run upload queue now" : "Requires recording control"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -145,42 +162,50 @@ export function UploadRunnerPanel() {
         </div>
 
         <div className="grid gap-2 md:grid-cols-[160px_160px_1fr]">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!permissions.canRead}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setQueueFilterDraft((current) => ({
                 ...current,
-                status: event.target.value as UploadQueueFilterDraft["status"],
+                status: (value === "__all__" ? "" : value) as UploadQueueFilterDraft["status"],
               }))
             }
-            value={queueFilterDraft.status}
+            value={queueFilterDraft.status || "__all__"}
           >
-            <option value="">All statuses</option>
-            {uploadQueueStatuses.map((queueStatus) => (
-              <option key={queueStatus} value={queueStatus}>
-                {queueStatus}
-              </option>
-            ))}
-          </select>
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All statuses</SelectItem>
+              {uploadQueueStatuses.map((queueStatus) => (
+                <SelectItem key={queueStatus} value={queueStatus}>
+                  {queueStatus}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
             disabled={!permissions.canRead}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setQueueFilterDraft((current) => ({
                 ...current,
-                provider: event.target.value as UploadQueueFilterDraft["provider"],
+                provider: (value === "__all__" ? "" : value) as UploadQueueFilterDraft["provider"],
               }))
             }
-            value={queueFilterDraft.provider}
+            value={queueFilterDraft.provider || "__all__"}
           >
-            <option value="">All providers</option>
-            {uploadProviders.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue placeholder="All providers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All providers</SelectItem>
+              {uploadProviders.map((provider) => (
+                <SelectItem key={provider} value={provider}>
+                  {provider}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             disabled={!permissions.canRead}
             onChange={(event) =>
@@ -221,7 +246,7 @@ export function UploadRunnerPanel() {
 
         <div className="mt-3 grid gap-2">
           {queueQuery.isPending && permissions.canRead ? (
-            <p className="text-sm text-muted-foreground">Loading upload queue.</p>
+            <Skeleton aria-label="Loading upload queue" className="h-12 w-full" />
           ) : null}
           {!queueQuery.isPending && permissions.canRead && queueItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">No upload queue items match.</p>
@@ -283,17 +308,25 @@ function UploadQueueRow({
       </Badge>
       <div className="text-xs text-muted-foreground">{item.provider}</div>
       <div className="text-xs text-muted-foreground">Next {formatDateTime(item.nextAttemptAt)}</div>
-      <Button
-        disabled={!retryable || !canRetry || isRetrying}
-        onClick={() => onRetry(item.id)}
-        size="sm"
-        title={canRetry ? "Retry upload queue item" : "Requires recording control"}
-        type="button"
-        variant="outline"
-      >
-        <RotateCcw className="size-4" />
-        Retry
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              disabled={!retryable || !canRetry || isRetrying}
+              onClick={() => onRetry(item.id)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <RotateCcw className="size-4" />
+              Retry
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {canRetry ? "Retry upload queue item" : "Requires recording control"}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }

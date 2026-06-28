@@ -7,6 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { watchdogCalibrationActionState } from "@/lib/settings-page-helpers";
 import { watchdogPolicyUpdate } from "@/lib/settings-updates";
@@ -81,14 +89,19 @@ export function WatchdogPolicyCard({
             {policy.metric} below {policy.thresholdDbfs} dBFS / {policy.windowSeconds}s
           </p>
         </div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          title={canManage ? "Save watchdog policy" : "Requires settings manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save watchdog policy" : "Requires settings manage"}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -100,103 +113,126 @@ export function WatchdogPolicyCard({
           />
         </Field>
         <Field label="Active During">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                activeDuring: event.target.value as WatchdogPolicy["activeDuring"],
+                activeDuring: value as WatchdogPolicy["activeDuring"],
               }))
             }
             value={draft.activeDuring}
           >
-            <option value="always">Always</option>
-            <option value="recording">Recording</option>
-            <option value="scheduled_recording">Scheduled Recording</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="always">Always</SelectItem>
+              <SelectItem value="recording">Recording</SelectItem>
+              <SelectItem value="scheduled_recording">Scheduled Recording</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Metric">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                metric: event.target.value as WatchdogPolicy["metric"],
+                metric: value as WatchdogPolicy["metric"],
               }))
             }
             value={draft.metric}
           >
-            <option value="rms">RMS</option>
-            <option value="peak">Peak</option>
-            <option value="percentile_95">Percentile 95</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rms">RMS</SelectItem>
+              <SelectItem value="peak">Peak</SelectItem>
+              <SelectItem value="percentile_95">Percentile 95</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Correlation Mode">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                channelCorrelationMode: event.target
-                  .value as WatchdogPolicy["channelCorrelationMode"],
+                channelCorrelationMode: value as WatchdogPolicy["channelCorrelationMode"],
               }))
             }
             value={draft.channelCorrelationMode ?? "off"}
           >
-            <option value="off">Off</option>
-            <option value="alert_on_high">Alert On High</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="alert_on_high">Alert On High</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Clipping Mode">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                clippingMode: event.target.value as WatchdogPolicy["clippingMode"],
+                clippingMode: value as WatchdogPolicy["clippingMode"],
               }))
             }
             value={draft.clippingMode ?? "off"}
           >
-            <option value="off">Off</option>
-            <option value="alert_on_clipping">Alert On Clipping</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="alert_on_clipping">Alert On Clipping</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Flatline Mode">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                flatlineMode: event.target.value as WatchdogPolicy["flatlineMode"],
+                flatlineMode: value as WatchdogPolicy["flatlineMode"],
               }))
             }
             value={draft.flatlineMode ?? "off"}
           >
-            <option value="off">Off</option>
-            <option value="alert_on_flatline">Alert On Flatline</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="alert_on_flatline">Alert On Flatline</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Quality Alert Mode">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                qualityAlertMode: event.target.value as WatchdogPolicy["qualityAlertMode"],
+                qualityAlertMode: value as WatchdogPolicy["qualityAlertMode"],
               }))
             }
             value={draft.qualityAlertMode ?? "off"}
           >
-            <option value="off">Off</option>
-            <option value="alert_on_noise_hum_static">Alert On Noise Hum Static</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="alert_on_noise_hum_static">Alert On Noise Hum Static</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <NumberField
           disabled={!canManage}
@@ -342,38 +378,46 @@ export function WatchdogPolicyCard({
           value={draft.minCumulativeQualitySeconds ?? draft.minCumulativeSecondsAboveThreshold}
         />
         <Field label="Severity">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                severity: event.target.value as WatchdogPolicy["severity"],
+                severity: value as WatchdogPolicy["severity"],
               }))
             }
             value={draft.severity}
           >
-            <option value="info">Info</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="info">Info</SelectItem>
+              <SelectItem value="warning">Warning</SelectItem>
+              <SelectItem value="critical">Critical</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
       </div>
 
       <div className="mt-4 grid gap-3 rounded-md border border-border bg-muted/20 p-3 md:grid-cols-[1fr_140px_auto] md:items-end">
         <Field label="Calibration Node">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={calibrationAction.disabled}
-            onChange={(event) => setCalibrationNodeId(event.target.value)}
+            onValueChange={(value) => setCalibrationNodeId(value)}
             value={calibrationNodeId}
           >
-            {nodes.map((node) => (
-              <option key={node.id} value={node.id}>
-                {node.alias} / {node.location.room}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {nodes.map((node) => (
+                <SelectItem key={node.id} value={node.id}>
+                  {node.alias} / {node.location.room}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
         <NumberField
           disabled={calibrationAction.disabled}
@@ -382,18 +426,26 @@ export function WatchdogPolicyCard({
           onChange={setSignalMarginDb}
           value={signalMarginDb}
         />
-        <Button
-          disabled={
-            calibrationAction.disabled || calibrationMutation.isPending || !calibrationNodeId
-          }
-          onClick={() => calibrationMutation.mutate()}
-          title={calibrationAction.title}
-          type="button"
-          variant="outline"
-        >
-          <Gauge className="size-4" />
-          Calibrate
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                disabled={
+                  calibrationAction.disabled || calibrationMutation.isPending || !calibrationNodeId
+                }
+                onClick={() => calibrationMutation.mutate()}
+                type="button"
+                variant="outline"
+              >
+                <Gauge className="size-4" />
+                Calibrate
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {calibrationAction.title ? (
+            <TooltipContent>{calibrationAction.title}</TooltipContent>
+          ) : null}
+        </Tooltip>
       </div>
 
       {mutation.isError || calibrationMutation.isError ? (

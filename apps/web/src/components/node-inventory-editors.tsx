@@ -12,7 +12,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 
 interface NodeIdentityDraft {
@@ -82,15 +90,23 @@ export function NodeIdentityEditor({
     >
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium">Node Details</div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          size="sm"
-          title={canManage ? "Save node details" : "Requires node manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                disabled={mutation.isPending || !canManage}
+                onClick={() => mutation.mutate()}
+                size="sm"
+              >
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save node details" : "Requires node manage"}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <Field label="Alias">
         <Input
@@ -196,34 +212,46 @@ export function NodeAudioDefaultsEditor({
           <SlidersHorizontal className="size-4" />
           Audio Defaults
         </div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          size="sm"
-          title={canManage ? "Save audio defaults" : "Requires node manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                disabled={mutation.isPending || !canManage}
+                onClick={() => mutation.mutate()}
+                size="sm"
+              >
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save audio defaults" : "Requires node manage"}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
         <Field label="Capture Backend">
-          <select
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-            onChange={(event) =>
+          <Select
+            onValueChange={(value) =>
               setDraftValue(
                 setDraft,
                 "captureBackend",
-                event.target.value as NodeAudioDefaultsDraft["captureBackend"],
+                (value === "__all__" ? "" : value) as NodeAudioDefaultsDraft["captureBackend"],
               )
             }
-            value={draft.captureBackend}
+            value={draft.captureBackend || "__all__"}
           >
-            <option value="">ALSA default</option>
-            <option value="alsa">ALSA</option>
-            <option value="jack">JACK</option>
-            <option value="pipewire">PipeWire</option>
-          </select>
+            <SelectTrigger className="px-3 py-2">
+              <SelectValue placeholder="ALSA default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">ALSA default</SelectItem>
+              <SelectItem value="alsa">ALSA</SelectItem>
+              <SelectItem value="jack">JACK</SelectItem>
+              <SelectItem value="pipewire">PipeWire</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Capture Command">
           <Input
@@ -326,15 +354,23 @@ export function NodeInterfaceEditor({
           <AudioLines className="size-4" />
           Interface Details
         </div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          size="sm"
-          title={canManage ? "Save interface details" : "Requires node manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                disabled={mutation.isPending || !canManage}
+                onClick={() => mutation.mutate()}
+                size="sm"
+              >
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save interface details" : "Requires node manage"}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">
         <Badge variant="outline">{audioInterface.backend}</Badge>

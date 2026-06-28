@@ -22,6 +22,7 @@ import {
   LogIn,
   LogOut,
   ListChecks,
+  Menu,
   Radio,
   Settings,
   ShieldCheck,
@@ -31,10 +32,15 @@ import {
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import { toast } from "sonner";
+
 import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Toaster } from "@/components/ui/sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   api,
   clearAuthToken,
@@ -75,16 +81,36 @@ const navIcons: Record<RootNavItem["id"], typeof Gauge> = {
   settings: Settings,
 };
 
+function NavLinks({ navItems, onNavigate }: { navItems: RootNavItem[]; onNavigate?: () => void }) {
+  return (
+    <nav className="grid gap-1">
+      {navItems.map((item) => {
+        const Icon = navIcons[item.id];
+
+        return (
+          <Link
+            activeProps={{ className: "bg-stone-100 text-zinc-950" }}
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100"
+            key={item.to}
+            onClick={onNavigate}
+            to={item.to}
+          >
+            <Icon className="size-4" />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 function RootLayout() {
   const queryClient = useQueryClient();
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [authToken, setAuthTokenState] = React.useState(
     () => consumeOidcCallbackToken() ?? getAuthToken(),
   );
   const [quickRecordOpen, setQuickRecordOpen] = React.useState(false);
-  const [quickRecordNotice, setQuickRecordNotice] = React.useState<{
-    detail: string;
-    title: string;
-  }>();
   const currentUserQuery = useQuery({
     enabled: Boolean(authToken),
     queryFn: api.currentUser,
@@ -138,33 +164,36 @@ function RootLayout() {
           </div>
         </div>
 
-        <nav className="grid gap-1">
-          {navItems.map((item) => {
-            const Icon = navIcons[item.id];
-
-            return (
-              <Link
-                activeProps={{
-                  className: "bg-stone-100 text-zinc-950",
-                }}
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100"
-                key={item.to}
-                to={item.to}
-              >
-                <Icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <NavLinks navItems={navItems} />
       </aside>
 
       <div className="lg:pl-64">
         <header className="sticky top-0 z-10 border-b border-border bg-stone-100/90 px-4 py-3 backdrop-blur md:px-6">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-semibold tracking-normal">Operations</h1>
-              <p className="text-sm text-muted-foreground">Council Chamber Rack</p>
+            <div className="flex items-center gap-3">
+              <Sheet onOpenChange={setMobileNavOpen} open={mobileNavOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    aria-label="Open navigation"
+                    className="lg:hidden"
+                    size="icon"
+                    variant="outline"
+                  >
+                    <Menu className="size-4" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent className="w-64 p-4" side="left">
+                  <SheetTitle className="mb-4 flex items-center gap-2 text-lg font-semibold">
+                    <Radio className="size-5" />
+                    Rakkr
+                  </SheetTitle>
+                  <NavLinks navItems={navItems} onNavigate={() => setMobileNavOpen(false)} />
+                </SheetContent>
+              </Sheet>
+              <div>
+                <h1 className="text-lg font-semibold tracking-normal">Operations</h1>
+                <p className="text-sm text-muted-foreground">Council Chamber Rack</p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden text-right text-sm md:block">
@@ -187,15 +216,21 @@ function RootLayout() {
                 <LogOut className="size-4" />
                 Logout
               </Button>
-              <Button
-                disabled={!recordAction.canOpen}
-                onClick={() => setQuickRecordOpen((open) => !open)}
-                title={recordAction.title}
-                variant={quickRecordOpen ? "secondary" : "default"}
-              >
-                <Radio className="size-4" />
-                Record
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      disabled={!recordAction.canOpen}
+                      onClick={() => setQuickRecordOpen((open) => !open)}
+                      variant={quickRecordOpen ? "secondary" : "default"}
+                    >
+                      <Radio className="size-4" />
+                      Record
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {recordAction.title ? <TooltipContent>{recordAction.title}</TooltipContent> : null}
+              </Tooltip>
             </div>
           </div>
         </header>
@@ -219,17 +254,10 @@ function RootLayout() {
                 </Button>
               </div>
 
-              {quickRecordNotice ? (
-                <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  <div className="font-medium">{quickRecordNotice.title}</div>
-                  <div className="text-emerald-700">{quickRecordNotice.detail}</div>
-                </section>
-              ) : null}
-
               <RecordingStartPanel
                 canReadNodes={layoutPermissions.canReadNodes}
                 canReadSettings={layoutPermissions.canReadSettings}
-                onNotice={setQuickRecordNotice}
+                onNotice={(notice) => toast.success(notice.title, { description: notice.detail })}
               />
             </div>
           </section>
@@ -417,7 +445,10 @@ declare module "@tanstack/react-router" {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <TooltipProvider delayDuration={200}>
+        <RouterProvider router={router} />
+        <Toaster position="bottom-right" richColors />
+      </TooltipProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

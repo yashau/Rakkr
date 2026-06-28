@@ -4,6 +4,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface ResourceGrantDraft {
   resourceId: string;
@@ -35,20 +42,24 @@ export function ResourceGrantComposer({ onAppend }: { onAppend: (line: string) =
       <div className="grid gap-2 sm:grid-cols-[120px_1fr_auto]">
         <div className="grid gap-1.5">
           <Label htmlFor="scope-resource-type">Resource</Label>
-          <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-            id="scope-resource-type"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, resourceType: event.target.value }))
-            }
+          <Select
+            onValueChange={(value) => setDraft((current) => ({ ...current, resourceType: value }))}
             value={draft.resourceType}
           >
-            {resourceTypes.map((resourceType) => (
-              <option key={resourceType} value={resourceType}>
-                {resourceType}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              id="scope-resource-type"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {resourceTypes.map((resourceType) => (
+                <SelectItem key={resourceType} value={resourceType}>
+                  {resourceType}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="scope-resource-id">Resource ID</Label>

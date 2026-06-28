@@ -2,10 +2,18 @@ import { CheckSquare, Download, RotateCcw, Trash2, UploadCloud, X } from "lucide
 import { useState } from "react";
 import type { UploadPolicy } from "@rakkr/shared";
 
+import { ConfirmButton } from "@/components/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { RecordingBulkMetadataUpdate } from "@/lib/api";
 
 interface BulkDraft {
@@ -171,32 +179,40 @@ export function RecordingBulkOrganizer({
       {canDelete ? (
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{deleteEligibleCount} deletable</Badge>
-          <Button
+          <ConfirmButton
+            confirmLabel="Delete"
+            description="This permanently deletes the selected terminal recordings and their cached files."
             disabled={bulkDeleteDisabled}
-            onClick={onDeleteSelected}
-            type="button"
+            onConfirm={onDeleteSelected}
+            title={`Delete ${deleteEligibleCount} selected recording${
+              deleteEligibleCount === 1 ? "" : "s"
+            }?`}
             variant="destructive"
           >
             <Trash2 className="size-4" />
             Delete selected
-          </Button>
+          </ConfirmButton>
         </div>
       ) : null}
       {canUpload ? (
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{uploadEligibleCount} cached</Badge>
           {uploadPolicies.length > 0 ? (
-            <select
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              onChange={(event) => setSelectedUploadPolicyId(event.target.value)}
+            <Select
+              onValueChange={(value) => setSelectedUploadPolicyId(value)}
               value={uploadPolicyId ?? ""}
             >
-              {uploadPolicies.map((policy) => (
-                <option key={policy.id} value={policy.id}>
-                  {policy.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {uploadPolicies.map((policy) => (
+                  <SelectItem key={policy.id} value={policy.id}>
+                    {policy.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : null}
           <Button
             disabled={bulkUploadDisabled}

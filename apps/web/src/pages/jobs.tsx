@@ -13,11 +13,22 @@ import {
   X,
 } from "lucide-react";
 
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 import {
@@ -130,18 +141,16 @@ export function JobsPage() {
   });
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading recording jobs.</p>;
+    return <LoadingSkeleton label="Loading recording jobs" />;
   }
 
   if (!permissions.canReadJobs) {
     return (
-      <Card className="rounded-lg p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <ListChecks className="size-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Recording Jobs</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Recording jobs are unavailable.</p>
-      </Card>
+      <Alert>
+        <ListChecks className="size-4" />
+        <AlertTitle>Recording Jobs</AlertTitle>
+        <AlertDescription>Recording jobs are unavailable.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -218,40 +227,50 @@ export function JobsPage() {
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[160px_160px_180px_180px_220px_220px_1fr]">
           <Field label="Status">
-            <select
-              className={selectClassName}
-              onChange={(event) =>
+            <Select
+              onValueChange={(value) =>
                 setFilters((current) => ({
                   ...current,
-                  status: event.target.value as JobsPageFilters["status"],
+                  status: (value === "__all__" ? "" : value) as JobsPageFilters["status"],
                 }))
               }
-              value={filters.status}
+              value={filters.status || "__all__"}
             >
-              {statuses.map((status) => (
-                <option key={status || "all"} value={status}>
-                  {status || "all statuses"}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={selectClassName}>
+                <SelectValue placeholder="all statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                {statuses.map((status) => (
+                  <SelectItem key={status || "all"} value={status || "__all__"}>
+                    {status || "all statuses"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Backend">
-            <select
-              className={selectClassName}
-              onChange={(event) =>
+            <Select
+              onValueChange={(value) =>
                 setFilters((current) => ({
                   ...current,
-                  captureBackend: event.target.value as JobsPageFilters["captureBackend"],
+                  captureBackend: (value === "__all__"
+                    ? ""
+                    : value) as JobsPageFilters["captureBackend"],
                 }))
               }
-              value={filters.captureBackend}
+              value={filters.captureBackend || "__all__"}
             >
-              {captureBackends.map((backend) => (
-                <option key={backend || "all"} value={backend}>
-                  {backend || "all backends"}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={selectClassName}>
+                <SelectValue placeholder="all backends" />
+              </SelectTrigger>
+              <SelectContent>
+                {captureBackends.map((backend) => (
+                  <SelectItem key={backend || "all"} value={backend || "__all__"}>
+                    {backend || "all backends"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Created From">
             <Input
@@ -273,20 +292,27 @@ export function JobsPage() {
           </Field>
           <Field label="Node">
             {permissions.canReadNodes && (nodesQuery.data?.data.length ?? 0) > 0 ? (
-              <select
-                className={selectClassName}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, nodeId: event.target.value }))
+              <Select
+                onValueChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    nodeId: value === "__all__" ? "" : value,
+                  }))
                 }
-                value={filters.nodeId}
+                value={filters.nodeId || "__all__"}
               >
-                <option value="">all nodes</option>
-                {nodesQuery.data?.data.map((recorderNode) => (
-                  <option key={recorderNode.id} value={recorderNode.id}>
-                    {recorderNode.alias}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className={selectClassName}>
+                  <SelectValue placeholder="all nodes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">all nodes</SelectItem>
+                  {nodesQuery.data?.data.map((recorderNode) => (
+                    <SelectItem key={recorderNode.id} value={recorderNode.id}>
+                      {recorderNode.alias}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <Input
                 onChange={(event) =>
@@ -344,58 +370,77 @@ export function JobsPage() {
         ) : null}
 
         <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
-          <label className="flex items-center gap-2 text-sm">
-            <input
+          <label className="flex items-center gap-2 text-sm" htmlFor="jobs-bulk-select-all">
+            <Checkbox
               checked={allVisibleSelected}
-              className="size-4"
-              onChange={(event) => setSelectedJobIds(event.target.checked ? visibleJobIds : [])}
-              type="checkbox"
+              id="jobs-bulk-select-all"
+              onCheckedChange={(value) => setSelectedJobIds(value === true ? visibleJobIds : [])}
             />
             <span>{selectedVisibleJobIds.length} selected</span>
           </label>
           <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={selectedVisibleJobIds.length === 0 || selectedExportMutation.isPending}
-              onClick={() => selectedExportMutation.mutate(selectedVisibleJobIds)}
-              title={
-                selectedVisibleJobIds.length > 0
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    disabled={
+                      selectedVisibleJobIds.length === 0 || selectedExportMutation.isPending
+                    }
+                    onClick={() => selectedExportMutation.mutate(selectedVisibleJobIds)}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Download className="size-4" />
+                    Export selected
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {selectedVisibleJobIds.length > 0
                   ? "Export selected visible jobs"
-                  : "Select visible jobs to export"
-              }
-              type="button"
-              variant="outline"
-            >
-              <Download className="size-4" />
-              Export selected
-            </Button>
-            <Button
-              disabled={bulkRetryTargets.length === 0 || bulkRetryJobMutation.isPending}
-              onClick={() => bulkRetryJobMutation.mutate({ jobIds: bulkRetryTargets })}
-              title={
-                bulkRetryTargets.length > 0
+                  : "Select visible jobs to export"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    disabled={bulkRetryTargets.length === 0 || bulkRetryJobMutation.isPending}
+                    onClick={() => bulkRetryJobMutation.mutate({ jobIds: bulkRetryTargets })}
+                    type="button"
+                    variant="outline"
+                  >
+                    <RotateCcw className="size-4" />
+                    Retry selected
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {bulkRetryTargets.length > 0
                   ? "Retry selected failed or cancelled jobs"
-                  : "Select failed or cancelled jobs without active retries"
-              }
-              type="button"
-              variant="outline"
-            >
-              <RotateCcw className="size-4" />
-              Retry selected
-            </Button>
-            <Button
-              disabled={bulkStopTargets.length === 0 || bulkStopJobMutation.isPending}
-              onClick={() => bulkStopJobMutation.mutate({ jobIds: bulkStopTargets })}
-              title={
-                bulkStopTargets.length > 0
+                  : "Select failed or cancelled jobs without active retries"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    disabled={bulkStopTargets.length === 0 || bulkStopJobMutation.isPending}
+                    onClick={() => bulkStopJobMutation.mutate({ jobIds: bulkStopTargets })}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Square className="size-4" />
+                    Stop selected
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {bulkStopTargets.length > 0
                   ? "Request stop for selected active jobs"
-                  : "Select queued or running jobs"
-              }
-              type="button"
-              variant="outline"
-            >
-              <Square className="size-4" />
-              Stop selected
-            </Button>
+                  : "Select queued or running jobs"}
+              </TooltipContent>
+            </Tooltip>
             <Button
               disabled={selectedVisibleJobIds.length === 0}
               onClick={() => setSelectedJobIds([])}
@@ -427,9 +472,9 @@ export function JobsPage() {
           />
         ))}
         {!jobsQuery.isPending && visibleJobs.length === 0 ? (
-          <Card className="rounded-lg p-4 text-sm text-muted-foreground shadow-sm">
-            No recording jobs match the current filters.
-          </Card>
+          <Alert>
+            <AlertDescription>No recording jobs match the current filters.</AlertDescription>
+          </Alert>
         ) : null}
       </section>
     </div>
@@ -501,13 +546,15 @@ function JobRow({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              checked={selected}
-              className="size-4"
-              onChange={(event) => onSelectedChange(event.target.checked)}
-              title="Select job"
-              type="checkbox"
-            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(value) => onSelectedChange(value === true)}
+                />
+              </TooltipTrigger>
+              <TooltipContent>Select job</TooltipContent>
+            </Tooltip>
             <Badge className={recordingJobStatusClass(job.status)} variant="outline">
               {job.status}
             </Badge>
@@ -533,26 +580,38 @@ function JobRow({
         <div className="flex flex-wrap gap-2 lg:max-w-xl lg:justify-end">
           {canControl ? (
             <>
-              <Button
-                disabled={!retryAction.canRetry || retryPending}
-                onClick={() => onRetry(job.id)}
-                title={retryAction.title}
-                type="button"
-                variant="outline"
-              >
-                <RotateCcw className="size-4" />
-                Retry
-              </Button>
-              <Button
-                disabled={!stopAction.canStop || stopPending}
-                onClick={() => onStop(job.recordingId)}
-                title={stopAction.title}
-                type="button"
-                variant="outline"
-              >
-                <Square className="size-4" />
-                Stop
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      disabled={!retryAction.canRetry || retryPending}
+                      onClick={() => onRetry(job.id)}
+                      type="button"
+                      variant="outline"
+                    >
+                      <RotateCcw className="size-4" />
+                      Retry
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{retryAction.title}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      disabled={!stopAction.canStop || stopPending}
+                      onClick={() => onStop(job.recordingId)}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Square className="size-4" />
+                      Stop
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{stopAction.title}</TooltipContent>
+              </Tooltip>
             </>
           ) : null}
           {job.claimedBy ? (

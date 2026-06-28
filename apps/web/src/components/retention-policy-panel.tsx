@@ -6,8 +6,17 @@ import type { RetentionPolicy, RetentionPolicyInput, RetentionPolicyUpdate } fro
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 
 export function RetentionPolicyPanel({
@@ -44,15 +53,23 @@ export function RetentionPolicyPanel({
           <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
             {policies.length} policies
           </Badge>
-          <Button
-            disabled={createMutation.isPending || !canManage}
-            onClick={() => createMutation.mutate()}
-            title={canManage ? "Create retention policy" : "Requires settings manage"}
-            variant="outline"
-          >
-            <PlusCircle className="size-4" />
-            New
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  disabled={createMutation.isPending || !canManage}
+                  onClick={() => createMutation.mutate()}
+                  variant="outline"
+                >
+                  <PlusCircle className="size-4" />
+                  New
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {canManage ? "Create retention policy" : "Requires settings manage"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </section>
 
@@ -108,14 +125,19 @@ function RetentionPolicyCard({
             {policy.scope} / {policy.action}
           </p>
         </div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          title={canManage ? "Save retention policy" : "Requires settings manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save retention policy" : "Requires settings manage"}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="grid gap-3 md:grid-cols-5">
@@ -127,36 +149,44 @@ function RetentionPolicyCard({
           />
         </Field>
         <Field label="Scope">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                scope: event.target.value as RetentionPolicy["scope"],
+                scope: value as RetentionPolicy["scope"],
               }))
             }
             value={draft.scope}
           >
-            <option value="controller_cache">Controller Cache</option>
-            <option value="recorder_cache">Recorder Cache</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="controller_cache">Controller Cache</SelectItem>
+              <SelectItem value="recorder_cache">Recorder Cache</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Action">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                action: event.target.value as RetentionPolicy["action"],
+                action: value as RetentionPolicy["action"],
               }))
             }
             value={draft.action}
           >
-            <option value="keep">Keep</option>
-            <option value="delete_cache">Delete Cache</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="keep">Keep</SelectItem>
+              <SelectItem value="delete_cache">Delete Cache</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <NumberField
           label="Max Age Days"
@@ -222,12 +252,10 @@ function BooleanField({
 }) {
   return (
     <label className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
-      <input
+      <Checkbox
         checked={checked}
-        className="size-4"
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        type="checkbox"
+        onCheckedChange={(value) => onChange(value === true)}
       />
       {label}
     </label>

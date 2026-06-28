@@ -23,13 +23,25 @@ import {
   type ScheduleSummary,
 } from "@rakkr/shared";
 
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmButton } from "@/components/confirm-button";
 import { ScheduleFiltersPanel } from "@/components/schedule-filters";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import {
@@ -199,18 +211,11 @@ export function SchedulesPage() {
     }));
   }
 
-  function toggleDay(day: ScheduleDayOfWeek) {
-    setDraft((current) => {
-      const isSelected = current.daysOfWeek.includes(day);
-      const daysOfWeek = isSelected
-        ? current.daysOfWeek.filter((candidate) => candidate !== day)
-        : [...current.daysOfWeek, day];
-
-      return {
-        ...current,
-        daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : current.daysOfWeek,
-      };
-    });
+  function setDaysOfWeek(daysOfWeek: ScheduleDayOfWeek[]) {
+    setDraft((current) => ({
+      ...current,
+      daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : current.daysOfWeek,
+    }));
   }
 
   function submitSchedule(event: FormEvent<HTMLFormElement>) {
@@ -233,18 +238,16 @@ export function SchedulesPage() {
   }
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading schedules.</p>;
+    return <LoadingSkeleton label="Loading schedules" />;
   }
 
   if (!actionPermissions.canRead) {
     return (
-      <Card className="rounded-lg p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Schedules</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Schedules are unavailable.</p>
-      </Card>
+      <Alert>
+        <ShieldCheck className="size-4" />
+        <AlertTitle>Schedules</AlertTitle>
+        <AlertDescription>Schedules are unavailable.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -290,20 +293,22 @@ export function SchedulesPage() {
 
               <div className="grid gap-2">
                 <Label htmlFor="schedule-node">Recorder Node</Label>
-                <select
-                  className={selectClass}
-                  id="schedule-node"
-                  onChange={(event) => selectNode(event.target.value)}
-                  required
-                  value={draft.nodeId}
+                <Select
+                  onValueChange={(value) => selectNode(value === "__all__" ? "" : value)}
+                  value={draft.nodeId || "__all__"}
                 >
-                  <option value="">Select a recorder</option>
-                  {nodes.map((node) => (
-                    <option key={node.id} value={node.id}>
-                      {node.alias} / {node.location.room}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={selectClass} id="schedule-node">
+                    <SelectValue placeholder="Select a recorder" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Select a recorder</SelectItem>
+                    {nodes.map((node) => (
+                      <SelectItem key={node.id} value={node.id}>
+                        {node.alias} / {node.location.room}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-2">
@@ -328,24 +333,24 @@ export function SchedulesPage() {
 
               <div className="grid gap-2">
                 <Label htmlFor="schedule-recurrence-mode">Recurrence</Label>
-                <select
-                  className={selectClass}
-                  id="schedule-recurrence-mode"
-                  onChange={(event) =>
-                    updateDraft(
-                      "recurrenceMode",
-                      event.target.value as ScheduleDraft["recurrenceMode"],
-                    )
+                <Select
+                  onValueChange={(value) =>
+                    updateDraft("recurrenceMode", value as ScheduleDraft["recurrenceMode"])
                   }
                   value={draft.recurrenceMode}
                 >
-                  <option value="manual">Manual next run</option>
-                  <option value="once">One-off</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="always_on">Always on</option>
-                </select>
+                  <SelectTrigger className={selectClass} id="schedule-recurrence-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual next run</SelectItem>
+                    <SelectItem value="once">One-off</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="always_on">Always on</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-2">
@@ -475,33 +480,27 @@ export function SchedulesPage() {
               {draft.recurrenceMode === "weekly" ? (
                 <div className="grid gap-2 md:col-span-2">
                   <Label>Days Of Week</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {dayOptions.map((day) => {
-                      const selected = draft.daysOfWeek.includes(day.id);
-
-                      return (
-                        <Button
-                          aria-pressed={selected}
-                          key={day.id}
-                          onClick={() => toggleDay(day.id)}
-                          type="button"
-                          variant={selected ? "default" : "outline"}
-                        >
-                          {day.label}
-                        </Button>
-                      );
-                    })}
-                  </div>
+                  <ToggleGroup
+                    className="flex flex-wrap justify-start"
+                    onValueChange={(values) => setDaysOfWeek(values as ScheduleDayOfWeek[])}
+                    type="multiple"
+                    value={draft.daysOfWeek}
+                    variant="outline"
+                  >
+                    {dayOptions.map((day) => (
+                      <ToggleGroupItem aria-label={day.label} key={day.id} value={day.id}>
+                        {day.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
                 </div>
               ) : null}
 
               <div className="flex items-center gap-2 pt-7">
-                <Input
+                <Checkbox
                   checked={draft.enabled}
-                  className="size-4 accent-teal-700"
                   id="schedule-enabled"
-                  onChange={(event) => updateDraft("enabled", event.target.checked)}
-                  type="checkbox"
+                  onCheckedChange={(value) => updateDraft("enabled", value === true)}
                 />
                 <Label htmlFor="schedule-enabled">Enabled</Label>
               </div>
@@ -584,39 +583,47 @@ export function SchedulesPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="schedule-capture-backend">Backend</Label>
-                <select
-                  className={selectClass}
-                  id="schedule-capture-backend"
-                  onChange={(event) =>
+                <Select
+                  onValueChange={(value) =>
                     updateDraft(
                       "captureBackend",
-                      event.target.value as ScheduleDraft["captureBackend"],
+                      (value === "__all__" ? "" : value) as ScheduleDraft["captureBackend"],
                     )
                   }
-                  value={draft.captureBackend}
+                  value={draft.captureBackend || "__all__"}
                 >
-                  {captureBackends.map((backend) => (
-                    <option key={backend || "default"} value={backend}>
-                      {backend || "Node default"}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={selectClass} id="schedule-capture-backend">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {captureBackends.map((backend) => (
+                      <SelectItem key={backend || "default"} value={backend || "__all__"}>
+                        {backend || "Node default"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="schedule-capture-interface">Interface</Label>
-                <select
-                  className={selectClass}
-                  id="schedule-capture-interface"
-                  onChange={(event) => updateDraft("captureInterfaceId", event.target.value)}
-                  value={draft.captureInterfaceId}
+                <Select
+                  onValueChange={(value) =>
+                    updateDraft("captureInterfaceId", value === "__all__" ? "" : value)
+                  }
+                  value={draft.captureInterfaceId || "__all__"}
                 >
-                  <option value="">Node default</option>
-                  {selectedNode?.interfaces.map((audioInterface) => (
-                    <option key={audioInterface.id} value={audioInterface.id}>
-                      {audioInterfaceLabel(audioInterface)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={selectClass} id="schedule-capture-interface">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Node default</SelectItem>
+                    {selectedNode?.interfaces.map((audioInterface) => (
+                      <SelectItem key={audioInterface.id} value={audioInterface.id}>
+                        {audioInterfaceLabel(audioInterface)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
@@ -806,19 +813,17 @@ export function SchedulesPage() {
                         <SkipForward className="size-4" />
                         Skip Next
                       </Button>
-                      <Button
+                      <ConfirmButton
+                        confirmLabel="Delete"
+                        description={`This permanently deletes the schedule "${schedule.name}".`}
                         disabled={deleteScheduleMutation.isPending || !actions.canDelete}
-                        onClick={() => {
-                          if (window.confirm(`Delete schedule "${schedule.name}"?`)) {
-                            deleteScheduleMutation.mutate(schedule.id);
-                          }
-                        }}
-                        type="button"
-                        variant="outline"
+                        onConfirm={() => deleteScheduleMutation.mutate(schedule.id)}
+                        title={`Delete schedule "${schedule.name}"?`}
+                        variant="destructive"
                       >
                         <Trash2 className="size-4" />
                         Delete
-                      </Button>
+                      </ConfirmButton>
                     </>
                   ) : null}
                 </div>
@@ -835,13 +840,11 @@ export function SchedulesPage() {
         );
       })}
 
-      {schedulesQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading schedules.</p>
-      ) : null}
+      {schedulesQuery.isLoading ? <LoadingSkeleton label="Loading schedules" /> : null}
       {!schedulesQuery.isLoading && schedules.length === 0 ? (
-        <Card className="rounded-lg p-4 text-sm text-muted-foreground shadow-sm">
-          No schedules match the current filters.
-        </Card>
+        <Alert>
+          <AlertDescription>No schedules match the current filters.</AlertDescription>
+        </Alert>
       ) : null}
       {saveScheduleMutation.isError ? (
         <p className="text-sm text-destructive">Schedule save failed.</p>

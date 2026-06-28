@@ -12,6 +12,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   nodeLifecycleApi,
   type NodeLifecycleAction,
   type NodeLifecycleJob,
@@ -58,37 +66,43 @@ export function NodeLifecycleMenu({ canManage, node }: NodeLifecycleMenuProps) {
   const latestJob = jobsQuery.data?.data[0];
 
   return (
-    <details className="justify-self-start md:justify-self-end">
-      <summary aria-label="Node lifecycle actions" className="list-none">
-        <Button asChild disabled={runMutation.isPending} variant="outline">
-          <span>
-            <CheckCircle2 className="size-4" />
-            Lifecycle
-            <ChevronDown className="size-4" />
-          </span>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          className="justify-self-start md:justify-self-end"
+          disabled={runMutation.isPending}
+          variant="outline"
+        >
+          <CheckCircle2 className="size-4" />
+          Lifecycle
+          <ChevronDown className="size-4" />
         </Button>
-      </summary>
-      <div className="mt-2 grid w-56 gap-2 rounded-md border border-border bg-background p-2 shadow-sm">
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>Lifecycle actions</DropdownMenuLabel>
         {lifecycleActions.map(({ action, icon: Icon, label }) => (
-          <Button
-            className="justify-start"
+          <DropdownMenuItem
             disabled={runMutation.isPending}
             key={action}
-            onClick={() => runMutation.mutate(action)}
-            size="sm"
-            type="button"
-            variant="ghost"
+            onSelect={() => runMutation.mutate(action)}
           >
             <Icon className="size-4" />
             {label}
-          </Button>
+          </DropdownMenuItem>
         ))}
-        {latestJob ? <LifecycleJobBadge job={latestJob} /> : null}
-        {runMutation.isError ? (
-          <p className="px-2 text-xs text-destructive">Lifecycle action failed.</p>
+        {latestJob ? (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5">
+              <LifecycleJobBadge job={latestJob} />
+            </div>
+          </>
         ) : null}
-      </div>
-    </details>
+        {runMutation.isError ? (
+          <p className="px-2 py-1 text-xs text-destructive">Lifecycle action failed.</p>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

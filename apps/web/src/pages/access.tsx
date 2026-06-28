@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Save, ShieldCheck, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   roles,
@@ -11,9 +11,12 @@ import {
   type Role,
 } from "@rakkr/shared";
 
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -151,18 +154,16 @@ export function AccessPage() {
   }, [users]);
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading access.</p>;
+    return <LoadingSkeleton label="Loading access" />;
   }
 
   if (!canManageAccess) {
     return (
-      <Card className="rounded-lg p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Access</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Access management is unavailable.</p>
-      </Card>
+      <Alert>
+        <ShieldCheck className="size-4" />
+        <AlertTitle>Access</AlertTitle>
+        <AlertDescription>Access management is unavailable.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -508,27 +509,34 @@ function RolePicker({
   onChange: (rolesValue: Role[]) => void;
   rolesValue: Role[];
 }) {
+  const pickerId = useId();
+
   return (
     <div className="flex flex-wrap gap-2">
-      {roles.map((role) => (
-        <label
-          className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm"
-          key={role}
-        >
-          <input
-            checked={rolesValue.includes(role)}
-            onChange={(event) =>
-              onChange(
-                event.target.checked
-                  ? [...rolesValue, role]
-                  : rolesValue.filter((value) => value !== role),
-              )
-            }
-            type="checkbox"
-          />
-          {role}
-        </label>
-      ))}
+      {roles.map((role) => {
+        const checkboxId = `${pickerId}-role-${role}`;
+
+        return (
+          <label
+            className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm"
+            htmlFor={checkboxId}
+            key={role}
+          >
+            <Checkbox
+              checked={rolesValue.includes(role)}
+              id={checkboxId}
+              onCheckedChange={(value) =>
+                onChange(
+                  value === true
+                    ? [...rolesValue, role]
+                    : rolesValue.filter((current) => current !== role),
+                )
+              }
+            />
+            {role}
+          </label>
+        );
+      })}
     </div>
   );
 }

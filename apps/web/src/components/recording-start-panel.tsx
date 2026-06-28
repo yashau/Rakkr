@@ -6,6 +6,13 @@ import type { AudioInterface, RecorderNode, RecordingProfile, UploadPolicy } fro
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import {
   emptyRecordingStartDraft,
@@ -96,12 +103,10 @@ export function RecordingStartPanel({
     >
       <div className="grid gap-1.5">
         <Label htmlFor="recording-start-node">Node</Label>
-        <select
-          className={selectClassName}
+        <Select
           disabled={Boolean(fixedNode)}
-          id="recording-start-node"
-          onChange={(event) => {
-            const nextNode = nodes.find((node) => node.id === event.target.value);
+          onValueChange={(value) => {
+            const nextNode = nodes.find((node) => node.id === value);
 
             setDraft((current) => ({
               ...current,
@@ -110,75 +115,94 @@ export function RecordingStartPanel({
               )
                 ? current.captureInterfaceId
                 : "",
-              nodeId: event.target.value,
+              nodeId: value,
             }));
           }}
           value={selectedNodeId}
         >
-          {nodes.map((node) => (
-            <option key={node.id} value={node.id}>
-              {recordingStartNodeLabel(node)}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className={selectClassName} id="recording-start-node">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {nodes.map((node) => (
+              <SelectItem key={node.id} value={node.id}>
+                {recordingStartNodeLabel(node)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="recording-start-backend">Backend</Label>
-        <select
-          className={selectClassName}
-          id="recording-start-backend"
-          onChange={(event) =>
+        <Select
+          onValueChange={(value) =>
             setDraft((current) => ({
               ...current,
-              captureBackend: event.target.value as RecordingStartDraft["captureBackend"],
+              captureBackend: (value === "__all__"
+                ? ""
+                : value) as RecordingStartDraft["captureBackend"],
             }))
           }
-          value={draft.captureBackend}
+          value={draft.captureBackend || "__all__"}
         >
-          {captureBackends.map((backend) => (
-            <option key={backend || "default"} value={backend}>
-              {backend || "Node default"}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className={selectClassName} id="recording-start-backend">
+            <SelectValue placeholder="Node default" />
+          </SelectTrigger>
+          <SelectContent>
+            {captureBackends.map((backend) => (
+              <SelectItem key={backend || "default"} value={backend || "__all__"}>
+                {backend || "Node default"}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="recording-start-interface">Interface</Label>
-        <select
-          className={selectClassName}
-          id="recording-start-interface"
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, captureInterfaceId: event.target.value }))
+        <Select
+          onValueChange={(value) =>
+            setDraft((current) => ({
+              ...current,
+              captureInterfaceId: value === "__all__" ? "" : value,
+            }))
           }
-          value={draft.captureInterfaceId}
+          value={draft.captureInterfaceId || "__all__"}
         >
-          <option value="">Node default</option>
-          {selectedNode?.interfaces.map((audioInterface) => (
-            <option key={audioInterface.id} value={audioInterface.id}>
-              {recordingStartInterfaceLabel(audioInterface)}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className={selectClassName} id="recording-start-interface">
+            <SelectValue placeholder="Node default" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Node default</SelectItem>
+            {selectedNode?.interfaces.map((audioInterface) => (
+              <SelectItem key={audioInterface.id} value={audioInterface.id}>
+                {recordingStartInterfaceLabel(audioInterface)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="recording-start-profile">Profile</Label>
-        <select
-          className={selectClassName}
-          id="recording-start-profile"
-          onChange={(event) =>
+        <Select
+          onValueChange={(value) =>
             setDraft((current) => ({
               ...current,
-              recordingProfileId: event.target.value,
+              recordingProfileId: value,
             }))
           }
           value={selectedRecordingProfileId}
         >
-          {recordingProfiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className={selectClassName} id="recording-start-profile">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {recordingProfiles.map((profile) => (
+              <SelectItem key={profile.id} value={profile.id}>
+                {profile.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="recording-start-name">Name</Label>
@@ -207,23 +231,26 @@ export function RecordingStartPanel({
       <div className="grid gap-1.5">
         <Label htmlFor="recording-start-upload-policy">Upload</Label>
         <div className="flex gap-2">
-          <select
-            className={selectClassName}
-            id="recording-start-upload-policy"
-            onChange={(event) =>
+          <Select
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                uploadPolicyId: event.target.value,
+                uploadPolicyId: value,
               }))
             }
             value={selectedUploadPolicyId}
           >
-            {uploadPolicies.map((policy) => (
-              <option key={policy.id} value={policy.id}>
-                {policy.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className={selectClassName} id="recording-start-upload-policy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {uploadPolicies.map((policy) => (
+                <SelectItem key={policy.id} value={policy.id}>
+                  {policy.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             disabled={
               startMutation.isPending ||

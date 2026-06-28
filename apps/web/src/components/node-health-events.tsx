@@ -1,8 +1,8 @@
 import type { HealthEvent } from "@rakkr/shared";
 import { CheckCircle2, RotateCcw, ShieldOff } from "lucide-react";
 
+import { HintButton } from "@/components/hint-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   nodeHealthLifecycleActions,
   type NodeHealthLifecycleAction,
@@ -82,17 +82,17 @@ export function NodeHealthEvents({
                 {canManage ? (
                   <div className="flex flex-wrap gap-2 lg:justify-end">
                     {nodeHealthLifecycleActions(event.status).map((action) => (
-                      <Button
+                      <HintButton
                         disabled={pending}
+                        hint={nodeHealthActionTitle(action)}
                         key={action}
                         onClick={() => onAction(event, action)}
                         size="sm"
-                        title={nodeHealthActionTitle(action)}
                         variant="outline"
                       >
                         <NodeHealthActionIcon action={action} />
                         {nodeHealthActionLabel(action)}
-                      </Button>
+                      </HintButton>
                     ))}
                   </div>
                 ) : null}

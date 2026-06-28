@@ -12,11 +12,22 @@ import {
   X,
 } from "lucide-react";
 
+import { HintButton } from "@/components/hint-button";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import {
@@ -142,18 +153,16 @@ export function HealthPage() {
   });
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading health events.</p>;
+    return <LoadingSkeleton label="Loading health events" />;
   }
 
   if (!permissions.canReadHealth) {
     return (
-      <Card className="rounded-lg p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Health Events</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Health events are unavailable.</p>
-      </Card>
+      <Alert>
+        <ShieldCheck className="size-4" />
+        <AlertTitle>Health Events</AlertTitle>
+        <AlertDescription>Health events are unavailable.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -218,34 +227,48 @@ export function HealthPage() {
 
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <Field label="Status">
-            <select
-              className={selectClassName}
-              onChange={(event) =>
-                setFilter("status", event.target.value as HealthPageFilterDraft["status"])
+            <Select
+              onValueChange={(value) =>
+                setFilter(
+                  "status",
+                  (value === "__all__" ? "" : value) as HealthPageFilterDraft["status"],
+                )
               }
-              value={filters.status}
+              value={filters.status || "__all__"}
             >
-              {statuses.map((status) => (
-                <option key={status || "all"} value={status}>
-                  {status || "all statuses"}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={selectClassName}>
+                <SelectValue placeholder="all statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                {statuses.map((status) => (
+                  <SelectItem key={status || "all"} value={status || "__all__"}>
+                    {status || "all statuses"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Severity">
-            <select
-              className={selectClassName}
-              onChange={(event) =>
-                setFilter("severity", event.target.value as HealthPageFilterDraft["severity"])
+            <Select
+              onValueChange={(value) =>
+                setFilter(
+                  "severity",
+                  (value === "__all__" ? "" : value) as HealthPageFilterDraft["severity"],
+                )
               }
-              value={filters.severity}
+              value={filters.severity || "__all__"}
             >
-              {severities.map((severity) => (
-                <option key={severity || "all"} value={severity}>
-                  {severity || "all severities"}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={selectClassName}>
+                <SelectValue placeholder="all severities" />
+              </SelectTrigger>
+              <SelectContent>
+                {severities.map((severity) => (
+                  <SelectItem key={severity || "all"} value={severity || "__all__"}>
+                    {severity || "all severities"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Search">
             <Input
@@ -372,9 +395,9 @@ export function HealthPage() {
           />
         ))}
         {!healthQuery.isPending && events.length === 0 ? (
-          <Card className="rounded-lg p-4 text-sm text-muted-foreground shadow-sm">
-            No health events match the current filters.
-          </Card>
+          <Alert>
+            <AlertDescription>No health events match the current filters.</AlertDescription>
+          </Alert>
         ) : null}
       </section>
     </div>
@@ -472,13 +495,15 @@ function BulkHealthActions({
 
   return (
     <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
-      <label className="flex items-center gap-2 text-sm text-muted-foreground">
-        <input
+      <label
+        className="flex items-center gap-2 text-sm text-muted-foreground"
+        htmlFor="health-bulk-select-all"
+      >
+        <Checkbox
           checked={allSelected}
-          className="size-4 rounded border-border"
           disabled={selectionPending || events.length === 0}
-          onChange={(event) => onToggleAll(event.target.checked)}
-          type="checkbox"
+          id="health-bulk-select-all"
+          onCheckedChange={(value) => onToggleAll(value === true)}
         />
         {selectedEventIds.length} selected
       </label>
@@ -543,12 +568,11 @@ function HealthEventRow({
   return (
     <Card className="rounded-lg p-4 shadow-sm">
       <div className="flex gap-3">
-        <input
+        <Checkbox
           checked={selected}
-          className="mt-1 size-4 rounded border-border"
+          className="mt-1"
           disabled={pending}
-          onChange={(input) => onSelectionChange(input.target.checked)}
-          type="checkbox"
+          onCheckedChange={(value) => onSelectionChange(value === true)}
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -580,19 +604,19 @@ function HealthEventRow({
             {canManage ? (
               <div className="flex flex-wrap gap-2 lg:justify-end">
                 {healthLifecycleActions(event.status).map((action) => (
-                  <Button
+                  <HintButton
                     disabled={pending}
+                    hint={
+                      action === "suppress" ? "Suppress this health event for one hour" : action
+                    }
                     key={action}
                     onClick={() => onAction(action)}
                     size="sm"
-                    title={
-                      action === "suppress" ? "Suppress this health event for one hour" : action
-                    }
                     variant="outline"
                   >
                     <HealthActionIcon action={action} />
                     {actionLabel(action)}
-                  </Button>
+                  </HintButton>
                 ))}
               </div>
             ) : null}

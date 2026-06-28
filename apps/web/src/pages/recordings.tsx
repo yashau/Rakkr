@@ -9,17 +9,28 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
 import { RecordingCacheStateFilter } from "@/components/recording-cache-state-filter";
 import { RecordingCard } from "@/components/recording-card";
 import { RecordingFacetPanel } from "@/components/recording-facet-panel";
+import { RecordingPlaybackDock } from "@/components/recording-playback-dock";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { RecordingUploadQueueSummary } from "@/components/recording-upload-queue-summary";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   api,
   type RecordingBulkMetadataUpdate,
@@ -66,7 +77,8 @@ export function RecordingsPage() {
     offset: 0,
   });
   const [selectedRecordingIds, setSelectedRecordingIds] = useState<string[]>([]);
-  const [notice, setNotice] = useState<{ detail: string; title: string }>();
+  const setNotice = (next: { detail: string; title: string }) =>
+    toast(next.title, { description: next.detail });
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -478,11 +490,7 @@ export function RecordingsPage() {
     );
   };
   const deleteSelectedRecordings = () => {
-    if (
-      window.confirm(`Delete ${selectedTerminalRecordingIds.length} selected terminal recordings?`)
-    ) {
-      bulkDeleteRecordingMutation.mutate(selectedTerminalRecordingIds);
-    }
+    bulkDeleteRecordingMutation.mutate(selectedTerminalRecordingIds);
   };
   const uploadSelectedRecordings = (uploadPolicyId?: string) => {
     bulkEnqueueUploadMutation.mutate({
@@ -501,7 +509,7 @@ export function RecordingsPage() {
   };
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading recordings.</p>;
+    return <LoadingSkeleton label="Loading recordings" />;
   }
 
   return (
@@ -518,47 +526,16 @@ export function RecordingsPage() {
         />
       ) : null}
 
-      {notice ? (
-        <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <div className="font-medium">{notice.title}</div>
-          <div className="text-emerald-700">{notice.detail}</div>
-        </section>
-      ) : null}
-
       {audioPreview ? (
-        <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{audioPreview.fileName}</div>
-              <div className="text-xs text-muted-foreground">
-                Session {audioPreview.sessionId} started {formatDateTime(audioPreview.startedAt)}
-              </div>
-            </div>
-            <Button
-              aria-label="Close playback"
-              onClick={closeAudioPreview}
-              size="icon"
-              variant="ghost"
-            >
-              <X className="size-4" />
-            </Button>
-          </div>
-          <audio className="w-full" controls src={audioPreview.objectUrl}>
-            <track kind="captions" />
-          </audio>
-        </section>
+        <RecordingPlaybackDock onClose={closeAudioPreview} preview={audioPreview} />
       ) : null}
 
       {!pagePermissions.canReadRecordings ? (
-        <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-5 text-muted-foreground" />
-            <h3 className="text-base font-semibold">Recording library</h3>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Recording library details are unavailable.
-          </p>
-        </section>
+        <Alert>
+          <ShieldCheck className="size-4" />
+          <AlertTitle>Recording library</AlertTitle>
+          <AlertDescription>Recording library details are unavailable.</AlertDescription>
+        </Alert>
       ) : (
         <>
           <form
@@ -698,24 +675,27 @@ export function RecordingsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-status-filter">Status</Label>
-                <select
-                  className={selectClassName}
-                  id="recording-status-filter"
-                  onChange={(event) =>
+                <Select
+                  onValueChange={(value) =>
                     setFilterDraft((current) => ({
                       ...current,
-                      status: event.target.value as RecordingFilterDraft["status"],
+                      status: (value === "__all__" ? "" : value) as RecordingFilterDraft["status"],
                     }))
                   }
-                  value={filterDraft.status}
+                  value={filterDraft.status || "__all__"}
                 >
-                  <option value="">Any status</option>
-                  {recordingStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={selectClassName} id="recording-status-filter">
+                    <SelectValue placeholder="Any status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Any status</SelectItem>
+                    {recordingStatuses.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <RecordingCacheStateFilter
                 onChange={(cacheState) => setFilterDraft((current) => ({ ...current, cacheState }))}
@@ -723,44 +703,50 @@ export function RecordingsPage() {
               />
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-sort-filter">Sort</Label>
-                <select
-                  className={selectClassName}
-                  id="recording-sort-filter"
-                  onChange={(event) =>
+                <Select
+                  onValueChange={(value) =>
                     setFilterDraft((current) => ({
                       ...current,
-                      sortBy: event.target.value as RecordingFilterDraft["sortBy"],
+                      sortBy: (value === "__all__" ? "" : value) as RecordingFilterDraft["sortBy"],
                     }))
                   }
-                  value={filterDraft.sortBy}
+                  value={filterDraft.sortBy || "__all__"}
                 >
-                  <option value="">Default order</option>
-                  {recordingSortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={selectClassName} id="recording-sort-filter">
+                    <SelectValue placeholder="Default order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Default order</SelectItem>
+                    {recordingSortOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-sort-order-filter">Order</Label>
-                <select
-                  className={selectClassName}
-                  id="recording-sort-order-filter"
-                  onChange={(event) =>
+                <Select
+                  onValueChange={(value) =>
                     setFilterDraft((current) => ({
                       ...current,
-                      sortOrder: event.target.value as RecordingSortOrder,
+                      sortOrder: value as RecordingSortOrder,
                     }))
                   }
                   value={filterDraft.sortOrder}
                 >
-                  {recordingSortOrders.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={selectClassName} id="recording-sort-order-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {recordingSortOrders.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-from-filter">From</Label>
@@ -792,24 +778,29 @@ export function RecordingsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-health-filter">Health</Label>
-                <select
-                  className={selectClassName}
-                  id="recording-health-filter"
-                  onChange={(event) =>
+                <Select
+                  onValueChange={(value) =>
                     setFilterDraft((current) => ({
                       ...current,
-                      healthStatus: event.target.value as RecordingFilterDraft["healthStatus"],
+                      healthStatus: (value === "__all__"
+                        ? ""
+                        : value) as RecordingFilterDraft["healthStatus"],
                     }))
                   }
-                  value={filterDraft.healthStatus}
+                  value={filterDraft.healthStatus || "__all__"}
                 >
-                  <option value="">Any health</option>
-                  {healthStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={selectClassName} id="recording-health-filter">
+                    <SelectValue placeholder="Any health" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Any health</SelectItem>
+                    {healthStatuses.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             {activeFilterChips.length > 0 ? (
@@ -838,18 +829,21 @@ export function RecordingsPage() {
               <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border border-border bg-muted/20 p-3">
                 <div className="grid gap-1.5">
                   <Label htmlFor="recording-page-size">Page size</Label>
-                  <select
-                    className={selectClassName}
-                    id="recording-page-size"
-                    onChange={(event) => changePageSize(Number(event.target.value))}
-                    value={pageSize}
+                  <Select
+                    onValueChange={(value) => changePageSize(Number(value))}
+                    value={String(pageSize)}
                   >
-                    {recordingPageSizes.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className={selectClassName} id="recording-page-size">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {recordingPageSizes.map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>
@@ -926,9 +920,9 @@ export function RecordingsPage() {
           ) : null}
 
           {!recordingsQuery.isPending && recordings.length === 0 ? (
-            <section className="rounded-lg border border-border bg-panel px-4 py-8 text-center text-sm text-muted-foreground">
-              No recordings match the current filters.
-            </section>
+            <Alert>
+              <AlertDescription>No recordings match the current filters.</AlertDescription>
+            </Alert>
           ) : null}
 
           {recordings.map((recording) => {
@@ -949,11 +943,7 @@ export function RecordingsPage() {
                 editPending={updateMetadataMutation.isPending}
                 jobs={jobs}
                 key={recording.id}
-                onDelete={() => {
-                  if (window.confirm(`Delete recording "${recording.name}"?`)) {
-                    deleteRecordingMutation.mutate(recording.id);
-                  }
-                }}
+                onDelete={() => deleteRecordingMutation.mutate(recording.id)}
                 onDownload={() => downloadMutation.mutate(recording.id)}
                 onPlayback={() => playbackMutation.mutate(recording.id)}
                 onQueueUpload={(uploadPolicyId) =>

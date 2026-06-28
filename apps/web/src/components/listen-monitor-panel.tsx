@@ -4,6 +4,8 @@ import { Radio, RefreshCcw, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, type ListenMonitorSession } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import { listenMonitorModeLabel, listenMonitorPollInterval } from "@/lib/node-page-helpers";
@@ -63,24 +65,36 @@ export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            disabled={streamQuery.isFetching}
-            onClick={() => void streamQuery.refetch()}
-            size="icon"
-            title="Refresh monitor audio"
-            variant="outline"
-          >
-            <RefreshCcw className="size-4" />
-          </Button>
-          <Button
-            disabled={stopMutation.isPending}
-            onClick={() => stopMutation.mutate()}
-            size="icon"
-            title="Stop listen monitor"
-            variant="outline"
-          >
-            <X className="size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  disabled={streamQuery.isFetching}
+                  onClick={() => void streamQuery.refetch()}
+                  size="icon"
+                  variant="outline"
+                >
+                  <RefreshCcw className="size-4" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Refresh monitor audio</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  disabled={stopMutation.isPending}
+                  onClick={() => stopMutation.mutate()}
+                  size="icon"
+                  variant="outline"
+                >
+                  <X className="size-4" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Stop listen monitor</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -92,7 +106,7 @@ export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps
           <track kind="captions" />
         </audio>
       ) : (
-        <p className="text-sm text-muted-foreground">Loading monitor audio.</p>
+        <Skeleton aria-label="Loading monitor audio" className="h-10 w-full" />
       )}
     </section>
   );

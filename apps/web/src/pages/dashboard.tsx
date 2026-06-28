@@ -2,11 +2,22 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, HardDrive, Radio, ShieldCheck, Square } from "lucide-react";
 
+import { HintButton } from "@/components/hint-button";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { MeterBank } from "@/components/meter-bank";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
   dashboardActiveRecordingJobs,
@@ -23,7 +34,8 @@ import { nodeStatusBadgeClass } from "@/lib/node-status";
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
-  const [notice, setNotice] = useState<{ detail: string; title: string }>();
+  const setNotice = (next: { detail: string; title: string }) =>
+    toast(next.title, { description: next.detail });
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -107,18 +119,16 @@ export function DashboardPage() {
   }, [selectedNodeId, visibleSelectedNodeId]);
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading dashboard.</p>;
+    return <LoadingSkeleton label="Loading dashboard" />;
   }
 
   if (!pagePermissions.canRead) {
     return (
-      <Card className="rounded-lg p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Dashboard</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Dashboard is unavailable.</p>
-      </Card>
+      <Alert>
+        <ShieldCheck className="size-4" />
+        <AlertTitle>Dashboard</AlertTitle>
+        <AlertDescription>Dashboard is unavailable.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -168,13 +178,6 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      {notice ? (
-        <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <div className="font-medium">{notice.title}</div>
-          <div className="text-emerald-700">{notice.detail}</div>
-        </section>
-      ) : null}
-
       {pagePermissions.canCreateRecordings ? (
         <RecordingStartPanel
           canReadNodes={pagePermissions.canRead}
@@ -193,19 +196,25 @@ export function DashboardPage() {
                 {nodes.length} visible recorder {nodes.length === 1 ? "node" : "nodes"}
               </p>
             </div>
-            <select
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm md:min-w-64"
+            <Select
               disabled={nodes.length === 0}
-              onChange={(event) => setSelectedNodeId(event.target.value)}
-              value={visibleSelectedNodeId}
+              onValueChange={(value) => setSelectedNodeId(value === "__all__" ? "" : value)}
+              value={visibleSelectedNodeId || "__all__"}
             >
-              {nodes.length === 0 ? <option value="">No visible nodes</option> : null}
-              {nodes.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.alias} / {candidate.location.room || candidate.hostname}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm md:min-w-64">
+                <SelectValue placeholder="No visible nodes" />
+              </SelectTrigger>
+              <SelectContent>
+                {nodes.length === 0 ? (
+                  <SelectItem value="__all__">No visible nodes</SelectItem>
+                ) : null}
+                {nodes.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.alias} / {candidate.location.room || candidate.hostname}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <MeterBank levels={levels} title={node ? `${node.alias} Meters` : "Meters"} />
@@ -303,17 +312,17 @@ export function DashboardPage() {
                           </Badge>
                         ) : null}
                         {pagePermissions.canControlRecordings ? (
-                          <Button
+                          <HintButton
                             disabled={!stopAction.canStop || stopRecordingMutation.isPending}
+                            hint={stopAction.title}
                             onClick={() => stopRecordingMutation.mutate(job.recordingId)}
                             size="sm"
-                            title={stopAction.title}
                             type="button"
                             variant="outline"
                           >
                             <Square className="size-4" />
                             Stop
-                          </Button>
+                          </HintButton>
                         ) : null}
                       </div>
                     </div>

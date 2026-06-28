@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Gauge, ShieldAlert } from "lucide-react";
 import type { HealthEvent, RecordingSummary } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDateTime, formatDuration } from "@/lib/dates";
 import { qualityEventEvidenceText } from "@/lib/quality-timeline-helpers";
 import { cn } from "@/lib/utils";
@@ -46,19 +47,22 @@ export function QualityTimeline({
       <div className="relative h-9 overflow-hidden rounded-md border border-stone-300 bg-emerald-100">
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,.7)_0,transparent_1px,transparent_20%,rgba(255,255,255,.65)_calc(20%+1px),transparent_calc(20%+2px),transparent_40%,rgba(255,255,255,.65)_calc(40%+1px),transparent_calc(40%+2px),transparent_60%,rgba(255,255,255,.65)_calc(60%+1px),transparent_calc(60%+2px),transparent_80%,rgba(255,255,255,.65)_calc(80%+1px),transparent_calc(80%+2px))]" />
         {segments.map((segment) => (
-          <div
-            aria-label={`${segment.event.severity} ${segment.event.type}`}
-            className={cn(
-              "absolute top-0 bottom-0 min-w-1 border-x border-white/60",
-              timelineSegmentClass(segment.event),
-            )}
-            key={segment.event.id}
-            style={{
-              left: `${segment.left}%`,
-              width: `${Math.max(1, segment.right - segment.left)}%`,
-            }}
-            title={timelineTitle(segment.event)}
-          />
+          <Tooltip key={segment.event.id}>
+            <TooltipTrigger asChild>
+              <div
+                aria-label={`${segment.event.severity} ${segment.event.type}`}
+                className={cn(
+                  "absolute top-0 bottom-0 min-w-1 border-x border-white/60",
+                  timelineSegmentClass(segment.event),
+                )}
+                style={{
+                  left: `${segment.left}%`,
+                  width: `${Math.max(1, segment.right - segment.left)}%`,
+                }}
+              />
+            </TooltipTrigger>
+            <TooltipContent>{timelineTitle(segment.event)}</TooltipContent>
+          </Tooltip>
         ))}
         <div className="absolute right-2 bottom-1 rounded bg-white/80 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800">
           healthy

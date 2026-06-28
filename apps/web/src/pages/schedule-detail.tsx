@@ -26,6 +26,11 @@ import type {
 } from "@rakkr/shared";
 
 import { QualityTimeline } from "@/components/quality-timeline";
+import { toast } from "sonner";
+
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { PromptDialog } from "@/components/prompt-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,7 +51,12 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   const queryClient = useQueryClient();
   const audioPreviewRef = useRef<RecordingPlaybackPreview | undefined>(undefined);
   const [audioPreview, setAudioPreview] = useState<RecordingPlaybackPreview>();
-  const [notice, setNotice] = useState<{ detail: string; title: string }>();
+  const [lifecyclePrompt, setLifecyclePrompt] = useState<{
+    action: "resolve" | "suppress";
+    eventId: string;
+  }>();
+  const setNotice = (next: { detail: string; title: string }) =>
+    toast(next.title, { description: next.detail });
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -203,7 +213,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   );
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading schedule.</p>;
+    return <LoadingSkeleton label="Loading schedule" />;
   }
 
   if (!pagePermissions.canReadSchedule) {
@@ -215,19 +225,17 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
             Schedules
           </Link>
         </Button>
-        <Card className="rounded-lg p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-5 text-muted-foreground" />
-            <h2 className="text-base font-semibold">Schedule</h2>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">Schedule details are unavailable.</p>
-        </Card>
+        <Alert>
+          <ShieldCheck className="size-4" />
+          <AlertTitle>Schedule</AlertTitle>
+          <AlertDescription>Schedule details are unavailable.</AlertDescription>
+        </Alert>
       </div>
     );
   }
 
   if (scheduleQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading schedule.</p>;
+    return <LoadingSkeleton label="Loading schedule" />;
   }
 
   if (!schedule) {
@@ -239,9 +247,9 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
             Schedules
           </Link>
         </Button>
-        <Card className="rounded-lg p-4 shadow-sm">
-          <p className="text-sm text-muted-foreground">Schedule not found.</p>
-        </Card>
+        <Alert>
+          <AlertDescription>Schedule not found.</AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -318,13 +326,6 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
         />
       </section>
 
-      {notice ? (
-        <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <div className="font-medium">{notice.title}</div>
-          <div className="text-emerald-700">{notice.detail}</div>
-        </section>
-      ) : null}
-
       {audioPreview ? (
         <section className="rounded-lg border border-border bg-panel px-4 py-3 shadow-sm">
           <div className="mb-3 flex items-start justify-between gap-3">
@@ -400,9 +401,13 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
                 canManage={canManageHealth}
                 event={event}
                 key={event.id}
-                onAction={(action) =>
-                  healthLifecycleMutation.mutate(healthLifecycleInput(event.id, action))
-                }
+                onAction={(action) => {
+                  if (action === "resolve" || action === "suppress") {
+                    setLifecyclePrompt({ action, eventId: event.id });
+                  } else {
+                    healthLifecycleMutation.mutate({ action, eventId: event.id });
+                  }
+                }}
                 pending={healthLifecycleMutation.isPending}
               />
             ))}
@@ -434,6 +439,45 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
           </ol>
         </Card>
       </section>
+
+      <PromptDialog
+        description={
+          lifecyclePrompt?.action === "suppress"
+            ? "Optionally suppress this health event until a given time."
+            : "Optionally record a resolution note."
+        }
+        label={
+          lifecyclePrompt?.action === "suppress"
+            ? "Suppress until (ISO date/time)"
+            : "Resolution note"
+        }
+        onOpenChange={(open) => {
+          if (!open) {
+            setLifecyclePrompt(undefined);
+          }
+        }}
+        onSubmit={(value) => {
+          if (!lifecyclePrompt) {
+            return;
+          }
+
+          healthLifecycleMutation.mutate({
+            action: lifecyclePrompt.action,
+            eventId: lifecyclePrompt.eventId,
+            ...(lifecyclePrompt.action === "suppress"
+              ? { suppressedUntil: value || undefined }
+              : { note: value || undefined }),
+          });
+        }}
+        open={Boolean(lifecyclePrompt)}
+        placeholder={
+          lifecyclePrompt?.action === "suppress" ? "2026-06-30T18:00:00Z" : "Optional note"
+        }
+        submitLabel={lifecyclePrompt?.action === "suppress" ? "Suppress" : "Resolve"}
+        title={
+          lifecyclePrompt?.action === "suppress" ? "Suppress health event" : "Resolve health event"
+        }
+      />
     </div>
   );
 }
@@ -665,35 +709,6 @@ function executionSummary(
     failedJobs: jobs.filter((job) => job.status === "failed").length,
     failedRecordings: recordings.filter((recording) => recording.status === "failed").length,
     openHealthEvents: healthEvents.filter((event) => event.status !== "resolved").length,
-  };
-}
-
-function healthLifecycleInput(
-  eventId: string,
-  action: "acknowledge" | "reopen" | "resolve" | "suppress",
-) {
-  if (action === "suppress") {
-    const suppressedUntil =
-      window.prompt("Suppress until ISO date/time, optional")?.trim() || undefined;
-
-    return {
-      action,
-      eventId,
-      suppressedUntil,
-    };
-  }
-
-  if (action === "resolve") {
-    return {
-      action,
-      eventId,
-      note: window.prompt("Resolution note, optional")?.trim() || undefined,
-    };
-  }
-
-  return {
-    action,
-    eventId,
   };
 }
 

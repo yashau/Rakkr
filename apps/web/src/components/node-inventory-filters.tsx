@@ -3,6 +3,13 @@ import type { NodeStatus } from "@rakkr/shared";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const nodeStatuses: NodeStatus[] = ["online", "recording", "degraded", "alerting", "offline"];
 const audioBackendFilters = ["alsa", "jack", "pipewire", "unknown"] as const;
@@ -101,34 +108,44 @@ export function NodeInventoryFilters({
         />
       </Field>
       <Field label="Status">
-        <select
-          className={selectClassName}
-          onChange={(event) => updateFilter("status", event.target.value as "" | NodeStatus)}
-          value={filters.status}
+        <Select
+          onValueChange={(value) =>
+            updateFilter("status", (value === "__all__" ? "" : value) as "" | NodeStatus)
+          }
+          value={filters.status || "__all__"}
         >
-          <option value="">all statuses</option>
-          {nodeStatuses.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className={selectClassName}>
+            <SelectValue placeholder="all statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">all statuses</SelectItem>
+            {nodeStatuses.map((status) => (
+              <SelectItem key={status} value={status}>
+                {status}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </Field>
       <Field label="Backend">
-        <select
-          className={selectClassName}
-          onChange={(event) =>
-            updateFilter("backend", event.target.value as "" | AudioBackendFilter)
+        <Select
+          onValueChange={(value) =>
+            updateFilter("backend", (value === "__all__" ? "" : value) as "" | AudioBackendFilter)
           }
-          value={filters.backend}
+          value={filters.backend || "__all__"}
         >
-          <option value="">all backends</option>
-          {audioBackendFilters.map((backend) => (
-            <option key={backend} value={backend}>
-              {backend}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className={selectClassName}>
+            <SelectValue placeholder="all backends" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">all backends</SelectItem>
+            {audioBackendFilters.map((backend) => (
+              <SelectItem key={backend} value={backend}>
+                {backend}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </Field>
     </div>
   );

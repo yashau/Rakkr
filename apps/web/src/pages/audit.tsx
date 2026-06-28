@@ -11,11 +11,28 @@ import {
 import { Fragment, useState } from "react";
 import { permissions, type AuditEvent } from "@rakkr/shared";
 
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { api, type AuditEventFilters } from "@/lib/api";
 import {
   auditFilterChips,
@@ -94,18 +111,16 @@ export function AuditPage() {
     });
 
   if (currentUserQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading audit trail.</p>;
+    return <LoadingSkeleton label="Loading audit trail" />;
   }
 
   if (!pagePermissions.canRead) {
     return (
-      <Card className="rounded-lg p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-5 text-muted-foreground" />
-          <h2 className="text-base font-semibold">Audit Trail</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Audit trail is unavailable.</p>
-      </Card>
+      <Alert>
+        <ShieldCheck className="size-4" />
+        <AlertTitle>Audit Trail</AlertTitle>
+        <AlertDescription>Audit trail is unavailable.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -137,21 +152,30 @@ export function AuditPage() {
           <Label className="text-xs text-muted-foreground" htmlFor="audit-permission">
             Permission
           </Label>
-          <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            id="audit-permission"
-            onChange={(event) =>
-              updateDraft("permission", event.target.value as AuditFilterDraft["permission"])
+          <Select
+            value={draft.permission || "__all__"}
+            onValueChange={(value) =>
+              updateDraft(
+                "permission",
+                (value === "__all__" ? "" : value) as AuditFilterDraft["permission"],
+              )
             }
-            value={draft.permission}
           >
-            <option value="">Any</option>
-            {permissions.map((permission) => (
-              <option key={permission} value={permission}>
-                {permission}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              id="audit-permission"
+            >
+              <SelectValue placeholder="Any" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Any</SelectItem>
+              {permissions.map((permission) => (
+                <SelectItem key={permission} value={permission}>
+                  {permission}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <FilterInput
           label="Target"
@@ -174,19 +198,25 @@ export function AuditPage() {
           <Label className="text-xs text-muted-foreground" htmlFor="audit-outcome">
             Outcome
           </Label>
-          <select
-            id="audit-outcome"
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onChange={(event) => updateDraft("outcome", event.target.value)}
-            value={draft.outcome}
+          <Select
+            value={draft.outcome || "__all__"}
+            onValueChange={(value) => updateDraft("outcome", value === "__all__" ? "" : value)}
           >
-            <option value="">Any</option>
-            {outcomes.map((outcome) => (
-              <option key={outcome} value={outcome}>
-                {outcome}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              id="audit-outcome"
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <SelectValue placeholder="Any" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Any</SelectItem>
+              {outcomes.map((outcome) => (
+                <SelectItem key={outcome} value={outcome}>
+                  {outcome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <FilterInput
@@ -255,26 +285,26 @@ export function AuditPage() {
       </form>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-border bg-stone-50 text-xs text-muted-foreground uppercase">
-            <tr>
-              <th className="px-4 py-3 font-medium">Time</th>
-              <th className="px-4 py-3 font-medium">Actor</th>
-              <th className="px-4 py-3 font-medium">Action</th>
-              <th className="px-4 py-3 font-medium">Permission</th>
-              <th className="px-4 py-3 font-medium">Target</th>
-              <th className="px-4 py-3 font-medium">Outcome</th>
-              <th className="px-4 py-3 font-medium">Reason</th>
-              <th className="px-4 py-3 font-medium">Details</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+        <Table className="w-full text-left text-sm">
+          <TableHeader className="border-b border-border bg-stone-50 text-xs text-muted-foreground uppercase">
+            <TableRow>
+              <TableHead className="px-4 py-3 font-medium">Time</TableHead>
+              <TableHead className="px-4 py-3 font-medium">Actor</TableHead>
+              <TableHead className="px-4 py-3 font-medium">Action</TableHead>
+              <TableHead className="px-4 py-3 font-medium">Permission</TableHead>
+              <TableHead className="px-4 py-3 font-medium">Target</TableHead>
+              <TableHead className="px-4 py-3 font-medium">Outcome</TableHead>
+              <TableHead className="px-4 py-3 font-medium">Reason</TableHead>
+              <TableHead className="px-4 py-3 font-medium">Details</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="divide-y divide-border">
             {events.length === 0 ? (
-              <tr>
-                <td className="px-4 py-5 text-muted-foreground" colSpan={8}>
+              <TableRow>
+                <TableCell className="px-4 py-5 text-muted-foreground" colSpan={8}>
                   No audit events yet.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               events.map((event) => {
                 const expanded = expandedEventIds.has(event.id);
@@ -282,33 +312,35 @@ export function AuditPage() {
 
                 return (
                   <Fragment key={event.id}>
-                    <tr className="bg-panel">
-                      <td className="px-4 py-3 whitespace-nowrap">
+                    <TableRow className="bg-panel">
+                      <TableCell className="px-4 py-3 whitespace-nowrap">
                         {formatDateTime(event.createdAt)}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium">{event.actor.name}</div>
                         <div className="text-xs text-muted-foreground">
                           {event.actor.roles.join(", ")}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs">{event.action}</td>
-                      <td className="px-4 py-3 font-mono text-xs">{event.permission ?? "n/a"}</td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 font-mono text-xs">{event.action}</TableCell>
+                      <TableCell className="px-4 py-3 font-mono text-xs">
+                        {event.permission ?? "n/a"}
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <div className="font-medium">
                           {event.target.name ?? event.target.id ?? event.target.type}
                         </div>
                         <div className="text-xs text-muted-foreground">{event.target.type}</div>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <Badge className={outcomeClass(event.outcome)} variant="outline">
                           {event.outcome}
                         </Badge>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
                         {event.reason ?? "n/a"}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         {hasDetails ? (
                           <Button
                             aria-expanded={expanded}
@@ -328,21 +360,21 @@ export function AuditPage() {
                         ) : (
                           <span className="text-xs text-muted-foreground">n/a</span>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                     {expanded ? (
-                      <tr className="bg-muted/20">
-                        <td className="px-4 py-3" colSpan={8}>
+                      <TableRow className="bg-muted/20">
+                        <TableCell className="px-4 py-3" colSpan={8}>
                           <AuditEventDetails event={event} />
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ) : null}
                   </Fragment>
                 );
               })
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </Card>
   );

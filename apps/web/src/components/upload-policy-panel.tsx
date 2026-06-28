@@ -6,8 +6,17 @@ import type { UploadPolicy, UploadPolicyInput, UploadPolicyUpdate } from "@rakkr
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 
 export function UploadPolicyPanel({
@@ -44,15 +53,23 @@ export function UploadPolicyPanel({
           <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
             {policies.length} policies
           </Badge>
-          <Button
-            disabled={createMutation.isPending || !canManage}
-            onClick={() => createMutation.mutate()}
-            title={canManage ? "Create upload policy" : "Requires settings manage"}
-            variant="outline"
-          >
-            <PlusCircle className="size-4" />
-            New
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  disabled={createMutation.isPending || !canManage}
+                  onClick={() => createMutation.mutate()}
+                  variant="outline"
+                >
+                  <PlusCircle className="size-4" />
+                  New
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {canManage ? "Create upload policy" : "Requires settings manage"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </section>
 
@@ -102,14 +119,19 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
             {policy.provider} / {policy.trigger} / {policy.maxAttempts} attempts
           </p>
         </div>
-        <Button
-          disabled={mutation.isPending || !canManage}
-          onClick={() => mutation.mutate()}
-          title={canManage ? "Save upload policy" : "Requires settings manage"}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save upload policy" : "Requires settings manage"}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="grid gap-3 md:grid-cols-5">
@@ -121,37 +143,45 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
           />
         </Field>
         <Field label="Provider">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                provider: event.target.value as UploadPolicy["provider"],
+                provider: value as UploadPolicy["provider"],
               }))
             }
             value={draft.provider}
           >
-            <option value="stub">Stub</option>
-            <option value="smb">SMB</option>
-            <option value="s3">S3</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="stub">Stub</SelectItem>
+              <SelectItem value="smb">SMB</SelectItem>
+              <SelectItem value="s3">S3</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Trigger">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                trigger: event.target.value as UploadPolicy["trigger"],
+                trigger: value as UploadPolicy["trigger"],
               }))
             }
             value={draft.trigger}
           >
-            <option value="manual">Manual</option>
-            <option value="on_recording_cached">On Cached</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">Manual</SelectItem>
+              <SelectItem value="on_recording_cached">On Cached</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Target">
           <Input
@@ -175,31 +205,35 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
         </Field>
       </div>
 
-      <label className="mt-3 flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
-        <input
+      <label
+        className="mt-3 flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+        htmlFor={`upload-policy-enabled-${policy.id}`}
+      >
+        <Checkbox
           checked={draft.enabled}
-          className="size-4"
           disabled={!canManage}
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, enabled: event.target.checked }))
+          id={`upload-policy-enabled-${policy.id}`}
+          onCheckedChange={(value) =>
+            setDraft((current) => ({ ...current, enabled: value === true }))
           }
-          type="checkbox"
         />
         Enabled
       </label>
 
-      <label className="mt-3 flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
-        <input
+      <label
+        className="mt-3 flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+        htmlFor={`upload-policy-delete-cache-${policy.id}`}
+      >
+        <Checkbox
           checked={draft.deleteCacheAfterUpload}
-          className="size-4"
           disabled={!canManage}
-          onChange={(event) =>
+          id={`upload-policy-delete-cache-${policy.id}`}
+          onCheckedChange={(value) =>
             setDraft((current) => ({
               ...current,
-              deleteCacheAfterUpload: event.target.checked,
+              deleteCacheAfterUpload: value === true,
             }))
           }
-          type="checkbox"
         />
         Delete controller cache after confirmed upload
       </label>

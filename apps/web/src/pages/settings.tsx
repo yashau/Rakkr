@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ChannelMapAssignmentPlan,
@@ -20,13 +20,21 @@ import {
   UploadCloud,
 } from "lucide-react";
 
+import { HintButton } from "@/components/hint-button";
 import { RecordingProfileSettingsCard } from "@/components/recording-profile-settings-card";
 import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { UploadPolicyPanel } from "@/components/upload-policy-panel";
 import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { WatchdogPolicyCard } from "@/components/watchdog-policy-card";
@@ -183,15 +191,15 @@ export function SettingsPage() {
           <Badge className="w-fit border-slate-200 bg-slate-50 text-slate-700" variant="outline">
             {channelMapsQuery.data?.data.length ?? 0} templates
           </Badge>
-          <Button
+          <HintButton
             disabled={createChannelMapMutation.isPending || !canManageSettings}
+            hint={canManageSettings ? "Create channel map" : "Requires settings manage"}
             onClick={() => createChannelMapMutation.mutate()}
-            title={canManageSettings ? "Create channel map" : "Requires settings manage"}
             variant="outline"
           >
             <PlusCircle className="size-4" />
             New
-          </Button>
+          </HintButton>
         </div>
       </section>
 
@@ -264,14 +272,14 @@ function UploadProviderCard({
             {provider.provider} / {provider.implemented ? "driver scaffolded" : "driver pending"}
           </p>
         </div>
-        <Button
+        <HintButton
           disabled={mutation.isPending || !canManage}
+          hint={canManage ? "Save upload provider" : "Requires settings manage"}
           onClick={() => mutation.mutate()}
-          title={canManage ? "Save upload provider" : "Requires settings manage"}
         >
           <Save className="size-4" />
           Save
-        </Button>
+        </HintButton>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -465,24 +473,24 @@ function ChannelMapTemplateCard({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
+          <HintButton
             disabled={!draftChanged || updateMutation.isPending || !canManage}
+            hint={canManage ? "Promote channel map revision" : "Requires settings manage"}
             onClick={() => updateMutation.mutate()}
-            title={canManage ? "Promote channel map revision" : "Requires settings manage"}
           >
             <Rocket className="size-4" />
             Promote Rev {nextRevision}
-          </Button>
-          <Button
+          </HintButton>
+          <HintButton
             disabled={!draftChanged || updateMutation.isPending || !canManage}
+            hint={canManage ? "Reset channel map draft" : "Requires settings manage"}
             onClick={() => setDraft(template)}
-            title={canManage ? "Reset channel map draft" : "Requires settings manage"}
             type="button"
             variant="outline"
           >
             <RotateCcw className="size-4" />
             Reset
-          </Button>
+          </HintButton>
         </div>
       </div>
 
@@ -521,22 +529,26 @@ function ChannelMapTemplateCard({
           />
         </Field>
         <Field label="Mode">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                channelMode: event.target.value as ChannelMapTemplate["channelMode"],
+                channelMode: value as ChannelMapTemplate["channelMode"],
               }))
             }
             value={draft.channelMode}
           >
-            <option value="mono">Mono</option>
-            <option value="stereo">Stereo</option>
-            <option value="mono_to_stereo_mix">Mono To Stereo Mix</option>
-            <option value="multichannel">Multichannel</option>
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mono">Mono</SelectItem>
+              <SelectItem value="stereo">Stereo</SelectItem>
+              <SelectItem value="mono_to_stereo_mix">Mono To Stereo Mix</SelectItem>
+              <SelectItem value="multichannel">Multichannel</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Tags">
           <Input
@@ -600,87 +612,108 @@ function ChannelMapTemplateCard({
                 setDraft((current) => updateChannelEntry(current, index, { included: checked }))
               }
             />
-            <Button
+            <HintButton
               disabled={draft.entries.length <= 1 || !canManage}
+              hint={canManage ? "Remove channel" : "Requires settings manage"}
               onClick={() => setDraft((current) => removeChannelEntry(current, index))}
               size="icon"
-              title={canManage ? "Remove channel" : "Requires settings manage"}
               type="button"
               variant="outline"
             >
               <Trash2 className="size-4" />
-            </Button>
+            </HintButton>
           </div>
         ))}
-        <Button
+        <HintButton
           className="justify-self-start"
           disabled={!canManage}
+          hint={canManage ? "Add channel" : "Requires settings manage"}
           onClick={() => setDraft((current) => addChannelEntry(current))}
-          title={canManage ? "Add channel" : "Requires settings manage"}
           type="button"
           variant="outline"
         >
           <PlusCircle className="size-4" />
           Add Channel
-        </Button>
+        </HintButton>
       </div>
 
       <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-end">
         <Field label="Assign Target">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             disabled={!canManage || !canReadNodes}
-            onChange={(event) => setSelectedTarget(event.target.value)}
+            onValueChange={(value) => setSelectedTarget(value)}
             value={selectedTarget}
           >
-            {targetOptions.map((target) => (
-              <option key={target.value} value={target.value}>
-                {target.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {targetOptions.map((target) => (
+                <SelectItem key={target.value} value={target.value}>
+                  {target.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
-        <Button
+        <HintButton
           disabled={!selectedTarget || assignMutation.isPending || !canManage || !canReadNodes}
+          hint={assignTargetTitle(canManage, canReadNodes)}
           onClick={() => assignMutation.mutate()}
-          title={assignTargetTitle(canManage, canReadNodes)}
           variant="outline"
         >
           <Cable className="size-4" />
           Assign
-        </Button>
+        </HintButton>
       </div>
 
       <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-end">
         <Field label="Bulk Targets">
-          <select
-            className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm"
-            disabled={!canManage || !canReadNodes}
-            multiple
-            onChange={(event) => setSelectedTargets(selectedOptionValues(event.currentTarget))}
-            value={selectedTargets}
+          <fieldset
+            aria-label="Bulk assignment targets"
+            className="grid max-h-40 gap-1.5 overflow-y-auto rounded-md border border-input bg-background p-2"
           >
-            {targetOptions.map((target) => (
-              <option key={target.value} value={target.value}>
-                {target.label}
-              </option>
-            ))}
-          </select>
+            {targetOptions.map((target) => {
+              const targetId = `bulk-target-${target.value}`;
+
+              return (
+                <label
+                  className="flex items-center gap-2 text-sm"
+                  htmlFor={targetId}
+                  key={target.value}
+                >
+                  <Checkbox
+                    checked={selectedTargets.includes(target.value)}
+                    disabled={!canManage || !canReadNodes}
+                    id={targetId}
+                    onCheckedChange={(value) =>
+                      setSelectedTargets((current) =>
+                        value === true
+                          ? [...current, target.value]
+                          : current.filter((entry) => entry !== target.value),
+                      )
+                    }
+                  />
+                  {target.label}
+                </label>
+              );
+            })}
+          </fieldset>
         </Field>
-        <Button
+        <HintButton
           disabled={
             selectedTargets.length === 0 ||
             bulkAssignMutation.isPending ||
             !canManage ||
             !canReadNodes
           }
+          hint={assignTargetTitle(canManage, canReadNodes)}
           onClick={() => bulkAssignMutation.mutate()}
-          title={assignTargetTitle(canManage, canReadNodes)}
           variant="outline"
         >
           <Cable className="size-4" />
           Assign Selected
-        </Button>
+        </HintButton>
       </div>
 
       <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-end">
@@ -692,20 +725,20 @@ function ChannelMapTemplateCard({
             value={planNote}
           />
         </Field>
-        <Button
+        <HintButton
           disabled={
             selectedTargets.length === 0 ||
             createPlanMutation.isPending ||
             !canManage ||
             !canReadNodes
           }
+          hint={assignTargetTitle(canManage, canReadNodes)}
           onClick={() => createPlanMutation.mutate()}
-          title={assignTargetTitle(canManage, canReadNodes)}
           variant="outline"
         >
           <Rocket className="size-4" />
           Stage Plan
-        </Button>
+        </HintButton>
       </div>
 
       {pendingPlans.length > 0 ? (
@@ -722,17 +755,17 @@ function ChannelMapTemplateCard({
                   {plan.note ? ` / ${plan.note}` : ""}
                 </div>
               </div>
-              <Button
+              <HintButton
                 disabled={!canManage || applyPlanMutation.isPending}
+                hint={canManage ? "Apply staged rollout" : "Requires settings manage"}
                 onClick={() => applyPlanMutation.mutate(plan.id)}
                 size="sm"
-                title={canManage ? "Apply staged rollout" : "Requires settings manage"}
                 type="button"
                 variant="outline"
               >
                 <Rocket className="size-4" />
                 Apply
-              </Button>
+              </HintButton>
             </div>
           ))}
         </div>
@@ -763,21 +796,21 @@ function ChannelMapTemplateCard({
                     </div>
                   ) : null}
                 </div>
-                <Button
+                <HintButton
                   disabled={
                     !canManage ||
                     rollbackMutation.isPending ||
                     !assignment.history.some((event) => event.previousTemplateId)
                   }
+                  hint={canManage ? "Roll back assignment" : "Requires settings manage"}
                   onClick={() => rollbackMutation.mutate(assignment)}
                   size="sm"
-                  title={canManage ? "Roll back assignment" : "Requires settings manage"}
                   type="button"
                   variant="outline"
                 >
                   <RotateCcw className="size-4" />
                   Roll Back
-                </Button>
+                </HintButton>
               </div>
             );
           })}
@@ -804,10 +837,6 @@ function assignTargetTitle(canManage: boolean, canReadNodes: boolean) {
   return canReadNodes ? "Assign channel map" : "Requires node read";
 }
 
-function selectedOptionValues(select: HTMLSelectElement) {
-  return Array.from(select.selectedOptions, (option) => option.value);
-}
-
 function Field({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className="grid gap-1.5">
@@ -828,14 +857,18 @@ function Toggle({
   label: string;
   onChange: (checked: boolean) => void;
 }) {
+  const checkboxId = useId();
+
   return (
-    <label className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
-      <input
+    <label
+      className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+      htmlFor={checkboxId}
+    >
+      <Checkbox
         checked={checked}
-        className="size-4"
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        type="checkbox"
+        id={checkboxId}
+        onCheckedChange={(value) => onChange(value === true)}
       />
       {label}
     </label>

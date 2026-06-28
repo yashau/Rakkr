@@ -1,6 +1,8 @@
 import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function NodeInventoryActions({
   allVisibleSelected,
@@ -24,34 +26,40 @@ export function NodeInventoryActions({
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       <label className="flex items-center gap-2 text-sm">
-        <input
+        <Checkbox
           checked={allVisibleSelected}
-          className="size-4"
-          onChange={(event) => onSelectAll(event.target.checked)}
-          type="checkbox"
+          onCheckedChange={(value) => onSelectAll(value === true)}
         />
         <span>{selectedCount} selected</span>
       </label>
-      <Button
-        disabled={exportPending}
-        onClick={onExport}
-        title="Export filtered node inventory"
-        variant="outline"
-      >
-        <Download className="size-4" />
-        Export
-      </Button>
-      <Button
-        disabled={selectedCount === 0 || selectedExportPending}
-        onClick={onExportSelected}
-        title={
-          selectedCount > 0 ? "Export selected visible nodes" : "Select visible nodes to export"
-        }
-        variant="outline"
-      >
-        <Download className="size-4" />
-        Export selected
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button disabled={exportPending} onClick={onExport} variant="outline">
+              <Download className="size-4" />
+              Export
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>Export filtered node inventory</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              disabled={selectedCount === 0 || selectedExportPending}
+              onClick={onExportSelected}
+              variant="outline"
+            >
+              <Download className="size-4" />
+              Export selected
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {selectedCount > 0 ? "Export selected visible nodes" : "Select visible nodes to export"}
+        </TooltipContent>
+      </Tooltip>
       <Button disabled={selectedCount === 0} onClick={onClear} variant="outline">
         Clear
       </Button>
