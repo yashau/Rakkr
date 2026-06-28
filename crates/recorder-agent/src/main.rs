@@ -7,6 +7,7 @@ mod command_template;
 mod config;
 mod controller;
 mod controller_http;
+mod enhance;
 mod health_log;
 mod inventory;
 mod meter_command;

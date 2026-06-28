@@ -8,7 +8,15 @@ version.workspace = true
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "env"] }
+# In-process voice enhancement. DeepFilterNet v0.5.6 (git tag) embeds the
+# DeepFilterNet3 model via `default-model` and runs pure-Rust tract inference;
+# its lockfile pins tract `^0.19` so cargo resolves the tested 0.19.16. RNNoise
+# comes from nnnoiseless. See enhance.rs.
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", tag = "v0.5.6", default-features = false, features = ["tract", "default-model"] }
 hostname = "0.4"
+hound = "3.5"
+ndarray = "0.15"
+nnnoiseless = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["http2", "json", "rustls-tls"] }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
