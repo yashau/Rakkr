@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Radio, RefreshCcw, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,10 @@ export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps
   const [refreshedAt, setRefreshedAt] = useState<string>();
   const stopMutation = useMutation({
     mutationFn: () => api.stopListen(preview.session),
+    onError: () =>
+      toast.error("Stop listen failed", {
+        description: "The monitor session may still be active on the recorder node.",
+      }),
     onSettled: onClose,
   });
   const streamQuery = useQuery({
