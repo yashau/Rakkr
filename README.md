@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🎙️ Rakkr
+<img src="docs/assets/rakkr-logo.svg" alt="Rakkr" width="96" height="96" />
+
+# Rakkr
 
 ### Reliable room recording for Linux — that proves it actually worked.
 
@@ -16,7 +18,7 @@ not the morning after.
 &nbsp;![Audio](https://img.shields.io/badge/audio-ALSA%20·%20PipeWire%20·%20JACK-7c3aed)
 &nbsp;![Runtime](https://img.shields.io/badge/runtime-Linux%20%2B%20Docker-111827)
 
-**[Documentation](docs/index.md)** · [Quick start](docs/getting-started/quick-start.md) · [Architecture](docs/architecture/overview.md) · [Reference](docs/reference/configuration.md)
+**[Website](https://rakkr.org)** · **[Documentation](https://docs.rakkr.org/)** · [Quick start](https://docs.rakkr.org/getting-started/quick-start/) · [Architecture](https://docs.rakkr.org/architecture/overview/) · [Reference](https://docs.rakkr.org/reference/configuration/)
 
 </div>
 
@@ -47,14 +49,14 @@ Most room recording setups fail silently — a muted channel, a stuck flatline, 
 full disk — and nobody finds out until playback. Rakkr treats the recording as
 something to be **measured and proven**:
 
-| Concern | How Rakkr answers it |
-| ------- | -------------------- |
-| Is the node alive? | Heartbeats, runtime inventory, automatic offline detection |
-| Is the audio path trustworthy? | ALSA-first capture, PipeWire/JACK presets, pinned command templates |
-| Is the input any good? | Live clipping, flatline, low-signal, channel-correlation, noise, speech & SNR scoring |
-| Can we recover with evidence? | Local health logs, synced health events, full audit trail, job-state transitions |
-| Can we test without a room? | Fake-controller smokes, ALSA loopback, a golden speech fixture, deterministic fault lanes |
-| Do outputs keep moving? | Local cache, retry queue, stub/SMB/S3 providers, retention after confirmed upload |
+| Concern                        | How Rakkr answers it                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| Is the node alive?             | Heartbeats, runtime inventory, automatic offline detection                                |
+| Is the audio path trustworthy? | ALSA-first capture, PipeWire/JACK presets, pinned command templates                       |
+| Is the input any good?         | Live clipping, flatline, low-signal, channel-correlation, noise, speech & SNR scoring     |
+| Can we recover with evidence?  | Local health logs, synced health events, full audit trail, job-state transitions          |
+| Can we test without a room?    | Fake-controller smokes, ALSA loopback, a golden speech fixture, deterministic fault lanes |
+| Do outputs keep moving?        | Local cache, retry queue, stub/SMB/S3 providers, retention after confirmed upload         |
 
 ## Architecture
 
@@ -69,7 +71,7 @@ flowchart LR
   api --> metrics["📈 /metrics → Prometheus / Grafana"]
 ```
 
-Read the [architecture overview](docs/architecture/overview.md) for how the
+Read the [architecture overview](https://docs.rakkr.org/architecture/overview/) for how the
 control loop, RBAC, and evidence channels fit together.
 
 ## Quick start
@@ -84,28 +86,28 @@ mise run services:up    # local Postgres in Docker
 mise run dev            # controller API + web console
 ```
 
-| Surface | URL |
-| ------- | --- |
-| Web console | <http://localhost:5173> |
-| API health | <http://localhost:8787/healthz> |
-| Metrics | <http://localhost:8787/metrics> |
+| Surface     | URL                             |
+| ----------- | ------------------------------- |
+| Web console | <http://localhost:5173>         |
+| API health  | <http://localhost:8787/healthz> |
+| Metrics     | <http://localhost:8787/metrics> |
 
 Sign in with `admin@rakkr.local` / `rakkr-local-dev-password`. Prefer containers?
 `docker compose up --build` brings up the whole stack. Full walkthrough:
-[Quick start](docs/getting-started/quick-start.md).
+[Quick start](https://docs.rakkr.org/getting-started/quick-start/).
 
 ## Documentation
 
-Complete docs live in [`docs/`](docs/index.md):
+Complete docs live at [docs.rakkr.org](https://docs.rakkr.org/):
 
-| Section | Start here |
-| ------- | ---------- |
-| 🚀 Getting started | [Introduction](docs/getting-started/introduction.md) · [Quick start](docs/getting-started/quick-start.md) · [Core concepts](docs/getting-started/concepts.md) |
-| 🏗️ Architecture | [Overview](docs/architecture/overview.md) · [Controller API](docs/architecture/controller-api.md) · [Recorder agent](docs/architecture/recorder-agent.md) · [Web console](docs/architecture/web-console.md) · [Data model](docs/architecture/data-model.md) |
-| 📖 Guides | [Auth & RBAC](docs/guides/authentication-and-rbac.md) · [Nodes](docs/guides/nodes-and-inventory.md) · [Recording](docs/guides/recording.md) · [Scheduling](docs/guides/scheduling.md) · [Health watchdog](docs/guides/health-watchdog.md) · [Storage & uploads](docs/guides/storage-and-uploads.md) · [Transport security](docs/guides/transport-security.md) · [Node lifecycle](docs/guides/node-lifecycle.md) |
-| 🔧 Reference | [Configuration](docs/reference/configuration.md) · [Recorder agent CLI](docs/reference/recorder-agent.md) · [API endpoints](docs/reference/api.md) · [Permissions](docs/reference/permissions.md) · [Metrics](docs/reference/metrics.md) · [Tasks](docs/reference/tasks.md) |
-| 🛠️ Operations | [Deployment](docs/operations/deployment.md) · [Observability](docs/observability/README.md) |
-| 🤝 Contributing | [Development](docs/contributing/development.md) · [Testing](docs/contributing/testing.md) · [Baselines](docs/contributing/baselines.md) |
+| Section            | Start here                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🚀 Getting started | [Introduction](https://docs.rakkr.org/getting-started/introduction/) · [Quick start](https://docs.rakkr.org/getting-started/quick-start/) · [Core concepts](https://docs.rakkr.org/getting-started/concepts/)                                                                                                                                                                                                                                                                                                                                   |
+| 🏗️ Architecture    | [Overview](https://docs.rakkr.org/architecture/overview/) · [Controller API](https://docs.rakkr.org/architecture/controller-api/) · [Recorder agent](https://docs.rakkr.org/architecture/recorder-agent/) · [Web console](https://docs.rakkr.org/architecture/web-console/) · [Data model](https://docs.rakkr.org/architecture/data-model/)                                                                                                                                                                                                     |
+| 📖 Guides          | [Auth & RBAC](https://docs.rakkr.org/guides/authentication-and-rbac/) · [Nodes](https://docs.rakkr.org/guides/nodes-and-inventory/) · [Recording](https://docs.rakkr.org/guides/recording/) · [Scheduling](https://docs.rakkr.org/guides/scheduling/) · [Health watchdog](https://docs.rakkr.org/guides/health-watchdog/) · [Storage & uploads](https://docs.rakkr.org/guides/storage-and-uploads/) · [Transport security](https://docs.rakkr.org/guides/transport-security/) · [Node lifecycle](https://docs.rakkr.org/guides/node-lifecycle/) |
+| 🔧 Reference       | [Configuration](https://docs.rakkr.org/reference/configuration/) · [Recorder agent CLI](https://docs.rakkr.org/reference/recorder-agent/) · [API endpoints](https://docs.rakkr.org/reference/api/) · [Permissions](https://docs.rakkr.org/reference/permissions/) · [Metrics](https://docs.rakkr.org/reference/metrics/) · [Tasks](https://docs.rakkr.org/reference/tasks/)                                                                                                                                                                     |
+| 🛠️ Operations      | [Deployment](https://docs.rakkr.org/operations/deployment/) · [Observability](https://docs.rakkr.org/observability/)                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 🤝 Contributing    | [Development](https://docs.rakkr.org/contributing/development/) · [Testing](https://docs.rakkr.org/contributing/testing/) · [Baselines](https://docs.rakkr.org/contributing/baselines/)                                                                                                                                                                                                                                                                                                                                                         |
 
 ## Repository layout
 
@@ -128,8 +130,8 @@ mise run check        # full gate: docs verifiers, Drizzle replay, TS, lint, for
 mise run build        # build TypeScript packages/apps + the Rust agent
 ```
 
-See [Development](docs/contributing/development.md) and the
-[tasks reference](docs/reference/tasks.md) for targeted gates and conventions.
+See [Development](https://docs.rakkr.org/contributing/development/) and the
+[tasks reference](https://docs.rakkr.org/reference/tasks/) for targeted gates and conventions.
 Contributions are expected to ship as complete slices — **code, tests, docs, and
 evidence travel together**.
 
