@@ -98,6 +98,20 @@ mise run ansible:x32-smoke
 recorder-agent artifact. Full details: [Node lifecycle](../guides/node-lifecycle.md)
 and `deploy/ansible/README.md`.
 
+### Recorder-agent release binaries
+
+The recorder-agent artifacts deployed by the lifecycle runner come from the
+`Release recorder agent` workflow (`.github/workflows/release-agent.yml`). The
+agent is versioned `YYYY.MM.DD-N` from `crates/recorder-agent/VERSION`; bumping
+that file and merging to `main` builds static musl binaries for
+`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` and publishes a
+GitHub release tagged with the version. Download the `.tar.gz` for the node's
+architecture, verify it against the published `.sha256`, and point
+`RAKKR_ANSIBLE_BINARY_SRC` at the extracted `rakkr-recorder-agent` binary. The
+static musl build runs on Debian and RedHat nodes without a glibc version
+dependency. See the [recorder-agent README](https://github.com/yashau/Rakkr/blob/main/crates/recorder-agent/README.md)
+for the bump-and-release flow.
+
 ## Helm (Kubernetes)
 
 The chart is `deploy/helm/rakkr-controller`. Build and publish the two images:

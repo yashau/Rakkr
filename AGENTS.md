@@ -362,6 +362,12 @@ available.
   controller sync, jobs, health, cache, inventory, command templates, or capture
   behavior.
 - Use Miri-compatible patterns where existing tests rely on Miri.
+- The agent release version is calendar `YYYY.MM.DD-N`, stored in
+  `crates/recorder-agent/VERSION` and embedded by `src/version.rs` via
+  `include_str!`; it is surfaced through `--version` and inventory
+  `agent_version`. Bump that file to cut a release, run `mise run agent:version`
+  to validate the format, and keep `Cargo.toml`'s SemVer `version` separate
+  (calendar versions are not valid Cargo SemVer).
 
 ## Baseline Documentation
 
@@ -405,6 +411,10 @@ and evidence support the promotion.
 - `deploy/nginx/default.conf.template` handles web/API proxying for the web
   container.
 - `deploy/helm/rakkr-controller` contains Kubernetes resources.
+- `.github/workflows/release-agent.yml` builds and publishes recorder-agent
+  release binaries (static musl `x86_64` + `aarch64` via `cargo-zigbuild`) when
+  `crates/recorder-agent/VERSION` names a version with no GitHub release yet; it
+  is a no-op otherwise.
 - Read `docs/operations/deployment.md` before changing image, Compose, Helm, or
   migration startup behavior.
 
