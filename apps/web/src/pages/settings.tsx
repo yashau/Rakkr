@@ -465,7 +465,7 @@ function ChannelMapTemplateCard({
             <Badge className={toneBadgeClass("info")} variant="outline">
               {assignedTargets.length} targets
             </Badge>
-            <Badge className="border-violet-200 bg-violet-50 text-violet-700" variant="outline">
+            <Badge className={toneBadgeClass("neutral")} variant="outline">
               rev {template.revision}
             </Badge>
           </div>
