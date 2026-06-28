@@ -5,9 +5,9 @@ import { invariant, readJsonLines, run } from "./agent-fake-controller-smoke-uti
 
 export async function runClaimNextFailureScenario({
   address,
+  agentBinary,
   createObserved,
   nodeId,
-  repoRoot,
   setActiveScenario,
   smokeRoot,
   token,
@@ -25,15 +25,8 @@ export async function runClaimNextFailureScenario({
   });
 
   const result = await run(
-    "cargo",
+    agentBinary,
     [
-      "run",
-      "--quiet",
-      "--manifest-path",
-      path.join(repoRoot, "Cargo.toml"),
-      "-p",
-      "rakkr-recorder-agent",
-      "--",
       "--allow-insecure-controller",
       "--agent-health-log-file",
       healthLogFile,

@@ -65,6 +65,7 @@ import {
 } from "./agent-fake-controller-smoke-health.mjs";
 import { runUploadBoundaryRecoveryScenarios } from "./agent-fake-controller-smoke-recovery.mjs";
 import {
+  agentBinaryPath,
   fileExists,
   invariant,
   listen,
@@ -124,6 +125,24 @@ const server = createServer(async (request, response) => {
 
 try {
   const address = await listen(server);
+  // Build the agent once up front and run the resulting binary directly for
+  // every scenario. Repeatedly invoking `cargo run` per scenario serialized on
+  // the shared build-directory lock (and recompiled), which made the smoke slow
+  // and prone to hanging when another build held the lock.
+  const buildResult = await run(
+    "cargo",
+    ["build", "--quiet", "--manifest-path", path.join(repoRoot, "Cargo.toml"), "-p", "rakkr-recorder-agent"],
+    { cwd: repoRoot, timeoutMs: 600000 },
+  );
+  invariant(
+    buildResult.code === 0,
+    `agent build failed with exit ${buildResult.code}\nstderr:\n${buildResult.stderr}`,
+  );
+  agentContext.agentBinary = agentBinaryPath(repoRoot);
+  invariant(
+    await fileExists(agentContext.agentBinary),
+    `agent binary missing after build: ${agentContext.agentBinary}`,
+  );
   const captureCommand = await writeFakeCaptureCommand(smokeRoot);
   const stalledCaptureCommand = await writeFakeStalledCaptureCommand(smokeRoot);
   const templateCaptureCommand = await writeFakeTemplateCaptureCommand(smokeRoot);
@@ -288,13 +307,6 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
   const observed = createObserved();
   activeScenario = { job, jobs: [job], observed, scenario };
   const agentArgs = [
-    "run",
-    "--quiet",
-    "--manifest-path",
-    path.join(repoRoot, "Cargo.toml"),
-    "-p",
-    "rakkr-recorder-agent",
-    "--",
     "--allow-insecure-controller",
     "--agent-health-log-file",
     healthLogFile,
@@ -332,7 +344,7 @@ async function runScenario({ address, captureCommand, renderCommand, scenario })
     "--run-next-job",
   );
 
-  const result = await run("cargo", agentArgs, { cwd: smokeRoot });
+  const result = await run(agentContext.agentBinary, agentArgs, { cwd: smokeRoot });
 
   if (scenario.expectSuccess && result.code !== 0) {
     throw new Error(
@@ -936,7 +948,15 @@ function healthScenarioDeps(overrides) {
 }
 
 function jobScenarioDeps(overrides) {
-  return { ...overrides, createObserved, nodeId, repoRoot, setActiveScenario, smokeRoot, token };
+  return {
+    ...overrides,
+    agentBinary: agentContext.agentBinary,
+    createObserved,
+    nodeId,
+    setActiveScenario,
+    smokeRoot,
+    token,
+  };
 }
 
 function setActiveScenario(scenario) {

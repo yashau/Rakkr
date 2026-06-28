@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import path from "node:path";
+
+import { killTree } from "./agent-fake-controller-smoke-utils.mjs";
 
 export function spawnDaemonAgent(
   context,
@@ -47,25 +48,12 @@ export function spawnDaemonAgent(
 }
 
 function spawnAgent(context, agentArgs, extraEnv = {}) {
-  const child = spawn(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "--manifest-path",
-      path.join(context.repoRoot, "Cargo.toml"),
-      "-p",
-      "rakkr-recorder-agent",
-      "--",
-      ...agentArgs,
-    ],
-    {
-      cwd: context.smokeRoot,
-      env: { ...process.env, ...extraEnv, CARGO_TERM_COLOR: "never" },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    },
-  );
+  const child = spawn(context.agentBinary, agentArgs, {
+    cwd: context.smokeRoot,
+    env: { ...process.env, ...extraEnv, CARGO_TERM_COLOR: "never" },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
   let stderr = "";
   let stdout = "";
   const closed = new Promise((resolve, reject) => {
@@ -81,6 +69,6 @@ function spawnAgent(context, agentArgs, extraEnv = {}) {
 
   return {
     closed,
-    kill: () => child.kill(),
+    kill: () => killTree(child),
   };
 }

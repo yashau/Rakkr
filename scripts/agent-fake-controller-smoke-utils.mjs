@@ -18,8 +18,44 @@ export function listen(server) {
   });
 }
 
-export function run(command, args, { cwd }) {
-  const timeoutMs = Number(process.env.RAKKR_AGENT_FAKE_CONTROLLER_TIMEOUT_MS ?? 120000);
+export function agentBinaryPath(repoRoot) {
+  const binary =
+    process.platform === "win32" ? "rakkr-recorder-agent.exe" : "rakkr-recorder-agent";
+
+  return path.join(repoRoot, "target", "debug", binary);
+}
+
+/**
+ * Terminate a child and its descendants. Plain `child.kill()` on Windows only
+ * signals the immediate process, leaving grandchildren (rustc, the agent, its
+ * capture/render commands) alive holding the stdio pipes open — which keeps the
+ * `close` event from ever firing and hangs the smoke. Kill the whole tree.
+ */
+export function killTree(child) {
+  if (!child || child.pid === undefined) {
+    return;
+  }
+
+  if (process.platform === "win32") {
+    try {
+      spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+    } catch {
+      child.kill();
+    }
+  } else {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Process already exited.
+    }
+  }
+}
+
+export function run(command, args, { cwd, timeoutMs } = {}) {
+  const limitMs = Number(timeoutMs ?? process.env.RAKKR_AGENT_FAKE_CONTROLLER_TIMEOUT_MS ?? 120000);
 
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -32,9 +68,9 @@ export function run(command, args, { cwd }) {
     let stderr = "";
     let stdout = "";
     const timeout = setTimeout(() => {
-      child.kill();
-      finish({ code: -1, stderr: `${stderr}\nprocess timed out after ${timeoutMs}ms`, stdout });
-    }, timeoutMs);
+      killTree(child);
+      finish({ code: -1, stderr: `${stderr}\nprocess timed out after ${limitMs}ms`, stdout });
+    }, limitMs);
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
