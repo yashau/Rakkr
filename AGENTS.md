@@ -51,7 +51,7 @@ packages/shared/          Shared TypeScript schemas/contracts
 packages/db/              Drizzle schema, migrations, migration verifier
 crates/recorder-agent/    Rust recorder node agent
 deploy/ansible/           Optional Ansible lifecycle runner, playbooks, role
-docs/                     Source of truth and checked baseline docs
+docs/                     Human documentation; source of truth; internal baselines
 fixtures/audio/           Golden speech fixture and metadata
 scripts/                  Gate scripts, smoke tests, baseline verifiers
 deploy/                   nginx config and Helm chart
@@ -60,13 +60,15 @@ deploy/                   nginx config and Helm chart
 Important docs:
 
 - `README.md`: human-facing overview and quick start
+- `docs/index.md`: documentation home (getting started, architecture, guides,
+  reference, operations, contributing)
 - `docs/RAKKR_SOURCE_OF_TRUTH.md`: project contract, status, invariants
 - `crates/recorder-agent/README.md`: recorder-agent commands and config
-- `docs/deployment/DEPLOYMENT.md`: Docker Compose and Helm deployment notes
-- baseline docs under `docs/auth`, `docs/devices`, `docs/health`,
-  `docs/observability`, `docs/operations`, `docs/recordings`,
-  `docs/scheduling`, `docs/security`, `docs/settings`, `docs/storage`, and
-  `docs/time`
+- `docs/operations/deployment.md`: Docker Compose and Helm deployment notes
+- `docs/observability/README.md`: metrics, alerts, Grafana runbook
+- machine-checked baseline docs under `docs/internal/baselines/`, each verified by
+  a `scripts/verify-*-baseline.mjs` script (see
+  `docs/contributing/baselines.md`)
 
 ## Workspace Setup
 
@@ -403,7 +405,7 @@ and evidence support the promotion.
 - `deploy/nginx/default.conf.template` handles web/API proxying for the web
   container.
 - `deploy/helm/rakkr-controller` contains Kubernetes resources.
-- Read `docs/deployment/DEPLOYMENT.md` before changing image, Compose, Helm, or
+- Read `docs/operations/deployment.md` before changing image, Compose, Helm, or
   migration startup behavior.
 
 ## Git And Commit Workflow

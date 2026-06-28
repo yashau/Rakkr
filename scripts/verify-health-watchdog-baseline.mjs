@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/health/HEALTH_WATCHDOG_BASELINE.md";
+const baselineFile = "docs/internal/baselines/HEALTH_WATCHDOG_BASELINE.md";
 const sourceFiles = [
   ".mise.toml",
   "packages/shared/src/index.ts",

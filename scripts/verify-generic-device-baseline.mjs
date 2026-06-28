@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/devices/GENERIC_DEVICE_BASELINE.md";
+const baselineFile = "docs/internal/baselines/GENERIC_DEVICE_BASELINE.md";
 const sourceFiles = [
   ".mise.toml",
   "packages/shared/src/index.ts",

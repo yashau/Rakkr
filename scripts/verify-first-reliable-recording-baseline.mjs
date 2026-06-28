@@ -1,8 +1,8 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/recordings/FIRST_RELIABLE_RECORDING_BASELINE.md";
+const baselineFile = "docs/internal/baselines/FIRST_RELIABLE_RECORDING_BASELINE.md";
 const sourceFiles = [
-  "docs/recordings/RECORDING_LIBRARY_BASELINE.md",
+  "docs/internal/baselines/RECORDING_LIBRARY_BASELINE.md",
   "packages/shared/src/index.ts",
   "apps/api/src/recording-routes.ts",
   "apps/api/src/recording-job-lease-runner.ts",

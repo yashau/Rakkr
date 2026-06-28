@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/auth/AZURE_AD_OIDC_BASELINE.md";
+const baselineFile = "docs/internal/baselines/AZURE_AD_OIDC_BASELINE.md";
 const sourceFiles = [
   "apps/api/src/auth-oidc-routes.ts",
   "apps/api/src/oidc-config.ts",

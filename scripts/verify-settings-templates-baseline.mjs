@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/settings/SETTINGS_TEMPLATES_BASELINE.md";
+const baselineFile = "docs/internal/baselines/SETTINGS_TEMPLATES_BASELINE.md";
 const sourceFiles = [
   "packages/shared/src/index.ts",
   "packages/db/src/schema.ts",

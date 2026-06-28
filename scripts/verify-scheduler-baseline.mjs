@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/scheduling/SCHEDULER_BASELINE.md";
+const baselineFile = "docs/internal/baselines/SCHEDULER_BASELINE.md";
 const sourceFiles = [
   "packages/shared/src/index.ts",
   "packages/db/src/schema.ts",

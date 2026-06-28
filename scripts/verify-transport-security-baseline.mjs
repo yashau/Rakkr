@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/security/TRANSPORT_SECURITY_BASELINE.md";
+const baselineFile = "docs/internal/baselines/TRANSPORT_SECURITY_BASELINE.md";
 const sourceFiles = [
   "apps/api/src/transport-security.ts",
   "apps/api/test/transport-security.test.ts",

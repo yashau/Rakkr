@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 
-const baselineFile = "docs/time/DATE_TIME_BASELINE.md";
+const baselineFile = "docs/internal/baselines/DATE_TIME_BASELINE.md";
 const sourceFiles = [
   "apps/web/src/lib/dates.ts",
   "apps/web/src/lib/dates.test.ts",

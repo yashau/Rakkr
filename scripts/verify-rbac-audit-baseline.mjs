@@ -1,7 +1,7 @@
 import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const baselineFile = "docs/security/RBAC_AUDIT_BASELINE.md";
+const baselineFile = "docs/internal/baselines/RBAC_AUDIT_BASELINE.md";
 const sharedFile = "packages/shared/src/index.ts";
 const apiSourceDirectory = "apps/api/src";
 const requiredPhrases = [

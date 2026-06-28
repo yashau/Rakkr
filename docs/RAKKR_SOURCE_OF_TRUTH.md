@@ -172,7 +172,7 @@ Current checked baseline:
 - Jobs pin target/template/channel entries at creation.
 - Agent fetches pinned maps first, live assignments second.
 - Recording profiles can cap max track length for scheduled auto-splitting.
-- `docs/settings/SETTINGS_TEMPLATES_BASELINE.md` defines the checked settings/templates baseline.
+- `docs/internal/baselines/SETTINGS_TEMPLATES_BASELINE.md` defines the checked settings/templates baseline.
 
 ## Node Inventory
 
@@ -228,7 +228,7 @@ Current partial implementation:
 - Debian test rig full-agent loopback job smoke validates a fake-controller claim, ALSA `arecord` capture from `snd-aloop`, job heartbeat/status polling, WAV cache upload, recorder-cache cleanup health, and non-silent uploaded speech metadata; the same script can loop the speech fixture for longer capture windows.
 - Debian test rig hardware smokes validate repeated X32 S32_LE meter frames, X32 low-signal local and fake-controller-synced health, PCH S16_LE meter frames, PCH flatline local and fake-controller-synced health, short/long X32 capture from `hw:CARD=XUSB,DEV=0` with 32-channel `S32_LE` WAV upload, and onboard HDA capture from `hw:CARD=PCH,DEV=0` with 2-channel `S16_LE` WAV upload, including fake-controller claim, heartbeat/status polling, and recorder-cache cleanup health without loopback playback.
 - Controller-triggered Dockerized Ansible lifecycle smoke reached the X32 Debian rig at `172.22.145.152` as root with the mounted user-profile SSH key and ran `/tmp/rakkr-recorder-agent --print-inventory`, reporting the X-USB 32-channel ALSA interface.
-- `docs/devices/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
+- `docs/internal/baselines/GENERIC_DEVICE_BASELINE.md` defines the checked generic-device baseline and remaining Linux-run gaps.
 - RBAC-gated listen monitor start/stream/stop uses server-side sessions, prefers fresh agent-provided audio chunks, falls back to a controller meter-preview WAV, and refreshes the browser monitor session on the session latency target.
 - Dashboard direct access mirrors `node:read` before status, node, and meter reads.
 - Dashboard meter bank can select any visible recorder node and shows RMS, peak, clipping, speech, and noise cues with dBFS scaling coverage.
@@ -252,7 +252,7 @@ Current implementation baseline:
 
 - Drizzle/Postgres schedule store.
 - Preview, create, edit, run-now, skip-next, delete.
-- `docs/scheduling/SCHEDULER_BASELINE.md` defines the checked MVP scheduler baseline.
+- `docs/internal/baselines/SCHEDULER_BASELINE.md` defines the checked MVP scheduler baseline.
 - Recurrence tests for buffers, pauses, monthly clamping, overnight duration, and skip-next.
 - Runner creates jobs under `system:scheduler` and audits outcomes.
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
@@ -312,7 +312,7 @@ Current partial implementation:
 - Agent system-health coverage exercises disk/CPU pressure and recovery plus audio-backend unavailable/recovery detail transitions, and fake-controller smoke exercises stalled-capture structured growth evidence and render-failure command/output evidence without audio hardware.
 - A clean multi-speaker speech fixture is checked in for deterministic loopback health permutations; Debian loopback replay verified clean speech stays unclipped/speech-like, clipped/noisy speech trips clipping, low-volume speech trips configurable agent low-signal health, and duplicated channels trip channel correlation.
 - Prometheus export for node, meter, recording, job, health, watchdog, and xrun data.
-- `docs/health/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
+- `docs/internal/baselines/HEALTH_WATCHDOG_BASELINE.md` defines the checked partial watchdog baseline and remaining gaps.
 
 ## Future Voice Quality AI
 
@@ -375,9 +375,9 @@ Current implementation baseline:
 
 - Local users, groups, roles, scopes, access policies, passwords, status.
 - Azure AD OIDC claims can sync users, groups, app roles, and scoped grants into RBAC.
-- `docs/auth/AZURE_AD_OIDC_BASELINE.md` defines a checked Azure AD OIDC setup and behavior baseline.
+- `docs/internal/baselines/AZURE_AD_OIDC_BASELINE.md` defines a checked Azure AD OIDC setup and behavior baseline.
 - Access UI manages users, groups, policies, and scopes.
-- `docs/security/RBAC_AUDIT_BASELINE.md` defines a checked permission matrix for the MVP RBAC/audit baseline.
+- `docs/internal/baselines/RBAC_AUDIT_BASELINE.md` defines a checked permission matrix for the MVP RBAC/audit baseline.
 - Access page management is hidden unless the user has `auth:manage`.
 - Access UI includes a structured allow/deny policy composer for user, group, and everyone subjects.
 - Access UI includes a structured resource-scope composer for local user grants.
@@ -452,7 +452,7 @@ Current implementation baseline:
 - Agent rejects non-loopback `http://` controller URLs unless explicitly allowed for development.
 - Agent can trust an internal controller CA bundle for all controller requests.
 - Localhost HTTP remains available for local development.
-- `docs/security/TRANSPORT_SECURITY_BASELINE.md` defines the checked transport baseline.
+- `docs/internal/baselines/TRANSPORT_SECURITY_BASELINE.md` defines the checked transport baseline.
 
 ---
 
@@ -477,7 +477,7 @@ Required features:
 
 Current implementation baseline:
 
-- `docs/recordings/RECORDING_LIBRARY_BASELINE.md` defines the checked MVP recording-library baseline.
+- `docs/internal/baselines/RECORDING_LIBRARY_BASELINE.md` defines the checked MVP recording-library baseline.
 - Recording metadata and jobs persist through Drizzle/Postgres with JSON fallback.
 - Scoped filters, metadata editing, playback, download, cache attach, and audit events.
 - Recording library exposes scoped folder/tag facets with clickable UI filters.
@@ -538,7 +538,7 @@ Current rule:
 
 Current implementation baseline:
 
-- `docs/storage/STORAGE_UPLOAD_BASELINE.md` defines the checked MVP storage-upload baseline.
+- `docs/internal/baselines/STORAGE_UPLOAD_BASELINE.md` defines the checked MVP storage-upload baseline.
 - Failed upload retry queue for future SMB/S3 providers.
 - Queue entries are auditable, visible, retryable, and metric-exported.
 - Recording library can enqueue cached recordings individually or in bulk and retry failed queue items.
@@ -624,7 +624,7 @@ Examples:
 Current implementation baseline:
 
 - Web date helpers centralize browser-timezone, year-first display and local date-to-UTC conversion with regression coverage.
-- Schedule timezone rendering, recording names, local date filters, and generated export filenames are covered by `docs/time/DATE_TIME_BASELINE.md`.
+- Schedule timezone rendering, recording names, local date filters, and generated export filenames are covered by `docs/internal/baselines/DATE_TIME_BASELINE.md`.
 
 ---
 
