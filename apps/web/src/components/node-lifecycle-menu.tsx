@@ -43,8 +43,9 @@ export function NodeLifecycleMenu({ canManage, node }: NodeLifecycleMenuProps) {
     refetchInterval: 5000,
   });
   const runMutation = useMutation({
-    mutationFn: (action: NodeLifecycleAction) =>
-      nodeLifecycleApi.run(node, action, { agentVersion: node.agentVersion }),
+    // Update Binary deploys the latest published release; the controller can still
+    // pin a specific version via the lifecycle API when needed.
+    mutationFn: (action: NodeLifecycleAction) => nodeLifecycleApi.run(node, action),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["nodes", node.id, "lifecycle-jobs"] });
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });

@@ -408,6 +408,11 @@ and evidence support the promotion.
 - Keep lifecycle credentials out of node metadata. Use runner environment such
   as `RAKKR_ANSIBLE_TARGETS`, `RAKKR_ANSIBLE_SSH_DIR`, and mounted key paths
   for per-node SSH settings.
+- `update_binary` pulls recorder-agent binaries from GitHub releases by default
+  (static musl `x86_64`/`aarch64`, checksum-verified) via
+  `deploy/ansible/roles/recorder_node/tasks/update_binary.yml`. `agentVersion`
+  pins a `YYYY.MM.DD-N` tag; `RAKKR_ANSIBLE_AGENT_SOURCE=local` with
+  `RAKKR_ANSIBLE_BINARY_SRC` is the offline fallback (the Compose smoke uses it).
 - `deploy/nginx/default.conf.template` handles web/API proxying for the web
   container.
 - `deploy/helm/rakkr-controller` contains Kubernetes resources.

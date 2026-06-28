@@ -1,0 +1,79 @@
+---
+- name: Deploy recorder-agent from a local artifact
+  ansible.builtin.copy:
+    dest: "{{ rakkr_agent_install_dir }}/rakkr-recorder-agent"
+    group: "{{ rakkr_agent_group }}"
+    mode: "0755"
+    owner: "{{ rakkr_agent_user }}"
+    src: "{{ rakkr_agent_binary_src }}"
+  notify: Restart recorder agent
+  when: rakkr_agent_source == "local"
+
+- name: Deploy recorder-agent from a GitHub release
+  when: rakkr_agent_source == "release"
+  block:
+    - name: Resolve recorder-agent target triple
+      ansible.builtin.set_fact:
+        rakkr_agent_target: "{{ rakkr_agent_target_map[ansible_architecture] | default('') }}"
+
+    - name: Fail on unsupported recorder-agent architecture
+      ansible.builtin.fail:
+        msg: "Unsupported recorder-agent architecture: {{ ansible_architecture }}"
+      when: rakkr_agent_target | length == 0
+
+    - name: Resolve the latest recorder-agent release tag
+      ansible.builtin.uri:
+        headers: "{{ rakkr_github_headers }}"
+        url: "{{ rakkr_github_api_url }}/repos/{{ rakkr_agent_repo }}/releases/latest"
+      register: rakkr_latest_release
+      when: rakkr_agent_version in ["", "latest"]
+
+    - name: Select the recorder-agent release version
+      ansible.builtin.set_fact:
+        rakkr_agent_resolved_version: >-
+          {{ rakkr_latest_release.json.tag_name
+             if (rakkr_agent_version in ["", "latest"])
+             else rakkr_agent_version }}
+
+    - name: Ensure the recorder-agent download directory exists
+      ansible.builtin.file:
+        mode: "0755"
+        path: "{{ rakkr_agent_download_dir }}"
+        state: directory
+
+    - name: Fetch the recorder-agent release checksum
+      ansible.builtin.get_url:
+        dest: "{{ rakkr_agent_download_dir }}/{{ rakkr_agent_archive_name }}.sha256"
+        force: true
+        headers: "{{ rakkr_github_headers }}"
+        mode: "0644"
+        url: "{{ rakkr_agent_release_asset_base }}/{{ rakkr_agent_archive_name }}.sha256"
+
+    - name: Read the recorder-agent release checksum
+      ansible.builtin.slurp:
+        src: "{{ rakkr_agent_download_dir }}/{{ rakkr_agent_archive_name }}.sha256"
+      register: rakkr_agent_checksum_file
+
+    - name: Download and verify the recorder-agent archive
+      ansible.builtin.get_url:
+        checksum: "sha256:{{ (rakkr_agent_checksum_file.content | b64decode).split() | first }}"
+        dest: "{{ rakkr_agent_download_dir }}/{{ rakkr_agent_archive_name }}"
+        headers: "{{ rakkr_github_headers }}"
+        mode: "0644"
+        url: "{{ rakkr_agent_release_asset_base }}/{{ rakkr_agent_archive_name }}"
+
+    - name: Unpack the recorder-agent archive
+      ansible.builtin.unarchive:
+        dest: "{{ rakkr_agent_download_dir }}"
+        remote_src: true
+        src: "{{ rakkr_agent_download_dir }}/{{ rakkr_agent_archive_name }}"
+
+    - name: Install the recorder-agent binary
+      ansible.builtin.copy:
+        dest: "{{ rakkr_agent_install_dir }}/rakkr-recorder-agent"
+        group: "{{ rakkr_agent_group }}"
+        mode: "0755"
+        owner: "{{ rakkr_agent_user }}"
+        remote_src: true
+        src: "{{ rakkr_agent_download_dir }}/rakkr-recorder-agent-{{ rakkr_agent_resolved_version }}-{{ rakkr_agent_target }}/rakkr-recorder-agent"
+      notify: Restart recorder agent
