@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDateTime, formatDuration } from "@/lib/dates";
 import { qualityEventEvidenceText } from "@/lib/quality-timeline-helpers";
-import { toneBadgeClass } from "@/lib/status-colors";
+import { toneBadgeClass, toneFillClass } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 
 interface TimelineSegment {
@@ -160,18 +160,18 @@ function timelineTitle(event: HealthEvent) {
 
 function timelineSegmentClass(event: HealthEvent) {
   if (event.status === "resolved") {
-    return "border-emerald-200 bg-emerald-500/70 text-emerald-800";
+    return toneFillClass("healthy");
   }
 
   if (event.severity === "critical") {
-    return "border-rose-200 bg-rose-500/80 text-rose-800";
+    return toneFillClass("critical");
   }
 
   if (event.severity === "warning") {
-    return "border-amber-200 bg-amber-400/80 text-amber-800";
+    return toneFillClass("warning");
   }
 
-  return "border-sky-200 bg-sky-400/75 text-sky-800";
+  return toneFillClass("info");
 }
 
 function timelineStatusClass(status: RecordingSummary["healthStatus"]) {

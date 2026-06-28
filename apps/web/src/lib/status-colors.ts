@@ -48,3 +48,23 @@ export function toneTileClass(tone: StatusTone): string {
 
   return "border-border bg-background text-foreground";
 }
+
+/**
+ * Filled-bar variant of the status tones (saturated translucent fill on a
+ * tinted border) used for compact timeline segments.
+ */
+export function toneFillClass(tone: StatusTone): string {
+  if (tone === "critical") {
+    return "border-rose-200 bg-rose-500/80 text-rose-800";
+  }
+
+  if (tone === "warning") {
+    return "border-amber-200 bg-amber-400/80 text-amber-800";
+  }
+
+  if (tone === "healthy") {
+    return "border-emerald-200 bg-emerald-500/70 text-emerald-800";
+  }
+
+  return "border-sky-200 bg-sky-400/75 text-sky-800";
+}

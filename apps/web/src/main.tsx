@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -143,8 +144,16 @@ function RootLayout() {
 
   if (currentUserQuery.isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-100 text-sm text-muted-foreground">
-        Loading Rakkr
+      <div className="flex min-h-screen items-center justify-center bg-stone-100 p-6">
+        <output aria-label="Loading Rakkr" className="grid w-full max-w-xs gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+              <Radio className="size-5" />
+            </div>
+            <Skeleton className="h-5 w-28" />
+          </div>
+          <Skeleton className="h-24 w-full" />
+        </output>
       </div>
     );
   }
