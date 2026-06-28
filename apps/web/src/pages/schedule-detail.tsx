@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
-import { toneBadgeClass } from "@/lib/status-colors";
+import { toneBadgeClass, toneTileClass } from "@/lib/status-colors";
 import {
   clearPlaybackPreview,
   downloadBlob,
@@ -500,11 +500,7 @@ function SummaryTile({
   value: string;
 }) {
   const toneClass =
-    tone === "critical"
-      ? "border-rose-200 bg-rose-50 text-rose-800"
-      : tone === "healthy"
-        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-        : "border-border bg-panel text-foreground";
+    tone === "neutral" ? "border-border bg-panel text-foreground" : toneTileClass(tone);
 
   return (
     <section className={`rounded-lg border p-4 shadow-sm ${toneClass}`}>

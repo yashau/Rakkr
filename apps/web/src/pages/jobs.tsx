@@ -49,6 +49,7 @@ import {
   type RecordingJobFilterKey,
 } from "@/lib/jobs-page-helpers";
 import { downloadBlob } from "@/lib/recording-page-helpers";
+import { toneTileClass } from "@/lib/status-colors";
 
 const statuses: Array<"" | RecordingJob["status"]> = [
   "",
@@ -697,17 +698,5 @@ function recordingJobApiFilters(filters: JobsPageFilters) {
 }
 
 function summaryToneClass(tone: "active" | "critical" | "healthy" | "neutral") {
-  if (tone === "active") {
-    return "border-sky-200 bg-sky-50 text-sky-800";
-  }
-
-  if (tone === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-800";
-  }
-
-  if (tone === "healthy") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  }
-
-  return "border-border bg-background text-foreground";
+  return toneTileClass(tone === "active" ? "info" : tone);
 }

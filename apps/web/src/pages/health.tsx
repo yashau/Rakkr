@@ -32,7 +32,7 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
-import { toneBadgeClass } from "@/lib/status-colors";
+import { toneBadgeClass, toneTileClass } from "@/lib/status-colors";
 import {
   emptyHealthPageFilters,
   healthEventBulkActionTargets,
@@ -692,17 +692,5 @@ function severityClass(severity: HealthEvent["severity"]) {
 }
 
 function summaryToneClass(tone: "critical" | "healthy" | "neutral" | "warning") {
-  if (tone === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-800";
-  }
-
-  if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-800";
-  }
-
-  if (tone === "healthy") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  }
-
-  return "border-border bg-background text-foreground";
+  return toneTileClass(tone);
 }
