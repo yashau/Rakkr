@@ -1,0 +1,26 @@
+{
+  "name": "@rakkr/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.2.0",
+    "@astrojs/starlight": "^0.41.1",
+    "astro": "^7.0.3",
+    "mermaid": "^11.16.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "eslint-plugin-astro": "^2.1.1",
+    "typescript": "^6.0.3"
+  }
+}

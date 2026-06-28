@@ -55,6 +55,7 @@ depends = [
   "node:test",
   "node:lint",
   "node:format-check",
+  "docs:lint",
   "agent:fake-controller-smoke",
   "rust:check",
   "rust:fmt-check",
@@ -298,3 +299,19 @@ run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 depends = ["rust:components"]
 description = "Run Miri tests with a mise-provided nightly Rust toolchain"
 run = "mise x rust@nightly-2026-06-25 -- cargo miri test --workspace"
+
+[tasks."docs:lint"]
+description = "Lint the documentation site with ESLint and eslint-plugin-astro"
+run = "pnpm --filter @rakkr/docs lint"
+
+[tasks."docs:dev"]
+description = "Run the Starlight documentation site"
+run = "pnpm --filter @rakkr/docs dev"
+
+[tasks."docs:build"]
+description = "Build the Starlight documentation site"
+run = "pnpm --filter @rakkr/docs build"
+
+[tasks."docs:preview"]
+description = "Preview the built Starlight documentation site"
+run = "pnpm --filter @rakkr/docs preview"
