@@ -28,6 +28,7 @@ const sourceFiles = [
   "apps/web/src/lib/settings-page-helpers.ts",
   "apps/web/src/lib/settings-page-helpers.test.ts",
   "apps/web/src/pages/settings.tsx",
+  "apps/web/src/components/channel-map-template-card.tsx",
   "apps/web/src/components/retention-policy-panel.tsx",
   "apps/web/src/components/upload-policy-panel.tsx",
   "apps/web/src/components/recording-profile-settings-card.tsx",
