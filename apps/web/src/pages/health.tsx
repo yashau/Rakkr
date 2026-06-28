@@ -360,6 +360,15 @@ export function HealthPage() {
                 </button>
               </Badge>
             ))}
+            <Button
+              className="h-6 px-2 text-xs"
+              onClick={() => setFilters(emptyHealthPageFilters)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              Clear all
+            </Button>
           </div>
         ) : null}
 

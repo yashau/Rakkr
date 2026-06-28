@@ -451,6 +451,14 @@ export function NodesPage() {
                 </button>
               </Badge>
             ))}
+            <Button
+              className="h-6 px-2 text-xs"
+              onClick={() => setNodeFilterDraft(emptyNodeInventoryFilters)}
+              size="sm"
+              variant="ghost"
+            >
+              Clear all
+            </Button>
           </div>
         ) : null}
       </section>

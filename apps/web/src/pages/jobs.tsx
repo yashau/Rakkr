@@ -366,6 +366,15 @@ export function JobsPage() {
                 </button>
               </Badge>
             ))}
+            <Button
+              className="h-6 px-2 text-xs"
+              onClick={() => setFilters(emptyJobsPageFilters)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              Clear all
+            </Button>
           </div>
         ) : null}
 

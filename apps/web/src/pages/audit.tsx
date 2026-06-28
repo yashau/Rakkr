@@ -280,6 +280,18 @@ export function AuditPage() {
                 </button>
               </Badge>
             ))}
+            <Button
+              className="h-6 px-2 text-xs"
+              onClick={() => {
+                setDraft(emptyAuditFilterDraft);
+                setFilters({});
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              Clear all
+            </Button>
           </div>
         ) : null}
       </form>

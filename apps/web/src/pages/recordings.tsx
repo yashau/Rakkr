@@ -823,6 +823,17 @@ export function RecordingsPage() {
                     </button>
                   </Badge>
                 ))}
+                <Button
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    setRecordingFilters({ limit: pageSize, offset: 0 });
+                    setFilterDraft(emptyRecordingFilterDraft);
+                  }}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Clear all
+                </Button>
               </div>
             ) : null}
             {recordingMeta ? (

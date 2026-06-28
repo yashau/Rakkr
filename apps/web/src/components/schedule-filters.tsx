@@ -166,6 +166,15 @@ export function ScheduleFiltersPanel({
               </button>
             </Badge>
           ))}
+          <Button
+            className="h-6 px-2 text-xs"
+            onClick={() => onChange(emptySchedulePageFilters)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Clear all
+          </Button>
         </div>
       ) : null}
     </section>
