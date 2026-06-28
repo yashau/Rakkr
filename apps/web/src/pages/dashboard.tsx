@@ -31,6 +31,7 @@ import { formatDateTime } from "@/lib/dates";
 import { healthEventTargetLabel, readableHealthEventType } from "@/lib/health-page-helpers";
 import { recordingJobStatusClass, recordingJobStopActionState } from "@/lib/jobs-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
+import { toneBadgeClass } from "@/lib/status-colors";
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
@@ -402,15 +403,7 @@ export function DashboardPage() {
 }
 
 function healthSeverityClass(severity: "critical" | "info" | "warning") {
-  if (severity === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
-  }
-
-  if (severity === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  return "border-sky-200 bg-sky-50 text-sky-700";
+  return toneBadgeClass(severity);
 }
 
 function incidentActionLabel(action: DashboardIncidentAction) {

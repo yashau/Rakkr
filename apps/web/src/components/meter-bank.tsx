@@ -3,6 +3,7 @@ import { Activity, AudioWaveform, RadioTower, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { meterBankSummary, meterChannelView, meterScaleLabels } from "@/lib/meter-helpers";
+import { toneBadgeClass } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 
 export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: string }) {
@@ -24,7 +25,7 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
         </div>
         <div className="flex items-center gap-2">
           {summary.clippingChannels > 0 ? (
-            <Badge className="border-red-200 bg-red-50 text-red-700" variant="outline">
+            <Badge className={toneBadgeClass("critical")} variant="outline">
               <ShieldAlert className="size-3" />
               {summary.clippingChannels} clip
             </Badge>

@@ -24,6 +24,8 @@ import {
   type NodeLifecycleAction,
   type NodeLifecycleJob,
 } from "@/lib/node-lifecycle-api";
+import { toneBadgeClass } from "@/lib/status-colors";
+import { toast } from "sonner";
 
 interface NodeLifecycleMenuProps {
   canManage: boolean;
@@ -53,6 +55,9 @@ export function NodeLifecycleMenu({ canManage, node }: NodeLifecycleMenuProps) {
   const runMutation = useMutation({
     mutationFn: (action: NodeLifecycleAction) =>
       nodeLifecycleApi.run(node, action, { agentVersion: node.agentVersion }),
+    onError: () => {
+      toast.error("Lifecycle action failed");
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["nodes", node.id, "lifecycle-jobs"] });
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
@@ -116,12 +121,12 @@ function LifecycleJobBadge({ job }: { job: NodeLifecycleJob }) {
 
 function lifecycleStatusClass(status: NodeLifecycleJob["status"]) {
   if (status === "succeeded") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
   if (status === "failed") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
-  return "border-sky-200 bg-sky-50 text-sky-700";
+  return toneBadgeClass("info");
 }

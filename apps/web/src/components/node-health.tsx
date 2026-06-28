@@ -5,6 +5,7 @@ import type { HealthEvent } from "@rakkr/shared";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDateTime, localIsoDate, startOfLocalDay } from "@/lib/dates";
+import { toneBadgeClass } from "@/lib/status-colors";
 
 export function HealthSummaryTile({
   event,
@@ -303,19 +304,7 @@ function durationLabel(seconds: number) {
 }
 
 export function healthBadgeClass(tone: HealthTone) {
-  if (tone === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
-  }
-
-  if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  if (tone === "healthy") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return toneBadgeClass(tone === "unknown" ? "neutral" : tone);
 }
 
 function healthBarClass(tone: HealthTone) {

@@ -38,6 +38,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { RecordingMetadataUpdate } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/dates";
+import { toneBadgeClass } from "@/lib/status-colors";
 import {
   isCachedRecording,
   isTerminalRecording,
@@ -241,11 +242,9 @@ export function RecordingCard({
                 ) : null}
                 <h2 className="truncate text-base font-semibold">{recording.name}</h2>
                 <Badge
-                  className={
-                    recording.healthStatus === "healthy"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-amber-200 bg-amber-50 text-amber-700"
-                  }
+                  className={toneBadgeClass(
+                    recording.healthStatus === "healthy" ? "healthy" : "warning",
+                  )}
                   variant="outline"
                 >
                   {recording.healthStatus}
@@ -512,38 +511,38 @@ function shortChecksum(checksum: string) {
 
 function jobStatusClass(status: RecordingJob["status"]) {
   if (status === "running") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return toneBadgeClass("info");
   }
 
   if (status === "completed") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
   if (status === "failed" || status === "cancelled") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
   if (status === "stop_requested") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return toneBadgeClass("warning");
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return toneBadgeClass("neutral");
 }
 
 function uploadStatusClass(status: UploadQueueItem["status"]) {
   if (status === "queued" || status === "retrying") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return toneBadgeClass("info");
   }
 
   if (status === "succeeded") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return toneBadgeClass("healthy");
   }
 
   if (status === "failed" || status === "cancelled") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return toneBadgeClass("critical");
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return toneBadgeClass("neutral");
 }
 
 function recordingJobCaptureDetails(job: RecordingJob) {
