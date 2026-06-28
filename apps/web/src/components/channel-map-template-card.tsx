@@ -465,7 +465,7 @@ export function ChannelMapTemplateCard({
         <div className="mt-4 grid gap-2">
           {pendingPlans.map((plan) => (
             <div
-              className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm md:flex-row md:items-center md:justify-between"
+              className="flex flex-col gap-2 rounded-md border border-l-4 border-border border-l-amber-500 bg-muted/30 p-2 text-sm md:flex-row md:items-center md:justify-between"
               key={plan.id}
             >
               <div>
