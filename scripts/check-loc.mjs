@@ -5,6 +5,7 @@ const root = process.cwd();
 const maxLines = Number(process.env.RAKKR_MAX_FILE_LOC ?? 1000);
 
 const ignoredDirectories = new Set([
+  ".claude",
   ".git",
   ".turbo",
   ".vite",
