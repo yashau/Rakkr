@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .mise.local.toml
+.claude/
 
 node_modules/
 dist/
