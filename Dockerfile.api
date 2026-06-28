@@ -21,9 +21,14 @@ RUN pnpm -r --filter @rakkr/shared --filter @rakkr/db --filter @rakkr/api build
 
 FROM node:26-alpine AS runtime
 
+# Stamped from the controller release tag by the release workflow; surfaced on
+# /healthz. Defaults to the dev sentinel for plain `docker build`.
+ARG RAKKR_API_VERSION=0.0.0-dev
+
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8787
+ENV RAKKR_API_VERSION=${RAKKR_API_VERSION}
 
 RUN apk add --no-cache ffmpeg \
   && mkdir -p /var/lib/rakkr \

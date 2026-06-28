@@ -40,12 +40,18 @@ interface StatusRouteDependencies {
   startedAt: Date;
 }
 
+// Stamped from the controller release tag at image build time (see
+// `Dockerfile.api` ARG RAKKR_API_VERSION); local/dev processes report the dev
+// sentinel. Surfaced on /healthz so a deployment is verifiable.
+const API_VERSION = process.env.RAKKR_API_VERSION ?? "0.0.0-dev";
+
 export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
   dependencies.app.get("/healthz", (c) =>
     c.json({
       ok: true,
       service: "rakkr-api",
       startedAt: dependencies.startedAt.toISOString(),
+      version: API_VERSION,
     }),
   );
 

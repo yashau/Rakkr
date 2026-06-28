@@ -12,6 +12,12 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS builder
 
+# Stamped from the controller release tag by the release workflow; Vite inlines it
+# into the bundle so the console footer shows the deployed version. Defaults to the
+# dev sentinel for plain `docker build`.
+ARG RAKKR_WEB_VERSION=0.0.0-dev
+ENV VITE_RAKKR_WEB_VERSION=${RAKKR_WEB_VERSION}
+
 COPY apps/web apps/web
 COPY packages/shared packages/shared
 

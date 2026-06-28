@@ -42,6 +42,7 @@ const mermaidIntegration = {
 
 // https://astro.build/config
 export default defineConfig({
+  site: "https://docs.rakkr.org",
   markdown: {
     // Astro 7 deprecated `markdown.remarkPlugins`; register plugins on the
     // Unified processor instead. Starlight pushes its own plugins onto this
@@ -113,6 +114,7 @@ export default defineConfig({
           label: "Operations",
           items: [
             { label: "Deployment", slug: "operations/deployment" },
+            { label: "Releases & versioning", slug: "operations/releases" },
             { label: "Observability", slug: "observability" },
           ],
         },

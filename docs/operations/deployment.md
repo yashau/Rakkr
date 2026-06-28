@@ -100,26 +100,34 @@ and `deploy/ansible/README.md`.
 
 ### Recorder-agent release binaries
 
-The recorder-agent is versioned `YYYY.MM.DD-N` from
-`crates/recorder-agent/VERSION`; bumping that file and merging to `main` runs the
-`Release recorder agent` workflow (`.github/workflows/release-agent.yml`), which
-builds static musl binaries for `x86_64-unknown-linux-musl` and
-`aarch64-unknown-linux-musl` and publishes a GitHub release tagged with the
-version (each with a `.sha256`). The static musl build runs on Debian and RedHat
-nodes without a glibc version dependency.
+The recorder-agent is versioned `YYYY.MM.DD-N`, stamped into the binary from the
+release tag. Run `mise run release agent` to push an `agent-v<YYYY.MM.DD-N>` tag;
+the tag triggers the `Release recorder agent` workflow
+(`.github/workflows/release-agent.yml`), which builds static musl binaries for
+`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` and publishes a GitHub
+release tagged with that tag (each artifact with a `.sha256`). The static musl
+build runs on Debian and RedHat nodes without a glibc version dependency.
 
 The Ansible `update_binary` action pulls these releases automatically: the target
 node downloads the artifact for its architecture, verifies the checksum, and
 installs it. It defaults to the newest release; forward `agentVersion` to pin a
-specific tag. Set `RAKKR_ANSIBLE_AGENT_SOURCE=local` with
+specific tag (`agent-v…`). Set `RAKKR_ANSIBLE_AGENT_SOURCE=local` with
 `RAKKR_ANSIBLE_BINARY_SRC` only for air-gapped or offline staging. See
-[Node lifecycle](../guides/node-lifecycle.md) and the
+[Releases & versioning](releases.md), [Node lifecycle](../guides/node-lifecycle.md),
+and the
 [recorder-agent README](https://github.com/yashau/Rakkr/blob/main/crates/recorder-agent/README.md)
-for the bump-and-release flow.
+for the full release flow.
 
 ## Helm (Kubernetes)
 
-The chart is `deploy/helm/rakkr-controller`. Build and publish the two images:
+The chart is `deploy/helm/rakkr-controller`. The recommended way to publish the two
+images is the controller release workflow: run `mise run release controller` to push
+a `controller-v<YYYY.MM.DD-N>` tag, which builds and pushes versioned
+`ghcr.io/<repo>-api` and `ghcr.io/<repo>-web` images (see
+[Releases & versioning](releases.md)). Rolling those images out with Helm stays a
+separate, deliberate step.
+
+To build and publish to a different registry by hand:
 
 ```powershell
 docker build -f Dockerfile.api -t registry.example.com/rakkr/controller-api:0.1.0 .

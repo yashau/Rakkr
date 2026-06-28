@@ -80,8 +80,9 @@ the release `.sha256`, and installs it — so nodes need outbound access to GitH
 
 Without a pinned version the role resolves the newest release; the console's
 **Update Binary** action does this. To deploy a specific build, forward
-`agentVersion` (a `YYYY.MM.DD-N` tag) through the lifecycle API. Releases are
-built by the `Release recorder agent` workflow — see the
+`agentVersion` (a full release tag such as `agent-v2026.06.28-1`) through the
+lifecycle API. Releases are built by the `Release recorder agent` workflow — see
+[Releases & versioning](../operations/releases.md) and the
 [recorder-agent versioning notes](https://github.com/yashau/Rakkr/blob/main/crates/recorder-agent/README.md).
 
 ## Security model

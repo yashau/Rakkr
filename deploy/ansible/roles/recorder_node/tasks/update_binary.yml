@@ -75,5 +75,5 @@
         mode: "0755"
         owner: "{{ rakkr_agent_user }}"
         remote_src: true
-        src: "{{ rakkr_agent_download_dir }}/rakkr-recorder-agent-{{ rakkr_agent_resolved_version }}-{{ rakkr_agent_target }}/rakkr-recorder-agent"
+        src: "{{ rakkr_agent_download_dir }}/rakkr-recorder-agent-{{ rakkr_agent_clean_version }}-{{ rakkr_agent_target }}/rakkr-recorder-agent"
       notify: Restart recorder agent

@@ -54,26 +54,25 @@ The agent uses calendar versioning in `YYYY.MM.DD-N` format: the build date plus
 a same-day release counter that starts at `1` (for example `2026.06.28-1`, then
 `2026.06.28-2` for a second release on the same day).
 
-- The version lives in [`VERSION`](VERSION) and is the single source of truth.
-  `src/version.rs` embeds it at compile time with `include_str!`, so `--version`
-  and the inventory `agent_version` always report the version the binary was
-  built from.
-- `mise run agent:version` validates the format and prints the current version.
-  The same check runs as part of `mise run check`.
+- The version is stamped at build time from the release tag. The release workflow
+  derives the calendar version from the pushed `agent-v…` tag, sets
+  `RAKKR_AGENT_VERSION`, and `src/version.rs` embeds it via `option_env!`, so
+  `--version` and the inventory `agent_version` report the version the binary was
+  built from. Unstamped local and CI builds report `0.0.0-dev`.
 
 ```powershell
 cargo run -p rakkr-recorder-agent -- --version
 ```
 
-To cut a release, bump [`VERSION`](VERSION) to the next `YYYY.MM.DD-N` and merge
-to `main`. The `Release recorder agent` workflow
-([`.github/workflows/release-agent.yml`](../../.github/workflows/release-agent.yml))
-compares the value against the GitHub release history; when it names a version
-that does not exist yet, it cross-compiles static musl binaries for
-`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` with
-`cargo-zigbuild` and publishes a GitHub release (tagged with the version) that
-attaches both `.tar.gz` artifacts and their `.sha256` checksums. If the version
-already has a release, the workflow is a no-op.
+To cut a release, run `mise run release agent`; it computes the next
+`YYYY.MM.DD-N` and pushes an `agent-v…` tag. The pushed tag triggers the `Release
+recorder agent` workflow
+([`.github/workflows/release-agent.yml`](../../.github/workflows/release-agent.yml)),
+which cross-compiles static musl binaries for `x86_64-unknown-linux-musl` and
+`aarch64-unknown-linux-musl` with `cargo-zigbuild` and publishes a GitHub release
+(tagged `agent-v…`) that attaches both `.tar.gz` artifacts and their `.sha256`
+checksums. See [Releases & versioning](../../docs/operations/releases.md) for the
+repository-wide release model.
 
 ## 🎚️ Configuration Highlights
 

@@ -51,7 +51,6 @@ depends = [
   "storage:check",
   "operations:check",
   "time:check",
-  "agent:version",
   "node:check",
   "node:test",
   "node:lint",
@@ -179,9 +178,9 @@ run = "pnpm --filter @rakkr/db db:migrate"
 description = "Replay Drizzle migrations against a fresh throwaway Postgres database"
 run = "pnpm --filter @rakkr/db db:verify"
 
-[tasks."agent:version"]
-description = "Print and validate the recorder-agent release version (YYYY.MM.DD-N)"
-run = "node scripts/agent-version.mjs"
+[tasks.release]
+description = "Cut a release by pushing a <component>-v<YYYY.MM.DD-N> tag (agent|docs|controller)"
+run = "node scripts/release.mjs"
 
 [tasks."agent:loopback-smoke"]
 description = "Exercise a Linux ALSA snd-aloop fake capture device"
@@ -320,3 +319,13 @@ run = "pnpm --filter @rakkr/docs build"
 [tasks."docs:preview"]
 description = "Preview the built Starlight documentation site"
 run = "pnpm --filter @rakkr/docs preview"
+
+[tasks."docs:cf-dev"]
+depends = ["docs:build"]
+description = "Serve the documentation site locally through the Cloudflare Worker (wrangler dev)"
+run = "pnpm --filter @rakkr/docs cf-dev"
+
+[tasks."docs:deploy"]
+depends = ["docs:build"]
+description = "Deploy the documentation site to Cloudflare Workers (wrangler deploy)"
+run = "pnpm --filter @rakkr/docs deploy"

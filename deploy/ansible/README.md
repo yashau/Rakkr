@@ -71,10 +71,10 @@ unpacks it, and installs it as `/opt/rakkr/bin/rakkr-recorder-agent`.
 | `RAKKR_ANSIBLE_BINARY_SRC`     | Staged artifact path used only when the source is `local`.                                  |
 
 The version is chosen per run: the controller/runner forwards `agentVersion` as
-`rakkr_agent_version` (a `YYYY.MM.DD-N` tag) when set; otherwise the role
-resolves the newest release via the GitHub API. Release binaries are produced by
-the `Release recorder agent` workflow
-(`.github/workflows/release-agent.yml`).
+`rakkr_agent_version` (a full release tag such as `agent-v2026.06.28-1`) when set;
+otherwise the role resolves the newest release via the GitHub API. Release binaries
+are produced by the `Release recorder agent` workflow
+(`.github/workflows/release-agent.yml`), triggered by pushing an `agent-v…` tag.
 
 ## Smokes
 
@@ -112,6 +112,7 @@ mise run ansible:x32-smoke
 
 By default `update_binary` pulls the latest published release, so the physical
 rig needs outbound access to GitHub. To deploy a specific build, forward
-`agentVersion` (a `YYYY.MM.DD-N` tag) from the console/controller. For
+`agentVersion` (a full release tag such as `agent-v2026.06.28-1`) from the
+console/controller. For
 air-gapped rigs, set `RAKKR_ANSIBLE_AGENT_SOURCE=local` and point
 `RAKKR_ANSIBLE_BINARY_SRC` at a staged Linux recorder-agent artifact.
