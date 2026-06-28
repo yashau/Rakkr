@@ -7,6 +7,7 @@ import {
   type RecorderNode,
 } from "@rakkr/shared";
 import { AudioLines, Save, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,10 @@ export function NodeIdentityEditor({
   const [draft, setDraft] = useState(nodeIdentityDraft(node));
   const mutation = useMutation({
     mutationFn: () => api.updateNode(node.id, nodeUpdateInput(draft)),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The node details could not be saved.",
+      }),
     onSuccess: ({ data }) => {
       setDraft(nodeIdentityDraft(data));
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
@@ -191,6 +196,10 @@ export function NodeAudioDefaultsEditor({
   const [draft, setDraft] = useState(nodeAudioDefaultsDraft(node.audioDefaults));
   const mutation = useMutation({
     mutationFn: () => api.updateNode(node.id, { audioDefaults: nodeAudioDefaultsInput(draft) }),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The node audio defaults could not be saved.",
+      }),
     onSuccess: ({ data }) => {
       setDraft(nodeAudioDefaultsDraft(data.audioDefaults));
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
@@ -328,6 +337,10 @@ export function NodeInterfaceEditor({
   const mutation = useMutation({
     mutationFn: () =>
       api.updateNodeInterface(node.id, audioInterface.id, nodeInterfaceUpdateInput(draft)),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The interface details could not be saved.",
+      }),
     onSuccess: ({ data }) => {
       const updated = data.interfaces.find((candidate) => candidate.id === audioInterface.id);
 

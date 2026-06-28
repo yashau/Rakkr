@@ -81,6 +81,10 @@ export function DashboardPage() {
   const incidentActionMutation = useMutation({
     mutationFn: ({ action, eventId }: { action: DashboardIncidentAction; eventId: string }) =>
       api.updateHealthEventLifecycle(eventId, action, {}),
+    onError: () =>
+      toast.error("Update failed", {
+        description: "The incident could not be updated.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["health-events"] });
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });

@@ -196,6 +196,11 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
       note?: string;
       suppressedUntil?: string;
     }) => api.updateHealthEventLifecycle(eventId, action, { note, suppressedUntil }),
+    onError: () =>
+      setNotice({
+        detail: "The schedule health event could not be updated.",
+        title: "Update failed",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["health-events"] });
       void queryClient.invalidateQueries({ queryKey: ["recordings"] });

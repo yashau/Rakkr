@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { Fragment, useState } from "react";
+import { toast } from "sonner";
 import { permissions, type AuditEvent } from "@rakkr/shared";
 
 import { LoadingSkeleton } from "@/components/loading-skeleton";
@@ -88,6 +89,10 @@ export function AuditPage() {
   });
   const auditExportMutation = useMutation({
     mutationFn: () => api.auditEventsExport(filters),
+    onError: () =>
+      toast.error("Export failed", {
+        description: "The audit event CSV export could not be generated.",
+      }),
     onSuccess: downloadAuditExport,
   });
 

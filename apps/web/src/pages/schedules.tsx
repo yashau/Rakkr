@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import {
@@ -133,6 +134,10 @@ export function SchedulesPage() {
   const saveScheduleMutation = useMutation({
     mutationFn: ({ input, scheduleId }: { input: ScheduleInput; scheduleId?: string }) =>
       scheduleId ? api.updateSchedule(scheduleId, input) : api.createSchedule(input),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The schedule could not be saved.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
       void queryClient.invalidateQueries({ queryKey: ["schedule-occurrences"] });
@@ -142,6 +147,10 @@ export function SchedulesPage() {
   });
   const runNowMutation = useMutation({
     mutationFn: api.runScheduleNow,
+    onError: () =>
+      toast.error("Run failed", {
+        description: "The schedule could not be run now.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
       void queryClient.invalidateQueries({ queryKey: ["recordings"] });
@@ -150,6 +159,10 @@ export function SchedulesPage() {
   });
   const skipNextMutation = useMutation({
     mutationFn: api.skipScheduleNext,
+    onError: () =>
+      toast.error("Skip failed", {
+        description: "The next scheduled run could not be skipped.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       void queryClient.invalidateQueries({ queryKey: ["schedule-occurrences"] });
@@ -158,6 +171,10 @@ export function SchedulesPage() {
   });
   const deleteScheduleMutation = useMutation({
     mutationFn: api.deleteSchedule,
+    onError: () =>
+      toast.error("Delete failed", {
+        description: "The schedule could not be deleted.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });

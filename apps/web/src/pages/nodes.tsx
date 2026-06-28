@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 import {
   api,
   type NodeEnrollmentInput,
@@ -175,12 +176,20 @@ export function NodesPage() {
         session: session.data,
       };
     },
+    onError: () =>
+      toast.error("Listen failed", {
+        description: "A live listen session could not be started for the node.",
+      }),
     onSuccess: ({ nodeAlias, session }) => {
       setListenPreview({ nodeAlias, session });
     },
   });
   const enrollMutation = useMutation({
     mutationFn: api.enrollNode,
+    onError: () =>
+      toast.error("Enroll failed", {
+        description: "The recorder node could not be enrolled.",
+      }),
     onSuccess: ({ data }) => {
       setCredential(data);
       setDraft(emptyDraft);
@@ -189,6 +198,10 @@ export function NodesPage() {
   });
   const rotateMutation = useMutation({
     mutationFn: api.rotateNodeCredential,
+    onError: () =>
+      toast.error("Token rotation failed", {
+        description: "The node credential token could not be rotated.",
+      }),
     onSuccess: ({ data }) => {
       setCredential(data);
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
@@ -204,6 +217,10 @@ export function NodesPage() {
       eventId: string;
       suppressedUntil?: string;
     }) => api.updateHealthEventLifecycle(eventId, action, { suppressedUntil }),
+    onError: () =>
+      toast.error("Update failed", {
+        description: "The node health event could not be updated.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["node-health-events"] });
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
@@ -213,10 +230,18 @@ export function NodesPage() {
   });
   const exportMutation = useMutation({
     mutationFn: () => api.nodesExport(nodeFilters),
+    onError: () =>
+      toast.error("Export failed", {
+        description: "The node CSV export could not be generated.",
+      }),
     onSuccess: downloadBlob,
   });
   const selectedExportMutation = useMutation({
     mutationFn: (nodeIds: string[]) => api.nodesExportSelected({ nodeIds }),
+    onError: () =>
+      toast.error("Export failed", {
+        description: "The selected node CSV export could not be generated.",
+      }),
     onSuccess: downloadBlob,
   });
 

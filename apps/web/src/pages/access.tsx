@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Save, ShieldCheck, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { toast } from "sonner";
 import {
   roles,
   type AccessGroup,
@@ -79,6 +80,10 @@ export function AccessPage() {
   const updateMutation = useMutation({
     mutationFn: ({ access, userId }: { access: UserAccessUpdate; userId: string }) =>
       api.updateUserAccess(userId, access),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The user's access could not be updated.",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
@@ -88,6 +93,10 @@ export function AccessPage() {
   const resetPasswordMutation = useMutation({
     mutationFn: ({ password, userId }: { password: string; userId: string }) =>
       api.resetUserPassword(userId, { password }),
+    onError: () =>
+      toast.error("Password reset failed", {
+        description: "The user's password could not be reset.",
+      }),
     onSuccess: (_result, input) => {
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
       setPasswordDrafts((current) => ({ ...current, [input.userId]: "" }));
@@ -96,6 +105,10 @@ export function AccessPage() {
   const statusMutation = useMutation({
     mutationFn: ({ disabled, userId }: { disabled: boolean; userId: string }) =>
       api.updateUserStatus(userId, disabled),
+    onError: () =>
+      toast.error("Status update failed", {
+        description: "The user's enabled status could not be changed.",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
@@ -103,6 +116,10 @@ export function AccessPage() {
   });
   const deleteUserMutation = useMutation({
     mutationFn: api.deleteLocalUser,
+    onError: () =>
+      toast.error("Delete failed", {
+        description: "The local user could not be deleted.",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
@@ -110,6 +127,10 @@ export function AccessPage() {
   });
   const createUserMutation = useMutation({
     mutationFn: api.createLocalUser,
+    onError: () =>
+      toast.error("Create failed", {
+        description: "The local user could not be created.",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
@@ -118,6 +139,10 @@ export function AccessPage() {
   });
   const updatePoliciesMutation = useMutation({
     mutationFn: api.updateAccessPolicies,
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The access policies could not be saved.",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["access-policies"] });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });

@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 import {
@@ -99,6 +100,10 @@ export function JobsPage() {
   });
   const stopJobMutation = useMutation({
     mutationFn: api.stopRecording,
+    onError: () =>
+      toast.error("Stop failed", {
+        description: "The recording job could not be stopped.",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
@@ -107,6 +112,10 @@ export function JobsPage() {
   });
   const retryJobMutation = useMutation({
     mutationFn: api.retryRecordingJob,
+    onError: () =>
+      toast.error("Retry failed", {
+        description: "The recording job could not be retried.",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
@@ -115,6 +124,10 @@ export function JobsPage() {
   });
   const bulkStopJobMutation = useMutation({
     mutationFn: api.stopRecordingJobs,
+    onError: () =>
+      toast.error("Stop failed", {
+        description: "The selected recording jobs could not be stopped.",
+      }),
     onSuccess: () => {
       setSelectedJobIds([]);
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
@@ -124,6 +137,10 @@ export function JobsPage() {
   });
   const bulkRetryJobMutation = useMutation({
     mutationFn: api.retryRecordingJobs,
+    onError: () =>
+      toast.error("Retry failed", {
+        description: "The selected recording jobs could not be retried.",
+      }),
     onSuccess: () => {
       setSelectedJobIds([]);
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
@@ -133,10 +150,18 @@ export function JobsPage() {
   });
   const exportMutation = useMutation({
     mutationFn: () => api.recordingJobsExport(recordingJobApiFilters(filters)),
+    onError: () =>
+      toast.error("Export failed", {
+        description: "The recording job CSV export could not be generated.",
+      }),
     onSuccess: downloadBlob,
   });
   const selectedExportMutation = useMutation({
     mutationFn: (jobIds: string[]) => api.recordingJobsExportSelected({ jobIds }),
+    onError: () =>
+      toast.error("Export failed", {
+        description: "The selected recording job CSV export could not be generated.",
+      }),
     onSuccess: downloadBlob,
   });
 

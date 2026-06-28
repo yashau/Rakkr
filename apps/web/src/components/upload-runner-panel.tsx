@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UploadProvider, UploadQueueItem, UploadQueueStatus } from "@rakkr/shared";
 import { Play, RefreshCw, RotateCcw, UploadCloud, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,10 @@ export function UploadRunnerPanel() {
   });
   const runMutation = useMutation({
     mutationFn: api.runUploadRunner,
+    onError: () =>
+      toast.error("Run failed", {
+        description: "The upload runner could not start.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["upload-runner"] });
       void queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
@@ -68,6 +73,10 @@ export function UploadRunnerPanel() {
   });
   const retryMutation = useMutation({
     mutationFn: api.retryUploadQueueItem,
+    onError: () =>
+      toast.error("Retry failed", {
+        description: "The upload queue item could not be retried.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
       void queryClient.invalidateQueries({ queryKey: ["upload-runner"] });

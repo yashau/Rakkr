@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RecordingProfile } from "@rakkr/shared";
 import { Save, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,10 @@ export function RecordingProfileSettingsCard({
   const [draft, setDraft] = useState(profile);
   const mutation = useMutation({
     mutationFn: () => api.updateRecordingProfile(profile.id, recordingProfileUpdate(draft)),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The recording profile could not be saved.",
+      }),
     onSuccess: ({ data }) => {
       setDraft(data);
       void queryClient.invalidateQueries({ queryKey: ["recording-profiles"] });

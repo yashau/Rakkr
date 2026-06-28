@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, PlusCircle, Save } from "lucide-react";
+import { toast } from "sonner";
 import type { RetentionPolicy, RetentionPolicyInput, RetentionPolicyUpdate } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,10 @@ export function RetentionPolicyPanel({
   });
   const createMutation = useMutation({
     mutationFn: () => api.createRetentionPolicy(defaultPolicyInput()),
+    onError: () =>
+      toast.error("Create failed", {
+        description: "The retention policy could not be created.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["retention-policies"] });
     },
@@ -95,6 +100,10 @@ function RetentionPolicyCard({
   const [draft, setDraft] = useState(policy);
   const mutation = useMutation({
     mutationFn: () => api.updateRetentionPolicy(policy.id, policyUpdate(draft)),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The retention policy could not be saved.",
+      }),
     onSuccess: ({ data }) => {
       setDraft(data);
       void queryClient.invalidateQueries({ queryKey: ["retention-policies"] });

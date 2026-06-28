@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RecorderNode, WatchdogPolicy } from "@rakkr/shared";
 import { Gauge, Save, ShieldAlert } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,10 @@ export function WatchdogPolicyCard({
   });
   const mutation = useMutation({
     mutationFn: () => api.updateWatchdogPolicy(policy.id, watchdogPolicyUpdate(draft)),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The watchdog policy could not be saved.",
+      }),
     onSuccess: ({ data }) => {
       setDraft(data);
       void queryClient.invalidateQueries({ queryKey: ["watchdog-policies"] });
@@ -54,6 +59,10 @@ export function WatchdogPolicyCard({
         apply: true,
         nodeId: calibrationNodeId,
         signalMarginDb,
+      }),
+    onError: () =>
+      toast.error("Calibrate failed", {
+        description: "The watchdog policy could not be calibrated.",
       }),
     onSuccess: ({ data }) => {
       if (data.policy) {

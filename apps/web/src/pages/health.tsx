@@ -28,6 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
+
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import { toneBadgeClass } from "@/lib/status-colors";
@@ -117,6 +119,10 @@ export function HealthPage() {
       eventId: string;
       suppressedUntil?: string;
     }) => api.updateHealthEventLifecycle(eventId, action, { suppressedUntil }),
+    onError: () =>
+      toast.error("Update failed", {
+        description: "The health event could not be updated.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["health-events"] });
       void queryClient.invalidateQueries({ queryKey: ["node-health-events"] });
@@ -135,6 +141,10 @@ export function HealthPage() {
       eventIds: string[];
       suppressedUntil?: string;
     }) => api.updateHealthEventsLifecycle({ action, eventIds, suppressedUntil }),
+    onError: () =>
+      toast.error("Update failed", {
+        description: "The selected health events could not be updated.",
+      }),
     onSuccess: () => {
       setSelectedEventIds([]);
       void queryClient.invalidateQueries({ queryKey: ["health-events"] });
@@ -146,10 +156,18 @@ export function HealthPage() {
   });
   const exportMutation = useMutation({
     mutationFn: () => api.healthEventsExport(apiFilters),
+    onError: () =>
+      toast.error("Export failed", {
+        description: "The health event CSV export could not be generated.",
+      }),
     onSuccess: downloadBlob,
   });
   const selectedExportMutation = useMutation({
     mutationFn: (eventIds: string[]) => api.healthEventsExportSelected({ eventIds }),
+    onError: () =>
+      toast.error("Export failed", {
+        description: "The selected health event CSV export could not be generated.",
+      }),
     onSuccess: downloadBlob,
   });
 

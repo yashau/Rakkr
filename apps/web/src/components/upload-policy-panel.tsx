@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusCircle, Save, UploadCloud } from "lucide-react";
+import { toast } from "sonner";
 import type { UploadPolicy, UploadPolicyInput, UploadPolicyUpdate } from "@rakkr/shared";
 
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,10 @@ export function UploadPolicyPanel({
   });
   const createMutation = useMutation({
     mutationFn: () => api.createUploadPolicy(defaultPolicyInput()),
+    onError: () =>
+      toast.error("Create failed", {
+        description: "The upload policy could not be created.",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["upload-policies"] });
     },
@@ -89,6 +94,10 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
   const [draft, setDraft] = useState(policy);
   const mutation = useMutation({
     mutationFn: () => api.updateUploadPolicy(policy.id, policyUpdate(draft)),
+    onError: () =>
+      toast.error("Save failed", {
+        description: "The upload policy could not be saved.",
+      }),
     onSuccess: ({ data }) => {
       setDraft(data);
       void queryClient.invalidateQueries({ queryKey: ["upload-policies"] });

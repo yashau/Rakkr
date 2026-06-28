@@ -135,6 +135,11 @@ export function RecordingsPage() {
   });
   const stopMutation = useMutation({
     mutationFn: api.stopRecording,
+    onError: () =>
+      setNotice({
+        detail: "The selected recording could not be stopped.",
+        title: "Stop failed",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["health-events"] });
       queryClient.invalidateQueries({ queryKey: ["recording-jobs"] });
