@@ -164,8 +164,11 @@ def ansible_command(inventory, action, target, options, config):
         "rakkr_rollout_serial": os.environ.get("RAKKR_ANSIBLE_ROLLOUT_SERIAL", "1"),
     }
     optional_vars = {
+        "rakkr_agent_repo": os.environ.get("RAKKR_ANSIBLE_AGENT_REPO"),
+        "rakkr_agent_source": os.environ.get("RAKKR_ANSIBLE_AGENT_SOURCE"),
         "rakkr_agent_version": options.get("agentVersion"),
         "rakkr_controller_ca_src": os.environ.get("RAKKR_ANSIBLE_CONTROLLER_CA_SRC"),
+        "rakkr_github_token": os.environ.get("RAKKR_ANSIBLE_GITHUB_TOKEN"),
         "rakkr_node_smoke_command": config_value(config, "smokeCommand")
         or os.environ.get("RAKKR_ANSIBLE_SMOKE_COMMAND"),
     }

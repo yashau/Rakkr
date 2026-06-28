@@ -1,0 +1,86 @@
+name: Release recorder agent
+
+on:
+  push:
+    tags: ["agent-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (YYYY.MM.DD-N)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-agent
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Resolve agent version and tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ github.event.inputs.version }}"
+            tag="agent-v${version}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#agent-v}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: jdx/mise-action@v4.2.0
+        with:
+          cache: true
+          install: true
+
+      - name: Install cross-compilation tooling
+        run: |
+          python3 -m pip install --user --break-system-packages \
+            "cargo-zigbuild==0.23.0" "ziglang>=0.14,<0.15"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          mise x rust@1.96.0 -- rustup target add \
+            x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+
+      - name: Build static binaries
+        env:
+          RAKKR_AGENT_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            mise x rust@1.96.0 -- cargo zigbuild \
+              --release --locked -p rakkr-recorder-agent --target "$target"
+          done
+
+      - name: Package binaries
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            stage="rakkr-recorder-agent-${version}-${target}"
+            mkdir -p "dist/${stage}"
+            cp "target/${target}/release/rakkr-recorder-agent" \
+              "dist/${stage}/rakkr-recorder-agent"
+            tar -C dist -czf "dist/${stage}.tar.gz" "${stage}"
+            (cd dist && sha256sum "${stage}.tar.gz" > "${stage}.tar.gz.sha256")
+            rm -rf "dist/${stage}"
+          done
+
+      - name: Publish release
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          tag="${{ steps.version.outputs.tag }}"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Recorder agent $version" \
+            --notes "Static musl \`rakkr-recorder-agent\` binaries (x86_64 and aarch64) for version \`$version\`." \
+            dist/*.tar.gz dist/*.tar.gz.sha256

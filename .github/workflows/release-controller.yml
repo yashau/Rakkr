@@ -1,0 +1,58 @@
+name: Release controller
+
+on:
+  push:
+    tags: ["controller-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (YYYY.MM.DD-N)"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-controller
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Resolve controller version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#controller-v}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push controller images
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          repo="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          for app in api web; do
+            case "$app" in
+              api) build_arg="RAKKR_API_VERSION=${version}" ;;
+              web) build_arg="RAKKR_WEB_VERSION=${version}" ;;
+            esac
+            image="ghcr.io/${repo}-${app}"
+            docker build \
+              --file "Dockerfile.${app}" \
+              --build-arg "${build_arg}" \
+              --tag "${image}:${version}" \
+              --tag "${image}:latest" \
+              .
+            docker push "${image}:${version}"
+            docker push "${image}:latest"
+          done

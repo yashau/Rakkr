@@ -55,6 +55,7 @@ depends = [
   "node:test",
   "node:lint",
   "node:format-check",
+  "docs:lint",
   "agent:fake-controller-smoke",
   "rust:check",
   "rust:fmt-check",
@@ -177,6 +178,10 @@ run = "pnpm --filter @rakkr/db db:migrate"
 description = "Replay Drizzle migrations against a fresh throwaway Postgres database"
 run = "pnpm --filter @rakkr/db db:verify"
 
+[tasks.release]
+description = "Cut a release by pushing a <component>-v<YYYY.MM.DD-N> tag (agent|docs|controller)"
+run = "node scripts/release.mjs"
+
 [tasks."agent:loopback-smoke"]
 description = "Exercise a Linux ALSA snd-aloop fake capture device"
 run = "bash scripts/alsa-loopback-smoke.sh"
@@ -298,3 +303,29 @@ run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 depends = ["rust:components"]
 description = "Run Miri tests with a mise-provided nightly Rust toolchain"
 run = "mise x rust@nightly-2026-06-25 -- cargo miri test --workspace"
+
+[tasks."docs:lint"]
+description = "Lint the documentation site with ESLint and eslint-plugin-astro"
+run = "pnpm --filter @rakkr/docs lint"
+
+[tasks."docs:dev"]
+description = "Run the Starlight documentation site"
+run = "pnpm --filter @rakkr/docs dev"
+
+[tasks."docs:build"]
+description = "Build the Starlight documentation site"
+run = "pnpm --filter @rakkr/docs build"
+
+[tasks."docs:preview"]
+description = "Preview the built Starlight documentation site"
+run = "pnpm --filter @rakkr/docs preview"
+
+[tasks."docs:cf-dev"]
+depends = ["docs:build"]
+description = "Serve the documentation site locally through the Cloudflare Worker (wrangler dev)"
+run = "pnpm --filter @rakkr/docs cf-dev"
+
+[tasks."docs:deploy"]
+depends = ["docs:build"]
+description = "Deploy the documentation site to Cloudflare Workers (wrangler deploy)"
+run = "pnpm --filter @rakkr/docs deploy"

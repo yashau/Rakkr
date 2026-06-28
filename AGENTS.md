@@ -362,6 +362,12 @@ available.
   controller sync, jobs, health, cache, inventory, command templates, or capture
   behavior.
 - Use Miri-compatible patterns where existing tests rely on Miri.
+- The agent release version is calendar `YYYY.MM.DD-N`, stamped at build time from
+  the release tag: the release workflow sets `RAKKR_AGENT_VERSION` and
+  `src/version.rs` embeds it via `option_env!` (unstamped dev/CI builds report
+  `0.0.0-dev`). It is surfaced through `--version` and inventory `agent_version`.
+  Keep `Cargo.toml`'s SemVer `version` separate (calendar versions are not valid
+  Cargo SemVer). See `docs/operations/releases.md` for the tag-driven flow.
 
 ## Baseline Documentation
 
@@ -402,9 +408,26 @@ and evidence support the promotion.
 - Keep lifecycle credentials out of node metadata. Use runner environment such
   as `RAKKR_ANSIBLE_TARGETS`, `RAKKR_ANSIBLE_SSH_DIR`, and mounted key paths
   for per-node SSH settings.
+- `update_binary` pulls recorder-agent binaries from GitHub releases by default
+  (static musl `x86_64`/`aarch64`, checksum-verified) via
+  `deploy/ansible/roles/recorder_node/tasks/update_binary.yml`. `agentVersion`
+  pins a full release tag (`agent-v<YYYY.MM.DD-N>`); `RAKKR_ANSIBLE_AGENT_SOURCE=local`
+  with `RAKKR_ANSIBLE_BINARY_SRC` is the offline fallback (the Compose smoke uses it).
 - `deploy/nginx/default.conf.template` handles web/API proxying for the web
   container.
 - `deploy/helm/rakkr-controller` contains Kubernetes resources.
+- Releases are tag-driven: pushing a `<component>-v<YYYY.MM.DD-N>` tag triggers that
+  component's release workflow; merging to `main` only runs checks. Cut a release
+  with `mise run release <agent|docs|controller>`, which computes the next same-day
+  counter and pushes the tag. See `docs/operations/releases.md`.
+- `.github/workflows/release-agent.yml` builds and publishes recorder-agent release
+  binaries (static musl `x86_64` + `aarch64` via `cargo-zigbuild`) on an
+  `agent-v<YYYY.MM.DD-N>` tag.
+- `.github/workflows/release-docs.yml` deploys `apps/docs` to Cloudflare Workers
+  (served at `docs.rakkr.org`) on a `docs-v*` tag (needs `CLOUDFLARE_API_TOKEN` +
+  `CLOUDFLARE_ACCOUNT_ID` secrets).
+- `.github/workflows/release-controller.yml` builds and pushes versioned
+  `ghcr.io/<repo>-api` and `-web` images on a `controller-v*` tag.
 - Read `docs/operations/deployment.md` before changing image, Compose, Helm, or
   migration startup behavior.
 

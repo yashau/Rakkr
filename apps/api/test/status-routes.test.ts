@@ -123,6 +123,37 @@ test("status embedded settings summaries honor resource-scope denies", async () 
   assert.equal(event?.details.watchdogPolicyAvailable, true);
 });
 
+test("healthz reports service identity and version", async () => {
+  const app = new Hono<AppBindings>();
+
+  registerStatusRoutes({
+    app,
+    currentUser: () => user(["node:read"]),
+    hasResourceScope: async () => true,
+    healthEventStore: createHealthEventStore("", []),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    requirePermission: allowPermission,
+    scopedNodes: async () => [],
+    scopedRecordings: async () => [],
+    settingsStore: emptySettingsStore,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/healthz");
+  const body = (await response.json()) as {
+    ok: boolean;
+    service: string;
+    startedAt: string;
+    version: string;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.service, "rakkr-api");
+  assert.equal(body.startedAt, "2026-06-18T12:00:00.000Z");
+  assert.equal(body.version, "0.0.0-dev");
+});
+
 const allowPermission: RequirePermission = () => async (_c, next) => {
   await next();
 };

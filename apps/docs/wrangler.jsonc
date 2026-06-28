@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rakkr-docs",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-06-01",
+  // Served at docs.rakkr.org. `custom_domain` provisions the DNS record and
+  // certificate on deploy; the `rakkr.org` zone must be in the same Cloudflare
+  // account as the Worker.
+  "routes": [{ "pattern": "docs.rakkr.org", "custom_domain": true }],
+  // Astro builds the Starlight site to `dist/` as static assets. Cloudflare serves
+  // a matching asset directly; only non-asset requests (e.g. `/version.json`) reach
+  // the Worker, which can then fall back to the assets via the ASSETS binding.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+  },
+  // Overridden at deploy time with the release version: `wrangler deploy --var
+  // RAKKR_DOCS_VERSION:<YYYY.MM.DD-N> --var RAKKR_DOCS_COMMIT:<sha>`.
+  "vars": {
+    "RAKKR_DOCS_VERSION": "0.0.0-dev",
+    "RAKKR_DOCS_COMMIT": "local",
+  },
+  "observability": {
+    "enabled": true,
+  },
+}

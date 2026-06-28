@@ -53,13 +53,7 @@
   when: rakkr_lifecycle_action in ["install_dependencies", "update_binary", "rotate_trust"]
 
 - name: Deploy recorder-agent binary
-  ansible.builtin.copy:
-    dest: "{{ rakkr_agent_install_dir }}/rakkr-recorder-agent"
-    group: "{{ rakkr_agent_group }}"
-    mode: "0755"
-    owner: "{{ rakkr_agent_user }}"
-    src: "{{ rakkr_agent_binary_src }}"
-  notify: Restart recorder agent
+  ansible.builtin.include_tasks: update_binary.yml
   when: rakkr_lifecycle_action == "update_binary"
 
 - name: Deploy recorder-agent environment

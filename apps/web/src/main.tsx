@@ -69,6 +69,10 @@ import "./styles.css";
 
 const queryClient = new QueryClient();
 
+// Stamped from the controller release tag at image build time (see Dockerfile.web
+// ARG RAKKR_WEB_VERSION); dev builds report the sentinel.
+const webVersion = import.meta.env.VITE_RAKKR_WEB_VERSION ?? "0.0.0-dev";
+
 const navIcons: Record<RootNavItem["id"], typeof Gauge> = {
   access: Users,
   audit: ShieldCheck,
@@ -165,6 +169,10 @@ function RootLayout() {
         </div>
 
         <NavLinks navItems={navItems} />
+
+        <div className="absolute inset-x-4 bottom-5 text-xs text-muted-foreground">
+          v{webVersion}
+        </div>
       </aside>
 
       <div className="lg:pl-64">

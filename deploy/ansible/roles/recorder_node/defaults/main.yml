@@ -1,4 +1,23 @@
 ---
+# Binary source: "release" pulls a published GitHub release (default); "local"
+# copies an already-staged artifact from rakkr_agent_binary_src (offline/smoke).
+rakkr_agent_source: release
+rakkr_agent_repo: yashau/Rakkr
+# "latest" resolves the newest GitHub release; otherwise pin a full release tag
+# such as agent-v2026.06.28-1.
+rakkr_agent_version: latest
+rakkr_github_api_url: https://api.github.com
+rakkr_github_token: ""
+rakkr_github_headers: "{{ {'Authorization': 'Bearer ' + rakkr_github_token} if (rakkr_github_token | length > 0) else {} }}"
+rakkr_agent_download_dir: /var/lib/rakkr/agent/artifacts
+rakkr_agent_target_map:
+  aarch64: aarch64-unknown-linux-musl
+  x86_64: x86_64-unknown-linux-musl
+# Release tags are component-prefixed (agent-v<YYYY.MM.DD-N>) but the published
+# asset filenames use the bare calendar version, so strip the prefix for them.
+rakkr_agent_clean_version: "{{ rakkr_agent_resolved_version | regex_replace('^agent-v', '') }}"
+rakkr_agent_archive_name: "rakkr-recorder-agent-{{ rakkr_agent_clean_version }}-{{ rakkr_agent_target }}.tar.gz"
+rakkr_agent_release_asset_base: "https://github.com/{{ rakkr_agent_repo }}/releases/download/{{ rakkr_agent_resolved_version }}"
 rakkr_agent_binary_src: /opt/rakkr-artifacts/rakkr-recorder-agent
 rakkr_agent_env_file: /etc/rakkr/recorder-agent.env
 rakkr_agent_service_enabled: true

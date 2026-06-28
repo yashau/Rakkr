@@ -21,6 +21,7 @@ mod recording_job_upload;
 mod state;
 mod system_health;
 mod telemetry;
+mod version;
 
 use std::time::Duration;
 

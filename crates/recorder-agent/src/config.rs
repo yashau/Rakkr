@@ -49,7 +49,7 @@ pub enum AgentHealthLogStore {
 }
 
 #[derive(Clone, Debug, Parser)]
-#[command(author, version, about = "Rakkr recorder node agent")]
+#[command(author, version = crate::version::AGENT_VERSION, about = "Rakkr recorder node agent")]
 pub struct AgentConfig {
     #[arg(
         long,

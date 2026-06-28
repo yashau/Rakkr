@@ -56,6 +56,26 @@ docker compose up -d --build ansible-runner
 The runner copies the mounted private key into a per-run temp directory with
 `0600` permissions before invoking Ansible.
 
+## Binary Deployment
+
+`update_binary` deploys the recorder-agent from a published GitHub release by
+default. The target node downloads the static musl artifact for its
+architecture (`x86_64`/`aarch64`), verifies it against the release `.sha256`,
+unpacks it, and installs it as `/opt/rakkr/bin/rakkr-recorder-agent`.
+
+| Variable                       | Purpose                                                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| `RAKKR_ANSIBLE_AGENT_SOURCE`   | `release` (default) pulls a GitHub release; `local` copies a staged file (offline/smoke).  |
+| `RAKKR_ANSIBLE_AGENT_REPO`     | `owner/repo` to pull releases from (defaults to `yashau/Rakkr`).                            |
+| `RAKKR_ANSIBLE_GITHUB_TOKEN`   | Optional token for private repos or higher GitHub API rate limits.                          |
+| `RAKKR_ANSIBLE_BINARY_SRC`     | Staged artifact path used only when the source is `local`.                                  |
+
+The version is chosen per run: the controller/runner forwards `agentVersion` as
+`rakkr_agent_version` (a full release tag such as `agent-v2026.06.28-1`) when set;
+otherwise the role resolves the newest release via the GitHub API. Release binaries
+are produced by the `Release recorder agent` workflow
+(`.github/workflows/release-agent.yml`), triggered by pushing an `agent-v…` tag.
+
 ## Smokes
 
 Start the optional compose services:
@@ -64,10 +84,20 @@ Start the optional compose services:
 docker compose up -d --build ansible-runner controller-api
 ```
 
-Run the local SSH harness smoke. This deploys the disposable recorder-agent
-artifact into `recorder-test-rig`, then runs `smoke_check` against it:
+Run the local SSH harness smoke. The compose runner defaults
+`RAKKR_ANSIBLE_AGENT_SOURCE=local`, so this deploys the disposable baked
+artifact into `recorder-test-rig` (no network), then runs `smoke_check`:
 
 ```powershell
+mise run ansible:runner-smoke
+```
+
+To exercise the real GitHub-release path end to end, start the runner with the
+release source (the test rig then downloads the published static musl binary):
+
+```powershell
+$env:RAKKR_ANSIBLE_AGENT_SOURCE = "release"
+docker compose up -d --build ansible-runner recorder-test-rig
 mise run ansible:runner-smoke
 ```
 
@@ -80,5 +110,9 @@ docker compose up -d --build ansible-runner
 mise run ansible:x32-smoke
 ```
 
-Do not run `update_binary` against the physical rig until
-`RAKKR_ANSIBLE_BINARY_SRC` points at the intended Linux recorder-agent artifact.
+By default `update_binary` pulls the latest published release, so the physical
+rig needs outbound access to GitHub. To deploy a specific build, forward
+`agentVersion` (a full release tag such as `agent-v2026.06.28-1`) from the
+console/controller. For
+air-gapped rigs, set `RAKKR_ANSIBLE_AGENT_SOURCE=local` and point
+`RAKKR_ANSIBLE_BINARY_SRC` at a staged Linux recorder-agent artifact.
