@@ -100,16 +100,21 @@ and `deploy/ansible/README.md`.
 
 ### Recorder-agent release binaries
 
-The recorder-agent artifacts deployed by the lifecycle runner come from the
-`Release recorder agent` workflow (`.github/workflows/release-agent.yml`). The
-agent is versioned `YYYY.MM.DD-N` from `crates/recorder-agent/VERSION`; bumping
-that file and merging to `main` builds static musl binaries for
-`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` and publishes a
-GitHub release tagged with the version. Download the `.tar.gz` for the node's
-architecture, verify it against the published `.sha256`, and point
-`RAKKR_ANSIBLE_BINARY_SRC` at the extracted `rakkr-recorder-agent` binary. The
-static musl build runs on Debian and RedHat nodes without a glibc version
-dependency. See the [recorder-agent README](https://github.com/yashau/Rakkr/blob/main/crates/recorder-agent/README.md)
+The recorder-agent is versioned `YYYY.MM.DD-N` from
+`crates/recorder-agent/VERSION`; bumping that file and merging to `main` runs the
+`Release recorder agent` workflow (`.github/workflows/release-agent.yml`), which
+builds static musl binaries for `x86_64-unknown-linux-musl` and
+`aarch64-unknown-linux-musl` and publishes a GitHub release tagged with the
+version (each with a `.sha256`). The static musl build runs on Debian and RedHat
+nodes without a glibc version dependency.
+
+The Ansible `update_binary` action pulls these releases automatically: the target
+node downloads the artifact for its architecture, verifies the checksum, and
+installs it. It defaults to the newest release; forward `agentVersion` to pin a
+specific tag. Set `RAKKR_ANSIBLE_AGENT_SOURCE=local` with
+`RAKKR_ANSIBLE_BINARY_SRC` only for air-gapped or offline staging. See
+[Node lifecycle](../guides/node-lifecycle.md) and the
+[recorder-agent README](https://github.com/yashau/Rakkr/blob/main/crates/recorder-agent/README.md)
 for the bump-and-release flow.
 
 ## Helm (Kubernetes)
