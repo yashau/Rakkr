@@ -45,6 +45,7 @@ import {
   downloadBlob,
   emptyRecordingFilterDraft,
   filtersFromDraft,
+  availableRecordingRenditions,
   groupHealthEventsByRecording,
   groupUploadItemsByRecording,
   isCachedRecording,
@@ -58,6 +59,7 @@ import {
   type RecordingFilterDraft,
   type RecordingFilterKey,
   type RecordingPlaybackPreview,
+  type RecordingRendition,
   recordingPageSizes,
   recordingSortOptions,
   recordingSortOrders,
@@ -147,12 +149,19 @@ export function RecordingsPage() {
     },
   });
   const playbackMutation = useMutation({
-    mutationFn: async (recordingId: string) => {
+    mutationFn: async ({
+      recordingId,
+      rendition,
+    }: {
+      recordingId: string;
+      rendition?: RecordingRendition;
+    }) => {
       const playback = await api.startPlayback(recordingId);
-      const stream = await api.recordingStream(recordingId);
+      const stream = await api.recordingStream(recordingId, rendition);
 
       return {
         playback: playback.data,
+        rendition: rendition ?? ("enhanced" as RecordingRendition),
         stream,
       };
     },
@@ -163,7 +172,12 @@ export function RecordingsPage() {
       }),
     onSuccess: (response) => {
       const url = URL.createObjectURL(response.stream.blob);
-      const preview = playbackPreviewFromSession(response.playback, response.stream, url);
+      const preview = playbackPreviewFromSession(
+        response.playback,
+        response.stream,
+        url,
+        response.rendition,
+      );
 
       setAudioPreview((current) => {
         const next = replacePlaybackPreview(current, preview);
@@ -532,7 +546,16 @@ export function RecordingsPage() {
       ) : null}
 
       {audioPreview ? (
-        <RecordingPlaybackDock onClose={closeAudioPreview} preview={audioPreview} />
+        <RecordingPlaybackDock
+          availableRenditions={availableRecordingRenditions(
+            recordings.find((recording) => recording.id === audioPreview.recordingId),
+          )}
+          onClose={closeAudioPreview}
+          onSelectRendition={(rendition) =>
+            playbackMutation.mutate({ recordingId: audioPreview.recordingId, rendition })
+          }
+          preview={audioPreview}
+        />
       ) : null}
 
       {!pagePermissions.canReadRecordings ? (
@@ -961,7 +984,7 @@ export function RecordingsPage() {
                 key={recording.id}
                 onDelete={() => deleteRecordingMutation.mutate(recording.id)}
                 onDownload={() => downloadMutation.mutate(recording.id)}
-                onPlayback={() => playbackMutation.mutate(recording.id)}
+                onPlayback={() => playbackMutation.mutate({ recordingId: recording.id })}
                 onQueueUpload={(uploadPolicyId) =>
                   enqueueUploadMutation.mutate({ recordingId: recording.id, uploadPolicyId })
                 }

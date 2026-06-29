@@ -52,10 +52,13 @@ export interface ActiveRecordingFilterChip {
   value: string;
 }
 
+export type RecordingRendition = "enhanced" | "raw";
+
 export interface RecordingPlaybackPreview {
   fileName: string;
   objectUrl: string;
   recordingId: string;
+  rendition: RecordingRendition;
   sessionId: string;
   startedAt: string;
 }
@@ -241,14 +244,28 @@ export function playbackPreviewFromSession(
   session: RecordingPlaybackSession,
   file: RecordingFileBlob,
   objectUrl: string,
+  rendition: RecordingRendition = "enhanced",
 ): RecordingPlaybackPreview {
   return {
     fileName: file.fileName,
     objectUrl,
     recordingId: session.recordingId,
+    rendition,
     sessionId: session.sessionId,
     startedAt: session.startedAt,
   };
+}
+
+// Which renditions a recording can offer in the player: a raw master alongside
+// the enhanced default is available only when rawCachePath is set.
+export function availableRecordingRenditions(
+  recording: Pick<RecordingSummary, "enhancedCachePath" | "rawCachePath"> | undefined,
+): RecordingRendition[] {
+  if (recording?.rawCachePath) {
+    return ["enhanced", "raw"];
+  }
+
+  return [];
 }
 
 export function replacePlaybackPreview(

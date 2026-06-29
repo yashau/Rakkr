@@ -831,7 +831,10 @@ export const api = {
       method: "POST",
     }),
   recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),
-  recordingStream: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/stream`),
+  recordingStream: (recordingId: string, rendition?: "enhanced" | "raw") =>
+    fetchBlob(
+      `/api/v1/recordings/${recordingId}/stream${rendition ? `?rendition=${rendition}` : ""}`,
+    ),
   runScheduleNow: (scheduleId: string) =>
     fetchJson<{ data: RecordingSummary; job: RecordingJob }>(
       `/api/v1/schedules/${scheduleId}/run-now`,
