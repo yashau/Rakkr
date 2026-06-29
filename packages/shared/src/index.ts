@@ -711,6 +711,7 @@ export const recordingJobSchema = z.object({
     captureSampleRate: z.number().int().positive(),
     channelMap: recordingJobChannelMapSchema.optional(),
     durationSeconds: z.number().int().positive(),
+    enhancement: recordingEnhancementSchema.optional(),
     outputBitrateKbps: z.number().int().positive().optional(),
     outputCodec: z.enum(["mp3", "flac", "wav"]).optional(),
     outputFileName: z.string().min(1),

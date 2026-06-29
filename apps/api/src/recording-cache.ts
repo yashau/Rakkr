@@ -27,6 +27,10 @@ export interface StoreRecordingFileInput {
   mimeType?: string | null;
 }
 
+// Which rendition of a recording to store or serve. The default-playback file is
+// `cachePath`; `raw`/`enhanced` resolve the dedicated columns when both exist.
+export type RecordingRendition = "raw" | "enhanced";
+
 const cacheRoot = path.resolve(process.env.RAKKR_RECORDING_CACHE_DIR ?? "data/recordings");
 const decodedPreviewMaxBytes = positiveInteger(
   process.env.RAKKR_AUDIO_PREVIEW_MAX_BYTES,
@@ -41,16 +45,25 @@ export function recordingHasCachedFile(recording: RecordingSummary) {
   );
 }
 
-export async function loadRecordingFile(recording: RecordingSummary): Promise<CachedRecordingFile> {
-  const filePath = resolvedCachePath(recording);
+export async function loadRecordingFile(
+  recording: RecordingSummary,
+  rendition?: RecordingRendition,
+): Promise<CachedRecordingFile> {
+  const filePath = resolvedCachePath(recording, rendition);
   const bytes = await readCachedFile(filePath);
 
   return {
     bytes,
-    fileName: recordingFileName(recording),
+    fileName: recordingFileName(recording, filePath),
     mimeType: mimeTypeFor(filePath),
     size: bytes.byteLength,
   };
+}
+
+// Whether a recording has a distinct file for the given rendition (used to decide
+// when to show a raw/enhanced toggle).
+export function recordingHasRendition(recording: RecordingSummary, rendition: RecordingRendition) {
+  return Boolean(rendition === "raw" ? recording.rawCachePath : recording.enhancedCachePath);
 }
 
 export async function recordingCacheFileSize(recording: RecordingSummary) {
@@ -87,8 +100,9 @@ export async function deleteRecordingCacheFile(recording: RecordingSummary) {
 export async function storeRecordingFile(
   recording: RecordingSummary,
   input: StoreRecordingFileInput,
+  rendition?: RecordingRendition,
 ): Promise<StoredRecordingFile> {
-  const cachePath = cachePathFor(recording, input);
+  const cachePath = cachePathFor(recording, input, rendition);
   const filePath = resolvedCachePathFromRelative(cachePath);
 
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -106,19 +120,33 @@ export async function storeRecordingFile(
   };
 }
 
-export function recordingFileName(recording: RecordingSummary) {
+export function recordingFileName(recording: RecordingSummary, sourcePath?: string) {
   const cleanedName = recording.name.replace(/[^\w .-]/g, "_").trim();
-  const extension = path.extname(recording.cachePath ?? "") || ".mp3";
+  const extension = path.extname(sourcePath ?? recording.cachePath ?? "") || ".mp3";
 
   return `${cleanedName || recording.id}${extension}`;
 }
 
-function resolvedCachePath(recording: RecordingSummary) {
-  if (!recordingHasCachedFile(recording) || !recording.cachePath) {
+function renditionRelativePath(recording: RecordingSummary, rendition?: RecordingRendition) {
+  if (rendition === "raw") {
+    return recording.rawCachePath ?? recording.cachePath;
+  }
+
+  if (rendition === "enhanced") {
+    return recording.enhancedCachePath ?? recording.cachePath;
+  }
+
+  return recording.cachePath;
+}
+
+function resolvedCachePath(recording: RecordingSummary, rendition?: RecordingRendition) {
+  const relative = renditionRelativePath(recording, rendition);
+
+  if (!recordingHasCachedFile(recording) || !relative) {
     throw new Error("recording_not_cached");
   }
 
-  return resolvedCachePathFromRelative(recording.cachePath);
+  return resolvedCachePathFromRelative(relative);
 }
 
 function resolvedCachePathFromRelative(cachePath: string) {
@@ -145,11 +173,18 @@ async function readCachedFile(filePath: string) {
   }
 }
 
-function cachePathFor(recording: RecordingSummary, input: StoreRecordingFileInput) {
+function cachePathFor(
+  recording: RecordingSummary,
+  input: StoreRecordingFileInput,
+  rendition?: RecordingRendition,
+) {
   const folder = recording.source === "schedule" ? "scheduled" : "ad-hoc";
   const extension = extensionFor(input.fileName, input.mimeType);
+  // The raw rendition gets a distinct name so it never collides with the
+  // default/enhanced file for the same recording id.
+  const suffix = rendition === "raw" ? ".raw" : "";
 
-  return path.posix.join(folder, `${recording.id}${extension}`);
+  return path.posix.join(folder, `${recording.id}${suffix}${extension}`);
 }
 
 function extensionFor(fileName?: string | null, mimeType?: string | null) {
