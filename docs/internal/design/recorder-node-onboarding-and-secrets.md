@@ -129,7 +129,7 @@ the `update_binary` lifecycle) and is invoked by the first-boot one-shot.
 1. **One-liner installer (`curl … | sh`), published at `rakkr.org`** — the
    primary, familiar UX:
    ```bash
-   curl -fsSL https://rakkr.org/bootstrap.sh | sudo sh -s -- \
+   curl -fsSL https://rakkr.org/agent.sh | sudo sh -s -- \
      --controller-url https://10.0.0.10:8787 \
      --bootstrap-token rakkr_bs_3kJ9… \
      [--version agent-vYYYY.MM.DD-N] [--allow-insecure]
@@ -144,8 +144,8 @@ the `update_binary` lifecycle) and is invoked by the first-boot one-shot.
 2. **Autoinstall / cloud-init** — the same one-liner dropped into provisioning
    user-data (`runcmd`) for unattended first boot.
 
-The script lives in the repo (e.g. `deploy/bootstrap/bootstrap.sh`) and is
-published to `rakkr.org/bootstrap.sh`.
+The script lives in the repo (e.g. `deploy/bootstrap/agent.sh`) and is
+published to `rakkr.org/agent.sh`.
 
 ### 3.3 Credential lifecycle
 
@@ -226,7 +226,7 @@ published to `rakkr.org/bootstrap.sh`.
   runner/role config-threading. Migrate the existing rig (`node_x32_test`) from
   the temporary manual token to a managed credential.
 - **Phase 2 — Day-0 bootstrap.** Bootstrap tokens + bootstrap endpoint +
-  `--bootstrap` agent mode + the `rakkr.org/bootstrap.sh` installer and
+  `--bootstrap` agent mode + the `rakkr.org/agent.sh` installer and
   autoinstall / cloud-init templates.
 - **Phase 3 — k8s secrets.** secretKeyRef everywhere + `existingSecret` for all,
   remove plaintext defaults, add ESO/Sealed-Secrets support, de-secret `TARGETS`.
