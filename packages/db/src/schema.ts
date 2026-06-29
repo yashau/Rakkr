@@ -395,11 +395,17 @@ export const templateAssignments = pgTable(
 );
 
 export const uploadProviders = pgTable("upload_providers", {
-  credentialRef: text("credential_ref"),
+  // Non-secret typed connection config (smb/s3 fields).
+  config: jsonb("config")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   displayName: varchar("display_name", { length: 160 }).notNull(),
   enabled: boolean("enabled").notNull().default(false),
   provider: varchar("provider", { length: 32 }).primaryKey(),
-  target: text("target"),
+  // Encrypted secret material (smbPassword, s3SecretAccessKey).
+  secrets: jsonb("secrets")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

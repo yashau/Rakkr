@@ -67,7 +67,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked scheduled and agent low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, deterministic agent meter-health quality evidence/fault scores, policy-tuned broadband quality alerts, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, node health lifecycle controls, controller-synced audio-backend unavailable/recovery details, generic meter capture-failed fallback, system disk/CPU pressure/recovery, node heartbeat/config/meter-frame/monitor chunk sync failure/recovery evidence, recording-job capture start/runtime/too-small/stall/render/upload evidence, recorder-cache cleanup/delete-failure/tracking sync, claim-next/status-poll/control-plane/channel-map failure and controller-terminal handoff, X32 hardware low-signal local/synced health, and PCH hardware flatline local/synced health; long-duration real-room validation remains |
-| Storage upload | ✅ | Stub/SMB/S3 providers, policies, auto-queue, audited runner, UI, metrics, checked baseline |
+| Storage upload | ✅ | Direct SMB/S3 providers (no mounts), UI-configured + encrypted secrets, policies, auto-queue, audited runner, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, certificate-rotation scaffold, optional/required mTLS listener config, checked baseline |
 | Observability | ✅ | Local JSONL/SQLite logs, central events, metrics, alerts, Mimir config, Grafana baseline |
@@ -534,7 +534,7 @@ Current implementation baseline:
 Current rule:
 
 - Local cache is the reliable source for now.
-- SMB/S3 execution is early but functional; cache retention only runs after confirmed upload.
+- Direct SMB and S3 execution from the controller (no mounts, no external binaries); cache retention only runs after confirmed upload.
 
 Current implementation baseline:
 
@@ -542,13 +542,13 @@ Current implementation baseline:
 - Failed upload retry queue for future SMB/S3 providers.
 - Queue entries are auditable, visible, retryable, and metric-exported.
 - Recording library can enqueue cached recordings individually or in bulk and retry failed queue items.
-- Upload providers expose enabled state, target, credential reference, readiness, and implementation status.
+- Upload providers expose enabled state, typed SMB/S3 connection config, encrypted write-only secrets, derived target, readiness, and implementation status.
 - Upload policy templates choose provider, target, trigger, and retry budget.
 - Schedules and recordings carry `uploadPolicyId` for provider selection.
 - Cache attach auto-queues recordings when enabled policy trigger is `on_recording_cached`.
 - Executor processes due queue items through provider readiness and retry budgets.
-- SMB copies cached files to mounted share targets; S3 sends cached files to `s3://` targets.
-- SMB verifies copied bytes with SHA-256; S3 uploads send `ChecksumSHA256`.
+- SMB writes cached files directly to the share over SMB 2.1/3.x (no mount); S3 sends cached files to the configured bucket and endpoint/region.
+- SMB reads back written bytes and verifies SHA-256; S3 uploads send `ChecksumSHA256`.
 - Controller upload runner executes due items on an interval and audits summary/item outcomes.
 - Controller API and Settings UI mirror upload runner status/read/run-now/action summaries to recording RBAC.
 - Upload provider and upload policy Settings UI reads/actions mirror `settings:read` and `settings:manage`.

@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import { recordingEnhancementSchema } from "./enhancement.js";
+import { s3ProviderConfigSchema, smbProviderConfigSchema } from "./upload-providers.js";
 export * from "./enhancement.js";
 export * from "./oidc.js";
 export * from "./pagination.js";
+export * from "./upload-providers.js";
 
 export const isoDateTimeSchema = z.string().min(1);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -731,27 +733,37 @@ export const uploadRunnerStatusSchema = z.object({
   started: z.boolean(),
 });
 export const uploadProviderConfigSchema = z.object({
-  credentialRef: z.string().trim().min(1).max(240).optional(),
   displayName: z.string().trim().min(1).max(160),
   enabled: z.boolean(),
   provider: uploadProviderSchema,
-  target: z.string().trim().min(1).max(500).optional(),
+  s3: s3ProviderConfigSchema.optional(),
+  smb: smbProviderConfigSchema.optional(),
   updatedAt: isoDateTimeSchema,
 });
-export const uploadProviderConfigUpdateSchema = uploadProviderConfigSchema
-  .omit({ provider: true, updatedAt: true })
-  .partial()
+// Secrets are not trimmed and may be cleared by passing an empty string.
+export const uploadProviderConfigUpdateSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(160).optional(),
+    enabled: z.boolean().optional(),
+    s3: s3ProviderConfigSchema.optional(),
+    s3SecretAccessKey: z.string().max(1024).optional(),
+    smb: smbProviderConfigSchema.optional(),
+    smbPassword: z.string().max(1024).optional(),
+  })
   .refine((value) => Object.keys(value).length > 0, "At least one provider field is required");
 export const uploadProviderRuntimeStatusSchema = z.object({
   configured: z.boolean(),
-  credentialRef: z.string().optional(),
   displayName: z.string(),
   enabled: z.boolean(),
+  hasS3SecretAccessKey: z.boolean(),
+  hasSmbPassword: z.boolean(),
   implemented: z.boolean(),
   missingFields: z.array(z.string()),
   provider: uploadProviderSchema,
   reason: z.string().optional(),
   requiredFields: z.array(z.string()),
+  s3: s3ProviderConfigSchema.optional(),
+  smb: smbProviderConfigSchema.optional(),
   status: uploadProviderStatusSchema,
   target: z.string().optional(),
   updatedAt: isoDateTimeSchema,

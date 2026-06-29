@@ -20,6 +20,7 @@
     "dotenv": "^17.4.2",
     "hono": "^4.12.27",
     "openid-client": "^6.8.4",
+    "smb3-client": "^0.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
