@@ -70,7 +70,7 @@ Conventions:
 | `POST /nodes/:id/credentials/rotate`                                            | `node:manage`    | Rotate node credential.              |
 | `GET /nodes/:id/lifecycle-jobs`                                                 | `node:read`      | List lifecycle runs.                 |
 | `POST /nodes/:id/lifecycle/:action`                                             | `node:manage`    | Run an allowlisted lifecycle action. |
-| `POST /nodes/:id/listen` · `GET /:id/listen/stream` · `DELETE /:id/listen/:sid` | `listen:monitor` | Start / stream / stop live listen.   |
+| `POST /nodes/:id/listen` · `GET /:id/listen/stream` · `DELETE /:id/listen/:sid` | `listen:monitor` | Start (`{enhance}`) / stream / stop live listen. |
 
 ## Agent service routes (node-credential)
 
@@ -80,7 +80,7 @@ Conventions:
 | `GET /nodes/:id/channel-map-assignments`          | `node:control`                       | Assigned channel maps.                    |
 | `POST /nodes/:id/heartbeat`                       | `node:control`                       | Node heartbeat.                           |
 | `POST /nodes/:id/meter-frame`                     | —                                    | Push a meter frame.                       |
-| `POST /nodes/:id/listen/chunk`                    | `node:control`                       | Ingest live-listen audio.                 |
+| `POST /nodes/:id/listen/chunk`                    | `node:control`                       | Ingest live-listen audio (`?rendition`).  |
 | `POST /nodes/:id/health-events`                   | `health:acknowledge`                 | Sync a health event.                      |
 | `POST /nodes/:id/recording-jobs/claim-next`       | `recording:control`                  | Claim the next queued job.                |
 | `POST /recording-jobs/:jid/heartbeat`             | `recording:control`                  | Job heartbeat.                            |

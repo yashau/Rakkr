@@ -63,6 +63,20 @@ GET /api/v1/recordings/:id/stream?rendition=raw    # raw master
 GET /api/v1/recordings/:id/stream?rendition=enhanced
 ```
 
+## Live listen: raw vs enhanced
+
+The live listen monitor has the same **Raw / Enhanced** toggle. Switching it
+restarts the monitor session with the chosen rendition; the controller serves the
+matching chunk and the recorder agent only spends CPU denoising the live stream
+**while a listener is actually requesting enhanced audio** (on-demand). When no one
+is listening enhanced, the agent produces only the raw monitor chunk.
+
+Because the agent learns of the request on its next controller config poll, enhanced
+live audio appears a few seconds after you flip the toggle; until the first enhanced
+chunk arrives the stream falls back to raw. Live enhancement always uses
+DeepFilterNet3 and needs no per-node configuration — it is driven entirely by the
+listener toggle.
+
 ## How it is produced
 
 For each recording the agent renders the raw rendition as before, then — when the

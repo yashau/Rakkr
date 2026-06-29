@@ -85,7 +85,9 @@ With the meters/listen permissions, operators get:
   while the node is idle.
 - **Listen monitor** (`listen:monitor`) — a privileged, server-session live
   listen-in that prefers fresh agent-provided audio chunks and falls back to a
-  controller meter-preview when chunks are stale.
+  controller meter-preview when chunks are stale. A **Raw / Enhanced** toggle
+  switches between the untouched stream and on-demand DeepFilterNet3 noise
+  suppression; see [Audio enhancement](/guides/audio-enhancement/).
 
 ## Node recording capacity
 

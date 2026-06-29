@@ -109,7 +109,10 @@ extra node packages. When a recording profile enables enhancement,
 `channel_map::render_enhanced_output` produces an enhanced rendition (ffmpeg downmix
 → in-process denoise → ffmpeg voice chain: high-pass, low-pass, de-esser,
 compressor, loudnorm, gate) and the agent uploads it alongside the preserved raw
-master. See [Audio enhancement](https://github.com/yashau/Rakkr/blob/main/docs/guides/audio-enhancement.md).
+master. The live-listen monitor reuses the same denoiser **on demand**: when the
+controller's node config reports a listener wants enhanced audio, the meter loop
+denoises the captured 48 kHz PCM and posts an extra `?rendition=enhanced` monitor
+chunk; otherwise only the raw chunk is sent. See [Audio enhancement](https://github.com/yashau/Rakkr/blob/main/docs/guides/audio-enhancement.md).
 
 ## 🔊 Backends
 
