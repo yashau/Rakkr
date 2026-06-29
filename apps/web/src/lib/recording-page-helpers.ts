@@ -163,6 +163,27 @@ export function transcriptSnippetsFromText(value: string) {
 export function transcriptSnippetsToText(snippets: string[] | undefined) {
   return snippets?.join("\n") ?? "";
 }
+
+export function tagsToText(tags: string[]) {
+  return tags.join(", ");
+}
+
+export function tagsFromText(value: string) {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+
+  for (const tag of value.split(",")) {
+    const trimmed = tag.trim();
+    const key = trimmed.toLocaleLowerCase();
+
+    if (trimmed && !seen.has(key)) {
+      seen.add(key);
+      tags.push(trimmed);
+    }
+  }
+
+  return tags;
+}
 export const recordingPageSizes = [10, 25, 50, 100];
 export const recordingCacheStateOptions: Array<{ label: string; value: RecordingCacheState }> = [
   { label: "Cached", value: "cached" },

@@ -1,5 +1,6 @@
 import {
   and,
+  count,
   createDatabase,
   desc,
   eq,
@@ -28,6 +29,7 @@ export interface HealthEventCreateInput {
 
 export interface HealthEventFilters {
   limit?: number;
+  offset?: number;
   nodeId?: string;
   openedFrom?: Date;
   openedTo?: Date;
@@ -60,9 +62,11 @@ export interface HealthEventUpdateInput {
 }
 
 export interface HealthEventStore {
+  count(filters?: HealthEventFilters): Promise<number>;
   create(input: HealthEventCreateInput): Promise<HealthEvent>;
   find(eventId: string): Promise<HealthEvent | undefined>;
   list(filters?: HealthEventFilters): Promise<HealthEvent[]>;
+  listAll(filters?: HealthEventFilters): Promise<HealthEvent[]>;
   update(eventId: string, update: HealthEventUpdateInput): Promise<HealthEvent | undefined>;
   updateLifecycle(
     eventId: string,
@@ -109,10 +113,25 @@ class MemoryHealthEventStore implements HealthEventStore {
   }
 
   async list(filters: HealthEventFilters = {}) {
+    return this.matching(filters).slice(offset(filters), offset(filters) + limit(filters));
+  }
+
+  async listAll(filters: HealthEventFilters = {}) {
+    return this.matching(filters);
+  }
+
+  async count(filters: HealthEventFilters = {}) {
+    return this.matching(filters).length;
+  }
+
+  // openedAt desc, id desc is a deterministic total order for offset pagination.
+  private matching(filters: HealthEventFilters) {
     return this.events
       .filter((event) => matchesHealthFilters(event, filters))
-      .sort((left, right) => Date.parse(right.openedAt) - Date.parse(left.openedAt))
-      .slice(0, limit(filters));
+      .sort(
+        (left, right) =>
+          Date.parse(right.openedAt) - Date.parse(left.openedAt) || right.id.localeCompare(left.id),
+      );
   }
 
   async updateLifecycle(eventId: string, update: HealthEventLifecycleUpdate) {
@@ -218,19 +237,71 @@ class PostgresHealthEventStore implements HealthEventStore {
               .select()
               .from(healthEventsTable)
               .where(and(...conditions))
-              .orderBy(desc(healthEventsTable.openedAt))
+              .orderBy(desc(healthEventsTable.openedAt), desc(healthEventsTable.id))
               .limit(limit(filters))
+              .offset(offset(filters))
           : await this.db
               .select()
               .from(healthEventsTable)
-              .orderBy(desc(healthEventsTable.openedAt))
-              .limit(limit(filters));
+              .orderBy(desc(healthEventsTable.openedAt), desc(healthEventsTable.id))
+              .limit(limit(filters))
+              .offset(offset(filters));
 
       return rows.map(healthEventFromRow);
     } catch (error) {
       this.dbAvailable = false;
       console.warn("health event query unavailable; using memory store", error);
       return this.fallback.list(filters);
+    }
+  }
+
+  async listAll(filters: HealthEventFilters = {}) {
+    if (!this.dbAvailable) {
+      return this.fallback.listAll(filters);
+    }
+
+    try {
+      const conditions = healthConditions(filters);
+      const rows =
+        conditions.length > 0
+          ? await this.db
+              .select()
+              .from(healthEventsTable)
+              .where(and(...conditions))
+              .orderBy(desc(healthEventsTable.openedAt), desc(healthEventsTable.id))
+          : await this.db
+              .select()
+              .from(healthEventsTable)
+              .orderBy(desc(healthEventsTable.openedAt), desc(healthEventsTable.id));
+
+      return rows.map(healthEventFromRow);
+    } catch (error) {
+      this.dbAvailable = false;
+      console.warn("health event query unavailable; using memory store", error);
+      return this.fallback.listAll(filters);
+    }
+  }
+
+  async count(filters: HealthEventFilters = {}) {
+    if (!this.dbAvailable) {
+      return this.fallback.count(filters);
+    }
+
+    try {
+      const conditions = healthConditions(filters);
+      const [row] =
+        conditions.length > 0
+          ? await this.db
+              .select({ value: count() })
+              .from(healthEventsTable)
+              .where(and(...conditions))
+          : await this.db.select({ value: count() }).from(healthEventsTable);
+
+      return row?.value ?? 0;
+    } catch (error) {
+      this.dbAvailable = false;
+      console.warn("health event count unavailable; using memory store", error);
+      return this.fallback.count(filters);
     }
   }
 
@@ -453,6 +524,10 @@ function healthEventStatus(value: string): HealthEventStatus {
 
 function limit(filters: HealthEventFilters) {
   return Math.min(Math.max(filters.limit ?? 100, 1), 500);
+}
+
+function offset(filters: HealthEventFilters) {
+  return Math.max(filters.offset ?? 0, 0);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

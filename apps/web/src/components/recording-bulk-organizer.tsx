@@ -1,12 +1,28 @@
-import { CheckSquare, Download, RotateCcw, Trash2, UploadCloud, X } from "lucide-react";
-import { useState } from "react";
+import { CheckSquare, Download, Pencil, Save, Trash2, UploadCloud, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 import type { UploadPolicy } from "@rakkr/shared";
 
 import { ConfirmButton } from "@/components/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -15,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { RecordingBulkMetadataUpdate } from "@/lib/api";
+import { tagsFromText } from "@/lib/recording-page-helpers";
 
 interface BulkDraft {
   addTags: string;
@@ -73,10 +90,8 @@ export function RecordingBulkOrganizer({
   uploadPolicies: UploadPolicy[];
   visibleCount: number;
 }) {
-  const [draft, setDraft] = useState(emptyBulkDraft);
+  const [organizeOpen, setOrganizeOpen] = useState(false);
   const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(uploadPolicies[0]?.id ?? "");
-  const input = bulkInputFromDraft(draft);
-  const applyDisabled = disabled || selectedCount === 0 || Object.keys(input).length === 0;
   const bulkDeleteDisabled = deleteDisabled || selectedCount === 0 || deleteEligibleCount === 0;
   const bulkExportDisabled = exportDisabled || selectedCount === 0;
   const bulkUploadDisabled = uploadDisabled || selectedCount === 0 || uploadEligibleCount === 0;
@@ -103,6 +118,17 @@ export function RecordingBulkOrganizer({
             <X className="size-4" />
             Clear
           </Button>
+          {canEdit ? (
+            <Button
+              disabled={disabled || selectedCount === 0}
+              onClick={() => setOrganizeOpen(true)}
+              type="button"
+              variant="outline"
+            >
+              <Pencil className="size-4" />
+              Organize metadata
+            </Button>
+          ) : null}
           {canExport ? (
             <Button
               disabled={bulkExportDisabled}
@@ -117,64 +143,16 @@ export function RecordingBulkOrganizer({
         </div>
       </div>
       {canEdit ? (
-        <form
-          className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"
-          onSubmit={(event) => {
-            event.preventDefault();
+        <BulkOrganizeDialog
+          disabled={disabled}
+          onApply={(input) => {
             onApply(input);
+            setOrganizeOpen(false);
           }}
-        >
-          <div className="grid gap-1.5">
-            <Label htmlFor="recording-bulk-folder">Folder</Label>
-            <Input
-              id="recording-bulk-folder"
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, folder: event.target.value }))
-              }
-              value={draft.folder}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="recording-bulk-add-tags">Add Tags</Label>
-            <Input
-              id="recording-bulk-add-tags"
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, addTags: event.target.value }))
-              }
-              value={draft.addTags}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="recording-bulk-remove-tags">Remove Tags</Label>
-            <Input
-              id="recording-bulk-remove-tags"
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, removeTags: event.target.value }))
-              }
-              value={draft.removeTags}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="recording-bulk-replace-tags">Replace Tags</Label>
-            <Input
-              id="recording-bulk-replace-tags"
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, replaceTags: event.target.value }))
-              }
-              value={draft.replaceTags}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2 md:col-span-2 xl:col-span-4">
-            <Button disabled={applyDisabled} type="submit">
-              <CheckSquare className="size-4" />
-              Apply
-            </Button>
-            <Button onClick={() => setDraft(emptyBulkDraft)} type="button" variant="outline">
-              <RotateCcw className="size-4" />
-              Reset
-            </Button>
-          </div>
-        </form>
+          onOpenChange={setOrganizeOpen}
+          open={organizeOpen}
+          selectedCount={selectedCount}
+        />
       ) : null}
       {canDelete ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -229,6 +207,119 @@ export function RecordingBulkOrganizer({
   );
 }
 
+function BulkOrganizeDialog({
+  disabled,
+  onApply,
+  onOpenChange,
+  open,
+  selectedCount,
+}: {
+  disabled: boolean;
+  onApply: (input: Omit<RecordingBulkMetadataUpdate, "recordingIds">) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  selectedCount: number;
+}) {
+  const form = useForm<BulkDraft>({ defaultValues: emptyBulkDraft });
+
+  // Reset the metadata draft each time the dialog opens so a stale folder or tag
+  // edit never carries over to a different selection.
+  useEffect(() => {
+    if (open) {
+      form.reset(emptyBulkDraft);
+    }
+  }, [form, open]);
+
+  const draft = form.watch();
+  const input = bulkInputFromDraft(draft);
+  const applyDisabled = disabled || selectedCount === 0 || Object.keys(input).length === 0;
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Organize Recordings</DialogTitle>
+          <DialogDescription>
+            Apply folder and tag changes to the {selectedCount} selected recording
+            {selectedCount === 1 ? "" : "s"}. Replace tags takes precedence over add/remove.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form
+            className="grid gap-4 md:grid-cols-2"
+            id="recording-bulk-form"
+            onSubmit={form.handleSubmit(() => onApply(input))}
+          >
+            <FormField
+              control={form.control}
+              name="folder"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Folder</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="addTags"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Add Tags</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="removeTags"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Remove Tags</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="replaceTags"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Replace Tags</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+            Cancel
+          </Button>
+          <Button disabled={applyDisabled} form="recording-bulk-form" type="submit">
+            <Save className="size-4" />
+            Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function bulkInputFromDraft(draft: BulkDraft): Omit<RecordingBulkMetadataUpdate, "recordingIds"> {
   const folder = textOrUndefined(draft.folder);
   const replaceTags = tagsFromText(draft.replaceTags);
@@ -245,23 +336,6 @@ function bulkInputFromDraft(draft: BulkDraft): Omit<RecordingBulkMetadataUpdate,
     folder,
     removeTags: tagsFromText(draft.removeTags),
   });
-}
-
-function tagsFromText(value: string) {
-  const seen = new Set<string>();
-  const tags: string[] = [];
-
-  for (const tag of value.split(",")) {
-    const trimmed = tag.trim();
-    const key = trimmed.toLocaleLowerCase();
-
-    if (trimmed && !seen.has(key)) {
-      seen.add(key);
-      tags.push(trimmed);
-    }
-  }
-
-  return tags;
 }
 
 function textOrUndefined(value: string) {

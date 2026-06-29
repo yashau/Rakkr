@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { type RecordingSummary, recordingStatusSchema } from "@rakkr/shared";
 
+import { paginate } from "./pagination.js";
+
 const optionalTextFilterSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() ? value : undefined),
   z.string().trim().max(240).optional(),
@@ -172,34 +174,7 @@ export function recordingFacets(recordings: RecordingSummary[]) {
 }
 
 export function paginateRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
-  const offset = filters.offset ?? 0;
-
-  if (!filters.limit) {
-    return {
-      data: recordings,
-      meta: {
-        hasNextPage: false,
-        hasPreviousPage: offset > 0,
-        offset,
-        returned: recordings.length,
-        total: recordings.length,
-      },
-    };
-  }
-
-  const data = recordings.slice(offset, offset + filters.limit);
-
-  return {
-    data,
-    meta: {
-      hasNextPage: offset + data.length < recordings.length,
-      hasPreviousPage: offset > 0,
-      limit: filters.limit,
-      offset,
-      returned: data.length,
-      total: recordings.length,
-    },
-  };
+  return paginate(recordings, { limit: filters.limit, offset: filters.offset });
 }
 
 const recordingExportHeaders = [

@@ -3,7 +3,9 @@ import type { AuditOutcome, CurrentUser, Permission } from "@rakkr/shared";
 import type { AuditEventFilters } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 
-export type AuditFilterKey = keyof AuditEventFilters;
+// Pagination (limit/offset) is owned by the data-table pagination control, not
+// the filter draft, so it is excluded from the filter key space.
+export type AuditFilterKey = Exclude<keyof AuditEventFilters, "limit" | "offset">;
 
 export interface ActiveAuditFilterChip {
   key: AuditFilterKey;
@@ -15,7 +17,6 @@ export interface AuditFilterDraft {
   action: string;
   actor: string;
   from: string;
-  limit: string;
   outcome: "" | AuditOutcome;
   permission: "" | Permission;
   reason: string;
@@ -27,7 +28,6 @@ export const emptyAuditFilterDraft: AuditFilterDraft = {
   action: "",
   actor: "",
   from: "",
-  limit: "",
   outcome: "",
   permission: "",
   reason: "",
@@ -49,7 +49,6 @@ export function auditFiltersFromDraft(draft: AuditFilterDraft): AuditEventFilter
     action: valueOrUndefined(draft.action),
     actor: valueOrUndefined(draft.actor),
     from: dateTimeOrUndefined(draft.from),
-    limit: positiveIntegerOrUndefined(draft.limit),
     outcome: draft.outcome || undefined,
     permission: draft.permission || undefined,
     reason: valueOrUndefined(draft.reason),
@@ -86,18 +85,12 @@ function dateTimeOrUndefined(value: string) {
   return value ? new Date(value).toISOString() : undefined;
 }
 
-function positiveIntegerOrUndefined(value: string) {
-  const limit = Number(value);
-
-  return Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : undefined;
-}
-
-function auditFilterValue(key: AuditFilterKey, value: number | string) {
+function auditFilterValue(key: AuditFilterKey, value: string) {
   if (key === "from" || key === "to") {
-    return formatDateTime(String(value));
+    return formatDateTime(value);
   }
 
-  return String(value);
+  return value;
 }
 
 const auditFilterOrder: AuditFilterKey[] = [
@@ -109,14 +102,12 @@ const auditFilterOrder: AuditFilterKey[] = [
   "outcome",
   "from",
   "to",
-  "limit",
 ];
 
 const auditFilterLabels: Record<AuditFilterKey, string> = {
   action: "action",
   actor: "actor",
   from: "from",
-  limit: "limit",
   outcome: "outcome",
   permission: "permission",
   reason: "reason",

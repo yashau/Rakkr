@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   ChevronDown,
   ChevronRight,
@@ -8,7 +9,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { permissions, type AuditEvent } from "@rakkr/shared";
 
@@ -17,6 +18,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DataTable } from "@/components/ui/data-table";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -26,14 +30,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { api, type AuditEventFilters } from "@/lib/api";
 import { toneBadgeClass } from "@/lib/status-colors";
 import {
@@ -45,6 +41,8 @@ import {
   type AuditFilterKey,
 } from "@/lib/audit-page-helpers";
 import { formatDateTime } from "@/lib/dates";
+import { defaultPageSize } from "@/lib/server-pagination";
+import { useServerPagination } from "@/lib/use-server-pagination";
 
 const outcomes = ["allowed", "denied", "failed", "partial", "succeeded"] as const;
 
@@ -52,7 +50,6 @@ const auditFilterDraftKeys: Record<AuditFilterKey, keyof AuditFilterDraft> = {
   action: "action",
   actor: "actor",
   from: "from",
-  limit: "limit",
   outcome: "outcome",
   permission: "permission",
   reason: "reason",
@@ -72,10 +69,97 @@ function outcomeClass(outcome: string) {
   return toneBadgeClass("warning");
 }
 
+const auditColumns: ColumnDef<AuditEvent>[] = [
+  {
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap">{formatDateTime(row.original.createdAt)}</span>
+    ),
+    header: "Time",
+    id: "time",
+  },
+  {
+    cell: ({ row }) => (
+      <div>
+        <div className="font-medium">{row.original.actor.name}</div>
+        <div className="text-xs text-muted-foreground">{row.original.actor.roles.join(", ")}</div>
+      </div>
+    ),
+    header: "Actor",
+    id: "actor",
+  },
+  {
+    cell: ({ row }) => <span className="font-mono text-xs">{row.original.action}</span>,
+    header: "Action",
+    id: "action",
+  },
+  {
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">{row.original.permission ?? "n/a"}</span>
+    ),
+    header: "Permission",
+    id: "permission",
+  },
+  {
+    cell: ({ row }) => (
+      <div>
+        <div className="font-medium">
+          {row.original.target.name ?? row.original.target.id ?? row.original.target.type}
+        </div>
+        <div className="text-xs text-muted-foreground">{row.original.target.type}</div>
+      </div>
+    ),
+    header: "Target",
+    id: "target",
+  },
+  {
+    cell: ({ row }) => (
+      <Badge className={outcomeClass(row.original.outcome)} variant="outline">
+        {row.original.outcome}
+      </Badge>
+    ),
+    header: "Outcome",
+    id: "outcome",
+  },
+  {
+    cell: ({ row }) => (
+      <span className="font-mono text-xs text-muted-foreground">
+        {row.original.reason ?? "n/a"}
+      </span>
+    ),
+    header: "Reason",
+    id: "reason",
+  },
+  {
+    cell: ({ row }) => {
+      if (!hasAuditDetails(row.original)) {
+        return <span className="text-xs text-muted-foreground">n/a</span>;
+      }
+
+      const expanded = row.getIsExpanded();
+
+      return (
+        <Button
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "Hide" : "Show"} audit event details`}
+          onClick={row.getToggleExpandedHandler()}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          Inspect
+        </Button>
+      );
+    },
+    header: "Details",
+    id: "details",
+  },
+];
+
 export function AuditPage() {
   const [draft, setDraft] = useState<AuditFilterDraft>(emptyAuditFilterDraft);
-  const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<AuditEventFilters>({});
+  const pagination = useServerPagination(filters, { defaultPageSize });
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
@@ -83,8 +167,9 @@ export function AuditPage() {
   const pagePermissions = auditPagePermissions(currentUserQuery.data?.data);
   const auditQuery = useQuery({
     enabled: pagePermissions.canRead,
-    queryFn: () => api.auditEvents(filters),
-    queryKey: ["audit-events", filters],
+    placeholderData: keepPreviousData,
+    queryFn: () => api.auditEvents(pagination.query),
+    queryKey: ["audit-events", pagination.query],
     refetchInterval: 5000,
   });
   const auditExportMutation = useMutation({
@@ -97,24 +182,13 @@ export function AuditPage() {
   });
 
   const events = auditQuery.data?.data ?? [];
+  const meta = auditQuery.data?.meta;
   const activeFilterChips = auditFilterChips(filters);
   const updateDraft = (key: keyof AuditFilterDraft, value: string) =>
     setDraft((current) => ({
       ...current,
       [key]: value,
     }));
-  const toggleEvent = (eventId: string) =>
-    setExpandedEventIds((current) => {
-      const next = new Set(current);
-
-      if (next.has(eventId)) {
-        next.delete(eventId);
-      } else {
-        next.add(eventId);
-      }
-
-      return next;
-    });
 
   if (currentUserQuery.isPending) {
     return <LoadingSkeleton label="Loading audit trail" />;
@@ -193,13 +267,6 @@ export function AuditPage() {
           onChange={(value) => updateDraft("reason", value)}
           value={draft.reason}
         />
-        <FilterInput
-          label="Limit"
-          onChange={(value) => updateDraft("limit", value)}
-          type="number"
-          value={draft.limit}
-        />
-
         <div className="grid gap-1">
           <Label className="text-xs text-muted-foreground" htmlFor="audit-outcome">
             Outcome
@@ -302,97 +369,27 @@ export function AuditPage() {
         ) : null}
       </form>
 
-      <div className="overflow-x-auto">
-        <Table className="w-full text-left text-sm">
-          <TableHeader className="border-b border-border bg-stone-50 text-xs text-muted-foreground uppercase">
-            <TableRow>
-              <TableHead className="px-4 py-3 font-medium">Time</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Actor</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Action</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Permission</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Target</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Outcome</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Reason</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Details</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className="divide-y divide-border">
-            {events.length === 0 ? (
-              <TableRow>
-                <TableCell className="px-4 py-5 text-muted-foreground" colSpan={8}>
-                  No audit events yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              events.map((event) => {
-                const expanded = expandedEventIds.has(event.id);
-                const hasDetails = hasAuditDetails(event);
-
-                return (
-                  <Fragment key={event.id}>
-                    <TableRow className="bg-panel">
-                      <TableCell className="px-4 py-3 whitespace-nowrap">
-                        {formatDateTime(event.createdAt)}
-                      </TableCell>
-                      <TableCell className="px-4 py-3">
-                        <div className="font-medium">{event.actor.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {event.actor.roles.join(", ")}
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-4 py-3 font-mono text-xs">{event.action}</TableCell>
-                      <TableCell className="px-4 py-3 font-mono text-xs">
-                        {event.permission ?? "n/a"}
-                      </TableCell>
-                      <TableCell className="px-4 py-3">
-                        <div className="font-medium">
-                          {event.target.name ?? event.target.id ?? event.target.type}
-                        </div>
-                        <div className="text-xs text-muted-foreground">{event.target.type}</div>
-                      </TableCell>
-                      <TableCell className="px-4 py-3">
-                        <Badge className={outcomeClass(event.outcome)} variant="outline">
-                          {event.outcome}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                        {event.reason ?? "n/a"}
-                      </TableCell>
-                      <TableCell className="px-4 py-3">
-                        {hasDetails ? (
-                          <Button
-                            aria-expanded={expanded}
-                            aria-label={`${expanded ? "Hide" : "Show"} audit event details`}
-                            onClick={() => toggleEvent(event.id)}
-                            size="sm"
-                            type="button"
-                            variant="outline"
-                          >
-                            {expanded ? (
-                              <ChevronDown className="size-4" />
-                            ) : (
-                              <ChevronRight className="size-4" />
-                            )}
-                            Inspect
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">n/a</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                    {expanded ? (
-                      <TableRow className="bg-muted/20">
-                        <TableCell className="px-4 py-3" colSpan={8}>
-                          <AuditEventDetails event={event} />
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </Fragment>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+      <div className="grid gap-2 px-4 py-3">
+        <DataTable
+          columns={auditColumns}
+          data={events}
+          emptyMessage="No audit events match the current filters."
+          getRowId={(event) => event.id}
+          isLoading={auditQuery.isPending}
+          renderExpandedRow={(event) => (
+            <div className="px-4 py-3">
+              <AuditEventDetails event={event} />
+            </div>
+          )}
+        />
+        <DataTablePagination
+          meta={meta}
+          onNext={pagination.nextPage}
+          onPageSizeChange={pagination.setPageSize}
+          onPrevious={pagination.previousPage}
+          pageSize={pagination.pageSize}
+          pageSizes={pagination.pageSizes}
+        />
       </div>
     </Card>
   );
@@ -482,13 +479,17 @@ function FilterInput({
       <Label className="text-xs text-muted-foreground" htmlFor={`audit-${label}`}>
         {label}
       </Label>
-      <Input
-        id={`audit-${label}`}
-        className="bg-background"
-        onChange={(event) => onChange(event.target.value)}
-        type={type}
-        value={value}
-      />
+      {type === "datetime-local" ? (
+        <DateTimePicker id={`audit-${label}`} onChange={onChange} value={value} />
+      ) : (
+        <Input
+          id={`audit-${label}`}
+          className="bg-background"
+          onChange={(event) => onChange(event.target.value)}
+          type={type}
+          value={value}
+        />
+      )}
     </div>
   );
 }

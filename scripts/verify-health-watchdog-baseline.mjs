@@ -462,7 +462,7 @@ const testSnippets = [
   "watchdog calibration action requires settings manage node read and nodes",
   "health page permissions are closed by default",
   "health bulk lifecycle updates visible events and audits each event",
-  "health event filter draft trims API filters and caps limits",
+  "health event filter draft trims API filters",
   "health bulk action targets include only selected eligible events",
   "health event target labels prefer visible friendly names",
   "root layout nav items only include permitted sections",

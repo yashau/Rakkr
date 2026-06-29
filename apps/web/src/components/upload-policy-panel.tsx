@@ -1,12 +1,10 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlusCircle, Save, UploadCloud } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Save } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadPolicy, UploadPolicyInput, UploadPolicyUpdate } from "@rakkr/shared";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,77 +17,16 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import { toneBadgeClass } from "@/lib/status-colors";
-import { cn } from "@/lib/utils";
 
-export function UploadPolicyPanel({
+export function UploadPolicyEditor({
   canManage,
-  canRead,
+  onSaved,
+  policy,
 }: {
   canManage: boolean;
-  canRead: boolean;
+  onSaved?: () => void;
+  policy: UploadPolicy;
 }) {
-  const queryClient = useQueryClient();
-  const policiesQuery = useQuery({
-    enabled: canRead,
-    queryFn: api.uploadPolicies,
-    queryKey: ["upload-policies"],
-  });
-  const createMutation = useMutation({
-    mutationFn: () => api.createUploadPolicy(defaultPolicyInput()),
-    onError: () =>
-      toast.error("Create failed", {
-        description: "The upload policy could not be created.",
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["upload-policies"] });
-    },
-  });
-  const policies = policiesQuery.data?.data ?? [];
-
-  return (
-    <>
-      <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Upload Policies</h2>
-          <p className="text-sm text-muted-foreground">
-            Provider selection for ad hoc and scheduled queues.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
-            {policies.length} policies
-          </Badge>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex">
-                <Button
-                  disabled={createMutation.isPending || !canManage}
-                  onClick={() => createMutation.mutate()}
-                  variant="outline"
-                >
-                  <PlusCircle className="size-4" />
-                  New
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              {canManage ? "Create upload policy" : "Requires settings manage"}
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      </section>
-
-      <div className="grid gap-4">
-        {policies.map((policy) => (
-          <UploadPolicyCard canManage={canManage} key={policy.id} policy={policy} />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: UploadPolicy }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(policy);
   const mutation = useMutation({
@@ -100,7 +37,9 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
       }),
     onSuccess: ({ data }) => {
       setDraft(data);
+      toast.success("Upload policy saved");
       void queryClient.invalidateQueries({ queryKey: ["upload-policies"] });
+      onSaved?.();
     },
   });
 
@@ -109,39 +48,8 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
   }, [policy]);
 
   return (
-    <Card className="rounded-lg p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <UploadCloud className="size-4" />
-            <h3 className="text-base font-semibold">{policy.name}</h3>
-            <Badge
-              className={policy.enabled ? toneBadgeClass("healthy") : toneBadgeClass("neutral")}
-              variant="outline"
-            >
-              {policy.enabled ? "enabled" : "disabled"}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {policy.provider} / {policy.trigger} / {policy.maxAttempts} attempts
-          </p>
-        </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {canManage ? "Save upload policy" : "Requires settings manage"}
-          </TooltipContent>
-        </Tooltip>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-5">
+    <div className="grid gap-4">
+      <div className="grid gap-3 md:grid-cols-2">
         <Field label="Name">
           <Input
             disabled={!canManage}
@@ -213,7 +121,7 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
       </div>
 
       <label
-        className="mt-3 flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+        className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
         htmlFor={`upload-policy-enabled-${policy.id}`}
       >
         <Checkbox
@@ -228,7 +136,7 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
       </label>
 
       <label
-        className="mt-3 flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+        className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
         htmlFor={`upload-policy-delete-cache-${policy.id}`}
       >
         <Checkbox
@@ -245,8 +153,24 @@ function UploadPolicyCard({ canManage, policy }: { canManage: boolean; policy: U
         Delete controller cache after confirmed upload
       </label>
 
-      {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}
-    </Card>
+      {mutation.isError ? <p className="text-sm text-destructive">Save failed.</p> : null}
+
+      <div className="flex justify-end">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save upload policy" : "Requires settings manage"}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
   );
 }
 
@@ -271,7 +195,7 @@ function policyUpdate(policy: UploadPolicy): UploadPolicyUpdate {
   };
 }
 
-function defaultPolicyInput(): UploadPolicyInput {
+export function defaultUploadPolicyInput(): UploadPolicyInput {
   return {
     deleteCacheAfterUpload: false,
     enabled: true,

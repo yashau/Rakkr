@@ -333,6 +333,12 @@ export const recordingProfiles = pgTable("recording_profiles", {
   vbr: boolean("vbr").notNull().default(true),
 });
 
+export const controllerSettings = pgTable("controller_settings", {
+  controllerName: varchar("controller_name", { length: 160 }).notNull().default("Rakkr Controller"),
+  id: varchar("id", { length: 64 }).primaryKey().default("controller"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const watchdogPolicies = pgTable("watchdog_policies", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   id: varchar("id", { length: 160 }).primaryKey(),

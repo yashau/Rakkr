@@ -11,6 +11,7 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import { recordingHasCachedFile } from "./recording-cache.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import { paginate, paginationQueryFields } from "./pagination.js";
 import { uniqueRecordingIds } from "./recording-metadata.js";
 import { uploadPolicyForQueue, uploadQueueInputForPolicy } from "./upload-policies.js";
 import {
@@ -41,6 +42,7 @@ const bulkUploadQueueRequestSchema = uploadQueueRequestSchema.extend({
   recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
 });
 const uploadQueueQuerySchema = z.object({
+  ...paginationQueryFields,
   provider: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     uploadProviderSchema.optional(),
@@ -90,24 +92,27 @@ export function registerRecordingUploadQueueRoutes({
         (item) =>
           visibleRecordingIds.has(item.recordingId) && uploadQueueItemMatches(item, query.data),
       );
+      const { data, meta } = paginate(visibleItems, {
+        limit: query.data.limit,
+        offset: query.data.offset,
+      });
 
       await recordAuditEvent(c, {
         action: "recordings.upload_queue.read.succeeded",
         auth: currentAuth(c),
         details: {
-          filteredCount: visibleItems.length,
+          filteredCount: data.length,
           provider: query.data.provider,
           recordingId: query.data.recordingId,
           status: query.data.status,
+          total: meta.total,
         },
         outcome: "succeeded",
         permission: "recording:read",
         target: { type: "upload_queue" },
       });
 
-      return c.json({
-        data: visibleItems,
-      });
+      return c.json({ data, meta });
     },
   );
 

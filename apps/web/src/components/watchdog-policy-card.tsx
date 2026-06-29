@@ -1,12 +1,10 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RecorderNode, WatchdogPolicy } from "@rakkr/shared";
-import { Gauge, Save, ShieldAlert } from "lucide-react";
+import { Gauge, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -17,7 +15,6 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import { toneBadgeClass } from "@/lib/status-colors";
 import { watchdogCalibrationActionState } from "@/lib/settings-page-helpers";
 import { watchdogPolicyUpdate } from "@/lib/settings-updates";
 
@@ -25,11 +22,13 @@ export function WatchdogPolicyCard({
   canManage,
   canReadNodes,
   nodes,
+  onSaved,
   policy,
 }: {
   canManage: boolean;
   canReadNodes: boolean;
   nodes: RecorderNode[];
+  onSaved?: () => void;
   policy: WatchdogPolicy;
 }) {
   const queryClient = useQueryClient();
@@ -49,8 +48,10 @@ export function WatchdogPolicyCard({
       }),
     onSuccess: ({ data }) => {
       setDraft(data);
+      toast.success("Watchdog policy saved");
       void queryClient.invalidateQueries({ queryKey: ["watchdog-policies"] });
       void queryClient.invalidateQueries({ queryKey: ["status"] });
+      onSaved?.();
     },
   });
   const calibrationMutation = useMutation({
@@ -85,35 +86,7 @@ export function WatchdogPolicyCard({
   }, [calibrationNodeId, nodes]);
 
   return (
-    <Card className="rounded-lg p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <ShieldAlert className="size-4" />
-            <h3 className="text-base font-semibold">{policy.name}</h3>
-            <Badge className={toneBadgeClass("warning")} variant="outline">
-              {policy.id}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {policy.metric} below {policy.thresholdDbfs} dBFS / {policy.windowSeconds}s
-          </p>
-        </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {canManage ? "Save watchdog policy" : "Requires settings manage"}
-          </TooltipContent>
-        </Tooltip>
-      </div>
-
+    <div className="grid gap-4">
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="Name">
           <Input
@@ -459,9 +432,25 @@ export function WatchdogPolicyCard({
       </div>
 
       {mutation.isError || calibrationMutation.isError ? (
-        <p className="mt-3 text-sm text-destructive">Save failed.</p>
+        <p className="text-sm text-destructive">Save failed.</p>
       ) : null}
-    </Card>
+
+      <div className="flex justify-end">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save watchdog policy" : "Requires settings manage"}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
   );
 }
 

@@ -122,6 +122,12 @@ function RootLayout() {
     queryKey: ["auth", "me"],
     retry: false,
   });
+  const controllerSettingsQuery = useQuery({
+    enabled: Boolean(authToken),
+    queryFn: api.controllerSettings,
+    queryKey: ["controller-settings"],
+    retry: false,
+  });
   const logoutMutation = useMutation({
     mutationFn: api.logout,
     onSettled: () => {
@@ -209,7 +215,9 @@ function RootLayout() {
               </Sheet>
               <div>
                 <h1 className="text-lg font-semibold tracking-normal">Operations</h1>
-                <p className="text-sm text-muted-foreground">Council Chamber Rack</p>
+                <p className="text-sm text-muted-foreground">
+                  {controllerSettingsQuery.data?.data.controllerName ?? "Rakkr Controller"}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">

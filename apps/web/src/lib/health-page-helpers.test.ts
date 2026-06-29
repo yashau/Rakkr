@@ -54,11 +54,10 @@ test("health page permissions split lifecycle and relationship lookups", () => {
   });
 });
 
-test("health event filter draft trims API filters and caps limits", () => {
+test("health event filter draft trims API filters", () => {
   assert.deepEqual(
     healthEventFiltersFromDraft({
       ...emptyHealthPageFilters,
-      limit: "900",
       nodeId: " node_1 ",
       openedFromDate: "2026-06-20",
       openedToDate: "2026-06-21",
@@ -72,7 +71,6 @@ test("health event filter draft trims API filters and caps limits", () => {
       type: " watchdog.node_offline ",
     }),
     {
-      limit: 500,
       nodeId: "node_1",
       openedFrom: localDateBoundaryIso("2026-06-20", "start"),
       openedTo: localDateBoundaryIso("2026-06-21", "end"),
@@ -85,10 +83,6 @@ test("health event filter draft trims API filters and caps limits", () => {
       status: "open",
       type: "watchdog.node_offline",
     },
-  );
-  assert.equal(
-    healthEventFiltersFromDraft({ ...emptyHealthPageFilters, limit: "nope" }).limit,
-    undefined,
   );
 });
 

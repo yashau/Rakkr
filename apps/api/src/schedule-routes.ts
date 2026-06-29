@@ -35,6 +35,8 @@ import {
 } from "./scheduled-recordings.js";
 import { scheduleSettingsSelectionFailure } from "./schedule-settings-scope.js";
 import { ScheduleStoreError, type ScheduleStore } from "./schedule-store.js";
+import { numberFromQuery, PAGE_POLICY, paginate, parsePagination } from "./pagination.js";
+import { schedulesCsv, scheduleExportFileName } from "./schedule-export.js";
 import type { SettingsStore } from "./settings-store.js";
 
 interface ScheduleRouteDependencies {
@@ -74,13 +76,24 @@ export function registerScheduleRoutes({
   app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) => {
     const filters = scheduleFilters(c);
     const schedules = filterSchedules(await scopedSchedules(currentUser(c)), filters);
+    const { data, meta } = paginate(
+      schedules,
+      parsePagination(
+        {
+          limit: numberFromQuery(c.req.query("limit")),
+          offset: numberFromQuery(c.req.query("offset")),
+        },
+        PAGE_POLICY.default,
+      ),
+    );
 
     await recordAuditEvent(c, {
       action: "schedules.read.succeeded",
       auth: currentAuth(c),
       details: {
         filters,
-        returnedCount: schedules.length,
+        returnedCount: data.length,
+        total: meta.total,
       },
       outcome: "succeeded",
       permission: "schedule:read",
@@ -90,7 +103,7 @@ export function registerScheduleRoutes({
       },
     });
 
-    return c.json({ data: schedules });
+    return c.json({ data, meta });
   });
 
   app.get(
@@ -933,57 +946,6 @@ function recurrenceFromNextRun(nextRunAt: string | undefined): ScheduleRecurrenc
   return nextRunAt
     ? { mode: "once", startsAt: new Date(nextRunAt).toISOString() }
     : { mode: "manual" };
-}
-
-function schedulesCsv(schedules: ScheduleSummary[]) {
-  return [
-    csvRow([
-      "id",
-      "name",
-      "enabled",
-      "nodeId",
-      "room",
-      "timezone",
-      "nextRunAt",
-      "captureBackend",
-      "captureInterfaceId",
-      "recordingProfileId",
-      "watchdogPolicyId",
-      "retentionPolicyId",
-      "uploadPolicyId",
-      "tags",
-    ]),
-    ...schedules.map((schedule) =>
-      csvRow([
-        schedule.id,
-        schedule.name,
-        String(schedule.enabled),
-        schedule.nodeId,
-        schedule.room,
-        schedule.timezone,
-        schedule.nextRunAt ?? "",
-        schedule.captureBackend ?? "",
-        schedule.captureInterfaceId ?? "",
-        schedule.recordingProfileId ?? "",
-        schedule.watchdogPolicyId ?? "",
-        schedule.retentionPolicyId ?? "",
-        schedule.uploadPolicyId ?? "",
-        schedule.tags.join(";"),
-      ]),
-    ),
-  ].join("\n");
-}
-
-function scheduleExportFileName() {
-  return `rakkr-schedules-${new Date().toISOString().replaceAll(":", "-").replace(".", "-")}.csv`;
-}
-
-function csvRow(values: string[]) {
-  return values.map(csvCell).join(",");
-}
-
-function csvCell(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
 }
 
 function uniqueScheduleIds(scheduleIds: string[]) {

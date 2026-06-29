@@ -31,7 +31,6 @@ test("audit filters trim draft values and expose active chips", () => {
     action: " recordings.download ",
     actor: " alice ",
     from: "2026-06-20T09:30",
-    limit: "750",
     outcome: "succeeded",
     permission: "recording:read",
     reason: " operator ",
@@ -42,7 +41,6 @@ test("audit filters trim draft values and expose active chips", () => {
     action: "recordings.download",
     actor: "alice",
     from: new Date("2026-06-20T09:30").toISOString(),
-    limit: 500,
     outcome: "succeeded",
     permission: "recording:read",
     reason: "operator",
@@ -61,7 +59,6 @@ test("audit filters trim draft values and expose active chips", () => {
       label: "from",
       value: formatDateTime(new Date("2026-06-20T09:30").toISOString()),
     },
-    { key: "limit", label: "limit", value: "500" },
   ]);
 });
 

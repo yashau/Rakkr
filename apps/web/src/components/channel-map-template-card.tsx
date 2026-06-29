@@ -14,8 +14,6 @@ import { toast } from "sonner";
 
 import { HintButton } from "@/components/hint-button";
 import { Field, Toggle } from "@/components/settings-fields";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,13 +25,13 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
-import { toneBadgeClass } from "@/lib/status-colors";
 
 export function ChannelMapTemplateCard({
   assignments,
   canManage,
   canReadNodes,
   nodes,
+  onSaved,
   plans,
   template,
 }: {
@@ -41,6 +39,7 @@ export function ChannelMapTemplateCard({
   canManage: boolean;
   canReadNodes: boolean;
   nodes: RecorderNode[];
+  onSaved?: () => void;
   plans: ChannelMapAssignmentPlan[];
   template: ChannelMapTemplate;
 }) {
@@ -66,7 +65,9 @@ export function ChannelMapTemplateCard({
       }),
     onSuccess: ({ data }) => {
       setDraft(data);
+      toast.success("Channel map promoted");
       void queryClient.invalidateQueries({ queryKey: ["channel-map-templates"] });
+      onSaved?.();
     },
   });
   const assignMutation = useMutation({
@@ -174,47 +175,29 @@ export function ChannelMapTemplateCard({
   }, [selectedTargets.length, targetOptions]);
 
   return (
-    <Card className="rounded-lg p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <Cable className="size-4" />
-            <h3 className="text-base font-semibold">{template.name}</h3>
-            <Badge className={toneBadgeClass("info")} variant="outline">
-              {assignedTargets.length} targets
-            </Badge>
-            <Badge className={toneBadgeClass("neutral")} variant="outline">
-              rev {template.revision}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {template.channelMode} / {template.entries.filter((entry) => entry.included).length}{" "}
-            active channels
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <HintButton
-            disabled={!draftChanged || updateMutation.isPending || !canManage}
-            hint={canManage ? "Promote channel map revision" : "Requires settings manage"}
-            onClick={() => updateMutation.mutate()}
-          >
-            <Rocket className="size-4" />
-            Promote Rev {nextRevision}
-          </HintButton>
-          <HintButton
-            disabled={!draftChanged || updateMutation.isPending || !canManage}
-            hint={canManage ? "Reset channel map draft" : "Requires settings manage"}
-            onClick={() => setDraft(template)}
-            type="button"
-            variant="outline"
-          >
-            <RotateCcw className="size-4" />
-            Reset
-          </HintButton>
-        </div>
+    <div className="grid gap-4">
+      <div className="flex flex-wrap justify-end gap-2">
+        <HintButton
+          disabled={!draftChanged || updateMutation.isPending || !canManage}
+          hint={canManage ? "Promote channel map revision" : "Requires settings manage"}
+          onClick={() => updateMutation.mutate()}
+        >
+          <Rocket className="size-4" />
+          Promote Rev {nextRevision}
+        </HintButton>
+        <HintButton
+          disabled={!draftChanged || updateMutation.isPending || !canManage}
+          hint={canManage ? "Reset channel map draft" : "Requires settings manage"}
+          onClick={() => setDraft(template)}
+          type="button"
+          variant="outline"
+        >
+          <RotateCcw className="size-4" />
+          Reset
+        </HintButton>
       </div>
 
-      <div className="mb-4 grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-sm md:grid-cols-3">
+      <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-sm md:grid-cols-3">
         <div>
           <div className="text-xs font-medium text-muted-foreground uppercase">Current</div>
           <div>Revision {template.revision}</div>
@@ -545,7 +528,7 @@ export function ChannelMapTemplateCard({
       rollbackMutation.isError ? (
         <p className="mt-3 text-sm text-destructive">Save failed.</p>
       ) : null}
-    </Card>
+    </div>
   );
 }
 

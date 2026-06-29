@@ -1,13 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  RotateCcw,
-  Search,
-  ShieldCheck,
-  X,
-} from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, RotateCcw, Search, ShieldCheck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -15,6 +7,7 @@ import { RecordingBulkOrganizer } from "@/components/recording-bulk-organizer";
 import { RecordingCacheStateFilter } from "@/components/recording-cache-state-filter";
 import { RecordingCard } from "@/components/recording-card";
 import { RecordingFacetPanel } from "@/components/recording-facet-panel";
+import { RecordingMetadataDialog } from "@/components/recording-metadata-dialog";
 import { RecordingPlaybackDock } from "@/components/recording-playback-dock";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { RecordingUploadQueueSummary } from "@/components/recording-upload-queue-summary";
@@ -22,6 +15,8 @@ import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -65,18 +60,17 @@ import {
   uploadQueueStatusSummary,
 } from "@/lib/recording-page-helpers";
 import { useRecordingPlaybackMutation } from "@/lib/recording-playback";
+import { useServerPagination } from "@/lib/use-server-pagination";
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
   const audioPreviewRef = useRef<RecordingPlaybackPreview | undefined>(undefined);
   const [audioPreview, setAudioPreview] = useState<RecordingPlaybackPreview>();
   const [filterDraft, setFilterDraft] = useState<RecordingFilterDraft>(emptyRecordingFilterDraft);
-  const [pageSize, setPageSize] = useState(defaultRecordingPageSize);
-  const [recordingFilters, setRecordingFilters] = useState<RecordingFilters>({
-    limit: defaultRecordingPageSize,
-    offset: 0,
-  });
+  const [recordingFilters, setRecordingFilters] = useState<RecordingFilters>({});
   const [selectedRecordingIds, setSelectedRecordingIds] = useState<string[]>([]);
+  const [editingRecordingId, setEditingRecordingId] = useState<string>();
+  const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const setNotice = (next: { detail: string; title: string }) =>
     toast(next.title, { description: next.detail });
   const currentUserQuery = useQuery({
@@ -85,10 +79,15 @@ export function RecordingsPage() {
     staleTime: 30_000,
   });
   const pagePermissions = recordingPagePermissions(currentUserQuery.data?.data);
+  const pagination = useServerPagination(recordingFilters, {
+    defaultPageSize: defaultRecordingPageSize,
+    pageSizes: recordingPageSizes,
+  });
   const recordingsQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
-    queryFn: () => api.recordings(recordingFilters),
-    queryKey: ["recordings", recordingFilters],
+    placeholderData: keepPreviousData,
+    queryFn: () => api.recordings(pagination.query),
+    queryKey: ["recordings", pagination.query],
   });
   const recordingFacetsQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
@@ -380,13 +379,7 @@ export function RecordingsPage() {
   const allVisibleSelected =
     visibleRecordingIds.length > 0 &&
     visibleRecordingIds.every((recordingId) => selectedRecordingIdSet.has(recordingId));
-  const paginationLimit = recordingMeta?.limit ?? pageSize;
-  const paginationOffset = recordingMeta?.offset ?? 0;
-  const currentPage = Math.floor(paginationOffset / paginationLimit) + 1;
-  const totalPages = Math.max(
-    1,
-    Math.ceil((recordingMeta?.total ?? recordings.length) / paginationLimit),
-  );
+  const editingRecording = recordings.find((recording) => recording.id === editingRecordingId);
 
   useEffect(() => {
     audioPreviewRef.current = audioPreview;
@@ -415,7 +408,7 @@ export function RecordingsPage() {
     const nextDraft = { ...filterDraft, ...patch };
 
     setFilterDraft(nextDraft);
-    setRecordingFilters({ ...filtersFromDraft(nextDraft), limit: pageSize, offset: 0 });
+    setRecordingFilters(filtersFromDraft(nextDraft));
   };
 
   const clearActiveFilter = (key: RecordingFilterKey) => {
@@ -425,8 +418,6 @@ export function RecordingsPage() {
     if (key === "sortBy") {
       delete nextFilters.sortOrder;
     }
-    nextFilters.limit = pageSize;
-    nextFilters.offset = 0;
     setRecordingFilters(nextFilters);
     setFilterDraft((current) => ({
       ...current,
@@ -436,24 +427,7 @@ export function RecordingsPage() {
   };
 
   const applyRecordingFilters = (nextDraft: RecordingFilterDraft) => {
-    setRecordingFilters({ ...filtersFromDraft(nextDraft), limit: pageSize, offset: 0 });
-  };
-
-  const changePageSize = (nextPageSize: number) => {
-    setPageSize(nextPageSize);
-    setRecordingFilters((current) => ({
-      ...current,
-      limit: nextPageSize,
-      offset: 0,
-    }));
-  };
-
-  const changePage = (offset: number) => {
-    setRecordingFilters((current) => ({
-      ...current,
-      limit: pageSize,
-      offset,
-    }));
+    setRecordingFilters(filtersFromDraft(nextDraft));
   };
 
   const selectVisibleRecordings = () => {
@@ -550,7 +524,7 @@ export function RecordingsPage() {
                 <Button
                   onClick={() => {
                     setFilterDraft(emptyRecordingFilterDraft);
-                    setRecordingFilters({ limit: pageSize, offset: 0 });
+                    setRecordingFilters({});
                   }}
                   type="button"
                   variant="outline"
@@ -737,29 +711,27 @@ export function RecordingsPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-from-filter">From</Label>
-                <Input
+                <DatePicker
                   id="recording-from-filter"
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setFilterDraft((current) => ({
                       ...current,
-                      recordedFromDate: event.target.value,
+                      recordedFromDate: value,
                     }))
                   }
-                  type="date"
                   value={filterDraft.recordedFromDate}
                 />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="recording-to-filter">To</Label>
-                <Input
+                <DatePicker
                   id="recording-to-filter"
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setFilterDraft((current) => ({
                       ...current,
-                      recordedToDate: event.target.value,
+                      recordedToDate: value,
                     }))
                   }
-                  type="date"
                   value={filterDraft.recordedToDate}
                 />
               </div>
@@ -813,7 +785,7 @@ export function RecordingsPage() {
                 <Button
                   className="h-6 px-2 text-xs"
                   onClick={() => {
-                    setRecordingFilters({ limit: pageSize, offset: 0 });
+                    setRecordingFilters({});
                     setFilterDraft(emptyRecordingFilterDraft);
                   }}
                   size="sm"
@@ -821,53 +793,6 @@ export function RecordingsPage() {
                 >
                   Clear all
                 </Button>
-              </div>
-            ) : null}
-            {recordingMeta ? (
-              <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border border-border bg-muted/20 p-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="recording-page-size">Page size</Label>
-                  <Select
-                    onValueChange={(value) => changePageSize(Number(value))}
-                    value={String(pageSize)}
-                  >
-                    <SelectTrigger className={selectClassName} id="recording-page-size">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {recordingPageSizes.map((size) => (
-                        <SelectItem key={size} value={String(size)}>
-                          {size}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <Button
-                    disabled={!recordingMeta.hasPreviousPage}
-                    onClick={() => changePage(Math.max(0, paginationOffset - paginationLimit))}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    <ChevronLeft className="size-4" />
-                    Previous
-                  </Button>
-                  <Button
-                    disabled={!recordingMeta.hasNextPage}
-                    onClick={() => changePage(paginationOffset + paginationLimit)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    Next
-                    <ChevronRight className="size-4" />
-                  </Button>
-                </div>
               </div>
             ) : null}
             <RecordingFacetPanel
@@ -947,15 +872,13 @@ export function RecordingsPage() {
                 onQueueUpload={(uploadPolicyId) =>
                   enqueueUploadMutation.mutate({ recordingId: recording.id, uploadPolicyId })
                 }
+                onEdit={() => {
+                  setEditingRecordingId(recording.id);
+                  setMetadataDialogOpen(true);
+                }}
                 onRetryUpload={(itemId) => retryUploadMutation.mutate(itemId)}
                 onSelectedChange={(selected) => setRecordingSelected(recording.id, selected)}
                 onStop={() => stopMutation.mutate(recording.id)}
-                onUpdate={(input) =>
-                  updateMetadataMutation.mutateAsync({
-                    input,
-                    recordingId: recording.id,
-                  })
-                }
                 playbackPending={playbackMutation.isPending}
                 recording={recording}
                 relationshipReferences={{
@@ -973,6 +896,36 @@ export function RecordingsPage() {
               />
             );
           })}
+
+          <DataTablePagination
+            meta={recordingMeta}
+            onNext={pagination.nextPage}
+            onPageSizeChange={pagination.setPageSize}
+            onPrevious={pagination.previousPage}
+            pageSize={pagination.pageSize}
+            pageSizes={pagination.pageSizes}
+          />
+
+          {canEditRecordings ? (
+            <RecordingMetadataDialog
+              onOpenChange={(open) => {
+                setMetadataDialogOpen(open);
+
+                if (!open) {
+                  setEditingRecordingId(undefined);
+                }
+              }}
+              onSubmit={(input) =>
+                updateMetadataMutation.mutateAsync({
+                  input,
+                  recordingId: editingRecordingId ?? "",
+                })
+              }
+              open={metadataDialogOpen}
+              recording={editingRecording}
+              saving={updateMetadataMutation.isPending}
+            />
+          ) : null}
         </>
       )}
     </div>

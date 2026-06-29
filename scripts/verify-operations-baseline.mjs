@@ -98,7 +98,7 @@ const sourceSnippets = [
   "RecordingBulkOrganizer",
   "RecordingFacetPanel",
   "RecordingProfileSettingsCard",
-  "UploadPolicyPanel",
+  "UploadPolicyEditor",
   "UploadRunnerPanel",
   "auditEventsExport",
   "settingsPagePermissions",
