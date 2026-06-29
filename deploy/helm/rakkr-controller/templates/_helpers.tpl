@@ -37,7 +37,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "rakkr-controller.appSecretName" -}}
+{{- if .Values.appSecret.existingSecret -}}
+{{- .Values.appSecret.existingSecret -}}
+{{- else -}}
 {{- default (printf "%s-app" (include "rakkr-controller.fullname" .)) .Values.appSecret.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/* True when the chart should render an Opaque app Secret from values
+(native backend, secret-creation enabled, and no externally provided secret). */}}
+{{- define "rakkr-controller.manageNativeAppSecret" -}}
+{{- and .Values.appSecret.create (eq .Values.secrets.backend "native") (not .Values.appSecret.existingSecret) -}}
 {{- end -}}
 
 {{- define "rakkr-controller.postgresSecretName" -}}

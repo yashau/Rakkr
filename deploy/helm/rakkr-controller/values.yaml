@@ -11,6 +11,34 @@ serviceAccount:
 appSecret:
   create: true
   name: ""
+  # Name of a pre-provisioned Secret to use instead of one the chart manages.
+  # Honored regardless of secrets.backend; when set, the chart renders no
+  # Secret / ExternalSecret / SealedSecret for the app.
+  existingSecret: ""
+
+# Where the controller's sensitive env comes from. Every secret is sourced from
+# a Kubernetes Secret named after appSecret; only how that Secret is populated
+# changes:
+#   native          - the chart renders an Opaque Secret from api.secretEnv
+#                     (dev/simple installs; provide real values, e.g. via
+#                     values-dev.yaml or --set).
+#   externalSecrets - an ExternalSecret (External Secrets Operator) materializes
+#                     the Secret from a configured store (Vault/AWS SM/GCP SM/...).
+#   sealed          - a committed SealedSecret (Sealed Secrets controller)
+#                     materializes the Secret.
+secrets:
+  backend: native
+  externalSecrets:
+    refreshInterval: 1h
+    secretStoreRef:
+      name: ""
+      kind: ClusterSecretStore
+    # `data`/`dataFrom` are passed through to the ExternalSecret spec verbatim.
+    data: []
+    dataFrom: []
+  sealed:
+    # `kubeseal`-encrypted values, key -> ciphertext.
+    encryptedData: {}
 
 api:
   replicaCount: 1
@@ -59,9 +87,19 @@ api:
     RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH: /var/lib/rakkr/controller/channel-map-templates.json
     RAKKR_CHANNEL_MAP_ASSIGNMENT_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignments.json
     RAKKR_CHANNEL_MAP_ASSIGNMENT_PLAN_STORE_PATH: /var/lib/rakkr/controller/channel-map-assignment-plans.json
+  # Sensitive env, sourced from the app Secret (see `secrets` above). No real
+  # values are committed here — production must supply them via the chosen
+  # secrets backend; dev defaults live in values-dev.yaml.
   secretEnv:
-    RAKKR_LOCAL_ADMIN_PASSWORD: rakkr-local-dev-password
+    RAKKR_LOCAL_ADMIN_PASSWORD: ""
     RAKKR_OIDC_CLIENT_SECRET: ""
+    # Master key for encrypting upload-provider secrets at rest.
+    RAKKR_SECRET_KEY: ""
+    # Master key for encrypting node SSH private keys at rest (falls back to
+    # RAKKR_SECRET_KEY if empty).
+    RAKKR_NODE_SSH_MASTER_KEY: ""
+    # Shared token the Ansible runner presents to fetch per-node SSH keys/tokens.
+    RAKKR_RUNNER_TOKEN: ""
   extraEnv: []
   extraEnvFrom: []
 
@@ -93,7 +131,8 @@ postgres:
   auth:
     database: rakkr
     username: rakkr
-    password: rakkr
+    # No committed default; provide via existingSecret, --set, or values-dev.yaml.
+    password: ""
     existingSecret: ""
     passwordKey: POSTGRES_PASSWORD
   persistence:

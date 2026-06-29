@@ -1,0 +1,23 @@
+# Development overlay for local clusters (kind / minikube / k3d). These are
+# INSECURE defaults — never use in production. Production installs leave these
+# unset and supply secrets via secrets.backend (externalSecrets / sealed) or a
+# pre-provisioned appSecret.existingSecret.
+#
+#   helm install rakkr ./deploy/helm/rakkr-controller \
+#     -f deploy/helm/rakkr-controller/values-dev.yaml
+
+secrets:
+  backend: native
+
+api:
+  env:
+    RAKKR_ALLOW_INSECURE_CONTROLLER: "1"
+  secretEnv:
+    RAKKR_LOCAL_ADMIN_PASSWORD: rakkr-local-dev-password
+    RAKKR_SECRET_KEY: rakkr-dev-insecure-secret-key-change-me
+    RAKKR_NODE_SSH_MASTER_KEY: rakkr-dev-insecure-ssh-master-key-change-me
+    RAKKR_RUNNER_TOKEN: rakkr-dev-insecure-runner-token
+
+postgres:
+  auth:
+    password: rakkr

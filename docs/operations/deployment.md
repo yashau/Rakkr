@@ -166,7 +166,35 @@ helm upgrade --install rakkr deploy/helm/rakkr-controller `
   --set database.externalUrl=postgres://user:password@postgres.example.com:5432/rakkr
 ```
 
-For production, prefer a values file or Kubernetes Secret for sensitive values:
+`values.yaml` ships **no plaintext secret defaults** (admin password, master
+keys, runner token, and postgres password are all empty) so a default install
+fails closed. For local clusters, apply the dev overlay:
+
+```powershell
+helm upgrade --install rakkr deploy/helm/rakkr-controller `
+  -f deploy/helm/rakkr-controller/values-dev.yaml
+```
+
+### Secrets backend
+
+Every sensitive value is sourced from a Kubernetes `Secret` named after
+`appSecret`; `secrets.backend` selects how that Secret is populated. The app
+secret carries `DATABASE_URL`, `RAKKR_LOCAL_ADMIN_PASSWORD`,
+`RAKKR_OIDC_CLIENT_SECRET`, `RAKKR_SECRET_KEY`, `RAKKR_NODE_SSH_MASTER_KEY`
+(node SSH key encryption), and `RAKKR_RUNNER_TOKEN` (Ansible runner fetch auth).
+
+- **`native`** (default) — the chart renders an Opaque `Secret` from
+  `api.secretEnv`. Provide real values via a values file or `--set`.
+- **`externalSecrets`** — an `ExternalSecret` (External Secrets Operator)
+  materializes the Secret from a store (Vault / AWS SM / GCP SM / Azure KV).
+  Set `secrets.externalSecrets.secretStoreRef.name` and either `.data` or
+  `.dataFrom` (passed through to the `ExternalSecret` spec).
+- **`sealed`** — a committed `SealedSecret` (Sealed Secrets controller) from
+  `secrets.sealed.encryptedData` (`kubeseal` ciphertext, key → value).
+
+`appSecret.existingSecret` is always honored: set it to a pre-provisioned
+Secret's name and the chart renders no Secret/ExternalSecret/SealedSecret. For a
+DB-only external secret, keep `database.existingSecret`:
 
 ```yaml
 database:
@@ -174,18 +202,30 @@ database:
     name: rakkr-database
     key: DATABASE_URL
 
-api:
-  secretEnv:
-    RAKKR_LOCAL_ADMIN_PASSWORD: replace-me
-    RAKKR_OIDC_CLIENT_SECRET: replace-me
+# External Secrets Operator example
+secrets:
+  backend: externalSecrets
+  externalSecrets:
+    secretStoreRef:
+      name: vault-backend
+      kind: ClusterSecretStore
+    dataFrom:
+      - extract:
+          key: secret/data/rakkr/controller
 ```
+
+The Ansible runner's SSH secrets no longer live in `RAKKR_ANSIBLE_TARGETS`
+(Phase 1): the runner fetches per-node keys from the controller using
+`RAKKR_RUNNER_TOKEN`, so `TARGETS` is a non-secret host map.
 
 ### What the chart deploys
 
 API and web Deployments + Services, an API PVC (`/var/lib/rakkr`), a ConfigMap
-(non-secret API env), a Secret (`DATABASE_URL` + `secretEnv`), a ServiceAccount,
-an optional Ingress, an optional migration Job, and — when `postgres.enabled=true`
-— a Postgres StatefulSet/Service/Secret.
+(non-secret API env), the app secret per `secrets.backend`
+(`Secret`/`ExternalSecret`/`SealedSecret`, or none with
+`appSecret.existingSecret`), a ServiceAccount, an optional Ingress, an optional
+migration Job, and — when `postgres.enabled=true` — a Postgres
+StatefulSet/Service/Secret.
 
 Migrations run in an API **init container** by default (`api.migrateOnStartup=true`,
 after a `wait-for-database` probe). For controlled release pipelines, set

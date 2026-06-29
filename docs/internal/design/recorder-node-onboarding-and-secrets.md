@@ -1,6 +1,10 @@
-# Recorder Node Onboarding, Credential & Secrets Management — Design Proposal
+# Recorder Node Onboarding, Credential & Secrets Management — Design & Status
 
-> **Status: PROPOSAL — for review, not yet implemented.**
+> **Status: IMPLEMENTED.** All four slices have landed — interface reconcile,
+> Phase 1 (credential store + runner fetch), Phase 2 (day-0 bootstrap), and
+> Phase 3 (k8s secrets). See §6 for the per-slice implementation notes. The one
+> remaining task is operational: migrating the live X32 rig (`node_x32_test`)
+> off its temporary manual token onto a controller-managed SSH credential.
 > Scope: day-0 onboarding of a new recorder node (#7), node credential
 > management for controller tokens + SSH keys (#8), and Kubernetes secrets
 > management for the controller (#9). These three are designed together because
@@ -294,8 +298,17 @@ correct from its very first registration.
   one-liner installer (checksum-verified release download, shared `recorder_node`
   layout) with a `cloud-init.yaml` template. Covered by bootstrap store/route
   tests + agent unit tests.
-- **Phase 3 — k8s secrets.** secretKeyRef everywhere + `existingSecret` for all,
-  remove plaintext defaults, add ESO/Sealed-Secrets support, de-secret `TARGETS`.
+- **Phase 3 — k8s secrets. ✅ IMPLEMENTED.** A `secrets.backend` value
+  (`native` / `externalSecrets` / `sealed`) selects how the single app `Secret`
+  is populated; `appSecret.existingSecret` is always honored. The app secret now
+  carries every sensitive value (DB, admin password, OIDC secret,
+  `RAKKR_SECRET_KEY`, `RAKKR_NODE_SSH_MASTER_KEY`, `RAKKR_RUNNER_TOKEN`) and the
+  API consumes them via `secretRef`/`secretKeyRef`. Added
+  `templates/externalsecret.yaml` (ESO) + `templates/sealedsecret.yaml`. Removed
+  all plaintext defaults from `values.yaml` (fail-closed); dev defaults live in
+  `values-dev.yaml`. `RAKKR_ANSIBLE_TARGETS` is de-secreted by Phase 1 (the
+  runner fetches keys from the controller). Validated by rendering all backends
+  with `helm template`.
 
 ## 7. Decisions (resolved)
 
