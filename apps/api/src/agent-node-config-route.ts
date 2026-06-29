@@ -4,17 +4,24 @@ import { defaultNodeRecordingCapacity, type RetentionPolicy } from "@rakkr/share
 import { nodeActor } from "./agent-route-helpers.js";
 import { bearerToken } from "./auth-utils.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
+import type { ListenSessionStore } from "./listen-session-store.js";
 import type { NodeCredentialAuth, NodeStore } from "./node-store.js";
 import { listRetentionPolicies } from "./retention-policies.js";
 
 interface AgentNodeConfigRouteDependencies {
   app: Hono<AppBindings>;
+  listenSessionStore?: ListenSessionStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
 }
 
+// A monitor enhancement request is considered live if a session polled within this
+// window; the agent then denoises monitor chunks on demand.
+const monitorEnhancementMaxAgeMs = 15_000;
+
 export function registerAgentNodeConfigRoute({
   app,
+  listenSessionStore,
   nodeStore,
   recordAuditEvent,
 }: AgentNodeConfigRouteDependencies) {
@@ -48,6 +55,11 @@ export function registerAgentNodeConfigRoute({
     const recorderCachePolicies = (await listRetentionPolicies())
       .filter(isExecutableRecorderCachePolicy)
       .map(recorderCachePolicyConfig);
+    const monitorEnhancement = {
+      engine: "deepfilternet3" as const,
+      requested:
+        (await listenSessionStore?.nodeWantsEnhanced(nodeId, monitorEnhancementMaxAgeMs)) ?? false,
+    };
 
     await recordAuditEvent(c, {
       action: "nodes.config.read.succeeded",
@@ -68,6 +80,7 @@ export function registerAgentNodeConfigRoute({
     return c.json({
       data: {
         audioDefaults: node.audioDefaults,
+        monitorEnhancement,
         recorderCachePolicies,
         recordingCapacity,
       },

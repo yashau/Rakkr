@@ -96,6 +96,7 @@ export interface RecordingPlaybackSession {
 }
 
 export interface ListenMonitorSession {
+  enhance: boolean;
   mode: "agent_audio_chunk" | "controller_meter_preview";
   nodeId: string;
   sessionId: string;
@@ -858,8 +859,10 @@ export const api = {
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
       method: "POST",
     }),
-  startListen: (nodeId: string) =>
+  startListen: (nodeId: string, enhance = false) =>
     fetchJson<{ data: ListenMonitorSession }>(`/api/v1/nodes/${nodeId}/listen`, {
+      body: JSON.stringify({ enhance }),
+      headers: { "content-type": "application/json" },
       method: "POST",
     }),
   listenStream: (streamUrl: string) => fetchBlob(streamUrl),

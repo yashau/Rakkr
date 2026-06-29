@@ -19,6 +19,7 @@ import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
 import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
+import type { ListenSessionStore } from "./listen-session-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { NodeStoreError, type NodeCredentialAuth, type NodeStore } from "./node-store.js";
 import {
@@ -42,6 +43,7 @@ import { enqueueRecordingUpload } from "./upload-queue.js";
 interface AgentRouteDependencies {
   app: Hono<AppBindings>;
   healthEventStore: HealthEventStore;
+  listenSessionStore?: ListenSessionStore;
   meterFrameStore: MeterFrameStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
@@ -61,6 +63,7 @@ type NodeServicePermission = "health:acknowledge" | "node:control" | "recording:
 export function registerAgentRoutes({
   app,
   healthEventStore,
+  listenSessionStore,
   meterFrameStore,
   nodeStore,
   recordAuditEvent,
@@ -70,6 +73,7 @@ export function registerAgentRoutes({
 }: AgentRouteDependencies) {
   registerAgentNodeConfigRoute({
     app,
+    listenSessionStore,
     nodeStore,
     recordAuditEvent,
   });

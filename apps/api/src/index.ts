@@ -754,6 +754,7 @@ registerAgentMonitorRoutes({
 registerAgentRoutes({
   app,
   healthEventStore,
+  listenSessionStore,
   meterFrameStore,
   nodeStore,
   recordAuditEvent,
