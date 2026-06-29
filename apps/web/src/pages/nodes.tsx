@@ -8,15 +8,16 @@ import {
   ChevronDown,
   ChevronRight,
   Cpu,
+  Download,
   HardDrive,
   Headphones,
   KeyRound,
   Network,
   ShieldCheck,
   WifiOff,
-  X,
 } from "lucide-react";
 
+import { FilterToolbar } from "@/components/filter-toolbar";
 import { EnrollNodeDialog, NodeConfigureDialog } from "@/components/node-inventory-dialogs";
 import {
   emptyNodeInventoryFilters,
@@ -201,7 +202,9 @@ export function NodesPage() {
 
   const nodes = nodesQuery.data?.data ?? [];
   const meta = nodesQuery.data?.meta;
-  const activeFilterChips = nodeFilterChips(nodeFilters);
+  // The free-text search lives inline in the toolbar, so keep it out of the
+  // slide-out chip set (which drives the "Filters" count badge).
+  const advancedFilterChips = nodeFilterChips(nodeFilters).filter((chip) => chip.key !== "q");
   const selection = nodeSelectionState(nodes, selectedNodeIds);
   const healthEvents = healthEventsQuery.data?.data ?? [];
   const columns = nodeColumns({
@@ -214,7 +217,7 @@ export function NodesPage() {
   return (
     <div className="grid gap-4">
       <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <Network className="size-5 text-teal-700" />
@@ -223,57 +226,46 @@ export function NodesPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               {meta?.total ?? nodes.length} matching nodes
             </p>
-            <NodeInventoryActions
-              allVisibleSelected={selection.allVisibleSelected}
-              exportPending={exportMutation.isPending}
-              onClear={() => setSelectedNodeIds([])}
-              onExport={() => exportMutation.mutate()}
-              onExportSelected={() =>
-                selectedExportMutation.mutate(selection.selectedVisibleNodeIds)
-              }
-              onSelectAll={(selected) =>
-                setSelectedNodeIds(selected ? selection.visibleNodeIds : [])
-              }
-              selectedCount={selection.selectedVisibleNodeIds.length}
-              selectedExportPending={selectedExportMutation.isPending}
-            />
           </div>
-          <div className="flex flex-col items-end gap-3">
-            {actionPermissions.canManage ? <EnrollNodeDialog /> : null}
-            <NodeInventoryFilters filters={nodeFilterDraft} onChange={setNodeFilterDraft} />
-          </div>
+          {actionPermissions.canManage ? <EnrollNodeDialog /> : null}
         </div>
-        {activeFilterChips.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {activeFilterChips.map((filter) => (
-              <Badge
-                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
-                key={filter.key}
+
+        <div className="mt-4">
+          <FilterToolbar
+            actions={
+              <Button
+                disabled={exportMutation.isPending}
+                onClick={() => exportMutation.mutate()}
+                type="button"
                 variant="outline"
               >
-                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
-                <span className="truncate font-mono">{filter.value}</span>
-                <button
-                  aria-label={`Clear ${filter.label} filter`}
-                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  onClick={() => clearNodeFilter(filter.key)}
-                  type="button"
-                >
-                  <X className="size-3" />
-                </button>
-              </Badge>
-            ))}
-            <Button
-              className="h-6 px-2 text-xs"
-              onClick={() => setNodeFilterDraft(emptyNodeInventoryFilters)}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              Clear all
-            </Button>
-          </div>
-        ) : null}
+                <Download className="size-4" />
+                Export CSV
+              </Button>
+            }
+            chips={advancedFilterChips}
+            onClearAll={() => setNodeFilterDraft(emptyNodeInventoryFilters)}
+            onClearChip={(key) => clearNodeFilter(key as NodeFilterKey)}
+            onSearchChange={(value) =>
+              setNodeFilterDraft((current) => ({ ...current, search: value }))
+            }
+            search={nodeFilterDraft.search}
+            searchPlaceholder="alias, room, IP, tag, serial"
+            sheetDescription="Narrow the inventory by status, backend, location, and last-seen window."
+            sheetTitle="Filter nodes"
+          >
+            <NodeInventoryFilters filters={nodeFilterDraft} onChange={setNodeFilterDraft} />
+          </FilterToolbar>
+        </div>
+
+        <NodeInventoryActions
+          allVisibleSelected={selection.allVisibleSelected}
+          onClear={() => setSelectedNodeIds([])}
+          onExportSelected={() => selectedExportMutation.mutate(selection.selectedVisibleNodeIds)}
+          onSelectAll={(selected) => setSelectedNodeIds(selected ? selection.visibleNodeIds : [])}
+          selectedCount={selection.selectedVisibleNodeIds.length}
+          selectedExportPending={selectedExportMutation.isPending}
+        />
       </section>
 
       {listenPreview ? (

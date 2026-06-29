@@ -13,9 +13,10 @@ import {
 } from "lucide-react";
 import { type RecorderNode, type ScheduleInput, type ScheduleSummary } from "@rakkr/shared";
 
+import { FilterToolbar } from "@/components/filter-toolbar";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { ScheduleFormDialog } from "@/components/schedule-form-dialog";
-import { ScheduleFiltersPanel } from "@/components/schedule-filters";
+import { ScheduleFilterFields } from "@/components/schedule-filters";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -28,8 +29,10 @@ import { formatDateTime } from "@/lib/dates";
 import {
   emptySchedulePageFilters,
   scheduleActionState,
+  scheduleFilterChips,
   scheduleFiltersFromDraft,
   schedulePageActionPermissions,
+  type ScheduleFilterKey,
   type SchedulePageActionPermissions,
   type SchedulePageFilterDraft,
 } from "@/lib/schedule-page-helpers";
@@ -42,6 +45,14 @@ import {
 } from "@/lib/schedule-draft";
 import { defaultPageSize } from "@/lib/server-pagination";
 import { useServerPagination } from "@/lib/use-server-pagination";
+
+const scheduleFilterDraftKeys: Record<ScheduleFilterKey, keyof SchedulePageFilterDraft> = {
+  captureBackend: "captureBackend",
+  captureInterfaceId: "captureInterfaceId",
+  enabled: "enabled",
+  nodeId: "nodeId",
+  search: "search",
+};
 
 export function SchedulesPage() {
   const queryClient = useQueryClient();
@@ -164,6 +175,11 @@ export function SchedulesPage() {
 
   const schedules = schedulesQuery.data?.data ?? [];
   const meta = schedulesQuery.data?.meta;
+  // Free-text search is inline in the toolbar; the slide-out chips/count cover
+  // the remaining filters.
+  const advancedFilterChips = scheduleFilterChips(apiFilters).filter(
+    (chip) => chip.key !== "search",
+  );
   const columns = scheduleColumns({
     nodes,
     onDelete: (scheduleId) => deleteScheduleMutation.mutate(scheduleId),
@@ -180,27 +196,43 @@ export function SchedulesPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Schedules</h2>
-          <p className="text-sm text-muted-foreground">
-            {meta?.total ?? schedules.length} matching schedules
-          </p>
+      <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Schedules</h2>
+            <p className="text-sm text-muted-foreground">
+              {meta?.total ?? schedules.length} matching schedules
+            </p>
+          </div>
+          {actionPermissions.canManage ? (
+            <Button onClick={openCreate} type="button">
+              <PlusCircle className="size-4" />
+              Add schedule
+            </Button>
+          ) : null}
         </div>
-        {actionPermissions.canManage ? (
-          <Button onClick={openCreate} type="button">
-            <PlusCircle className="size-4" />
-            Add schedule
-          </Button>
-        ) : null}
-      </div>
 
-      <ScheduleFiltersPanel
-        filters={scheduleFilterDraft}
-        nodes={nodes}
-        onChange={setScheduleFilterDraft}
-        shownCount={schedules.length}
-      />
+        <div className="mt-4">
+          <FilterToolbar
+            chips={advancedFilterChips}
+            onClearAll={() => setScheduleFilterDraft(emptySchedulePageFilters)}
+            onClearChip={(key) => clearScheduleFilter(key as ScheduleFilterKey)}
+            onSearchChange={(value) =>
+              setScheduleFilterDraft((current) => ({ ...current, search: value }))
+            }
+            search={scheduleFilterDraft.search}
+            searchPlaceholder="name, room, tag, policy"
+            sheetDescription="Filter schedules by state, node, capture backend, and interface."
+            sheetTitle="Filter schedules"
+          >
+            <ScheduleFilterFields
+              filters={scheduleFilterDraft}
+              nodes={nodes}
+              onChange={setScheduleFilterDraft}
+            />
+          </FilterToolbar>
+        </div>
+      </section>
 
       <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">
         <DataTable
@@ -258,6 +290,10 @@ export function SchedulesPage() {
       input: draftToInput(draft),
       scheduleId: editingId,
     });
+  }
+
+  function clearScheduleFilter(key: ScheduleFilterKey) {
+    setScheduleFilterDraft((current) => ({ ...current, [scheduleFilterDraftKeys[key]]: "" }));
   }
 }
 

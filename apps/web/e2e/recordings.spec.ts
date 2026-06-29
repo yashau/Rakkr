@@ -8,7 +8,7 @@ test("recordings render the card library with shared pagination", async ({ page,
   await loginAndOpen(page, request, "/recordings");
 
   await expect(page.getByRole("heading", { name: "Recordings", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Library filters" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Filters" })).toBeVisible();
   await expect(page.getByText(/Showing \d+|No results/)).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Rows per page" })).toBeVisible();
 
