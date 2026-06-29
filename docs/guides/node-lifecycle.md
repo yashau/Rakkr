@@ -103,6 +103,14 @@ use; password auth is suppressed when a key is present. The controller only know
 `RAKKR_ANSIBLE_RUNNER_URL` (and an optional token/timeout) — never the SSH
 secrets.
 
+> **Preferred: controller-managed SSH keys.** When the runner is pointed at the
+> controller (`RAKKR_RUNNER_CONTROLLER_URL` + `RAKKR_RUNNER_TOKEN`), it fetches
+> each node's SSH key (and, on deploys, a freshly-minted controller token) from
+> the controller at run time — so `RAKKR_ANSIBLE_TARGETS` carries **no SSH
+> secrets**, just a host map. The `rotate_trust`/install actions also install the
+> controller-held public key into the node's `authorized_keys`. See
+> [Node onboarding](node-onboarding.md).
+
 ## Smoke validation
 
 Two `mise` tasks exercise the path (both call

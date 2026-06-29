@@ -84,6 +84,20 @@ If none of these are set, the API serves plain HTTP. See
 > `RAKKR_ANSIBLE_SSH_DIR`, …) are read by the **runner**, not the controller —
 > see [Node lifecycle](../guides/node-lifecycle.md).
 
+## Node credentials & onboarding (controller side)
+
+See [Node onboarding](../guides/node-onboarding.md).
+
+| Variable                    | Default                            | Purpose                                                                                                  |
+| --------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `RAKKR_NODE_SSH_MASTER_KEY` | falls back to `RAKKR_SECRET_KEY`   | Master key encrypting node SSH private keys at rest. **Set in production**; unset uses an insecure dev key. |
+| `RAKKR_RUNNER_TOKEN`        | —                                  | Shared token the Ansible runner presents to fetch per-node SSH keys/tokens (`…/ssh-credential/material`). Unset disables the runner fetch endpoint. |
+
+The runner side of the fetch (set on the **runner**, not the controller):
+`RAKKR_RUNNER_CONTROLLER_URL`, `RAKKR_RUNNER_TOKEN`, `RAKKR_RUNNER_CONTROLLER_CA`
+(self-signed CA bundle), `RAKKR_RUNNER_ALLOW_INSECURE` (`1` skips TLS verify;
+dev only), `RAKKR_RUNNER_CONTROLLER_TIMEOUT_SECONDS` (default `20`).
+
 ## JSON fallback store paths
 
 Used when `DATABASE_URL` is unset; resolved relative to the working directory.

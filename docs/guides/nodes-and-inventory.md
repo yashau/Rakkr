@@ -39,6 +39,11 @@ metering. Rotate the token any time from the node card; rotation revokes the old
 credential. See the [recorder agent reference](../reference/recorder-agent.md) for
 all agent options.
 
+> **Low-touch day-0?** For a brand-new host, prefer [Node onboarding](node-onboarding.md):
+> mint a single bootstrap token and the node provisions itself (generates its own
+> SSH key, registers, and receives its controller token). **Interfaces are
+> optional at enrollment** — the agent reports the real hardware on first startup.
+
 ## Heartbeats, liveness, and status
 
 Each heartbeat updates last-seen, status, OS/kernel/runtime, IPs, and audio
@@ -54,6 +59,14 @@ The agent discovers capture interfaces from ALSA (`arecord -l`, falling back to
 `/proc/asound/pcm` and then ALSA hw-params metadata), preferring Linux sysfs
 device paths and serials when exposed. It also reports PipeWire and JACK
 availability so the right backend presets are offered.
+
+**The agent is the source of truth for hardware.** On every startup it reconciles
+its discovered inventory with the controller (`POST /nodes/:id/inventory`):
+interfaces are matched by stable system ref so persisted ids — and any channel-map
+assignment keyed on them — survive, operator labels (interface + channel aliases)
+are preserved, and devices the agent no longer reports are flagged **absent**
+(not deleted), preserving channel-map history. Real changes audit
+`nodes.inventory.reconciled`; an unchanged report is a no-op.
 
 You can edit identity, location, network, tags, notes, interface aliases,
 hardware paths, serials, sample rates, and channel aliases — all `node:manage`,

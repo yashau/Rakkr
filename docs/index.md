@@ -68,6 +68,7 @@ over SSH.
   [Data model](architecture/data-model.md)
 - **Guides** — [Authentication & RBAC](guides/authentication-and-rbac.md) ·
   [Nodes & inventory](guides/nodes-and-inventory.md) ·
+  [Node onboarding](guides/node-onboarding.md) ·
   [Recording](guides/recording.md) · [Scheduling](guides/scheduling.md) ·
   [Health watchdog](guides/health-watchdog.md) ·
   [Storage & uploads](guides/storage-and-uploads.md) ·

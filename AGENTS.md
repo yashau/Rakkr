@@ -326,6 +326,18 @@ available.
   `apps/api/src/node-lifecycle-routes.ts`; keep actions allowlisted,
   `node:manage`-gated, scoped to visible nodes, and audited with runner run IDs,
   exit codes, target hosts, stdout, and stderr.
+- Node onboarding, credentials, and secrets are one subsystem (the controller is
+  the system of record). SSH keys live in `node_ssh_credentials`, encrypted at
+  rest via `node-ssh-credential-crypto.ts`/`node-ssh-credential-store.ts` (master
+  key `RAKKR_NODE_SSH_MASTER_KEY`, falling back to `RAKKR_SECRET_KEY`); day-0
+  bootstrap tokens live in `node_bootstrap_tokens`/`node-bootstrap-store.ts`. The
+  routes (`node-ssh-credential-routes.ts`, `node-bootstrap-routes.ts`,
+  `agent-inventory-route.ts`) keep these invariants: private keys are **never**
+  returned to operators or logged; the runner-scoped `…/ssh-credential/material`
+  fetch and the bootstrap endpoint use token auth (not user sessions); bootstrap
+  tokens are single-use + atomic-consume; startup inventory reconcile preserves
+  operator labels + channel-maps and flags absent interfaces. See
+  `docs/guides/node-onboarding.md` and `docs/internal/design/recorder-node-onboarding-and-secrets.md`.
 - If adding new settings, recordings, schedules, health, upload, or node
   behavior, check whether a baseline doc and verifier script also need updates.
 
@@ -349,6 +361,10 @@ available.
   `apps/web/src/lib/node-lifecycle-api.ts`; preserve the node-card placement,
   `node:manage` boundary, compact operations-console styling, and accessible
   controls.
+- **Playwright is the canonical way to create screenshots** of the web console
+  (docs imagery, PR evidence, visual checks). Drive the running app with
+  Playwright and capture deterministic screenshots there — do not hand-craft or
+  mock UI images.
 
 ## Rust Agent Guidance
 
@@ -361,7 +377,16 @@ available.
 - Run Rust unit tests/checks plus fake-controller smoke for changes touching
   controller sync, jobs, health, cache, inventory, command templates, or capture
   behavior.
-- Use Miri-compatible patterns where existing tests rely on Miri.
+- Use Miri-compatible patterns where existing tests rely on Miri (gate
+  filesystem/`Command`-touching tests with `#[cfg_attr(miri, ignore)]`).
+- On startup the agent reconciles its discovered interfaces with the controller
+  (`controller::post_node_inventory`, before the heartbeat loop) — the agent owns
+  hardware truth. `src/bootstrap.rs` is the one-shot `--bootstrap` day-0 mode
+  (ssh-keygen keypair, `authorized_keys` install, bootstrap POST, env-file token
+  write, private-key wipe); it shells to `ssh-keygen` and must stay
+  Windows-compilable (guard unix-only code with `#[cfg(unix)]`). The
+  `deploy/bootstrap/agent.sh` installer mirrors the `recorder_node` install
+  layout — keep them in sync. See `docs/guides/node-onboarding.md`.
 - Voice enhancement is in-process: `src/enhance.rs` denoises 48 kHz mono with
   DeepFilterNet3 (`deep_filter`, tract, embedded model) or RNNoise (`nnnoiseless`);
   `channel_map::render_enhanced_output` produces the enhanced rendition (ffmpeg
@@ -412,9 +437,20 @@ and evidence support the promotion.
   install/update, recorder binary deployment, systemd unit management, CA trust
   rotation, smoke checks, distro vars, privilege escalation, idempotency, and
   serial rollout.
-- Keep lifecycle credentials out of node metadata. Use runner environment such
-  as `RAKKR_ANSIBLE_TARGETS`, `RAKKR_ANSIBLE_SSH_DIR`, and mounted key paths
-  for per-node SSH settings.
+- Keep lifecycle credentials out of node metadata. Preferred: point the runner
+  at the controller (`RAKKR_RUNNER_CONTROLLER_URL` + `RAKKR_RUNNER_TOKEN`) so it
+  fetches per-node SSH keys/tokens at run time and `RAKKR_ANSIBLE_TARGETS` holds
+  no SSH secrets (just a host map). The env path (`RAKKR_ANSIBLE_TARGETS`,
+  `RAKKR_ANSIBLE_SSH_DIR`, mounted keys) remains the fallback.
+- `deploy/bootstrap/agent.sh` is the day-0 one-liner installer (published at
+  `rakkr.org/agent.sh`) with `cloud-init.yaml`; it shares the `recorder_node`
+  install layout and runs the agent's `--bootstrap` mode. Keep them in sync.
+- Helm sources every controller secret from one app `Secret` via
+  `secrets.backend` (`native`/`externalSecrets`/`sealed`, plus
+  `appSecret.existingSecret`); `values.yaml` ships no plaintext secret defaults
+  (dev values live in `deploy/helm/rakkr-controller/values-dev.yaml`). New
+  controller secrets (e.g. `RAKKR_NODE_SSH_MASTER_KEY`, `RAKKR_RUNNER_TOKEN`) go
+  in `api.secretEnv`. Validate chart changes with `helm template` across backends.
 - `update_binary` pulls recorder-agent binaries from GitHub releases by default
   (static musl `x86_64`/`aarch64`, checksum-verified) via
   `deploy/ansible/roles/recorder_node/tasks/update_binary.yml`. `agentVersion`

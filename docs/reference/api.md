@@ -67,7 +67,9 @@ Conventions:
 | `GET /nodes/:id/meters` · `GET /meter-events`                                   | `node:read`      | Meter snapshot / SSE stream.         |
 | `POST /nodes/enroll`                                                            | `node:manage`    | Enroll node (returns credential).    |
 | `PATCH /nodes/:id` · `/:id/interfaces/:iid`                                     | `node:manage`    | Update node / interface.             |
-| `POST /nodes/:id/credentials/rotate`                                            | `node:manage`    | Rotate node credential.              |
+| `POST /nodes/:id/credentials/rotate`                                            | `node:manage`    | Rotate node controller token.        |
+| `GET /nodes/:id/ssh-credential` · `POST /:id/ssh-credential/rotate`             | `node:manage`    | Read public SSH key / rotate keypair (private key never returned). |
+| `POST /nodes/:id/bootstrap-token`                                               | `node:manage`    | Mint a single-use, short-TTL day-0 bootstrap token. |
 | `GET /nodes/:id/lifecycle-jobs`                                                 | `node:read`      | List lifecycle runs.                 |
 | `POST /nodes/:id/lifecycle/:action`                                             | `node:manage`    | Run an allowlisted lifecycle action. |
 | `POST /nodes/:id/listen` · `GET /:id/listen/stream` · `DELETE /:id/listen/:sid` | `listen:monitor` | Start (`{enhance}`) / stream / stop live listen. |
@@ -79,6 +81,7 @@ Conventions:
 | `GET /nodes/:id/config`                           | `node:control`                       | Node config + cache policies + capacity.  |
 | `GET /nodes/:id/channel-map-assignments`          | `node:control`                       | Assigned channel maps.                    |
 | `POST /nodes/:id/heartbeat`                       | `node:control`                       | Node heartbeat.                           |
+| `POST /nodes/:id/inventory`                       | `node:control`                       | Reconcile interfaces from discovered inventory (startup). |
 | `POST /nodes/:id/meter-frame`                     | —                                    | Push a meter frame.                       |
 | `POST /nodes/:id/listen/chunk`                    | `node:control`                       | Ingest live-listen audio (`?rendition`).  |
 | `POST /nodes/:id/health-events`                   | `health:acknowledge`                 | Sync a health event.                      |
@@ -87,6 +90,16 @@ Conventions:
 | `GET /recording-jobs/:jid`                        | `recording:control`/`recording:read` | Read job (dual-mode auth).                |
 | `POST /recording-jobs/:jid/cancelled` · `/failed` | `recording:control`                  | Terminal job state.                       |
 | `PUT /recordings/:rid/cache-file`                 | `recording:control`                  | Upload captured audio; completes the job. |
+
+## Onboarding & runner routes (special auth)
+
+These two routes are **not** authenticated by a node credential or a user
+session — see [Node onboarding](../guides/node-onboarding.md).
+
+| Method & path                                     | Auth                                 | Purpose                                   |
+| ------------------------------------------------- | ------------------------------------ | ----------------------------------------- |
+| `POST /nodes/:id/bootstrap`                       | single-use bootstrap token           | Day-0: accept node-generated SSH key + inventory, mint controller token. |
+| `GET /nodes/:id/ssh-credential/material`          | runner token (`RAKKR_RUNNER_TOKEN`)  | Runner fetch of the decrypted SSH key (+ `?mintToken=1` for a fresh token). |
 
 ## Recordings — `/api/v1/recordings`
 

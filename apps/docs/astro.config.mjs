@@ -91,6 +91,7 @@ export default defineConfig({
           items: [
             { label: "Authentication & RBAC", slug: "guides/authentication-and-rbac" },
             { label: "Nodes & inventory", slug: "guides/nodes-and-inventory" },
+            { label: "Node onboarding", slug: "guides/node-onboarding" },
             { label: "Recording", slug: "guides/recording" },
             { label: "Audio enhancement", slug: "guides/audio-enhancement" },
             { label: "Scheduling", slug: "guides/scheduling" },

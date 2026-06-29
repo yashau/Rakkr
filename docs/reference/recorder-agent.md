@@ -27,6 +27,19 @@ Without a mode flag, the agent runs as a long-lived daemon.
 | `--run-next-job`                  | `RAKKR_RUN_NEXT_JOB`                  | Claim and run one queued job, then exit (needs a token).   |
 | `--capture-recording-id`          | `RAKKR_CAPTURE_RECORDING_ID`          | One-shot capture → render → upload for a recording ID.     |
 | `--attach-cache-file`             | `RAKKR_ATTACH_CACHE_FILE`             | Upload an existing local file as a recording's cache.      |
+| `--bootstrap`                     | `RAKKR_BOOTSTRAP`                     | Day-0: generate SSH keypair, hand the private key to the controller (bootstrap token), write the returned controller token, then exit. |
+
+### Bootstrap mode
+
+Used at first boot (usually by `deploy/bootstrap/agent.sh`); see
+[Node onboarding](../guides/node-onboarding.md).
+
+| Variable                          | Default                                        | Purpose                                                        |
+| --------------------------------- | ---------------------------------------------- | -------------------------------------------------------------- |
+| `RAKKR_BOOTSTRAP_TOKEN`           | —                                              | Single-use bootstrap token (required for `--bootstrap`).        |
+| `RAKKR_BOOTSTRAP_AUTHORIZED_KEYS` | `/var/lib/rakkr/agent/.ssh/authorized_keys`    | Where the generated public key is installed.                    |
+| `RAKKR_BOOTSTRAP_ENV_FILE`        | `/etc/rakkr/recorder-agent.env`                | Env file the controller token is written into.                 |
+| `RAKKR_SSH_KEYGEN_COMMAND`        | `ssh-keygen`                                   | Keypair generator command.                                      |
 
 ## Controller / identity / transport
 
