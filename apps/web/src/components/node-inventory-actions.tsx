@@ -6,25 +6,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 export function NodeInventoryActions({
   allVisibleSelected,
-  exportPending,
   onClear,
-  onExport,
   onExportSelected,
   onSelectAll,
   selectedCount,
   selectedExportPending,
 }: {
   allVisibleSelected: boolean;
-  exportPending: boolean;
   onClear: () => void;
-  onExport: () => void;
   onExportSelected: () => void;
   onSelectAll: (selected: boolean) => void;
   selectedCount: number;
   selectedExportPending: boolean;
 }) {
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
+    <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
       <label className="flex items-center gap-2 text-sm">
         <Checkbox
           checked={allVisibleSelected}
@@ -32,37 +28,28 @@ export function NodeInventoryActions({
         />
         <span>{selectedCount} selected</span>
       </label>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button disabled={exportPending} onClick={onExport} variant="outline">
-              <Download className="size-4" />
-              Export
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Export filtered node inventory</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              disabled={selectedCount === 0 || selectedExportPending}
-              onClick={onExportSelected}
-              variant="outline"
-            >
-              <Download className="size-4" />
-              Export selected
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          {selectedCount > 0 ? "Export selected visible nodes" : "Select visible nodes to export"}
-        </TooltipContent>
-      </Tooltip>
-      <Button disabled={selectedCount === 0} onClick={onClear} variant="outline">
-        Clear
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                disabled={selectedCount === 0 || selectedExportPending}
+                onClick={onExportSelected}
+                variant="outline"
+              >
+                <Download className="size-4" />
+                Export selected
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {selectedCount > 0 ? "Export selected visible nodes" : "Select visible nodes to export"}
+          </TooltipContent>
+        </Tooltip>
+        <Button disabled={selectedCount === 0} onClick={onClear} variant="outline">
+          Clear
+        </Button>
+      </div>
     </div>
   );
 }
