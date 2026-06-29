@@ -9,7 +9,7 @@ const actions = (
   .filter(Boolean);
 const host = process.env.RAKKR_ANSIBLE_SMOKE_HOST ?? "recorder-test-rig";
 const nodeId = process.env.RAKKR_ANSIBLE_SMOKE_NODE_ID ?? "node_x32_test";
-const nodeAlias = process.env.RAKKR_ANSIBLE_SMOKE_NODE_ALIAS ?? "Council Chamber Rack";
+const nodeAlias = process.env.RAKKR_ANSIBLE_SMOKE_NODE_ALIAS ?? "Studio A Rack";
 const sshUser = process.env.RAKKR_ANSIBLE_SMOKE_SSH_USER;
 const agentVersion = process.env.RAKKR_ANSIBLE_SMOKE_AGENT_VERSION;
 

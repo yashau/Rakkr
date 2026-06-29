@@ -131,6 +131,8 @@ export interface NodeStore {
   heartbeat(nodeId: string, input: NodeHeartbeatInput): Promise<RecorderNode | undefined>;
   list(): Promise<RecorderNode[]>;
   rotateCredential(nodeId: string, actorUserId?: string): Promise<NodeEnrollmentResult | undefined>;
+  /** Idempotently persist seed nodes as real enrolled rows (no-op without a database). */
+  seed(nodes: RecorderNode[]): Promise<void>;
   updateInterface(
     nodeId: string,
     interfaceId: string,
@@ -180,6 +182,10 @@ class SeedOnlyNodeStore implements NodeStore {
 
   async rotateCredential(): Promise<NodeEnrollmentResult> {
     throw new NodeStoreError("Node credential rotation requires Postgres", "database_unavailable");
+  }
+
+  async seed() {
+    // Seed nodes are already the in-memory source of truth here.
   }
 
   async updateInterface(nodeId: string, interfaceId: string, input: NodeInterfaceUpdateInput) {
@@ -375,6 +381,46 @@ class PostgresNodeStore implements NodeStore {
     };
   }
 
+  async seed(nodesToSeed: RecorderNode[]) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return;
+    }
+
+    try {
+      for (const node of nodesToSeed) {
+        const [existing] = await db
+          .select({ id: nodeRows.id })
+          .from(nodeRows)
+          .where(eq(nodeRows.id, node.id))
+          .limit(1);
+
+        if (existing) {
+          continue;
+        }
+
+        await db.insert(nodeRows).values(recorderNodeToRow(node));
+
+        for (const audioInterface of node.interfaces) {
+          await db.insert(audioInterfaces).values(recorderInterfaceToRow(node.id, audioInterface));
+
+          if (audioInterface.channels.length > 0) {
+            await db.insert(audioChannels).values(
+              audioInterface.channels.map((channel) => ({
+                alias: channel.alias,
+                index: channel.index,
+                interfaceId: audioInterface.id,
+              })),
+            );
+          }
+        }
+      }
+    } catch (error) {
+      this.markUnavailable(error);
+    }
+  }
+
   async updateInterface(nodeId: string, interfaceId: string, input: NodeInterfaceUpdateInput) {
     const db = this.availableDatabase();
 
@@ -560,6 +606,45 @@ function interfaceInputToRow(
     serialNumber: input.serialNumber ?? null,
     systemName: input.systemName,
     systemRef: input.systemRef ?? input.systemName,
+  };
+}
+
+function recorderNodeToRow(node: RecorderNode): typeof nodeRows.$inferInsert {
+  return {
+    agentVersion: node.agentVersion,
+    alias: node.alias,
+    hostname: node.hostname,
+    id: node.id,
+    lastSeenAt: new Date(node.lastSeenAt),
+    location: node.location,
+    metadata: nodeMetadata(
+      { enrolledAt: new Date().toISOString() },
+      node.runtime,
+      node.recordingCapacity,
+      node.audioDefaults,
+    ),
+    network: { ipAddresses: node.ipAddresses },
+    notes: node.notes,
+    status: node.status,
+    tags: node.tags,
+  };
+}
+
+function recorderInterfaceToRow(
+  nodeId: string,
+  audioInterface: AudioInterface,
+): typeof audioInterfaces.$inferInsert {
+  return {
+    alias: audioInterface.alias,
+    backend: audioInterface.backend,
+    channelCount: audioInterface.channelCount,
+    hardwarePath: audioInterface.hardwarePath ?? null,
+    id: audioInterface.id,
+    nodeId,
+    sampleRates: audioInterface.sampleRates,
+    serialNumber: audioInterface.serialNumber ?? null,
+    systemName: audioInterface.systemName,
+    systemRef: audioInterface.systemRef ?? audioInterface.systemName,
   };
 }
 
