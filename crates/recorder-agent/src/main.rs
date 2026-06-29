@@ -582,7 +582,8 @@ async fn sync_monitor_chunk(
     // here must not flip the raw sync health state, so they are logged only.
     if let Some(enhanced) = sample.enhanced_monitor_wav.as_deref()
         && let Err(error) =
-            monitor_sync::post_monitor_chunk(config, token, sample, enhanced, Some("enhanced")).await
+            monitor_sync::post_monitor_chunk(config, token, sample, enhanced, Some("enhanced"))
+                .await
     {
         warn!(error = %error, "failed to post enhanced monitor chunk");
     }
