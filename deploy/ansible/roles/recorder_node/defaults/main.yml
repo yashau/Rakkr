@@ -19,6 +19,23 @@ rakkr_agent_clean_version: "{{ rakkr_agent_resolved_version | regex_replace('^ag
 rakkr_agent_archive_name: "rakkr-recorder-agent-{{ rakkr_agent_clean_version }}-{{ rakkr_agent_target }}.tar.gz"
 rakkr_agent_release_asset_base: "https://github.com/{{ rakkr_agent_repo }}/releases/download/{{ rakkr_agent_resolved_version }}"
 rakkr_agent_binary_src: /opt/rakkr-artifacts/rakkr-recorder-agent
+# Agent runtime configuration threaded from the controller/runner (kept out of
+# node metadata). Empty by default; the runner forwards per-node values that the
+# env template renders only when present.
+rakkr_controller_url: https://rakkr-controller.local
+rakkr_controller_token: ""
+rakkr_allow_insecure_controller: ""
+rakkr_node_alias: ""
+rakkr_node_site: ""
+rakkr_node_room: ""
+rakkr_capture_backend: ""
+rakkr_capture_device: ""
+rakkr_capture_channels: ""
+rakkr_capture_format: ""
+rakkr_capture_sample_rate: ""
+rakkr_meter_backend: ""
+# The agent must read the audio device; grant the service user audio access.
+rakkr_agent_supplementary_groups: audio
 rakkr_agent_env_file: /etc/rakkr/recorder-agent.env
 rakkr_agent_service_enabled: true
 rakkr_agent_service_state: started

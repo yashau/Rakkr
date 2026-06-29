@@ -118,6 +118,11 @@ def write_inventory(path, host, options, config, tmpdir):
         "ansible_user": user,
     }
 
+    # Root logins do not need privilege escalation; disabling become avoids a
+    # hard dependency on sudo being installed on a fresh minimal node.
+    if user == "root":
+        host_vars["ansible_become"] = False
+
     if password:
         host_vars["ansible_password"] = password
 
@@ -171,6 +176,32 @@ def ansible_command(inventory, action, target, options, config):
         "rakkr_github_token": os.environ.get("RAKKR_ANSIBLE_GITHUB_TOKEN"),
         "rakkr_node_smoke_command": config_value(config, "smokeCommand")
         or os.environ.get("RAKKR_ANSIBLE_SMOKE_COMMAND"),
+        # Agent runtime config: from per-run options (controller), else per-node
+        # target config, else runner env. Forwarded as transient Ansible vars and
+        # never stored in node metadata.
+        "rakkr_controller_url": str_option(options, "controllerUrl")
+        or config_value(config, "controllerUrl")
+        or os.environ.get("RAKKR_ANSIBLE_CONTROLLER_URL"),
+        "rakkr_controller_token": str_option(options, "controllerToken")
+        or config_value(config, "controllerToken")
+        or os.environ.get("RAKKR_ANSIBLE_CONTROLLER_TOKEN"),
+        "rakkr_allow_insecure_controller": str_option(options, "allowInsecureController")
+        or config_value(config, "allowInsecureController")
+        or os.environ.get("RAKKR_ANSIBLE_ALLOW_INSECURE_CONTROLLER"),
+        "rakkr_capture_backend": config_value(config, "captureBackend")
+        or os.environ.get("RAKKR_ANSIBLE_CAPTURE_BACKEND"),
+        "rakkr_capture_device": config_value(config, "captureDevice")
+        or os.environ.get("RAKKR_ANSIBLE_CAPTURE_DEVICE"),
+        "rakkr_capture_channels": config_value(config, "captureChannels")
+        or os.environ.get("RAKKR_ANSIBLE_CAPTURE_CHANNELS"),
+        "rakkr_capture_format": config_value(config, "captureFormat")
+        or os.environ.get("RAKKR_ANSIBLE_CAPTURE_FORMAT"),
+        "rakkr_capture_sample_rate": config_value(config, "captureSampleRate")
+        or os.environ.get("RAKKR_ANSIBLE_CAPTURE_SAMPLE_RATE"),
+        "rakkr_meter_backend": config_value(config, "meterBackend")
+        or os.environ.get("RAKKR_ANSIBLE_METER_BACKEND"),
+        "rakkr_node_site": config_value(config, "site"),
+        "rakkr_node_room": config_value(config, "room"),
     }
 
     for key, value in optional_vars.items():
@@ -246,6 +277,11 @@ def target_config(node_id):
 
 def config_value(config, key):
     value = config.get(key)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def str_option(options, key):
+    value = options.get(key)
     return value if isinstance(value, str) and value.strip() else None
 
 

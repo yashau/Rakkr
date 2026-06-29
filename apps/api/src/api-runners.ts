@@ -1,4 +1,4 @@
-import { buildMeterFrame } from "./demo-data.js";
+import { buildMeterFrame, demoMetersEnabled } from "./demo-data.js";
 import type { AuditStore } from "./audit-store.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
@@ -96,6 +96,10 @@ async function watchdogMeterFrame(meterFrameStore: MeterFrameStore, nodeId: stri
 
   if (frame) {
     return frame;
+  }
+
+  if (!demoMetersEnabled()) {
+    return undefined;
   }
 
   const demoFrame = buildMeterFrame();

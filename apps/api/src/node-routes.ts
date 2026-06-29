@@ -12,7 +12,7 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import { buildMeterFrame } from "./demo-data.js";
+import { buildMeterFrame, demoMetersEnabled } from "./demo-data.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -449,7 +449,7 @@ export function registerNodeRoutes({
         return c.json({ error: "Node not found" }, 404);
       }
 
-      const frame = (await meterFrameStore.latest(node.id)) ?? buildMeterFrame();
+      const frame = (await meterFrameStore.latest(node.id)) ?? fallbackMeterFrame(node);
 
       if (nodeId !== frame.nodeId) {
         await recordNodeFailure(c, "meters.read.failed", "meter_node_mismatch", node.alias, {
@@ -708,7 +708,7 @@ export function registerNodeRoutes({
       while (true) {
         const frame = await liveMeterFrame();
 
-        if (await hasResourceScope(user, { id: frame.nodeId, type: "node" })) {
+        if (frame && (await hasResourceScope(user, { id: frame.nodeId, type: "node" }))) {
           await stream.writeSSE({
             data: JSON.stringify(frame),
             event: "meter",
@@ -720,10 +720,30 @@ export function registerNodeRoutes({
     });
   });
 
-  async function liveMeterFrame() {
-    const seededFrame = buildMeterFrame();
+  // Real usage never fabricates: when no agent frame is stored, return an empty
+  // frame the UI renders as "waiting for meter frames". Synthetic data is only
+  // produced when demo mode is explicitly enabled (screenshots/video/tests).
+  function fallbackMeterFrame(node: RecorderNode): MeterFrame {
+    if (demoMetersEnabled()) {
+      return buildMeterFrame();
+    }
 
-    return (await meterFrameStore.latest(seededFrame.nodeId)) ?? seededFrame;
+    return {
+      capturedAt: new Date().toISOString(),
+      interfaceId: node.interfaces[0]?.id ?? "",
+      levels: [],
+      nodeId: node.id,
+    };
+  }
+
+  async function liveMeterFrame() {
+    const demoFrame = demoMetersEnabled() ? buildMeterFrame() : undefined;
+
+    if (!demoFrame) {
+      return undefined;
+    }
+
+    return (await meterFrameStore.latest(demoFrame.nodeId)) ?? demoFrame;
   }
 
   async function monitorMeterFrame(nodeId: string) {
@@ -731,6 +751,10 @@ export function registerNodeRoutes({
 
     if (frame) {
       return frame;
+    }
+
+    if (!demoMetersEnabled()) {
+      return undefined;
     }
 
     const seededFrame = buildMeterFrame();

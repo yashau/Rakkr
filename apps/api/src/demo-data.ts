@@ -167,28 +167,10 @@ function demoMeterDbfsOverride() {
   return Number.isFinite(parsed) ? Math.min(24, Math.max(-160, parsed)) : undefined;
 }
 
-export function prometheusMetrics() {
-  const frame = buildMeterFrame();
-  const lines = [
-    "# HELP rakkr_node_online Whether a recorder node is online.",
-    "# TYPE rakkr_node_online gauge",
-    'rakkr_node_online{node_id="node_x32_test",alias="Studio A Rack"} 1',
-    "# HELP rakkr_recording_active Active recording jobs on a node.",
-    "# TYPE rakkr_recording_active gauge",
-    'rakkr_recording_active{node_id="node_x32_test"} 0',
-    "# HELP rakkr_input_rms_dbfs Current RMS level by audio channel.",
-    "# TYPE rakkr_input_rms_dbfs gauge",
-    ...frame.levels.map(
-      (level) =>
-        `rakkr_input_rms_dbfs{node_id="node_x32_test",interface_id="${DEMO_INTERFACE_ID}",channel="${level.channelIndex}"} ${level.rmsDbfs}`,
-    ),
-    "# HELP rakkr_input_peak_dbfs Current peak level by audio channel.",
-    "# TYPE rakkr_input_peak_dbfs gauge",
-    ...frame.levels.map(
-      (level) =>
-        `rakkr_input_peak_dbfs{node_id="node_x32_test",interface_id="${DEMO_INTERFACE_ID}",channel="${level.channelIndex}"} ${level.peakDbfs}`,
-    ),
-  ];
-
-  return `${lines.join("\n")}\n`;
+// GOLDEN RULE: meters must reflect real life. The synthetic frames from
+// buildMeterFrame() are for demonstration/screenshot/video/test-harness use
+// only and must never be a silent fallback in real usage. Live meter paths emit
+// synthetic data exclusively when this is explicitly enabled.
+export function demoMetersEnabled() {
+  return process.env.RAKKR_DEMO_METERS === "1";
 }

@@ -31,8 +31,10 @@
 
 - name: Ensure Rakkr recorder user exists
   ansible.builtin.user:
+    append: true
     create_home: false
     group: "{{ rakkr_agent_group }}"
+    groups: "{{ rakkr_agent_supplementary_groups }}"
     home: "{{ rakkr_agent_state_dir }}"
     name: "{{ rakkr_agent_user }}"
     shell: /usr/sbin/nologin

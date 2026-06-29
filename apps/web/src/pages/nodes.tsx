@@ -37,6 +37,7 @@ import { NodeHealthEvents } from "@/components/node-health-events";
 import { NodeLifecycleMenu } from "@/components/node-lifecycle-menu";
 import { ListenMonitorPanel, type ListenMonitorPreview } from "@/components/listen-monitor-panel";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { MeterBank } from "@/components/meter-bank";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -289,6 +290,7 @@ export function NodesPage() {
             <NodeDetailRow
               canListen={actionPermissions.canListen}
               canManage={actionPermissions.canManage}
+              canReadMeters={actionPermissions.canRead}
               healthEvents={healthEvents.filter((event) => event.nodeId === node.id)}
               listenPending={listenMutation.isPending}
               node={node}
@@ -437,6 +439,7 @@ function NodeDetailRow({
   canAcknowledgeHealth,
   canListen,
   canManage,
+  canReadMeters,
   healthEvents,
   healthPending,
   listenPending,
@@ -449,6 +452,7 @@ function NodeDetailRow({
   canAcknowledgeHealth: boolean;
   canListen: boolean;
   canManage: boolean;
+  canReadMeters: boolean;
   healthEvents: HealthEvent[];
   healthPending: boolean;
   listenPending: boolean;
@@ -459,6 +463,13 @@ function NodeDetailRow({
   rotatePending: boolean;
 }) {
   const healthSummary = nodeHealthSummary(healthEvents);
+  const meterQuery = useQuery({
+    enabled: canReadMeters,
+    queryFn: () => api.meterFrame(node.id),
+    queryKey: ["meters", node.id],
+    refetchInterval: 1000,
+  });
+  const meterLevels = meterQuery.data?.data.levels ?? [];
 
   return (
     <div className="grid gap-4 p-4">
@@ -525,6 +536,8 @@ function NodeDetailRow({
           />
         ))}
       </div>
+
+      {canReadMeters ? <MeterBank levels={meterLevels} title={`${node.alias} Meters`} /> : null}
 
       <NodeHealthTrend events={healthEvents} />
       <NodeHealthEvents

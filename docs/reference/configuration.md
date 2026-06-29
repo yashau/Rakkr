@@ -25,7 +25,8 @@ separately in the [recorder agent CLI reference](recorder-agent.md).
 | `RAKKR_RECORDING_CACHE_DIR` | `data/recordings`       | Root directory for cached recording files.                                |
 | `RAKKR_API_NO_LISTEN`       | —                       | `1` skips binding a port (used by tests).                                 |
 | `RAKKR_SEED_DEMO_DATA`      | enabled                 | Set `0` to disable demo data seeding.                                     |
-| `RAKKR_DEMO_METER_DBFS`     | —                       | dBFS value for seeded demo meter data.                                    |
+| `RAKKR_DEMO_METERS`         | disabled                | `1` lets meter endpoints emit synthetic frames when no agent frame is stored (demonstration / screenshots / tests only). Off by default — real usage never fabricates meters; an absent feed reads as empty. |
+| `RAKKR_DEMO_METER_DBFS`     | —                       | dBFS value for the synthetic demo meter data; only applies when `RAKKR_DEMO_METERS=1`.    |
 
 ## Local admin & seeded access
 

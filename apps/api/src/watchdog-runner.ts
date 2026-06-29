@@ -9,7 +9,7 @@ import {
 } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
-import { buildMeterFrame } from "./demo-data.js";
+import { buildMeterFrame, demoMetersEnabled } from "./demo-data.js";
 import type { HealthEventStore } from "./health-store.js";
 import type { NodeStore } from "./node-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
@@ -813,6 +813,10 @@ function healthEventSnapshot(event: HealthEvent) {
 }
 
 function defaultMeterFrameProvider(nodeId: string) {
+  if (!demoMetersEnabled()) {
+    return undefined;
+  }
+
   const frame = buildMeterFrame();
 
   return frame.nodeId === nodeId ? frame : undefined;

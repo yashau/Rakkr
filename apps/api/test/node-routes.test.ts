@@ -187,9 +187,9 @@ test("node meter read route audits successes and unavailable data", async () => 
   ]);
 });
 
-test("node meter read route audits scoped meter-node mismatch", async () => {
+test("node meter read route returns an empty frame instead of fabricating data", async () => {
   const auditStore = createAuditStore("");
-  const recorder = node({ id: "node_meter_mismatch" });
+  const recorder = node({ id: "node_meter_quiet" });
   const app = nodeApp({
     auditStore,
     frames: [],
@@ -198,14 +198,37 @@ test("node meter read route audits scoped meter-node mismatch", async () => {
   });
 
   const response = await app.request(`/api/v1/nodes/${recorder.id}/meters`);
-  const [event] = await auditStore.list({ action: "meters.read.failed" });
+  const body = (await response.json()) as { data: MeterFrame };
+  const [event] = await auditStore.list({ action: "meters.read.succeeded" });
 
-  assert.equal(response.status, 409);
-  assert.equal(event?.outcome, "failed");
-  assert.equal(event?.permission, "node:read");
-  assert.equal(event?.reason, "meter_node_mismatch");
-  assert.equal(event?.target.id, recorder.id);
-  assert.equal(event?.target.name, recorder.alias);
+  assert.equal(response.status, 200);
+  assert.equal(body.data.nodeId, recorder.id);
+  assert.deepEqual(body.data.levels, []);
+  assert.equal(event?.details.levelCount, 0);
+});
+
+test("node meter read route serves synthetic frames only when demo meters are enabled", async () => {
+  const auditStore = createAuditStore("");
+  const recorder = node({ id: "node_x32_test" });
+  const app = nodeApp({
+    auditStore,
+    frames: [],
+    nodes: [recorder],
+    permissionCalls: [],
+  });
+
+  process.env.RAKKR_DEMO_METERS = "1";
+
+  try {
+    const response = await app.request(`/api/v1/nodes/${recorder.id}/meters`);
+    const body = (await response.json()) as { data: MeterFrame };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.nodeId, "node_x32_test");
+    assert.ok(body.data.levels.length > 0, "demo mode should emit synthetic levels");
+  } finally {
+    delete process.env.RAKKR_DEMO_METERS;
+  }
 });
 
 test("listen stream returns a short wav preview derived from meter levels", async () => {
