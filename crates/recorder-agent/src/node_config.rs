@@ -10,6 +10,8 @@ use crate::recorder_cache_retention::ControllerRecorderCacheRetention;
 pub struct ControllerNodeConfig {
     pub audio_defaults: Option<ControllerAudioDefaults>,
     #[serde(default)]
+    pub monitor_enhancement: Option<ControllerMonitorEnhancement>,
+    #[serde(default)]
     pub recorder_cache_policies: Vec<ControllerRecorderCacheRetention>,
     pub recording_capacity: Option<ControllerRecordingCapacity>,
 }
@@ -19,6 +21,18 @@ impl ControllerNodeConfig {
         self.recording_capacity
             .as_ref()
             .map(|capacity| capacity.max_concurrent_recordings.max(1))
+    }
+
+    /// The denoise engine to apply to live-monitor chunks, when a listener has
+    /// requested enhanced audio and the engine name is recognized.
+    pub fn monitor_enhancement_engine(&self) -> Option<crate::enhance::EnhancementEngine> {
+        let monitor = self.monitor_enhancement.as_ref()?;
+
+        if !monitor.requested {
+            return None;
+        }
+
+        crate::enhance::EnhancementEngine::parse(&monitor.engine)
     }
 
     pub fn apply_audio_defaults(&self, config: &mut AgentConfig) -> bool {
@@ -93,6 +107,13 @@ pub struct ControllerAudioDefaults {
 #[serde(rename_all = "camelCase")]
 pub struct ControllerRecordingCapacity {
     pub max_concurrent_recordings: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerMonitorEnhancement {
+    pub engine: String,
+    pub requested: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,6 +198,7 @@ mod tests {
                 capture_sample_rate: Some(96_000),
                 meter_args_template: Some("--meter {device} -".to_string()),
             }),
+            monitor_enhancement: None,
             recorder_cache_policies: Vec::new(),
             recording_capacity: None,
         };

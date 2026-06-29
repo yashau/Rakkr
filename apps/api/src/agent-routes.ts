@@ -2,7 +2,6 @@ import type { Context, Hono } from "hono";
 import type { RecordingSummary } from "@rakkr/shared";
 
 import {
-  assignedChannelMaps,
   durationFromHeader,
   nodeActor,
   nodeHealthEventDetails,
@@ -14,6 +13,7 @@ import {
 } from "./agent-route-helpers.js";
 import { nodeHealthEventScopeFailure } from "./agent-health-event-scope.js";
 import { bearerToken } from "./auth-utils.js";
+import { registerAgentChannelMapRoute } from "./agent-channel-map-route.js";
 import { registerAgentMeterFrameRoute } from "./agent-meter-frame-route.js";
 import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
 import type { HealthEventStore } from "./health-store.js";
@@ -83,67 +83,11 @@ export function registerAgentRoutes({
     nodeStore,
     recordAuditEvent,
   });
-
-  app.get("/api/v1/nodes/:nodeId/channel-map-assignments", async (c) => {
-    const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(
-      c,
-      "nodes.channel_map_assignments.read",
-      {
-        id: nodeId,
-        type: "node",
-      },
-      "node:control",
-    );
-
-    if (auth.response) {
-      return auth.response;
-    }
-
-    if (auth.credential.nodeId !== nodeId) {
-      await recordNodeCredentialFailure(
-        c,
-        "nodes.channel_map_assignments.read.failed",
-        "node_scope_denied",
-        {
-          actor: auth.credential,
-          permission: "node:control",
-          target: { id: nodeId, type: "node" },
-        },
-      );
-      return c.json({ error: "Node credential cannot access this node" }, 403);
-    }
-
-    const node = await nodeStore.find(nodeId);
-
-    if (!node) {
-      await recordNodeCredentialFailure(
-        c,
-        "nodes.channel_map_assignments.read.failed",
-        "node_not_found",
-        {
-          actor: auth.credential,
-          permission: "node:control",
-          target: { id: nodeId, type: "node" },
-        },
-      );
-      return c.json({ error: "Node not found" }, 404);
-    }
-
-    const assignments = await assignedChannelMaps(node, settingsStore);
-
-    await recordAuditEvent(c, {
-      action: "nodes.channel_map_assignments.read.succeeded",
-      actor: nodeActor(auth.credential),
-      details: {
-        assignmentCount: assignments.length,
-      },
-      outcome: "succeeded",
-      permission: "node:control",
-      target: { id: nodeId, type: "node" },
-    });
-
-    return c.json({ data: assignments });
+  registerAgentChannelMapRoute({
+    app,
+    nodeStore,
+    recordAuditEvent,
+    settingsStore,
   });
 
   app.post("/api/v1/nodes/:nodeId/heartbeat", async (c) => {
