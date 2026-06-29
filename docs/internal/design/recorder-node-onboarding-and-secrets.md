@@ -281,9 +281,19 @@ correct from its very first registration.
   operational:** call the rotate endpoint for `node_x32_test`, place/confirm the
   public key on the rig (or run `rotate_trust`), then drop the SSH key from
   `RAKKR_ANSIBLE_TARGETS`.
-- **Phase 2 — Day-0 bootstrap.** Bootstrap tokens + bootstrap endpoint +
-  `--bootstrap` agent mode + the `rakkr.org/agent.sh` installer and
-  autoinstall / cloud-init templates.
+- **Phase 2 — Day-0 bootstrap. ✅ IMPLEMENTED.** `node_bootstrap_tokens`
+  (migration `0032`) + `node-bootstrap-store.ts` (single-use, short-TTL, atomic
+  consume). `node-bootstrap-routes.ts`: `POST /nodes/:id/bootstrap-token`
+  (`node:manage`, token never logged) and a bootstrap-token-authenticated
+  `POST /nodes/:id/bootstrap` that ingests the node-generated key
+  (`sshCredentialStore.ingest`), reconciles inventory, mints the controller
+  token, consumes the token, and audits `nodes.bootstrap.completed`. The agent
+  gained a `--bootstrap` one-shot mode (`crates/recorder-agent/src/bootstrap.rs`:
+  ssh-keygen keypair, authorized_keys install, bootstrap POST, env-file write,
+  private-key wipe). `deploy/bootstrap/agent.sh` is the `rakkr.org/agent.sh`
+  one-liner installer (checksum-verified release download, shared `recorder_node`
+  layout) with a `cloud-init.yaml` template. Covered by bootstrap store/route
+  tests + agent unit tests.
 - **Phase 3 — k8s secrets.** secretKeyRef everywhere + `existingSecret` for all,
   remove plaintext defaults, add ESO/Sealed-Secrets support, de-secret `TARGETS`.
 

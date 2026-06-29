@@ -1,0 +1,24 @@
+#cloud-config
+# Rakkr recorder node day-0 provisioning (cloud-init user-data / Debian
+# autoinstall late-commands). Mint a single-use bootstrap token first with
+# `POST /api/v1/nodes/:id/bootstrap-token` (node:manage) and drop it in below,
+# along with the controller URL and node id. Nothing trusted is baked into the
+# image except this short-lived token; the agent generates its own SSH key on
+# first boot and hands the private key to the controller over TLS.
+package_update: true
+packages:
+  - alsa-utils
+  - ca-certificates
+  - curl
+  - ffmpeg
+  - jq
+  - openssh-server
+runcmd:
+  # runcmd already runs as root, so no sudo is needed.
+  - >-
+    curl -fsSL https://rakkr.org/agent.sh | sh -s --
+    --controller-url https://CONTROLLER_HOST:8787
+    --bootstrap-token rakkr_bs_REPLACE_WITH_SINGLE_USE_TOKEN
+    --node-id node_REPLACE
+    --site "HQ"
+    --room "Studio A"

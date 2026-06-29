@@ -301,6 +301,29 @@ export const nodeSshCredentials = pgTable(
   }),
 );
 
+export const nodeBootstrapTokens = pgTable(
+  "node_bootstrap_tokens",
+  {
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    nodeId: varchar("node_id", { length: 160 })
+      .notNull()
+      .references(() => nodes.id, { onDelete: "cascade" }),
+    // Single-use, short-TTL bearer presented once at first boot to hand the
+    // node-generated SSH key to the controller. Hashed at rest like node tokens.
+    tokenHash: text("token_hash").notNull().unique(),
+    tokenPrefix: varchar("token_prefix", { length: 48 }).notNull(),
+  },
+  (table) => ({
+    nodeIdx: index("node_bootstrap_tokens_node_idx").on(table.nodeId),
+  }),
+);
+
 export const audioInterfaces = pgTable(
   "audio_interfaces",
   {

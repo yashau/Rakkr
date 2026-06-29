@@ -1,5 +1,6 @@
 mod agent_recovery;
 mod alsa_device;
+mod bootstrap;
 mod cache_content_type;
 mod capture;
 mod channel_map;
@@ -57,6 +58,11 @@ async fn main() -> anyhow::Result<()> {
 
     if config.print_inventory {
         println!("{}", serde_json::to_string_pretty(&inventory)?);
+        return Ok(());
+    }
+
+    if config.bootstrap {
+        bootstrap::run_bootstrap(&config).await?;
         return Ok(());
     }
 

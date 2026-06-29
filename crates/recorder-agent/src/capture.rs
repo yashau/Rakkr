@@ -603,6 +603,13 @@ mod tests {
             capture_stalled_seconds: 30,
             controller_ca_cert_path: None,
             controller_token: Some("token".to_string()),
+            bootstrap: false,
+            bootstrap_token: None,
+            bootstrap_authorized_keys_path: PathBuf::from(
+                "/var/lib/rakkr/agent/.ssh/authorized_keys",
+            ),
+            bootstrap_env_file: PathBuf::from("/etc/rakkr/recorder-agent.env"),
+            ssh_keygen_command: "ssh-keygen".to_string(),
             controller_url: "http://localhost:8787".to_string(),
             heartbeat_seconds: 5,
             inventory_arecord_command: "arecord".to_string(),

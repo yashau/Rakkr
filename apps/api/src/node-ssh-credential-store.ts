@@ -4,6 +4,7 @@ import { isUuid } from "./auth-utils.js";
 import {
   decryptPrivateKey,
   encryptPrivateKey,
+  fingerprintForOpensshPublicKey,
   generateSshKeyPair,
 } from "./node-ssh-credential-crypto.js";
 
@@ -32,9 +33,18 @@ export class NodeSshCredentialStoreError extends Error {
   }
 }
 
+export interface NodeSshCredentialIngestInput {
+  actorUserId?: string;
+  privateKeyPem: string;
+  publicKey: string;
+  username?: string;
+}
+
 export interface NodeSshCredentialStore {
   findActiveMaterial(nodeId: string): Promise<NodeSshCredentialMaterial | undefined>;
   findActiveMetadata(nodeId: string): Promise<NodeSshCredentialMetadata | undefined>;
+  /** Store a node-generated keypair (day-0 bootstrap), revoking any prior active key. */
+  ingest(nodeId: string, input: NodeSshCredentialIngestInput): Promise<NodeSshCredentialMetadata>;
   rotate(
     nodeId: string,
     options?: { actorUserId?: string; username?: string },
@@ -56,6 +66,13 @@ class UnavailableStore implements NodeSshCredentialStore {
     return undefined;
   }
 
+  async ingest(): Promise<NodeSshCredentialMetadata> {
+    throw new NodeSshCredentialStoreError(
+      "Node SSH credential storage requires Postgres",
+      "database_unavailable",
+    );
+  }
+
   async rotate(): Promise<NodeSshCredentialMetadata> {
     throw new NodeSshCredentialStoreError(
       "Node SSH credential storage requires Postgres",
@@ -75,25 +92,55 @@ class PostgresNodeSshCredentialStore implements NodeSshCredentialStore {
     const previous = await this.activeRow(nodeId);
     const username = options.username?.trim() || previous?.username || DEFAULT_SSH_USERNAME;
     const keyPair = generateSshKeyPair(`rakkr-${nodeId}`);
+
+    return this.persistActive(nodeId, {
+      actorUserId: options.actorUserId,
+      fingerprint: keyPair.fingerprint,
+      privateKeyPem: keyPair.privateKeyPem,
+      publicKey: keyPair.publicKeyOpenssh,
+      username,
+    });
+  }
+
+  async ingest(nodeId: string, input: NodeSshCredentialIngestInput) {
+    const previous = await this.activeRow(nodeId);
+
+    return this.persistActive(nodeId, {
+      actorUserId: input.actorUserId,
+      fingerprint: fingerprintForOpensshPublicKey(input.publicKey),
+      privateKeyPem: input.privateKeyPem,
+      publicKey: input.publicKey,
+      username: input.username?.trim() || previous?.username || DEFAULT_SSH_USERNAME,
+    });
+  }
+
+  private async persistActive(
+    nodeId: string,
+    input: {
+      actorUserId?: string;
+      fingerprint: string;
+      privateKeyPem: string;
+      publicKey: string;
+      username: string;
+    },
+  ): Promise<NodeSshCredentialMetadata> {
     const now = new Date();
 
-    if (previous) {
-      await this.db
-        .update(nodeSshCredentials)
-        .set({ revokedAt: now, rotatedAt: now })
-        .where(and(eq(nodeSshCredentials.nodeId, nodeId), isNull(nodeSshCredentials.revokedAt)));
-    }
+    // One active key per node: revoke any prior unrevoked credential first.
+    await this.db
+      .update(nodeSshCredentials)
+      .set({ revokedAt: now, rotatedAt: now })
+      .where(and(eq(nodeSshCredentials.nodeId, nodeId), isNull(nodeSshCredentials.revokedAt)));
 
     const [row] = await this.db
       .insert(nodeSshCredentials)
       .values({
-        createdByUserId:
-          options.actorUserId && isUuid(options.actorUserId) ? options.actorUserId : null,
-        fingerprint: keyPair.fingerprint,
+        createdByUserId: input.actorUserId && isUuid(input.actorUserId) ? input.actorUserId : null,
+        fingerprint: input.fingerprint,
         nodeId,
-        privateKeyEncrypted: encryptPrivateKey(keyPair.privateKeyPem),
-        publicKey: keyPair.publicKeyOpenssh,
-        username,
+        privateKeyEncrypted: encryptPrivateKey(input.privateKeyPem),
+        publicKey: input.publicKey,
+        username: input.username,
       })
       .returning({
         createdAt: nodeSshCredentials.createdAt,

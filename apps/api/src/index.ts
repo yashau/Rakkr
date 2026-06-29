@@ -30,6 +30,7 @@ import { createListenMonitorStore } from "./listen-monitor-store.js";
 import { createListenSessionStore } from "./listen-session-store.js";
 import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
+import { createNodeBootstrapStore } from "./node-bootstrap-store.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { createNodeSshCredentialStore } from "./node-ssh-credential-store.js";
@@ -60,6 +61,7 @@ const listenSessionStore = createListenSessionStore();
 const meterFrameStore = createMeterFrameStore();
 const nodeStore = createNodeStore(seedNodes);
 const sshCredentialStore = createNodeSshCredentialStore();
+const bootstrapStore = createNodeBootstrapStore();
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
@@ -719,6 +721,7 @@ registerAuditRoutes({
 
 registerNodeRoutes({
   app,
+  bootstrapStore,
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),

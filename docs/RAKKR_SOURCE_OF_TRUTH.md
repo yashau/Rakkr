@@ -201,10 +201,7 @@ Current partial implementation:
 - Watchdog creates and resolves central health events when node heartbeats go stale/recover.
 - Node UI summarizes connectivity/offline health alongside disk, CPU, and audio.
 - Node and dashboard UI color-code online/offline/recording/degraded/alerting status.
-- Node API and inventory UI can filter visible nodes by status.
-- Node API and inventory UI can filter visible nodes by last-seen date range.
-- Node API and inventory UI can filter visible nodes by site/building/floor/room.
-- Node API and inventory UI can filter visible nodes by audio backend.
+- Node API and inventory UI can filter visible nodes by status, last-seen date range, site/building/floor/room, and audio backend.
 - Node API and inventory UI can search node identity, location, network, tags, runtime, interfaces, and channel aliases.
 - Node API and inventory UI can export visible filtered and selected inventory as audited CSV, with active filter chips for applied inventory filters.
 - Node detail API returns only scoped visible nodes for detail contexts.
@@ -221,6 +218,7 @@ Current partial implementation:
 - Agent runtime inventory reports detected PipeWire and JACK command availability, both have managed capture/meter backend presets, and ALSA metering supports both `S16_LE` and `S32_LE` PCM, including repeated X32 X-USB 32-channel S32 meter frames.
 - Node credentials scoped to their own node/jobs/recordings/meters/events.
 - Controller is the system of record for per-node SSH keys (`node_ssh_credentials`): operators rotate (`POST /nodes/:id/ssh-credential/rotate`) and read the public half (`node:manage`, audited); private keys are generated controller-side, encrypted at rest with the master key (`RAKKR_NODE_SSH_MASTER_KEY`, falling back to `RAKKR_SECRET_KEY`), and never returned to operators or logged. The Ansible runner fetches the decrypted key + an optional freshly-minted controller token (runner-scoped token auth, `nodes.ssh_credential.fetch` audit) so SSH secrets no longer live in `RAKKR_ANSIBLE_TARGETS`; the `recorder_node` role installs the public key into the agent user's `authorized_keys`.
+- Day-0 bootstrap: an operator mints a single-use, short-TTL bootstrap token (`POST /nodes/:id/bootstrap-token`, `node:manage`, `node_bootstrap_tokens`); at first boot the agent's `--bootstrap` mode generates its own SSH keypair, installs the public key locally, and POSTs the private key + discovered inventory to `POST /nodes/:id/bootstrap` (bootstrap-token auth), which atomically consumes the token, stores the key, reconciles interfaces, mints the controller token, and audits `nodes.bootstrap.completed`. The `deploy/bootstrap/agent.sh` one-liner installer (+ cloud-init template) shares the `recorder_node` install layout.
 - Agent listen-monitor chunk ingress is node-scoped and audited for accepted and rejected chunks.
 - ALSA loopback capture/render smokes passed on the Debian test rig using `hw:1,1,0`, stereo `S16_LE`, and 48 kHz capture; loopback/fake-controller tasks validate capture/meter/render/job lifecycle, and the generic ALSA job smoke runs that lifecycle against selected hardware.
 - `fixtures/audio/rakkr-golden-dialogue-clean.wav` provides a clean 48 kHz stereo multi-speaker speech fixture for deriving loopback fault permutations.

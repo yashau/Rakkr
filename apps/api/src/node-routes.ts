@@ -25,6 +25,8 @@ import type { MeterFrameStore } from "./meter-store.js";
 import { registerNodeActionRoutes } from "./node-action-routes.js";
 import { registerNodeInventoryRoutes } from "./node-inventory-routes.js";
 import { nodeLifecycleService, type NodeLifecycleService } from "./node-lifecycle.js";
+import { registerNodeBootstrapRoutes } from "./node-bootstrap-routes.js";
+import type { NodeBootstrapStore } from "./node-bootstrap-store.js";
 import { registerNodeLifecycleRoutes } from "./node-lifecycle-routes.js";
 import { registerNodeSshCredentialRoutes } from "./node-ssh-credential-routes.js";
 import type { NodeSshCredentialStore } from "./node-ssh-credential-store.js";
@@ -33,6 +35,7 @@ import { NodeStoreError } from "./node-store.js";
 
 interface NodeRouteDependencies {
   app: Hono<AppBindings>;
+  bootstrapStore: NodeBootstrapStore;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   hasResourceScope: (
@@ -135,6 +138,7 @@ const monitorChunkSampleRate = 16_000;
 
 export function registerNodeRoutes({
   app,
+  bootstrapStore,
   currentAuth,
   currentUser,
   hasResourceScope,
@@ -176,6 +180,17 @@ export function registerNodeRoutes({
   });
   registerNodeSshCredentialRoutes({
     app,
+    currentAuth,
+    currentUser,
+    nodeStore,
+    recordAuditEvent,
+    requirePermission,
+    scopedNodes,
+    sshCredentialStore,
+  });
+  registerNodeBootstrapRoutes({
+    app,
+    bootstrapStore,
     currentAuth,
     currentUser,
     nodeStore,

@@ -95,6 +95,32 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CONTROLLER_TOKEN")]
     pub controller_token: Option<String>,
 
+    // Day-0 bootstrap (one-shot): generate an SSH keypair, hand the private key
+    // to the controller (authenticated by the single-use bootstrap token),
+    // install the public key locally, and write the returned controller token.
+    #[arg(long, env = "RAKKR_BOOTSTRAP", default_value_t = false)]
+    pub bootstrap: bool,
+
+    #[arg(long, env = "RAKKR_BOOTSTRAP_TOKEN")]
+    pub bootstrap_token: Option<String>,
+
+    #[arg(
+        long,
+        env = "RAKKR_BOOTSTRAP_AUTHORIZED_KEYS",
+        default_value = "/var/lib/rakkr/agent/.ssh/authorized_keys"
+    )]
+    pub bootstrap_authorized_keys_path: PathBuf,
+
+    #[arg(
+        long,
+        env = "RAKKR_BOOTSTRAP_ENV_FILE",
+        default_value = "/etc/rakkr/recorder-agent.env"
+    )]
+    pub bootstrap_env_file: PathBuf,
+
+    #[arg(long, env = "RAKKR_SSH_KEYGEN_COMMAND", default_value = "ssh-keygen")]
+    pub ssh_keygen_command: String,
+
     #[arg(long, env = "RAKKR_ATTACH_CACHE_RECORDING_ID")]
     pub attach_cache_recording_id: Option<String>,
 

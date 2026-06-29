@@ -97,6 +97,22 @@ export function generateSshKeyPair(comment = "rakkr-recorder-agent"): GeneratedS
   };
 }
 
+// SHA256 fingerprint for a node-provided OpenSSH public key line
+// (`ssh-ed25519 AAAA... comment` / `ssh-rsa AAAA... comment`). Used at bootstrap
+// where the agent generated the keypair, so the stored fingerprint is derived
+// from the public key itself rather than trusted from the agent.
+export function fingerprintForOpensshPublicKey(publicKeyLine: string): string {
+  const base64 = publicKeyLine.trim().split(/\s+/)[1];
+
+  if (!base64) {
+    throw new Error("ssh_public_key_malformed");
+  }
+
+  const digest = createHash("sha256").update(Buffer.from(base64, "base64")).digest("base64");
+
+  return `SHA256:${digest.replace(/=+$/, "")}`;
+}
+
 function opensshRsaBlob(publicKeyPem: string): Buffer {
   const jwk = createPublicKey(publicKeyPem).export({ format: "jwk" });
 

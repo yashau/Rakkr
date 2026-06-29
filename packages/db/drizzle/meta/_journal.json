@@ -225,6 +225,13 @@
       "when": 1782760759573,
       "tag": "0031_outgoing_the_captain",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1782761458808,
+      "tag": "0032_fearless_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }
