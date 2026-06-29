@@ -57,6 +57,11 @@ export default defineConfig({
       title: "Rakkr",
       description:
         "Reliable room recording for Linux — a centrally managed audio recording platform.",
+      components: {
+        // Our Markdown bodies open with their own `# H1` (the docs are also
+        // rendered on GitHub), so suppress Starlight's duplicate title heading.
+        PageTitle: "./src/components/PageTitle.astro",
+      },
       social: [
         {
           icon: "github",

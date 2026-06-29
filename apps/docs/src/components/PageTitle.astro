@@ -1,0 +1,14 @@
+---
+// Override of Starlight's `PageTitle`.
+//
+// The repo `docs/` Markdown is the single source of truth and is also rendered
+// on GitHub, so every page opens with an `# H1` heading in its body. Starlight
+// additionally renders the frontmatter `title` as its own page `<h1>`, which
+// produced a second, identical heading on every page.
+//
+// We render nothing visible here — the body `# H1` is the page title — but keep
+// the `#_top` anchor that Starlight's "Skip to content" link and the mobile
+// "Overview" table-of-contents entry scroll to.
+---
+
+<div id="_top"></div>
