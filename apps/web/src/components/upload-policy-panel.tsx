@@ -72,7 +72,6 @@ export function UploadPolicyEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="stub">Stub</SelectItem>
               <SelectItem value="smb">SMB</SelectItem>
               <SelectItem value="s3">S3</SelectItem>
             </SelectContent>
@@ -97,15 +96,6 @@ export function UploadPolicyEditor({
               <SelectItem value="on_recording_cached">On Cached</SelectItem>
             </SelectContent>
           </Select>
-        </Field>
-        <Field label="Target">
-          <Input
-            disabled={!canManage}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, target: event.target.value }))
-            }
-            value={draft.target ?? ""}
-          />
         </Field>
         <Field label="Attempts">
           <Input
@@ -201,8 +191,7 @@ export function defaultUploadPolicyInput(): UploadPolicyInput {
     enabled: true,
     maxAttempts: 5,
     name: "New Upload Policy",
-    provider: "stub",
-    target: "stub://queue-only",
+    provider: "smb",
     trigger: "manual",
   };
 }

@@ -57,22 +57,24 @@ test("upload runner processes queue items and records service audit events", asy
 test("upload runner deletes local cache after confirmed upload when policy requests it", async () => {
   const auditStore = createAuditStore("");
   const providerStore = createUploadProviderStore();
-  const uploadedRoot = path.join(runnerRoot, "retention-share");
   const contents = "archive-bytes";
   const cachedRecording = recording("rec_upload_retention_test", contents);
   const cachePath = await cacheRecording(cachedRecording.id, contents);
   const recordingStore = memoryRecordingStore([cachedRecording]);
+  const smb = fakeSmbClient();
   const runner = createUploadRunner({
     auditStore,
     limit: 5,
     providerStore,
     recordingStore,
+    smbClientFactory: () => smb.client,
   });
 
   await providerStore.update("smb", {
     displayName: "Retention Share",
     enabled: true,
-    target: uploadedRoot,
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
   });
   const policy = await createUploadPolicy({
     deleteCacheAfterUpload: true,
@@ -80,14 +82,12 @@ test("upload runner deletes local cache after confirmed upload when policy reque
     maxAttempts: 1,
     name: "Archive then delete cache",
     provider: "smb",
-    target: uploadedRoot,
     trigger: "manual",
   });
   await enqueueRecordingUpload(cachedRecording, {
     maxAttempts: 1,
     policyId: policy.id,
     provider: "smb",
-    target: uploadedRoot,
   });
 
   const summary = await runner.runOnce();
@@ -97,10 +97,7 @@ test("upload runner deletes local cache after confirmed upload when policy reque
   });
 
   assert.equal(summary.succeeded, 1);
-  assert.equal(
-    await readFile(path.join(uploadedRoot, "Council Meeting.mp3"), "utf8"),
-    "archive-bytes",
-  );
+  assert.equal(smb.files.get("recordings/Council Meeting.mp3")?.toString("utf8"), "archive-bytes");
   await assert.rejects(readFile(cachePath), /ENOENT/);
   assert.equal(updated?.cached, false);
   assert.equal(updated?.cachePath, undefined);
@@ -131,17 +128,20 @@ test("upload runner records health events for terminal upload failures", async (
     limit: 5,
     providerStore,
     recordingStore,
+    smbClientFactory: () => {
+      throw new Error("smb_connect_failed");
+    },
   });
 
   await providerStore.update("smb", {
     displayName: "Failure Share",
     enabled: true,
-    target: path.join(runnerRoot, "failure-share"),
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
   });
   await enqueueRecordingUpload(failedRecording, {
     maxAttempts: 1,
     provider: "smb",
-    target: path.join(runnerRoot, "failure-share"),
   });
 
   const summary = await runner.runOnce();
@@ -541,4 +541,35 @@ async function cacheRecording(id: string, contents: string) {
 
 function sha256Prefixed(contents: string) {
   return `sha256:${createHash("sha256").update(contents).digest("hex")}`;
+}
+
+function fakeSmbClient() {
+  const files = new Map<string, Buffer>();
+  const dirs: string[] = [];
+
+  return {
+    client: {
+      async close() {},
+      async connect() {},
+      async mkdir(targetPath: string) {
+        dirs.push(targetPath);
+      },
+      async readFile(targetPath: string) {
+        const data = files.get(targetPath);
+
+        if (!data) {
+          const error = new Error("ENOENT") as Error & { code: string };
+          error.code = "ENOENT";
+          throw error;
+        }
+
+        return data;
+      },
+      async writeFile(targetPath: string, data: Buffer | string) {
+        files.set(targetPath, Buffer.from(data));
+      },
+    },
+    dirs,
+    files,
+  };
 }

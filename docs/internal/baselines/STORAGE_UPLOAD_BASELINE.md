@@ -5,11 +5,12 @@ Status: MVP baseline checked.
 ## Behavior
 
 - Local recorder/controller cache remains the reliable source until an upload is confirmed.
-- Upload providers support stub, mounted-share SMB, and S3 targets.
-- SMB copies cached files into a mounted share and verifies copied bytes with SHA-256.
-- S3 upload sends bucket/key metadata plus `ChecksumSHA256`.
+- The controller performs direct SMB and S3 uploads over the network with no OS mounts or external binaries; `stub` remains an API/test-only provider hidden from the UI.
+- SMB uploads connect with server/share/domain/username/password (no mount), create directories as needed, write the file, and verify the written bytes with SHA-256.
+- S3 uploads use an explicitly configured provider preset, region/endpoint, bucket/prefix, and access/secret keys, and send `ChecksumSHA256`.
+- SMB passwords and S3 secret access keys are encrypted at rest (AES-256-GCM keyed from `RAKKR_SECRET_KEY`, with a development fallback) and are write-only: never returned in API responses or audit events.
 - Provider readiness reports enabled, disabled, not-configured, and implemented state.
-- Upload policies choose provider, target, trigger, retry budget, and cache-retention behavior.
+- Upload policies choose provider, trigger, retry budget, and cache-retention behavior.
 - Cached recordings can be queued manually, in bulk, or automatically when policy trigger is `on_recording_cached`.
 - Replayed cache attach requests reuse an already-succeeded upload queue item when the cached artifact, provider, policy, and target are unchanged.
 - Started upload attempts are leased via `nextAttemptAt` so concurrent runners do not duplicate in-flight work and controller crash/power-loss recovery makes stranded `retrying` items due again after the lease expires.

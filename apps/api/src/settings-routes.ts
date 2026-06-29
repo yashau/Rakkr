@@ -871,14 +871,20 @@ function profileSnapshot(profile: RecordingProfile) {
 }
 
 function uploadProviderSnapshot(provider: UploadProviderRuntimeStatus) {
+  // Built from the masked runtime status: the non-secret smb/s3 config plus
+  // hasSmbPassword/hasS3SecretAccessKey indicators. Secret values (SMB password,
+  // S3 secret access key) are never present here and must never be audited.
   return {
     configured: provider.configured,
-    credentialRef: provider.credentialRef,
     displayName: provider.displayName,
     enabled: provider.enabled,
+    hasS3SecretAccessKey: provider.hasS3SecretAccessKey,
+    hasSmbPassword: provider.hasSmbPassword,
     implemented: provider.implemented,
     missingFields: provider.missingFields,
     provider: provider.provider,
+    s3: provider.s3,
+    smb: provider.smb,
     status: provider.status,
     target: provider.target,
   };

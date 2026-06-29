@@ -36,7 +36,9 @@ const uploadQueueStatuses: UploadQueueStatus[] = [
   "succeeded",
   "cancelled",
 ];
-const uploadProviders: UploadProvider[] = ["stub", "smb", "s3"];
+// `stub` is intentionally omitted: it is an API/test-only provider and is never
+// surfaced in the operator UI.
+const uploadProviders: UploadProvider[] = ["smb", "s3"];
 
 export function UploadRunnerPanel() {
   const queryClient = useQueryClient();

@@ -143,12 +143,22 @@ Used when `DATABASE_URL` is unset; resolved relative to the working directory.
 
 ## Upload provider credentials
 
-- **S3** uses the standard AWS SDK environment (`AWS_ACCESS_KEY_ID`,
-  `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` /
-  `AWS_DEFAULT_REGION`, `AWS_ENDPOINT_URL`, profiles). The bucket/key come from the
-  `s3://` target URL. There are no `RAKKR_`-prefixed S3 variables.
-- **SMB** targets must be OS-mounted; an unmounted `smb://` target is rejected.
-  `file://` and filesystem paths work directly.
+All upload-provider connection details are configured in **Settings → Upload
+Providers** and stored by the controller — there are no `RAKKR_`-prefixed S3
+variables and no `AWS_*` environment dependency.
+
+- **S3** is configured per provider: a provider preset (AWS, Cloudflare R2,
+  Backblaze B2, Wasabi, MinIO, DigitalOcean Spaces, custom), region and/or custom
+  endpoint, bucket, upload path/prefix, access key, secret key, and path-style.
+  Uploads go directly to the configured endpoint.
+- **SMB** is configured per provider: server, share, domain, username, password,
+  upload path, and port. The controller speaks SMB 2.1/3.x directly over the
+  network — no OS mount is required.
+- SMB passwords and S3 secret access keys are encrypted at rest with AES-256-GCM.
+
+| Variable           | Default                | Purpose                                                                                                                            |
+| ------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `RAKKR_SECRET_KEY` | dev fallback (insecure) | Master key used to encrypt/decrypt upload-provider secrets at rest. **Set this in production**; if unset, an insecure development key is used and a warning is logged. Rotating it makes previously stored secrets undecryptable (re-enter them). |
 
 ## Test-only
 

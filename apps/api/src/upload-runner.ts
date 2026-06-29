@@ -15,6 +15,7 @@ import type { UploadProviderStore } from "./upload-providers.js";
 import { runUploadQueueOnce } from "./upload-executor.js";
 import { uploadPolicyForQueue } from "./upload-policies.js";
 import { listUploadQueueItems } from "./upload-queue.js";
+import type { SmbClientFactory } from "./upload-smb.js";
 
 interface UploadRunnerDependencies {
   auditStore: AuditStore;
@@ -23,6 +24,8 @@ interface UploadRunnerDependencies {
   providerStore: UploadProviderStore;
   recordingIds?: ReadonlySet<string>;
   recordingStore?: RecordingStore;
+  // Test-only override so SMB uploads can be exercised without a live server.
+  smbClientFactory?: SmbClientFactory;
 }
 
 export interface UploadRunnerRunOptions {
@@ -114,10 +117,17 @@ export async function runUploadQueuePass(
     providerStore,
     recordingIds,
     recordingStore,
+    smbClientFactory,
   }: UploadRunnerDependencies,
   now = new Date(),
 ) {
-  const summary = await runUploadQueueOnce({ limit, now, providerStore, recordingIds });
+  const summary = await runUploadQueueOnce({
+    limit,
+    now,
+    providerStore,
+    recordingIds,
+    smbClientFactory,
+  });
 
   if (summary.attempted === 0) {
     return summary;

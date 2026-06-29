@@ -29,15 +29,23 @@ capture → controller cache (checksum + waveform) → upload queue → provider
 
 ## Upload providers
 
-| Provider | Target                                                             | Notes                                                                                 |
-| -------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| **Stub** | `stub://queue-only`                                                | Dry-run queue processing; never deletes cache.                                        |
-| **SMB**  | A mounted share, e.g. `/mnt/rakkr-recordings` or `file:///mnt/...` | The target must be OS-mounted; copied bytes are verified with SHA-256.                |
-| **S3**   | `s3://bucket/prefix`                                               | Uses the standard AWS SDK environment for credentials/region; sends `ChecksumSHA256`. |
+The controller uploads **directly** over the network — no OS mounts, no external
+binaries. Every connection detail is configured in **Settings → Upload
+Providers**.
 
-Providers expose enabled state, target, credential reference, readiness, and
-implementation status. There are no `RAKKR_`-prefixed S3 variables — S3 reads the
-normal `AWS_*` environment; SMB targets must be mounted on the host.
+| Provider | Configured in the UI                                                              | Notes                                                                                                            |
+| -------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **SMB**  | server, share, domain, username, password, upload path (+ port)                  | Direct SMB 2.1/3.x — no mount. Written bytes are read back and verified with SHA-256.                           |
+| **S3**   | provider preset, region/endpoint, bucket, upload path, access key, secret key (+ path-style) | Direct S3 / S3-compatible (AWS, Cloudflare R2, Backblaze B2, Wasabi, MinIO, DigitalOcean Spaces, custom). Sends `ChecksumSHA256`. |
+
+`stub` is an internal API/test-only provider; it is never selectable or visible
+in the UI.
+
+SMB passwords and S3 secret access keys are **encrypted at rest** (AES-256-GCM
+keyed from `RAKKR_SECRET_KEY`) and are **write-only** — the API and UI only
+report whether a secret is set, never its value. There are no `RAKKR_`-prefixed
+S3 variables and no `AWS_*` environment dependency: credentials come entirely
+from the provider configuration.
 
 ## Upload policies
 

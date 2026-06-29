@@ -47,6 +47,9 @@ importers:
       openid-client:
         specifier: ^6.8.4
         version: 6.8.4
+      smb3-client:
+        specifier: ^0.2.0
+        version: 0.2.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -4543,6 +4546,10 @@ packages:
     resolution: {integrity: sha512-S6hzjGJSG3d6if0YoF5kTyeRJvia6FSTBroE5fQ0bu1QNxyJqhhinfUsXi9fH3MgtXODWvwo2BDyQSnhPQ88uQ==}
     engines: {node: '>=20.19.5', npm: '>=10.8.2'}
     hasBin: true
+
+  smb3-client@0.2.0:
+    resolution: {integrity: sha512-IqgVczNjD1CcUgA1u4VwXGYxH6mxgwUATYUM+QiSkpW662s/kiWlxs5xnYoilTqQFHg0Xe7GO+QDQZImORau8g==}
+    engines: {node: '>=20'}
 
   smol-toml@1.7.0:
     resolution: {integrity: sha512-aqVvWoyO21L23mb+drl4RmMXbf6N7FdHjAhTRA9ZBL7apWBgfWC16KjrASI+1p9GAroljyMHj6fK67i0UiTNvQ==}
@@ -9756,6 +9763,8 @@ snapshots:
       '@types/sax': 1.2.7
       arg: 5.0.2
       sax: 1.6.0
+
+  smb3-client@0.2.0: {}
 
   smol-toml@1.7.0: {}
 

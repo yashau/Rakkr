@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -62,16 +62,21 @@ test("skips in-flight upload items until their recovery lease expires", async ()
 test("defers provider failures until the retry budget is exhausted", async () => {
   const providerStore = createUploadProviderStore();
 
+  // Enabled but missing the secret access key -> not configured.
   await providerStore.update("s3", {
     displayName: "Archive S3",
     enabled: true,
-    target: "s3://rakkr-archive/meetings",
+    s3: {
+      accessKeyId: "AKIAEXAMPLE",
+      bucket: "rakkr-archive",
+      prefix: "meetings",
+      region: "us-east-1",
+    },
   });
 
   const queued = await enqueueRecordingUpload(recording("rec_s3_upload"), {
     maxAttempts: 1,
     provider: "s3",
-    target: "s3://rakkr-archive/meetings",
   });
   const result = await runUploadQueueOnce({ providerStore });
   const item = (await listUploadQueueItems()).find((candidate) => candidate.id === queued.id);
@@ -79,31 +84,36 @@ test("defers provider failures until the retry budget is exhausted", async () =>
   assert.equal(result.attempted, 1);
   assert.equal(result.succeeded, 0);
   assert.equal(result.failed, 1);
-  assert.equal(result.items[0]?.reason, "missing_credentialRef");
+  assert.equal(result.items[0]?.reason, "missing_s3.secretAccessKey");
   assert.equal(item?.attemptCount, 1);
-  assert.equal(item?.lastError, "missing_credentialRef");
+  assert.equal(item?.lastError, "missing_s3.secretAccessKey");
   assert.equal(item?.status, "failed");
 });
 
-test("uploads SMB queue items to a mounted filesystem target", async () => {
+test("uploads SMB queue items directly to the share over the network", async () => {
   const providerStore = createUploadProviderStore();
-  const target = path.join(uploadRoot, "mounted-share");
+  const smb = fakeSmbClient();
   const contents = "smb-bytes";
 
   await cacheRecording("rec_smb_upload", contents);
   await providerStore.update("smb", {
-    displayName: "Mounted Share",
+    displayName: "Recordings Share",
     enabled: true,
-    target,
+    smb: {
+      path: "meetings/2026",
+      server: "files.example.lan",
+      share: "recordings",
+      username: "svc",
+    },
+    smbPassword: "s3cr3t",
   });
 
   const queued = await enqueueRecordingUpload(recording("rec_smb_upload", contents), {
     maxAttempts: 1,
     provider: "smb",
   });
-  const result = await runUploadQueueOnce({ providerStore });
+  const result = await runUploadQueueOnce({ providerStore, smbClientFactory: () => smb.client });
   const item = (await listUploadQueueItems()).find((candidate) => candidate.id === queued.id);
-  const uploaded = await readFile(path.join(target, "Council Meeting.mp3"), "utf8");
 
   assert.equal(result.succeeded, 1);
   assert.deepEqual(result.items[0]?.checksumVerification, {
@@ -114,20 +124,30 @@ test("uploads SMB queue items to a mounted filesystem target", async () => {
     status: "matched",
   });
   assert.equal(item?.status, "succeeded");
-  assert.equal(uploaded, "smb-bytes");
+  // Share is the first path segment; nested dirs are created before writing.
+  assert.equal(
+    smb.files.get("recordings/meetings/2026/Council Meeting.mp3")?.toString("utf8"),
+    "smb-bytes",
+  );
+  assert.deepEqual(smb.dirs, ["recordings/meetings", "recordings/meetings/2026"]);
 });
 
-test("uploads S3 queue items with bucket, key, and recording metadata", async () => {
+test("uploads S3 queue items with explicit credentials, bucket, key, and metadata", async () => {
   const providerStore = createUploadProviderStore();
   const sentCommands = [];
   const contents = "s3-bytes";
 
   await cacheRecording("rec_s3_ready_upload", contents);
   await providerStore.update("s3", {
-    credentialRef: "env://aws-test",
     displayName: "Archive S3",
     enabled: true,
-    target: "s3://rakkr-archive/meetings",
+    s3: {
+      accessKeyId: "AKIAEXAMPLE",
+      bucket: "rakkr-archive",
+      prefix: "meetings",
+      region: "us-east-1",
+    },
+    s3SecretAccessKey: "s3-secret",
   });
 
   const queued = await enqueueRecordingUpload(recording("rec_s3_ready_upload", contents), {
@@ -162,13 +182,13 @@ test("uploads S3 queue items with bucket, key, and recording metadata", async ()
 
 test("fails real provider upload when cached file checksum disagrees with metadata", async () => {
   const providerStore = createUploadProviderStore();
-  const target = path.join(uploadRoot, "checksum-mismatch-share");
 
   await cacheRecording("rec_smb_checksum_mismatch", "actual-bytes");
   await providerStore.update("smb", {
-    displayName: "Mismatch Share",
+    displayName: "Recordings Share",
     enabled: true,
-    target,
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
   });
 
   await enqueueRecordingUpload(
@@ -181,7 +201,12 @@ test("fails real provider upload when cached file checksum disagrees with metada
       provider: "smb",
     },
   );
-  const result = await runUploadQueueOnce({ providerStore });
+  const result = await runUploadQueueOnce({
+    providerStore,
+    smbClientFactory: () => {
+      throw new Error("smb_client_should_not_be_used");
+    },
+  });
 
   assert.equal(result.succeeded, 0);
   assert.equal(result.failed, 1);
@@ -202,6 +227,37 @@ function recording(id: string, contents?: string): RecordingSummary {
     source: "schedule",
     status: "cached",
     tags: ["council"],
+  };
+}
+
+function fakeSmbClient() {
+  const files = new Map<string, Buffer>();
+  const dirs: string[] = [];
+
+  return {
+    client: {
+      async close() {},
+      async connect() {},
+      async mkdir(targetPath: string) {
+        dirs.push(targetPath);
+      },
+      async readFile(targetPath: string) {
+        const data = files.get(targetPath);
+
+        if (!data) {
+          const error = new Error("ENOENT") as Error & { code: string };
+          error.code = "ENOENT";
+          throw error;
+        }
+
+        return data;
+      },
+      async writeFile(targetPath: string, data: Buffer | string) {
+        files.set(targetPath, Buffer.from(data));
+      },
+    },
+    dirs,
+    files,
   };
 }
 

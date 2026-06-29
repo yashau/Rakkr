@@ -197,6 +197,20 @@
       "when": 1782728431744,
       "tag": "0027_perfect_dark_phoenix",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1782743988691,
+      "tag": "0028_wise_sunset_bain",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1782744000931,
+      "tag": "0029_flowery_sheva_callister",
+      "breakpoints": true
     }
   ]
 }

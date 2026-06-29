@@ -1,8 +1,6 @@
 import type {
   RecordingProfile,
   RecordingProfileUpdate,
-  UploadProviderConfigUpdate,
-  UploadProviderRuntimeStatus,
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
@@ -52,26 +50,9 @@ export function watchdogPolicyUpdate(policy: WatchdogPolicy): WatchdogPolicyUpda
   };
 }
 
-export function uploadProviderUpdate(
-  provider: UploadProviderRuntimeStatus,
-): UploadProviderConfigUpdate {
-  return {
-    credentialRef: optionalText(provider.credentialRef),
-    displayName: provider.displayName,
-    enabled: provider.enabled,
-    target: optionalText(provider.target),
-  };
-}
-
 export function optionalPositiveNumber(value: string) {
   const trimmed = value.trim();
   const parsed = Number(trimmed);
 
   return trimmed && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function optionalText(value: string | undefined) {
-  const trimmed = value?.trim();
-
-  return trimmed || undefined;
 }
