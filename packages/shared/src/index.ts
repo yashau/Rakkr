@@ -300,10 +300,65 @@ export const meterFrameSchema = z.object({
   nodeId: z.string().min(1),
 });
 
+export const enhancementDenoiseEngineSchema = z.enum(["rnnoise", "deepfilternet3"]);
+
+// Voice-enhancement chain stored on a recording profile (the preset/template).
+// Every stage is independently toggleable with configurable parameters; the agent
+// applies enabled stages in a fixed order (highpass -> denoise -> deesser ->
+// compressor -> loudnorm -> gate) to produce the enhanced rendition, always
+// alongside the untouched raw audio when keepRaw is set.
+export const recordingEnhancementSchema = z.object({
+  keepRaw: z.boolean().default(true),
+  denoise: z
+    .object({
+      enabled: z.boolean().default(true),
+      engine: enhancementDenoiseEngineSchema.default("deepfilternet3"),
+    })
+    .default({ enabled: true, engine: "deepfilternet3" }),
+  highpass: z
+    .object({
+      enabled: z.boolean().default(true),
+      hz: z.number().int().min(20).max(500).default(80),
+    })
+    .default({ enabled: true, hz: 80 }),
+  lowpass: z
+    .object({
+      enabled: z.boolean().default(false),
+      hz: z.number().int().min(2000).max(20_000).default(12_000),
+    })
+    .default({ enabled: false, hz: 12_000 }),
+  deesser: z
+    .object({
+      enabled: z.boolean().default(false),
+      intensity: z.number().min(0).max(1).default(0.1),
+    })
+    .default({ enabled: false, intensity: 0.1 }),
+  compressor: z
+    .object({
+      enabled: z.boolean().default(false),
+    })
+    .default({ enabled: false }),
+  loudnorm: z
+    .object({
+      enabled: z.boolean().default(true),
+      targetI: z.number().min(-70).max(-5).default(-16),
+      truePeak: z.number().min(-9).max(0).default(-1.5),
+      lra: z.number().min(1).max(50).default(11),
+    })
+    .default({ enabled: true, targetI: -16, truePeak: -1.5, lra: 11 }),
+  gate: z
+    .object({
+      enabled: z.boolean().default(false),
+      thresholdDb: z.number().min(-80).max(0).default(-40),
+    })
+    .default({ enabled: false, thresholdDb: -40 }),
+});
+
 export const recordingProfileSchema = z.object({
   bitrateKbps: z.number().int().positive(),
   channelMode: channelModeSchema,
   codec: z.enum(["mp3", "flac", "wav"]),
+  enhancement: recordingEnhancementSchema.optional(),
   id: z.string().min(1),
   maxTrackSeconds: z.number().int().positive().max(604_800).optional(),
   name: z.string().min(1),
@@ -316,6 +371,7 @@ export const recordingProfileUpdateSchema = z
     bitrateKbps: z.number().int().positive().max(512).optional(),
     channelMode: channelModeSchema.optional(),
     codec: z.enum(["mp3", "flac", "wav"]).optional(),
+    enhancement: recordingEnhancementSchema.optional(),
     maxTrackSeconds: z.number().int().positive().max(604_800).nullable().optional(),
     name: z.string().trim().min(1).max(160).optional(),
     silenceDetectionEnabled: z.boolean().optional(),
@@ -602,6 +658,8 @@ export const recordingSummarySchema = z.object({
   cachePath: z.string().min(1).optional(),
   checksum: z.string().min(1).optional(),
   durationSeconds: z.number().int().nonnegative(),
+  enhancedCachePath: z.string().min(1).optional(),
+  rawCachePath: z.string().min(1).optional(),
   folder: z.string().min(1),
   healthStatus: z.enum(["healthy", "warning", "critical", "unknown"]),
   id: z.string().min(1),
@@ -857,6 +915,16 @@ export const defaultVoiceRecordingProfile = {
   bitrateKbps: 128,
   channelMode: "mono_to_stereo_mix",
   codec: "mp3",
+  enhancement: {
+    keepRaw: true,
+    denoise: { enabled: true, engine: "deepfilternet3" },
+    highpass: { enabled: true, hz: 80 },
+    lowpass: { enabled: false, hz: 12_000 },
+    deesser: { enabled: false, intensity: 0.1 },
+    compressor: { enabled: false },
+    loudnorm: { enabled: true, targetI: -16, truePeak: -1.5, lra: 11 },
+    gate: { enabled: false, thresholdDb: -40 },
+  },
   id: "voice-mp3-vbr",
   name: "Voice MP3 VBR",
   silenceDetectionEnabled: false,
@@ -961,6 +1029,7 @@ export type NodeRecordingCapacity = z.infer<typeof nodeRecordingCapacitySchema>;
 export type NodeRuntime = z.infer<typeof nodeRuntimeSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;
 export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
+export type RecordingEnhancement = z.infer<typeof recordingEnhancementSchema>;
 export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
 export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobChannelMap = z.infer<typeof recordingJobChannelMapSchema>;
