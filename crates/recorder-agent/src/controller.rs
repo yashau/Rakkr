@@ -1,9 +1,7 @@
 mod types;
 use crate::cache_content_type::content_type_for_codec;
 use crate::capture::CaptureChild;
-use crate::channel_map::{
-    capture_plan_for_job, channel_map_details, render_capture_output, render_enhanced_output,
-};
+use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
 use crate::config::AgentConfig;
 use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
 use crate::health_log::{self, AgentHealthEvent};
@@ -19,7 +17,10 @@ use crate::recording_job_recovery::{
     write_recoverable_job_state,
 };
 use crate::recording_job_segments::stitch_recovered_capture_segments;
-use crate::recording_job_upload::{UploadCheckpoint, write_upload_checkpoint_state};
+use crate::recording_job_upload::{
+    RenditionUploadInputs, UploadCheckpoint, append_job_health_event, upload_recording_renditions,
+    write_upload_checkpoint_state,
+};
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 use anyhow::Context;
@@ -545,33 +546,6 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         }
     };
 
-    // Best-effort enhanced rendition. When present it becomes the primary upload
-    // (the default playback file) and the raw render is uploaded alongside it as a
-    // supplementary master; on any failure we fall back to uploading raw only.
-    let enhanced_path = match render_enhanced_output(&capture_plan, &raw_output_path) {
-        Ok(path) => path,
-        Err(error) => {
-            let _ = append_job_health_event(
-                config,
-                token,
-                &job,
-                "agent.recording_job.enhancement_failed",
-                "warning",
-                json!({
-                    "error": error.to_string(),
-                    "jobId": job.id.as_str(),
-                    "recordingId": job.recording_id.as_str(),
-                }),
-            )
-            .await;
-            None
-        }
-    };
-    let keep_raw = capture_plan
-        .enhancement
-        .as_ref()
-        .is_none_or(|enhancement| enhancement.keep_raw);
-
     let upload_content_type =
         content_type_for_codec(job.command.output_codec.as_deref(), &output_path);
     let upload_file_name = job.command.output_file_name.clone();
@@ -589,59 +563,19 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     };
     write_upload_checkpoint_state(config, &job, "upload_pending", &upload_checkpoint, None)?;
 
-    // Primary upload: enhanced when available (rendition=enhanced), otherwise the
-    // raw render as the legacy primary.
-    let primary_path = enhanced_path.as_deref().unwrap_or(&output_path);
-    let primary_rendition = enhanced_path.as_ref().map(|_| "enhanced");
-    let upload_result = upload_cache_file(CacheFileUpload {
-        allow_insecure_controller: config.allow_insecure_controller,
+    // Produce the best-effort enhanced rendition and upload both renditions.
+    let upload_result = upload_recording_renditions(RenditionUploadInputs {
+        capture_plan: &capture_plan,
+        config,
         content_type: upload_content_type,
-        controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
-        controller_url: &config.controller_url,
-        duration_seconds: Some(job.command.duration_seconds),
-        file_name: Some(upload_file_name.clone()),
-        file_path: primary_path,
-        job_id: Some(&job.id),
-        recording_id: &job.recording_id,
-        rendition: primary_rendition,
+        duration_seconds: job.command.duration_seconds,
+        file_name: &upload_file_name,
+        job: &job,
+        output_path: &output_path,
+        raw_output_path: &raw_output_path,
         token,
     })
     .await;
-
-    // Supplementary raw master, uploaded after the enhanced primary so the toggle
-    // has both renditions. Best-effort: a failure here does not fail the job.
-    if upload_result.is_ok() && enhanced_path.is_some() && keep_raw {
-        let raw_upload = upload_cache_file(CacheFileUpload {
-            allow_insecure_controller: config.allow_insecure_controller,
-            content_type: upload_content_type,
-            controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
-            controller_url: &config.controller_url,
-            duration_seconds: Some(job.command.duration_seconds),
-            file_name: Some(upload_file_name.clone()),
-            file_path: &output_path,
-            job_id: Some(&job.id),
-            recording_id: &job.recording_id,
-            rendition: Some("raw"),
-            token,
-        })
-        .await;
-
-        if let Err(error) = raw_upload {
-            let _ = append_job_health_event(
-                config,
-                token,
-                &job,
-                "agent.recording_job.raw_rendition_upload_failed",
-                "warning",
-                json!({
-                    "error": error.to_string(),
-                    "jobId": job.id.as_str(),
-                    "recordingId": job.recording_id.as_str(),
-                }),
-            )
-            .await;
-        }
-    }
 
     match upload_result {
         Ok(()) => {
@@ -865,30 +799,6 @@ pub async fn sync_health_event(
         let body = response.text().await.unwrap_or_default();
 
         anyhow::bail!("controller rejected health event with {status}: {body}");
-    }
-
-    Ok(())
-}
-
-pub(crate) async fn append_job_health_event(
-    config: &AgentConfig,
-    token: &str,
-    job: &ControllerRecordingJob,
-    event_type: &str,
-    severity: &str,
-    details: serde_json::Value,
-) -> anyhow::Result<()> {
-    let event = health_log::append_health_event_with_targets(
-        config,
-        event_type,
-        severity,
-        details,
-        Some(job.recording_id.clone()),
-        None,
-    )?;
-
-    if let Err(error) = sync_health_event(config, token, &event).await {
-        warn!(event_type, error = %error, "failed to sync recording job health event");
     }
 
     Ok(())

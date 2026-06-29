@@ -66,6 +66,37 @@ export function recordingHasRendition(recording: RecordingSummary, rendition: Re
   return Boolean(rendition === "raw" ? recording.rawCachePath : recording.enhancedCachePath);
 }
 
+// Apply a freshly stored rendition to the recording's columns. The raw rendition is
+// supplementary (links rawCachePath only, never takes over the lifecycle); the
+// enhanced/legacy primary owns the default cachePath, checksum, duration, waveform,
+// and cached/status. Returns whether this upload was supplementary.
+export function applyStoredRendition(
+  recording: RecordingSummary,
+  stored: StoredRecordingFile,
+  rendition: RecordingRendition | undefined,
+  durationSeconds: number | undefined,
+): boolean {
+  if (rendition === "raw") {
+    recording.rawCachePath = stored.cachePath;
+    if (!recording.cachePath) {
+      recording.cachePath = stored.cachePath;
+    }
+    return true;
+  }
+
+  if (rendition === "enhanced") {
+    recording.enhancedCachePath = stored.cachePath;
+  }
+  recording.cached = true;
+  recording.cachePath = stored.cachePath;
+  recording.checksum = stored.checksum;
+  recording.durationSeconds =
+    durationSeconds ?? stored.durationSeconds ?? Math.max(recording.durationSeconds, 1);
+  recording.status = "cached";
+  recording.waveformPreview = stored.waveformPreview;
+  return false;
+}
+
 export async function recordingCacheFileSize(recording: RecordingSummary) {
   if (!recordingHasCachedFile(recording)) {
     return undefined;

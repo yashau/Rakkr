@@ -8,6 +8,7 @@ mod config;
 mod controller;
 mod controller_http;
 mod enhance;
+mod enhanced_render;
 mod health_log;
 mod inventory;
 mod meter_command;

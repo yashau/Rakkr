@@ -2,11 +2,10 @@ use serde_json::json;
 
 use crate::capture::{CaptureGrowthSnapshot, CapturePlan, estimated_capture_bytes};
 use crate::config::AgentConfig;
-use crate::controller::{
-    ControllerRecordingJob, append_job_health_event, mark_recording_job_failed,
-};
+use crate::controller::{ControllerRecordingJob, mark_recording_job_failed};
 use crate::recording_job_recovery::spawn_capture_plan_with_recovery;
 use crate::recording_job_segments::{RuntimeCaptureRecovery, preserve_recovered_capture_segment};
+use crate::recording_job_upload::append_job_health_event;
 use crate::{node_config, recorder_cache_retention, system_health};
 
 pub(crate) async fn ensure_capture_disk_space(

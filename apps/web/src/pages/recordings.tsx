@@ -51,15 +51,12 @@ import {
   isCachedRecording,
   healthStatuses,
   isTerminalRecording,
-  playbackPreviewFromSession,
   recordingPagePermissions,
   recordingFilterChips,
   recordingFilterDraftKeys,
-  replacePlaybackPreview,
   type RecordingFilterDraft,
   type RecordingFilterKey,
   type RecordingPlaybackPreview,
-  type RecordingRendition,
   recordingPageSizes,
   recordingSortOptions,
   recordingSortOrders,
@@ -67,6 +64,7 @@ import {
   selectClassName,
   uploadQueueStatusSummary,
 } from "@/lib/recording-page-helpers";
+import { useRecordingPlaybackMutation } from "@/lib/recording-playback";
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
@@ -148,49 +146,10 @@ export function RecordingsPage() {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
   });
-  const playbackMutation = useMutation({
-    mutationFn: async ({
-      recordingId,
-      rendition,
-    }: {
-      recordingId: string;
-      rendition?: RecordingRendition;
-    }) => {
-      const playback = await api.startPlayback(recordingId);
-      const stream = await api.recordingStream(recordingId, rendition);
-
-      return {
-        playback: playback.data,
-        rendition: rendition ?? ("enhanced" as RecordingRendition),
-        stream,
-      };
-    },
-    onError: () =>
-      setNotice({
-        detail: "The selected recording could not be opened for playback.",
-        title: "Playback unavailable",
-      }),
-    onSuccess: (response) => {
-      const url = URL.createObjectURL(response.stream.blob);
-      const preview = playbackPreviewFromSession(
-        response.playback,
-        response.stream,
-        url,
-        response.rendition,
-      );
-
-      setAudioPreview((current) => {
-        const next = replacePlaybackPreview(current, preview);
-
-        audioPreviewRef.current = next;
-
-        return next;
-      });
-      setNotice({
-        detail: `${response.playback.sessionId} started at ${formatDateTime(response.playback.startedAt)}`,
-        title: "Playback ready",
-      });
-    },
+  const playbackMutation = useRecordingPlaybackMutation({
+    audioPreviewRef,
+    setAudioPreview,
+    setNotice,
   });
   const downloadMutation = useMutation({
     mutationFn: async (recordingId: string) => {

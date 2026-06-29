@@ -32,7 +32,7 @@ import {
 } from "./recording-jobs.js";
 import { agentCacheFileJobScope, agentJobRecordingScope } from "./agent-job-recording-scope.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
-import { storeRecordingFile } from "./recording-cache.js";
+import { applyStoredRendition, storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -620,7 +620,6 @@ export function registerAgentRoutes({
     const renditionParam = c.req.query("rendition");
     const rendition =
       renditionParam === "raw" || renditionParam === "enhanced" ? renditionParam : undefined;
-
     const before = recordingFileSnapshot(recording);
     const stored = await storeRecordingFile(
       recording,
@@ -642,56 +641,16 @@ export function registerAgentRoutes({
       });
       throw error;
     });
-
-    // The raw rendition is a supplementary master: it links the rawCachePath
-    // column but does not re-complete the job, re-queue the cloud upload, or take
-    // over the default cachePath (the enhanced/legacy primary owns those). It is
-    // playable as the default only until a primary arrives.
-    if (rendition === "raw") {
-      recording.rawCachePath = stored.cachePath;
-      if (!recording.cachePath) {
-        recording.cachePath = stored.cachePath;
-      }
-      await recordingStore.save(recording);
-      const syncedRaw = await syncAndFindRecording(recording);
-      await recordAuditEvent(c, {
-        action: "recordings.cache_file.attach.succeeded",
-        actor: nodeActor(auth.credential),
-        after: recordingFileSnapshot(syncedRaw),
-        before,
-        details: {
-          cachePath: stored.cachePath,
-          checksum: stored.checksum,
-          fileName: stored.fileName,
-          jobId,
-          mimeType: stored.mimeType,
-          rendition: "raw",
-          size: stored.size,
-        },
-        outcome: "succeeded",
-        permission: "recording:control",
-        target: { id: recording.id, name: recording.name, type: "recording" },
-      });
-      return c.json({ data: { file: stored, recording: syncedRaw, rendition: "raw" } }, 201);
-    }
-
-    // Primary rendition (enhanced or legacy) owns the default cachePath and the
-    // recording lifecycle.
-    if (rendition === "enhanced") {
-      recording.enhancedCachePath = stored.cachePath;
-    }
-    recording.cached = true;
-    recording.cachePath = stored.cachePath;
-    recording.checksum = stored.checksum;
-    recording.durationSeconds =
-      durationSeconds ?? stored.durationSeconds ?? Math.max(recording.durationSeconds, 1);
-    recording.status = "cached";
-    recording.waveformPreview = stored.waveformPreview;
+    // The raw rendition is supplementary (no job completion or cloud queue).
+    const supplementary = applyStoredRendition(recording, stored, rendition, durationSeconds);
     await recordingStore.save(recording);
-    const job = scopedJob.job
-      ? await completeRecordingJob(recording.id, scopedJob.job.id)
-      : undefined;
-    const uploadQueueItem = await queueCachedRecordingUpload(c, auth.credential, recording);
+    const job =
+      !supplementary && scopedJob.job
+        ? await completeRecordingJob(recording.id, scopedJob.job.id)
+        : undefined;
+    const uploadQueueItem = supplementary
+      ? undefined
+      : await queueCachedRecordingUpload(c, auth.credential, recording);
     const syncedRecording = await syncAndFindRecording(recording);
 
     await recordAuditEvent(c, {
@@ -706,6 +665,7 @@ export function registerAgentRoutes({
         jobId,
         jobStatus: job?.status,
         mimeType: stored.mimeType,
+        rendition: rendition ?? "primary",
         size: stored.size,
         uploadQueueItemId: uploadQueueItem?.id,
         waveformPeaks: stored.waveformPreview?.peaks.length,
