@@ -182,6 +182,35 @@ published to `rakkr.org/agent.sh`.
 - **Master encryption key** for `node_ssh_credentials` is itself a first-class
   `Secret` (the root of trust); rotation re-encrypts stored keys.
 
+### 3.5 Interface registration — reconciled by the agent on startup
+
+The agent is the source of truth for what hardware exists. On startup (after it
+authenticates, alongside its first heartbeat) the agent POSTs its full
+discovered inventory and the controller **reconciles** `node.interfaces`:
+
+- **Match by stable identity.** Interfaces are keyed by the agent's deterministic
+  id (e.g. `alsa_card_xusb_dev_0`) / `system_ref`, so ids stay stable across
+  restarts and existing **channel-map assignments keep resolving**.
+- **Agent owns hardware facts.** existence, `channel_count` / channels,
+  `system_ref`, `hardware_path`, backend, sample rates, system name/serial are
+  upserted from the agent report.
+- **Operator owns labels.** custom interface alias + per-channel aliases (and
+  channel-map assignments) are preserved across reconcile by stable-id match.
+- **Absent interfaces are flagged, not silently dropped.** Devices the agent no
+  longer reports are marked `absent` (preserving channel-map history and
+  surfacing the change in the UI) rather than hard-deleted; operators can remove
+  them.
+- **Idempotent + audited.** No diff → no-op; a real change emits a
+  `nodes.inventory.reconciled` audit event summarizing added/updated/absent
+  interfaces (node-token auth, `node:control`, mirroring the heartbeat).
+
+Endpoint: `POST /api/v1/nodes/:id/inventory` (agent-authenticated). With this in
+place **enrollment no longer needs hand-entered interfaces** — they become
+optional/advisory and the agent fills the real list on first startup (the
+hand-authored seed interface is just a placeholder until first contact). The
+day-0 bootstrap (§3.2) carries the same inventory, so a node's interfaces are
+correct from its very first registration.
+
 ## 4. Data-model & API changes (sketch)
 
 - **DB:** add `node_ssh_credentials` (above); add a short-lived
@@ -195,8 +224,11 @@ published to `rakkr.org/agent.sh`.
   - `GET /api/v1/nodes/:id/ssh-credential` (runner-scoped auth) → decrypted
     private key for a lifecycle run (audited, never logged).
   - `POST /api/v1/nodes/:id/ssh-credential/rotate` (`node:manage`).
+  - `POST /api/v1/nodes/:id/inventory` (node-token auth) → reconcile the node's
+    interfaces from the agent's discovered inventory (§3.5); `nodes.enroll`
+    interfaces become optional.
 - **Agent:** `--bootstrap` mode (keygen, authorized_keys install, bootstrap POST,
-  env write, privkey wipe).
+  env write, privkey wipe) + **startup inventory reconcile** (§3.5).
 - **RBAC/audit:** all privileged actions `node:manage`-gated; bootstrap consume,
   ssh-credential fetch/rotate, and revocation all emit audit events (mirroring
   existing node lifecycle auditing).
@@ -219,6 +251,12 @@ published to `rakkr.org/agent.sh`.
   consume; replay-safe.
 
 ## 6. Rollout / phasing
+
+- **Interface reconcile (independent — can land first).** Agent reports its
+  discovered inventory on startup; the controller reconciles `node.interfaces`
+  (§3.5). Depends on nothing else here (just the existing node-token auth), so it
+  can ship ahead of the credential work and immediately replaces the rig's
+  hand-entered interfaces with the real ones.
 
 - **Phase 1 — Credential store + runner fetch.** Add `node_ssh_credentials`,
   the master key, and runner→controller credential fetch. Immediately removes
