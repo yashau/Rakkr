@@ -1,0 +1,15 @@
+/* Each docs page's title comes from its Markdown body's own `# H1` (the repo
+   `docs/` are also rendered on GitHub), so the Starlight title is suppressed by
+   the `PageTitle` override. That leaves Starlight's first content panel empty —
+   collapse it, and the separator it would otherwise draw above the content, so
+   the body heading sits at the top of the page with no blank band. The empty
+   panel stays in the DOM (zero height) to keep the `#_top` scroll anchor that
+   the skip-link and mobile "Overview" entry target. */
+.main-pane main > .content-panel:first-child {
+  padding-block: 0;
+  border: 0;
+}
+
+.main-pane main > .content-panel:first-child + .content-panel {
+  border-top: 0;
+}

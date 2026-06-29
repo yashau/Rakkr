@@ -62,6 +62,8 @@ export default defineConfig({
         // rendered on GitHub), so suppress Starlight's duplicate title heading.
         PageTitle: "./src/components/PageTitle.astro",
       },
+      // Collapse the now-empty Starlight title panel left by the PageTitle override.
+      customCss: ["./src/styles/docs.css"],
       social: [
         {
           icon: "github",
