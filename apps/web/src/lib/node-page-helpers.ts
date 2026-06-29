@@ -122,6 +122,17 @@ export function listenMonitorPollInterval(targetLatencyMs: number) {
   return Math.min(Math.max(Math.round(targetLatencyMs), 750), 3000);
 }
 
+export const liveListenRenditions = ["raw", "enhanced"] as const;
+export type LiveListenRendition = (typeof liveListenRenditions)[number];
+
+export function liveListenRendition(enhance: boolean): LiveListenRendition {
+  return enhance ? "enhanced" : "raw";
+}
+
+export function liveListenRenditionLabel(rendition: LiveListenRendition) {
+  return rendition === "enhanced" ? "Enhanced" : "Raw";
+}
+
 export function nodeHealthLifecycleActions(status: HealthEventStatus): NodeHealthLifecycleAction[] {
   if (status === "resolved") {
     return ["reopen"];
