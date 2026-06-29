@@ -10,6 +10,8 @@ import type {
   ChannelMapTemplateAssignmentRollbackInput,
   ChannelMapTemplateInput,
   ChannelMapTemplateUpdate,
+  ControllerSettings,
+  ControllerSettingsUpdate,
   AccessGroup,
   AccessPolicy,
   AccessPolicyInput,
@@ -21,6 +23,7 @@ import type {
   NodeAudioCommandDefaults,
   RecorderNode,
   OidcPublicConfig,
+  PaginatedResponse,
   Permission,
   RecordingProfile,
   RecordingProfileUpdate,
@@ -48,8 +51,10 @@ import type {
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
 import type { ControllerStatus } from "./status-types";
+import type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-types";
 
 export type { ControllerStatus } from "./status-types";
+export type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-types";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 const authTokenKey = "rakkr.authToken";
@@ -59,6 +64,7 @@ export interface AuditEventFilters {
   actor?: string;
   from?: string;
   limit?: number;
+  offset?: number;
   outcome?: AuditOutcome;
   permission?: Permission;
   reason?: string;
@@ -155,32 +161,6 @@ export interface UploadQueueInput {
   uploadPolicyId?: string;
 }
 
-export interface WatchdogCalibrationInput {
-  apply?: boolean;
-  frameLimit?: number;
-  minFrames?: number;
-  nodeId: string;
-  signalMarginDb?: number;
-}
-
-export interface WatchdogCalibrationResult {
-  analysis: {
-    frameCount: number;
-    maxNoiseScore: number;
-    medianMetricDbfs: number;
-    medianSpeechScore: number;
-    observedMaxMetricDbfs: number;
-    observedP95MetricDbfs: number;
-    speechLikeFrameCount: number;
-  };
-  applied: boolean;
-  recommendation: {
-    marginDb: number;
-    update: WatchdogPolicyUpdate;
-  };
-  warnings: string[];
-}
-
 export type UploadQueueFilters = Partial<
   Pick<UploadQueueItem, "provider" | "recordingId" | "status">
 >;
@@ -266,6 +246,7 @@ export interface RecordingFacets {
 
 export interface HealthEventFilters {
   limit?: number;
+  offset?: number;
   nodeId?: string;
   openedFrom?: string;
   openedTo?: string;
@@ -471,11 +452,11 @@ export const api = {
   accessGroups: () => fetchJson<{ data: AccessGroup[] }>("/api/v1/auth/groups"),
   accessPolicies: () => fetchJson<{ data: AccessPolicy[] }>("/api/v1/auth/access-policies"),
   auditEvents: (filters: AuditEventFilters = {}) =>
-    fetchJson<{ data: AuditEvent[] }>(withQuery("/api/v1/audit-events", filters)),
+    fetchJson<PaginatedResponse<AuditEvent>>(withQuery("/api/v1/audit-events", filters)),
   auditEventsExport: (filters: AuditEventFilters = {}) =>
     fetchBlob(withQuery("/api/v1/audit-events/export", filters)),
   healthEvents: (filters: HealthEventFilters = {}) =>
-    fetchJson<{ data: HealthEvent[] }>(withQuery("/api/v1/health-events", filters)),
+    fetchJson<PaginatedResponse<HealthEvent>>(withQuery("/api/v1/health-events", filters)),
   healthEventsExport: (filters: HealthEventFilters = {}) =>
     fetchBlob(withQuery("/api/v1/health-events/export", filters)),
   healthEventsExportSelected: (input: HealthEventSelectedExportInput) =>
@@ -517,7 +498,8 @@ export const api = {
         method: "POST",
       },
     ),
-  accessUsers: () => fetchJson<{ data: CurrentUser[] }>("/api/v1/auth/users"),
+  accessUsers: (params: { limit?: number; offset?: number } = {}) =>
+    fetchJson<PaginatedResponse<CurrentUser>>(withQuery("/api/v1/auth/users", params)),
   createLocalUser: (input: LocalUserCreateInput) =>
     fetchJson<{ data: CurrentUser }>("/api/v1/auth/users", {
       body: JSON.stringify(input),
@@ -564,8 +546,8 @@ export const api = {
       method: "POST",
     }),
   node: (nodeId: string) => fetchJson<{ data: RecorderNode }>(`/api/v1/nodes/${nodeId}`),
-  nodes: (filters: NodeFilters = {}) =>
-    fetchJson<{ data: RecorderNode[] }>(withQuery("/api/v1/nodes", filters)),
+  nodes: (filters: NodeFilters & { limit?: number; offset?: number } = {}) =>
+    fetchJson<PaginatedResponse<RecorderNode>>(withQuery("/api/v1/nodes", filters)),
   nodesExport: (filters: NodeFilters = {}) => fetchBlob(withQuery("/api/v1/nodes/export", filters)),
   nodesExportSelected: (input: { nodeIds: string[] }) =>
     fetchBlob("/api/v1/nodes/export", {
@@ -579,8 +561,8 @@ export const api = {
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
       method: "POST",
     }),
-  recordingJobs: (filters: RecordingJobFilters = {}) =>
-    fetchJson<{ data: RecordingJob[] }>(withQuery("/api/v1/recording-jobs", filters)),
+  recordingJobs: (filters: RecordingJobFilters & { limit?: number; offset?: number } = {}) =>
+    fetchJson<PaginatedResponse<RecordingJob>>(withQuery("/api/v1/recording-jobs", filters)),
   recordingJobsExport: (filters: RecordingJobFilters = {}) =>
     fetchBlob(withQuery("/api/v1/recording-jobs/export", filters)),
   recordingJobsExportSelected: (input: RecordingJobSelectedExportInput) =>
@@ -617,6 +599,15 @@ export const api = {
         method: "POST",
       },
     ),
+  controllerSettings: () => fetchJson<{ data: ControllerSettings }>("/api/v1/settings/controller"),
+  updateControllerSettings: (input: ControllerSettingsUpdate) =>
+    fetchJson<{ data: ControllerSettings }>("/api/v1/settings/controller", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
   uploadProviders: () =>
@@ -853,8 +844,8 @@ export const api = {
     ),
   schedule: (scheduleId: string) =>
     fetchJson<{ data: ScheduleSummary }>(`/api/v1/schedules/${scheduleId}`),
-  schedules: (filters: ScheduleFilters = {}) =>
-    fetchJson<{ data: ScheduleSummary[] }>(withQuery("/api/v1/schedules", filters)),
+  schedules: (filters: ScheduleFilters & { limit?: number; offset?: number } = {}) =>
+    fetchJson<PaginatedResponse<ScheduleSummary>>(withQuery("/api/v1/schedules", filters)),
   startPlayback: (recordingId: string) =>
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
       method: "POST",

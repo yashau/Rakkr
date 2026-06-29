@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { NodeStatus } from "@rakkr/shared";
 
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -94,16 +95,16 @@ export function NodeInventoryFilters({
         />
       </Field>
       <Field label="Last Seen From">
-        <Input
-          onChange={(event) => updateFilter("lastSeenFrom", event.target.value)}
-          type="date"
+        <DatePicker
+          aria-label="Last seen from"
+          onChange={(value) => updateFilter("lastSeenFrom", value)}
           value={filters.lastSeenFrom}
         />
       </Field>
       <Field label="Last Seen To">
-        <Input
-          onChange={(event) => updateFilter("lastSeenTo", event.target.value)}
-          type="date"
+        <DatePicker
+          aria-label="Last seen to"
+          onChange={(value) => updateFilter("lastSeenTo", value)}
           value={filters.lastSeenTo}
         />
       </Field>

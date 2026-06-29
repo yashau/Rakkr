@@ -1,25 +1,23 @@
-import { type Dispatch, type ReactNode, type SetStateAction, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { HealthEvent, RecorderNode } from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
+  ChevronDown,
+  ChevronRight,
   Cpu,
   HardDrive,
   Headphones,
   KeyRound,
-  MapPin,
   Network,
-  PlusCircle,
   ShieldCheck,
   WifiOff,
   X,
 } from "lucide-react";
 
-import {
-  NodeAudioDefaultsEditor,
-  NodeIdentityEditor,
-  NodeInterfaceEditor,
-} from "@/components/node-inventory-editors";
+import { EnrollNodeDialog, NodeConfigureDialog } from "@/components/node-inventory-dialogs";
 import {
   emptyNodeInventoryFilters,
   NodeInventoryFilters,
@@ -41,26 +39,12 @@ import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { DataTable } from "@/components/ui/data-table";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import {
-  api,
-  type NodeEnrollmentInput,
-  type NodeEnrollmentResult,
-  type NodeFilters,
-} from "@/lib/api";
+import { api, type NodeFilters } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 import {
   nextNodeSelection,
@@ -76,46 +60,8 @@ import {
 } from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 import { downloadBlob } from "@/lib/recording-page-helpers";
-
-interface EnrollmentDraft {
-  agentVersion: string;
-  alias: string;
-  backend: NodeEnrollmentInput["interfaces"][number]["backend"];
-  building: string;
-  channelCount: string;
-  floor: string;
-  hardwarePath: string;
-  hostname: string;
-  interfaceAlias: string;
-  ipAddresses: string;
-  notes: string;
-  room: string;
-  sampleRates: string;
-  serialNumber: string;
-  site: string;
-  systemName: string;
-  tags: string;
-}
-
-const emptyDraft: EnrollmentDraft = {
-  agentVersion: "0.1.0",
-  alias: "",
-  backend: "unknown",
-  building: "",
-  channelCount: "0",
-  floor: "",
-  hardwarePath: "",
-  hostname: "",
-  interfaceAlias: "",
-  ipAddresses: "",
-  notes: "",
-  room: "",
-  sampleRates: "",
-  serialNumber: "",
-  site: "",
-  systemName: "",
-  tags: "",
-};
+import { defaultPageSize } from "@/lib/server-pagination";
+import { useServerPagination } from "@/lib/use-server-pagination";
 
 const nodeFilterDraftKeys: Record<NodeFilterKey, keyof typeof emptyNodeInventoryFilters> = {
   backend: "backend",
@@ -131,10 +77,8 @@ const nodeFilterDraftKeys: Record<NodeFilterKey, keyof typeof emptyNodeInventory
 
 export function NodesPage() {
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState(emptyDraft);
   const [nodeFilterDraft, setNodeFilterDraft] = useState(emptyNodeInventoryFilters);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
   const [listenPreview, setListenPreview] = useState<ListenMonitorPreview>();
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -144,21 +88,27 @@ export function NodesPage() {
   const actionPermissions = nodePageActionPermissions(
     currentUserQuery.data?.data.permissions ?? [],
   );
-  const nodeFilters = {
-    backend: nodeFilterDraft.backend || undefined,
-    building: nodeFilterDraft.building.trim() || undefined,
-    floor: nodeFilterDraft.floor.trim() || undefined,
-    lastSeenFrom: localDateBoundaryIso(nodeFilterDraft.lastSeenFrom, "start"),
-    lastSeenTo: localDateBoundaryIso(nodeFilterDraft.lastSeenTo, "end"),
-    q: nodeFilterDraft.search.trim() || undefined,
-    room: nodeFilterDraft.room.trim() || undefined,
-    site: nodeFilterDraft.site.trim() || undefined,
-    status: nodeFilterDraft.status || undefined,
-  } satisfies NodeFilters;
+  const nodeFilters = useMemo(
+    () =>
+      ({
+        backend: nodeFilterDraft.backend || undefined,
+        building: nodeFilterDraft.building.trim() || undefined,
+        floor: nodeFilterDraft.floor.trim() || undefined,
+        lastSeenFrom: localDateBoundaryIso(nodeFilterDraft.lastSeenFrom, "start"),
+        lastSeenTo: localDateBoundaryIso(nodeFilterDraft.lastSeenTo, "end"),
+        q: nodeFilterDraft.search.trim() || undefined,
+        room: nodeFilterDraft.room.trim() || undefined,
+        site: nodeFilterDraft.site.trim() || undefined,
+        status: nodeFilterDraft.status || undefined,
+      }) satisfies NodeFilters,
+    [nodeFilterDraft],
+  );
+  const pagination = useServerPagination(nodeFilters, { defaultPageSize });
   const nodesQuery = useQuery({
     enabled: actionPermissions.canRead,
-    queryFn: () => api.nodes(nodeFilters),
-    queryKey: ["nodes", nodeFilterDraft],
+    placeholderData: keepPreviousData,
+    queryFn: () => api.nodes(pagination.query),
+    queryKey: ["nodes", pagination.query],
     refetchInterval: 5000,
   });
   const healthEventsQuery = useQuery({
@@ -184,26 +134,16 @@ export function NodesPage() {
       setListenPreview({ nodeAlias, session });
     },
   });
-  const enrollMutation = useMutation({
-    mutationFn: api.enrollNode,
-    onError: () =>
-      toast.error("Enroll failed", {
-        description: "The recorder node could not be enrolled.",
-      }),
-    onSuccess: ({ data }) => {
-      setCredential(data);
-      setDraft(emptyDraft);
-      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
-    },
-  });
   const rotateMutation = useMutation({
     mutationFn: api.rotateNodeCredential,
     onError: () =>
       toast.error("Token rotation failed", {
         description: "The node credential token could not be rotated.",
       }),
-    onSuccess: ({ data }) => {
-      setCredential(data);
+    onSuccess: () => {
+      toast.success("Token rotated", {
+        description: "A fresh one-time node token has been issued.",
+      });
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
     },
   });
@@ -245,10 +185,6 @@ export function NodesPage() {
     onSuccess: downloadBlob,
   });
 
-  const nodes = nodesQuery.data?.data ?? [];
-  const activeFilterChips = nodeFilterChips(nodeFilters);
-  const selection = nodeSelectionState(nodes, selectedNodeIds);
-
   if (currentUserQuery.isPending) {
     return <LoadingSkeleton label="Loading nodes" />;
   }
@@ -263,188 +199,30 @@ export function NodesPage() {
     );
   }
 
+  const nodes = nodesQuery.data?.data ?? [];
+  const meta = nodesQuery.data?.meta;
+  const activeFilterChips = nodeFilterChips(nodeFilters);
+  const selection = nodeSelectionState(nodes, selectedNodeIds);
+  const healthEvents = healthEventsQuery.data?.data ?? [];
+  const columns = nodeColumns({
+    canManage: actionPermissions.canManage,
+    onToggleSelected: (nodeId, selected) =>
+      setSelectedNodeIds((current) => nextNodeSelection(current, nodeId, selected)),
+    selectedNodeIds: selection.selectedVisibleNodeIds,
+  });
+
   return (
     <div className="grid gap-4">
-      {actionPermissions.canManage ? (
-        <Card className="rounded-lg p-4 shadow-sm">
-          <form
-            className="grid gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              enrollMutation.mutate(enrollmentInput(draft));
-            }}
-          >
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Enroll Recorder Node</h2>
-                <p className="text-sm text-muted-foreground">Create a persisted node and token.</p>
-              </div>
-              <Button disabled={enrollMutation.isPending} type="submit">
-                <PlusCircle className="size-4" />
-                Enroll
-              </Button>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <Field label="Alias">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "alias", event.target.value)}
-                  required
-                  value={draft.alias}
-                />
-              </Field>
-              <Field label="Hostname">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "hostname", event.target.value)}
-                  required
-                  value={draft.hostname}
-                />
-              </Field>
-              <Field label="Agent Version">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "agentVersion", event.target.value)}
-                  required
-                  value={draft.agentVersion}
-                />
-              </Field>
-              <Field label="Site">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "site", event.target.value)}
-                  required
-                  value={draft.site}
-                />
-              </Field>
-              <Field label="Building">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "building", event.target.value)}
-                  value={draft.building}
-                />
-              </Field>
-              <Field label="Floor">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "floor", event.target.value)}
-                  value={draft.floor}
-                />
-              </Field>
-              <Field label="Room">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "room", event.target.value)}
-                  required
-                  value={draft.room}
-                />
-              </Field>
-              <Field label="IP Addresses">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "ipAddresses", event.target.value)}
-                  placeholder="10.0.0.25, 10.0.0.26"
-                  value={draft.ipAddresses}
-                />
-              </Field>
-              <Field label="Interface">
-                <Input
-                  onChange={(event) =>
-                    setDraftValue(setDraft, "interfaceAlias", event.target.value)
-                  }
-                  placeholder="USB Audio"
-                  value={draft.interfaceAlias}
-                />
-              </Field>
-              <Field label="Backend">
-                <Select
-                  onValueChange={(value) =>
-                    setDraftValue(setDraft, "backend", value as EnrollmentDraft["backend"])
-                  }
-                  value={draft.backend}
-                >
-                  <SelectTrigger className="h-10">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unknown">unknown</SelectItem>
-                    <SelectItem value="alsa">alsa</SelectItem>
-                    <SelectItem value="jack">jack</SelectItem>
-                    <SelectItem value="pipewire">pipewire</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Channels">
-                <Input
-                  min={0}
-                  onChange={(event) => setDraftValue(setDraft, "channelCount", event.target.value)}
-                  type="number"
-                  value={draft.channelCount}
-                />
-              </Field>
-              <Field label="System Name">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "systemName", event.target.value)}
-                  placeholder="Behringer X32 Rack USB"
-                  value={draft.systemName}
-                />
-              </Field>
-              <Field label="Hardware Path">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "hardwarePath", event.target.value)}
-                  placeholder="/proc/asound/card1/pcm0c"
-                  value={draft.hardwarePath}
-                />
-              </Field>
-              <Field label="Serial Number">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "serialNumber", event.target.value)}
-                  value={draft.serialNumber}
-                />
-              </Field>
-              <Field label="Sample Rates">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "sampleRates", event.target.value)}
-                  placeholder="48000, 44100"
-                  value={draft.sampleRates}
-                />
-              </Field>
-              <Field label="Tags">
-                <Input
-                  onChange={(event) => setDraftValue(setDraft, "tags", event.target.value)}
-                  placeholder="voice, room-a"
-                  value={draft.tags}
-                />
-              </Field>
-            </div>
-
-            <Field label="Notes">
-              <Textarea
-                onChange={(event) => setDraftValue(setDraft, "notes", event.target.value)}
-                value={draft.notes}
-              />
-            </Field>
-
-            {credential ? (
-              <Field label="One-Time Node Token">
-                <Textarea readOnly value={credential.credential.token} />
-              </Field>
-            ) : null}
-            {enrollMutation.isError ? (
-              <p className="text-sm text-destructive">Node enrollment failed.</p>
-            ) : null}
-          </form>
-        </Card>
-      ) : null}
-
-      {listenPreview ? (
-        <ListenMonitorPanel
-          onClose={() => setListenPreview(undefined)}
-          onSessionChange={(session) =>
-            setListenPreview((current) => (current ? { ...current, session } : current))
-          }
-          preview={listenPreview}
-        />
-      ) : null}
-
       <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-sm font-semibold">Recorder Nodes</h2>
-            <p className="text-xs text-muted-foreground">{nodes.length} shown</p>
+            <div className="flex items-center gap-2">
+              <Network className="size-5 text-teal-700" />
+              <h2 className="text-lg font-semibold">Recorder Nodes</h2>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {meta?.total ?? nodes.length} matching nodes
+            </p>
             <NodeInventoryActions
               allVisibleSelected={selection.allVisibleSelected}
               exportPending={exportMutation.isPending}
@@ -460,7 +238,10 @@ export function NodesPage() {
               selectedExportPending={selectedExportMutation.isPending}
             />
           </div>
-          <NodeInventoryFilters filters={nodeFilterDraft} onChange={setNodeFilterDraft} />
+          <div className="flex flex-col items-end gap-3">
+            {actionPermissions.canManage ? <EnrollNodeDialog /> : null}
+            <NodeInventoryFilters filters={nodeFilterDraft} onChange={setNodeFilterDraft} />
+          </div>
         </div>
         {activeFilterChips.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -486,6 +267,7 @@ export function NodesPage() {
               className="h-6 px-2 text-xs"
               onClick={() => setNodeFilterDraft(emptyNodeInventoryFilters)}
               size="sm"
+              type="button"
               variant="ghost"
             >
               Clear all
@@ -494,155 +276,50 @@ export function NodesPage() {
         ) : null}
       </section>
 
-      {nodesQuery.isSuccess && nodes.length === 0 ? (
-        <Alert>
-          <AlertDescription>No nodes match the current filters.</AlertDescription>
-        </Alert>
+      {listenPreview ? (
+        <ListenMonitorPanel
+          onClose={() => setListenPreview(undefined)}
+          onSessionChange={(session) =>
+            setListenPreview((current) => (current ? { ...current, session } : current))
+          }
+          preview={listenPreview}
+        />
       ) : null}
 
-      {nodes.map((node) => {
-        const healthEvents = (healthEventsQuery.data?.data ?? []).filter(
-          (event) => event.nodeId === node.id,
-        );
-        const healthSummary = nodeHealthSummary(healthEvents);
-
-        return (
-          <Card className="rounded-lg p-4 shadow-sm" key={node.id}>
-            <div className="grid gap-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="mb-2 flex items-center gap-2">
-                    <Checkbox
-                      aria-label={`Select ${node.alias}`}
-                      checked={selection.selectedVisibleNodeIds.includes(node.id)}
-                      onCheckedChange={(value) =>
-                        setSelectedNodeIds((current) =>
-                          nextNodeSelection(current, node.id, value === true),
-                        )
-                      }
-                    />
-                    <h2 className="text-lg font-semibold">{node.alias}</h2>
-                    <Badge className={nodeStatusBadgeClass(node.status)} variant="outline">
-                      {node.status}
-                    </Badge>
-                    <Badge className={healthBadgeClass(healthSummary.tone)} variant="outline">
-                      {healthSummary.label}
-                    </Badge>
-                  </div>
-                  <div className="grid gap-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="size-4" />
-                      {nodeLocationSummary(node.location)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Network className="size-4" />
-                      {node.hostname} / {node.ipAddresses.join(", ")}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Cpu className="size-4" />
-                      Agent {node.agentVersion} / seen {formatDateTime(node.lastSeenAt)}
-                    </div>
-                    {node.runtime ? (
-                      <div className="flex items-center gap-2">
-                        <HardDrive className="size-4" />
-                        {nodeRuntimeSummary(node.runtime)}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {actionPermissions.canListen ? (
-                    <Button
-                      disabled={listenMutation.isPending}
-                      onClick={() => listenMutation.mutate({ alias: node.alias, id: node.id })}
-                      variant="outline"
-                    >
-                      <Headphones className="size-4" />
-                      Listen
-                    </Button>
-                  ) : null}
-                  {actionPermissions.canManage ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex">
-                          <Button
-                            disabled={rotateMutation.isPending || !isUuid(node.id)}
-                            onClick={() => rotateMutation.mutate(node.id)}
-                            variant="outline"
-                          >
-                            <KeyRound className="size-4" />
-                            Rotate Token
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {rotateNodeTokenTitle(actionPermissions.canManage, isUuid(node.id))}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : null}
-                  <NodeLifecycleMenu canManage={actionPermissions.canManage} node={node} />
-                </div>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-4">
-                {[
-                  {
-                    event: healthSummary.connectivity,
-                    icon: <WifiOff className="size-4" />,
-                    label: "Connectivity",
-                  },
-                  {
-                    event: healthSummary.disk,
-                    icon: <HardDrive className="size-4" />,
-                    label: "Disk",
-                  },
-                  { event: healthSummary.cpu, icon: <Activity className="size-4" />, label: "CPU" },
-                  {
-                    event: healthSummary.audio,
-                    icon: <AudioLines className="size-4" />,
-                    label: "Audio",
-                  },
-                ].map((tile) => (
-                  <HealthSummaryTile
-                    event={tile.event}
-                    icon={tile.icon}
-                    key={tile.label}
-                    label={tile.label}
-                  />
-                ))}
-              </div>
-
-              <NodeHealthTrend events={healthEvents} />
-              <NodeHealthEvents
-                canManage={actionPermissions.canAcknowledgeHealth}
-                events={healthEvents}
-                healthBadgeClass={healthBadgeClass}
-                healthEventDetails={healthEventDetails}
-                healthTone={healthTone}
-                onAction={(event, action) =>
-                  healthLifecycleMutation.mutate(nodeHealthLifecycleInput(event.id, action))
-                }
-                pending={healthLifecycleMutation.isPending}
-                readableHealthType={readableHealthType}
-                renderDateTime={formatDateTime}
-              />
-
-              <div className="grid gap-3 border-t border-border pt-3 text-sm">
-                <NodeIdentityEditor canManage={actionPermissions.canManage} node={node} />
-                <NodeAudioDefaultsEditor canManage={actionPermissions.canManage} node={node} />
-                {node.interfaces.map((audioInterface) => (
-                  <NodeInterfaceEditor
-                    audioInterface={audioInterface}
-                    canManage={actionPermissions.canManage}
-                    key={audioInterface.id}
-                    node={node}
-                  />
-                ))}
-              </div>
-            </div>
-          </Card>
-        );
-      })}
+      <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">
+        <DataTable
+          columns={columns}
+          data={nodes}
+          emptyMessage="No nodes match the current filters."
+          getRowId={(node) => node.id}
+          isLoading={nodesQuery.isPending}
+          renderExpandedRow={(node) => (
+            <NodeDetailRow
+              canListen={actionPermissions.canListen}
+              canManage={actionPermissions.canManage}
+              healthEvents={healthEvents.filter((event) => event.nodeId === node.id)}
+              listenPending={listenMutation.isPending}
+              node={node}
+              onAcknowledgeHealth={(eventId, action) =>
+                healthLifecycleMutation.mutate(nodeHealthLifecycleInput(eventId, action))
+              }
+              onListen={() => listenMutation.mutate({ alias: node.alias, id: node.id })}
+              onRotate={() => rotateMutation.mutate(node.id)}
+              healthPending={healthLifecycleMutation.isPending}
+              rotatePending={rotateMutation.isPending}
+              canAcknowledgeHealth={actionPermissions.canAcknowledgeHealth}
+            />
+          )}
+        />
+        <DataTablePagination
+          meta={meta}
+          onNext={pagination.nextPage}
+          onPageSizeChange={pagination.setPageSize}
+          onPrevious={pagination.previousPage}
+          pageSize={pagination.pageSize}
+          pageSizes={pagination.pageSizes}
+        />
+      </section>
     </div>
   );
 
@@ -651,70 +328,240 @@ export function NodesPage() {
   }
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+interface NodeColumnOptions {
+  canManage: boolean;
+  onToggleSelected: (nodeId: string, selected: boolean) => void;
+  selectedNodeIds: string[];
+}
+
+function nodeColumns({
+  canManage,
+  onToggleSelected,
+  selectedNodeIds,
+}: NodeColumnOptions): ColumnDef<RecorderNode>[] {
+  return [
+    {
+      cell: ({ row }) => (
+        <Checkbox
+          aria-label={`Select ${row.original.alias}`}
+          checked={selectedNodeIds.includes(row.original.id)}
+          onCheckedChange={(value) => onToggleSelected(row.original.id, value === true)}
+        />
+      ),
+      header: () => <span className="sr-only">Select</span>,
+      id: "select",
+      meta: { cellClassName: "w-8", headClassName: "w-8" },
+    },
+    {
+      cell: ({ row }) => {
+        const expanded = row.getIsExpanded();
+
+        return (
+          <Button
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Hide" : "Show"} node details`}
+            onClick={row.getToggleExpandedHandler()}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          </Button>
+        );
+      },
+      header: () => <span className="sr-only">Expand</span>,
+      id: "expand",
+      meta: { cellClassName: "w-8", headClassName: "w-8" },
+    },
+    {
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          <div className="font-medium">{row.original.alias}</div>
+          <div className="font-mono text-xs text-muted-foreground">{row.original.hostname}</div>
+        </div>
+      ),
+      header: "Alias",
+      id: "alias",
+    },
+    {
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {nodeLocationSummary(row.original.location)}
+        </span>
+      ),
+      header: "Location",
+      id: "location",
+    },
+    {
+      cell: ({ row }) => (
+        <Badge className={nodeStatusBadgeClass(row.original.status)} variant="outline">
+          {row.original.status}
+        </Badge>
+      ),
+      header: "Status",
+      id: "status",
+    },
+    {
+      cell: ({ row }) => <span className="text-sm">{nodeBackendSummary(row.original)}</span>,
+      header: "Backend",
+      id: "backend",
+    },
+    {
+      cell: ({ row }) => (
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
+          {formatDateTime(row.original.lastSeenAt)}
+        </span>
+      ),
+      header: "Last seen",
+      id: "lastSeen",
+    },
+    {
+      cell: ({ row }) => (
+        <div className="text-xs text-muted-foreground">
+          <div className="font-mono">{row.original.ipAddresses.join(", ") || "n/a"}</div>
+          {nodeSerialNumbers(row.original).length > 0 ? (
+            <div className="font-mono">{nodeSerialNumbers(row.original).join(", ")}</div>
+          ) : null}
+        </div>
+      ),
+      header: "IPs / serial",
+      id: "network",
+    },
+    {
+      cell: ({ row }) =>
+        canManage ? (
+          <div className="flex justify-end">
+            <NodeConfigureDialog node={row.original} />
+          </div>
+        ) : null,
+      header: "Actions",
+      id: "actions",
+      meta: { cellClassName: "text-right", headClassName: "text-right" },
+    },
+  ];
+}
+
+function NodeDetailRow({
+  canAcknowledgeHealth,
+  canListen,
+  canManage,
+  healthEvents,
+  healthPending,
+  listenPending,
+  node,
+  onAcknowledgeHealth,
+  onListen,
+  onRotate,
+  rotatePending,
+}: {
+  canAcknowledgeHealth: boolean;
+  canListen: boolean;
+  canManage: boolean;
+  healthEvents: HealthEvent[];
+  healthPending: boolean;
+  listenPending: boolean;
+  node: RecorderNode;
+  onAcknowledgeHealth: (eventId: string, action: NodeHealthLifecycleAction) => void;
+  onListen: () => void;
+  onRotate: () => void;
+  rotatePending: boolean;
+}) {
+  const healthSummary = nodeHealthSummary(healthEvents);
+
   return (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      {children}
+    <div className="grid gap-4 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Cpu className="size-4" />
+            Agent {node.agentVersion} / seen {formatDateTime(node.lastSeenAt)}
+          </div>
+          {node.runtime ? (
+            <div className="flex items-center gap-2">
+              <HardDrive className="size-4" />
+              {nodeRuntimeSummary(node.runtime)}
+            </div>
+          ) : null}
+          <Badge className={healthBadgeClass(healthSummary.tone)} variant="outline">
+            {healthSummary.label}
+          </Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canListen ? (
+            <Button disabled={listenPending} onClick={onListen} variant="outline">
+              <Headphones className="size-4" />
+              Listen
+            </Button>
+          ) : null}
+          {canManage ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    disabled={rotatePending || !isUuid(node.id)}
+                    onClick={onRotate}
+                    variant="outline"
+                  >
+                    <KeyRound className="size-4" />
+                    Rotate Token
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{rotateNodeTokenTitle(canManage, isUuid(node.id))}</TooltipContent>
+            </Tooltip>
+          ) : null}
+          <NodeLifecycleMenu canManage={canManage} node={node} />
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-4">
+        {[
+          {
+            event: healthSummary.connectivity,
+            icon: <WifiOff className="size-4" />,
+            label: "Connectivity",
+          },
+          { event: healthSummary.disk, icon: <HardDrive className="size-4" />, label: "Disk" },
+          { event: healthSummary.cpu, icon: <Activity className="size-4" />, label: "CPU" },
+          { event: healthSummary.audio, icon: <AudioLines className="size-4" />, label: "Audio" },
+        ].map((tile) => (
+          <HealthSummaryTile
+            event={tile.event}
+            icon={tile.icon}
+            key={tile.label}
+            label={tile.label}
+          />
+        ))}
+      </div>
+
+      <NodeHealthTrend events={healthEvents} />
+      <NodeHealthEvents
+        canManage={canAcknowledgeHealth}
+        events={healthEvents}
+        healthBadgeClass={healthBadgeClass}
+        healthEventDetails={healthEventDetails}
+        healthTone={healthTone}
+        onAction={(event, action) => onAcknowledgeHealth(event.id, action)}
+        pending={healthPending}
+        readableHealthType={readableHealthType}
+        renderDateTime={formatDateTime}
+      />
     </div>
   );
 }
 
-function setDraftValue<Draft>(
-  setDraft: Dispatch<SetStateAction<Draft>>,
-  key: keyof Draft,
-  value: Draft[keyof Draft],
-) {
-  setDraft((current) => ({ ...current, [key]: value }));
+function nodeBackendSummary(node: RecorderNode) {
+  const backends = Array.from(
+    new Set(node.interfaces.map((audioInterface) => audioInterface.backend)),
+  );
+
+  return backends.length > 0 ? backends.join(", ") : "n/a";
 }
 
-function enrollmentInput(draft: EnrollmentDraft): NodeEnrollmentInput {
-  const channelCount = Number(draft.channelCount);
-  const systemName = draft.systemName.trim();
-  const interfaceAlias = draft.interfaceAlias.trim();
-  const hasInterface = systemName || interfaceAlias || channelCount > 0;
-
-  return {
-    agentVersion: draft.agentVersion.trim(),
-    alias: draft.alias.trim(),
-    hostname: draft.hostname.trim(),
-    interfaces: hasInterface
-      ? [
-          {
-            alias: interfaceAlias || systemName || "Audio Interface",
-            backend: draft.backend,
-            channelCount: Number.isFinite(channelCount) ? Math.max(0, channelCount) : 0,
-            channels: [],
-            hardwarePath: draft.hardwarePath.trim() || undefined,
-            sampleRates: parseNumbers(draft.sampleRates),
-            serialNumber: draft.serialNumber.trim() || undefined,
-            systemName: systemName || interfaceAlias || "Unknown Audio Interface",
-          },
-        ]
-      : [],
-    ipAddresses: parseList(draft.ipAddresses),
-    location: {
-      building: draft.building.trim() || undefined,
-      floor: draft.floor.trim() || undefined,
-      room: draft.room.trim(),
-      site: draft.site.trim(),
-    },
-    notes: draft.notes.trim() || undefined,
-    tags: parseList(draft.tags),
-  };
-}
-
-function parseList(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function parseNumbers(value: string) {
-  return parseList(value)
-    .map(Number)
-    .filter((item) => Number.isInteger(item) && item > 0);
+function nodeSerialNumbers(node: RecorderNode) {
+  return node.interfaces
+    .map((audioInterface) => audioInterface.serialNumber)
+    .filter((serial): serial is string => Boolean(serial));
 }
 
 function isUuid(value: string) {

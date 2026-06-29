@@ -10,6 +10,7 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import { canReadAuditEvent } from "./audit-scope.js";
 import type { AuditEventFilters, AuditStore } from "./audit-store.js";
+import { buildPaginationMeta, PAGE_POLICY, paginate, parsePagination } from "./pagination.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -59,6 +60,10 @@ const auditEventsQuerySchema = z.object({
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.coerce.number().int().min(1).max(500).optional(),
   ),
+  offset: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.coerce.number().int().min(0).optional(),
+  ),
   outcome: z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     auditOutcomeSchema.optional(),
@@ -99,9 +104,10 @@ export function registerAuditRoutes({
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
+      // Exports cover every matching row regardless of any limit/offset query.
       const events = await scopedAuditEvents(
         currentUser(c, currentAuth),
-        await auditStore.list(auditFilters(query.data)),
+        await auditStore.listAll(auditFilters(query.data)),
       );
 
       await recordAuditRead(c, {
@@ -206,6 +212,7 @@ export function registerAuditRoutes({
         await auditStore.list({
           ...auditFilters(query.data),
           limit: query.data.limit ?? 500,
+          offset: 0,
         }),
       );
 
@@ -310,21 +317,47 @@ export function registerAuditRoutes({
         return c.json({ error: "Invalid audit filters", issues: query.error.issues }, 400);
       }
 
-      const events = await scopedAuditEvents(
-        currentUser(c, currentAuth),
-        await auditStore.list(auditFilters(query.data)),
+      const user = currentUser(c, currentAuth);
+      const filters = auditFilters(query.data);
+      const page = parsePagination(
+        { limit: query.data.limit, offset: query.data.offset },
+        PAGE_POLICY.audit,
       );
+
+      // Hybrid pagination: owner/admin readers are never scope-restricted, so we
+      // page + COUNT directly in SQL. Scope-restricted readers cannot be filtered
+      // in SQL (visibility is a runtime policy decision), so we scope the full
+      // matching set in memory and paginate that to keep the total accurate.
+      let data: AuditEvent[];
+      let meta;
+
+      if (auditReaderUnrestricted(user)) {
+        data = await scopedAuditEvents(
+          user,
+          await auditStore.list({ ...filters, limit: page.limit, offset: page.offset }),
+        );
+        meta = buildPaginationMeta({
+          limit: page.limit,
+          offset: page.offset,
+          returned: data.length,
+          total: await auditStore.count(filters),
+        });
+      } else {
+        const visible = await scopedAuditEvents(user, await auditStore.listAll(filters));
+        const sliced = paginate(visible, { limit: page.limit, offset: page.offset });
+        data = sliced.data;
+        meta = sliced.meta;
+      }
 
       await recordAuditRead(c, {
         action: "audit.events.read.succeeded",
         details: {
-          returnedCount: events.length,
+          returnedCount: data.length,
+          total: meta.total,
         },
       });
 
-      return c.json({
-        data: events,
-      });
+      return c.json({ data, meta });
     },
   );
 
@@ -391,12 +424,20 @@ function auditFilters(input: z.infer<typeof auditEventsQuerySchema>): AuditEvent
     from: input.from ? new Date(input.from) : undefined,
     id: input.id,
     limit: input.limit,
+    offset: input.offset,
     outcome: input.outcome,
     permission: input.permission,
     reason: input.reason,
     target: input.target,
     to: input.to ? new Date(input.to) : undefined,
   };
+}
+
+// Owner/admin readers bypass resource scoping (see resourceScopeDecision), so
+// their visible set equals the full filtered set and can be paged + counted in
+// SQL. Everyone else may be scope-restricted and uses the in-memory path.
+function auditReaderUnrestricted(user: NonNullable<AuthResult["user"]>) {
+  return user.roles.includes("owner") || user.roles.includes("admin");
 }
 
 function currentUser(

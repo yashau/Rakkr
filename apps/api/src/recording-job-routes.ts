@@ -17,6 +17,7 @@ import {
 } from "./recording-jobs.js";
 import { registerRecordingJobActionRoutes } from "./recording-job-action-routes.js";
 import { scopedRecordingJobs } from "./recording-job-scope.js";
+import { PAGE_POLICY, paginate, paginationQueryFields, parsePagination } from "./pagination.js";
 import type { RecordingStore } from "./recording-store.js";
 
 interface RecordingJobRouteDependencies {
@@ -30,6 +31,7 @@ interface RecordingJobRouteDependencies {
 }
 
 const recordingJobsQuerySchema = z.object({
+  ...paginationQueryFields,
   captureBackend: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : undefined),
     z.enum(["alsa", "jack", "pipewire"]).optional(),
@@ -105,14 +107,24 @@ export function registerRecordingJobRoutes({
         return c.json({ error: "Invalid recording job filters", issues: query.error.issues }, 400);
       }
 
+      // Jobs are scoped + filtered in memory, so the scoped count is the real
+      // total; paginate that set (RBAC-correct).
       const jobs = filterRecordingJobsForExport(await scopedJobs(currentUser(c)), query.data);
+      const { data, meta } = paginate(
+        jobs,
+        parsePagination(
+          { limit: query.data.limit, offset: query.data.offset },
+          PAGE_POLICY.default,
+        ),
+      );
 
       await recordAuditEvent(c, {
         action: "recording_jobs.read.succeeded",
         auth: currentAuth(c),
         details: {
           filters: query.data,
-          returnedCount: jobs.length,
+          returnedCount: data.length,
+          total: meta.total,
         },
         outcome: "succeeded",
         permission: "recording:read",
@@ -122,9 +134,7 @@ export function registerRecordingJobRoutes({
         },
       });
 
-      return c.json({
-        data: jobs,
-      });
+      return c.json({ data, meta });
     },
   );
 

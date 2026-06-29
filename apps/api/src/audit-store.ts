@@ -1,6 +1,7 @@
 import {
   and,
   auditEvents as auditEventsTable,
+  count,
   createDatabase,
   desc,
   eq,
@@ -29,6 +30,7 @@ export interface AuditEventFilters {
   from?: Date;
   id?: string;
   limit?: number;
+  offset?: number;
   outcome?: AuditOutcome;
   permission?: Permission;
   reason?: string;
@@ -38,8 +40,13 @@ export interface AuditEventFilters {
 
 export interface AuditStore {
   append(event: AuditEvent): Promise<void>;
+  /** Total number of events matching the filters, ignoring limit/offset. */
+  count(filters?: AuditEventFilters): Promise<number>;
   find(eventId: string): Promise<AuditEvent | undefined>;
+  /** A single page of matching events (honors limit/offset). */
   list(filters?: AuditEventFilters): Promise<AuditEvent[]>;
+  /** Every matching event (no limit), for in-memory RBAC scoping + exports. */
+  listAll(filters?: AuditEventFilters): Promise<AuditEvent[]>;
 }
 
 export function createAuditStore(databaseUrl = process.env.DATABASE_URL): AuditStore {
@@ -69,9 +76,21 @@ class MemoryAuditStore implements AuditStore {
   }
 
   async list(filters: AuditEventFilters = {}) {
-    return this.events
-      .filter((event) => matchesAuditFilters(event, filters))
-      .slice(0, limit(filters));
+    return this.matching(filters).slice(offset(filters), offset(filters) + limit(filters));
+  }
+
+  async listAll(filters: AuditEventFilters = {}) {
+    return this.matching(filters);
+  }
+
+  async count(filters: AuditEventFilters = {}) {
+    return this.matching(filters).length;
+  }
+
+  // Newest-first by insertion order (events are unshifted on append), which is a
+  // stable order for offset pagination.
+  private matching(filters: AuditEventFilters) {
+    return this.events.filter((event) => matchesAuditFilters(event, filters));
   }
 }
 
@@ -149,25 +168,79 @@ class PostgresAuditStore implements AuditStore {
 
     try {
       const conditions = auditConditions(filters);
+      // (createdAt desc, id desc) is a deterministic total order so OFFSET pages
+      // never skip or duplicate rows when timestamps collide.
       const rows =
         conditions.length > 0
           ? await this.db
               .select()
               .from(auditEventsTable)
               .where(and(...conditions))
-              .orderBy(desc(auditEventsTable.createdAt))
+              .orderBy(desc(auditEventsTable.createdAt), desc(auditEventsTable.id))
               .limit(limit(filters))
+              .offset(offset(filters))
           : await this.db
               .select()
               .from(auditEventsTable)
-              .orderBy(desc(auditEventsTable.createdAt))
-              .limit(limit(filters));
+              .orderBy(desc(auditEventsTable.createdAt), desc(auditEventsTable.id))
+              .limit(limit(filters))
+              .offset(offset(filters));
 
       return rows.map(auditEventFromRow);
     } catch (error) {
       this.dbAvailable = false;
       console.warn("audit event query unavailable; using memory store", error);
       return this.memory.list(filters);
+    }
+  }
+
+  async listAll(filters: AuditEventFilters = {}) {
+    if (!this.dbAvailable) {
+      return this.memory.listAll(filters);
+    }
+
+    try {
+      const conditions = auditConditions(filters);
+      const rows =
+        conditions.length > 0
+          ? await this.db
+              .select()
+              .from(auditEventsTable)
+              .where(and(...conditions))
+              .orderBy(desc(auditEventsTable.createdAt), desc(auditEventsTable.id))
+          : await this.db
+              .select()
+              .from(auditEventsTable)
+              .orderBy(desc(auditEventsTable.createdAt), desc(auditEventsTable.id));
+
+      return rows.map(auditEventFromRow);
+    } catch (error) {
+      this.dbAvailable = false;
+      console.warn("audit event query unavailable; using memory store", error);
+      return this.memory.listAll(filters);
+    }
+  }
+
+  async count(filters: AuditEventFilters = {}) {
+    if (!this.dbAvailable) {
+      return this.memory.count(filters);
+    }
+
+    try {
+      const conditions = auditConditions(filters);
+      const [row] =
+        conditions.length > 0
+          ? await this.db
+              .select({ value: count() })
+              .from(auditEventsTable)
+              .where(and(...conditions))
+          : await this.db.select({ value: count() }).from(auditEventsTable);
+
+      return row?.value ?? 0;
+    } catch (error) {
+      this.dbAvailable = false;
+      console.warn("audit event count unavailable; using memory store", error);
+      return this.memory.count(filters);
     }
   }
 }
@@ -252,6 +325,10 @@ function contains(value: string) {
 
 function limit(filters: AuditEventFilters) {
   return Math.min(Math.max(filters.limit ?? 100, 1), 500);
+}
+
+function offset(filters: AuditEventFilters) {
+  return Math.max(filters.offset ?? 0, 0);
 }
 
 function isUuid(value: string) {

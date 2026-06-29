@@ -437,6 +437,89 @@ test("audit selected export preserves requested order and audits outcomes", asyn
   assert.equal(failedEvents[0]?.reason, "audit_event_not_found");
 });
 
+test("audit routes paginate with limit, offset, and a total count", async () => {
+  const auditStore = createAuditStore("");
+  for (let index = 0; index < 5; index += 1) {
+    await auditStore.append(auditEvent(`recordings.page.${index}.succeeded`, "succeeded"));
+  }
+  const app = auditApp(auditStore, []);
+
+  // Filter to the fixtures so the read-audit events recorded by each request
+  // (action audit.events.read.*) do not affect the counts.
+  const firstResponse = await app.request(
+    "/api/v1/audit-events?action=recordings.page&limit=2&offset=0",
+  );
+  const first = (await firstResponse.json()) as {
+    data: AuditEvent[];
+    meta: { hasNextPage: boolean; hasPreviousPage: boolean; offset: number; total: number };
+  };
+  const lastResponse = await app.request(
+    "/api/v1/audit-events?action=recordings.page&limit=2&offset=4",
+  );
+  const last = (await lastResponse.json()) as typeof first;
+  const invalidResponse = await app.request("/api/v1/audit-events?limit=0");
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(first.data.length, 2);
+  assert.deepEqual(first.meta, {
+    hasNextPage: true,
+    hasPreviousPage: false,
+    limit: 2,
+    offset: 0,
+    returned: 2,
+    total: 5,
+  });
+  assert.equal(last.data.length, 1);
+  assert.equal(last.meta.hasNextPage, false);
+  assert.equal(last.meta.hasPreviousPage, true);
+  assert.equal(last.meta.total, 5);
+  assert.equal(invalidResponse.status, 400);
+});
+
+test("audit pagination is stable across pages for unrestricted readers", async () => {
+  const auditStore = createAuditStore("");
+  for (let index = 0; index < 5; index += 1) {
+    await auditStore.append(auditEvent(`recordings.owner.${index}.succeeded`, "succeeded"));
+  }
+  const app = auditApp(auditStore, [], { currentUser: ownerUser() });
+
+  const pageOne = (await (
+    await app.request("/api/v1/audit-events?action=recordings.owner&limit=3&offset=0")
+  ).json()) as {
+    data: AuditEvent[];
+    meta: { total: number };
+  };
+  const pageTwo = (await (
+    await app.request("/api/v1/audit-events?action=recordings.owner&limit=3&offset=3")
+  ).json()) as {
+    data: AuditEvent[];
+    meta: { total: number };
+  };
+  const ids = new Set([...pageOne.data, ...pageTwo.data].map((event) => event.id));
+
+  assert.equal(pageOne.meta.total, 5);
+  assert.equal(pageTwo.meta.total, 5);
+  assert.equal(pageOne.data.length, 3);
+  assert.equal(pageTwo.data.length, 2);
+  // No row appears on both pages (deterministic ordering, no skip/dup).
+  assert.equal(ids.size, 5);
+});
+
+test("audit export ignores limit and offset", async () => {
+  const auditStore = createAuditStore("");
+  for (let index = 0; index < 4; index += 1) {
+    await auditStore.append(auditEvent(`recordings.export.${index}.succeeded`, "succeeded"));
+  }
+  const app = auditApp(auditStore, []);
+
+  const csv = await (
+    await app.request("/api/v1/audit-events/export?action=recordings.export&limit=1&offset=2")
+  ).text();
+  const rows = csv.split("\n").filter((row) => row.includes("recordings.export."));
+
+  assert.equal(rows.length, 4);
+});
+
 test("audit routes deny users without audit read", async () => {
   const auditStore = createAuditStore("");
   const currentUser = user([]);
@@ -486,6 +569,7 @@ function auditApp(
   auditStore: ReturnType<typeof createAuditStore>,
   calls: string[],
   options: {
+    currentUser?: CurrentUser;
     hasResourceScope?: (user: CurrentUser, target: AuditTarget) => Promise<boolean>;
   } = {},
 ) {
@@ -494,13 +578,17 @@ function auditApp(
   registerAuditRoutes({
     app,
     auditStore,
-    currentAuth: () => ({ user: user(["audit:read"]) }),
+    currentAuth: () => ({ user: options.currentUser ?? user(["audit:read"]) }),
     hasResourceScope: options.hasResourceScope ?? (async () => true),
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: requirePermission(calls),
   });
 
   return app;
+}
+
+function ownerUser(): CurrentUser {
+  return { ...user(["audit:read"]), id: "user_audit_owner", roles: ["owner"] };
 }
 
 function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): RecordAuditEvent {

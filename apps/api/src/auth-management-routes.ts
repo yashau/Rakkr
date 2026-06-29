@@ -12,6 +12,7 @@ import {
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot, localAdminId } from "./auth-utils.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import { numberFromQuery, paginate } from "./pagination.js";
 
 interface AuthManagementRouteDependencies {
   app: Hono<AppBindings>;
@@ -90,13 +91,17 @@ export function registerAuthManagementRoutes({
     "/api/v1/auth/groups",
     requirePermission("auth:manage", "auth.groups.read", () => ({ type: "auth" })),
     async (c) => {
-      const groups = await authService.localGroups();
+      const { data, meta } = paginate(await authService.localGroups(), {
+        limit: numberFromQuery(c.req.query("limit")),
+        offset: numberFromQuery(c.req.query("offset")),
+      });
 
       await recordAuditEvent(c, {
         action: "auth.groups.read.succeeded",
         auth: currentAuth(c),
         details: {
-          count: groups.length,
+          count: data.length,
+          total: meta.total,
         },
         outcome: "succeeded",
         permission: "auth:manage",
@@ -105,7 +110,7 @@ export function registerAuthManagementRoutes({
         },
       });
 
-      return c.json({ data: groups });
+      return c.json({ data, meta });
     },
   );
 
@@ -113,13 +118,17 @@ export function registerAuthManagementRoutes({
     "/api/v1/auth/users",
     requirePermission("auth:manage", "auth.users.read", () => ({ type: "auth" })),
     async (c) => {
-      const users = await authService.localUsers();
+      const { data, meta } = paginate(await authService.localUsers(), {
+        limit: numberFromQuery(c.req.query("limit")),
+        offset: numberFromQuery(c.req.query("offset")),
+      });
 
       await recordAuditEvent(c, {
         action: "auth.users.read.succeeded",
         auth: currentAuth(c),
         details: {
-          count: users.length,
+          count: data.length,
+          total: meta.total,
         },
         outcome: "succeeded",
         permission: "auth:manage",
@@ -128,7 +137,7 @@ export function registerAuthManagementRoutes({
         },
       });
 
-      return c.json({ data: users });
+      return c.json({ data, meta });
     },
   );
 

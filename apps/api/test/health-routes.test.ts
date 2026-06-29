@@ -229,6 +229,7 @@ test("health event list returns scoped filtered events and audits access", async
   assert.equal(successEvent?.details.returnedCount, 1);
   assert.deepEqual(successEvent?.details.filters, {
     limit: undefined,
+    offset: undefined,
     nodeId: undefined,
     openedFrom: new Date("2026-06-20T00:00:00.000Z"),
     openedTo: new Date("2026-06-20T23:59:59.999Z"),
@@ -330,6 +331,7 @@ test("health event export returns scoped filtered csv and audits access", async 
   assert.equal(auditEvent?.details.exportedCount, 1);
   assert.deepEqual(auditEvent?.details.filters, {
     limit: undefined,
+    offset: undefined,
     nodeId: undefined,
     openedFrom: new Date("2026-06-20T00:00:00.000Z"),
     openedTo: new Date("2026-06-20T23:59:59.999Z"),
@@ -543,6 +545,83 @@ test("health lifecycle routes only operate on scoped visible events", async () =
       "health.events.suppress.failed:health_event_not_found",
     ],
   );
+});
+
+test("health events paginate with limit, offset, total, and exports ignore paging", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = user(["health:read"]);
+  const events = Array.from({ length: 5 }, (_, index) =>
+    event({ id: `health_page_${index}`, openedAt: `2026-06-2${index}T12:00:00.000Z` }),
+  );
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async () => true,
+    healthEventStore: createHealthEventStore("", events),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermissionWithCalls([]),
+  });
+
+  const first = (await (await app.request("/api/v1/health-events?limit=2&offset=0")).json()) as {
+    data: HealthEvent[];
+    meta: { hasNextPage: boolean; hasPreviousPage: boolean; total: number };
+  };
+  const last = (await (
+    await app.request("/api/v1/health-events?limit=2&offset=4")
+  ).json()) as typeof first;
+  const invalid = await app.request("/api/v1/health-events?limit=0");
+  const exportCsv = await (
+    await app.request("/api/v1/health-events/export?limit=1&offset=2")
+  ).text();
+
+  assert.equal(first.data.length, 2);
+  assert.equal(first.meta.total, 5);
+  assert.equal(first.meta.hasNextPage, true);
+  assert.equal(first.meta.hasPreviousPage, false);
+  assert.equal(last.data.length, 1);
+  assert.equal(last.meta.hasNextPage, false);
+  assert.equal(last.meta.hasPreviousPage, true);
+  assert.equal(invalid.status, 400);
+  // Export ignores limit/offset and returns every matching event (header + 5 rows).
+  assert.equal(exportCsv.trim().split("\n").length - 1, 5);
+});
+
+test("health pagination stays stable across pages for unrestricted readers", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser: CurrentUser = { ...user(["health:read"]), roles: ["owner"] };
+  const events = Array.from({ length: 5 }, (_, index) =>
+    event({ id: `health_owner_${index}`, openedAt: `2026-06-2${index}T12:00:00.000Z` }),
+  );
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async () => true,
+    healthEventStore: createHealthEventStore("", events),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermissionWithCalls([]),
+  });
+
+  const pageOne = (await (await app.request("/api/v1/health-events?limit=3&offset=0")).json()) as {
+    data: HealthEvent[];
+    meta: { total: number };
+  };
+  const pageTwo = (await (
+    await app.request("/api/v1/health-events?limit=3&offset=3")
+  ).json()) as typeof pageOne;
+  const ids = new Set([...pageOne.data, ...pageTwo.data].map((healthEvent) => healthEvent.id));
+
+  assert.equal(pageOne.meta.total, 5);
+  assert.equal(pageOne.data.length, 3);
+  assert.equal(pageTwo.data.length, 2);
+  assert.equal(ids.size, 5);
 });
 
 function requestJson(

@@ -95,7 +95,7 @@ const sourceSnippets = [
   "rakkr_upload_queue_depth",
   "rakkr_upload_queue_oldest_due_seconds",
   "rakkr_upload_failures_total",
-  "UploadPolicyPanel",
+  "UploadPolicyEditor",
   "UploadRunnerPanel",
   "RecordingUploadQueueSummary",
   "uploadRunnerPanelPermissions",

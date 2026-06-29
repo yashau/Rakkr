@@ -12,6 +12,7 @@ import type {
 import { syncRecordingHealth } from "./health-sync.js";
 import { registerHealthActionRoutes } from "./health-action-routes.js";
 import { healthEventTargets, visibleHealthEvent } from "./health-visibility.js";
+import { buildPaginationMeta, PAGE_POLICY, paginate, parsePagination } from "./pagination.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -42,6 +43,10 @@ const healthEventsQuerySchema = z.object({
   limit: z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.coerce.number().int().min(1).max(500).optional(),
+  ),
+  offset: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.coerce.number().int().min(0).optional(),
   ),
   nodeId: optionalTextFilterSchema,
   openedFrom: z.preprocess(
@@ -244,24 +249,50 @@ export function registerHealthRoutes({
 
       const user = currentUser(c);
       const filters = healthFilters(query.data);
-      const visibleEvents = await visibleHealthEvents(user, filters, {
-        hasResourceScope,
-        healthEventStore,
-      });
+      const page = parsePagination(
+        { limit: query.data.limit, offset: query.data.offset },
+        PAGE_POLICY.health,
+      );
+
+      let data: HealthEvent[];
+      let meta;
+
+      if (healthReaderUnrestricted(user)) {
+        data = await scopeHealthEvents(
+          user,
+          await healthEventStore.list({ ...filters, limit: page.limit, offset: page.offset }),
+          hasResourceScope,
+        );
+        meta = buildPaginationMeta({
+          limit: page.limit,
+          offset: page.offset,
+          returned: data.length,
+          total: await healthEventStore.count(filters),
+        });
+      } else {
+        const visible = await visibleHealthEvents(user, filters, {
+          hasResourceScope,
+          healthEventStore,
+        });
+        const sliced = paginate(visible, { limit: page.limit, offset: page.offset });
+        data = sliced.data;
+        meta = sliced.meta;
+      }
 
       await recordAuditEvent(c, {
         action: "health.events.read.succeeded",
         auth: currentAuth(c),
         details: {
           filters,
-          returnedCount: visibleEvents.length,
+          returnedCount: data.length,
+          total: meta.total,
         },
         outcome: "succeeded",
         permission: "health:read",
         target: healthReadTarget(c),
       });
 
-      return c.json({ data: visibleEvents });
+      return c.json({ data, meta });
     },
   );
 
@@ -629,6 +660,7 @@ function healthReadTarget(c: Context<AppBindings>): AuditTarget {
 function healthFilters(input: z.infer<typeof healthEventsQuerySchema>): HealthEventFilters {
   return {
     limit: input.limit,
+    offset: input.offset,
     nodeId: input.nodeId,
     openedFrom: input.openedFrom ? new Date(input.openedFrom) : undefined,
     openedTo: input.openedTo ? new Date(input.openedTo) : undefined,
@@ -643,21 +675,41 @@ function healthFilters(input: z.infer<typeof healthEventsQuerySchema>): HealthEv
   };
 }
 
-async function visibleHealthEvents(
+// Owner/admin readers bypass resource scoping (see resourceScopeDecision), so
+// their visible set equals the full filtered set and can be paged + counted in
+// SQL. Everyone else may be scope-restricted and is scoped in memory.
+function healthReaderUnrestricted(user: NonNullable<AuthResult["user"]>) {
+  return user.roles.includes("owner") || user.roles.includes("admin");
+}
+
+async function scopeHealthEvents(
   user: NonNullable<AuthResult["user"]>,
-  filters: HealthEventFilters,
-  dependencies: Pick<HealthRouteDependencies, "hasResourceScope" | "healthEventStore">,
+  events: HealthEvent[],
+  hasResourceScope: HealthRouteDependencies["hasResourceScope"],
 ) {
-  const events = await dependencies.healthEventStore.list(filters);
   const visibleEvents: HealthEvent[] = [];
 
   for (const event of events) {
-    if (await visibleHealthEvent(user, event, dependencies.hasResourceScope)) {
+    if (await visibleHealthEvent(user, event, hasResourceScope)) {
       visibleEvents.push(event);
     }
   }
 
   return visibleEvents;
+}
+
+// Every matching + visible event, ignoring pagination — used by exports and the
+// scope-restricted list path.
+async function visibleHealthEvents(
+  user: NonNullable<AuthResult["user"]>,
+  filters: HealthEventFilters,
+  dependencies: Pick<HealthRouteDependencies, "hasResourceScope" | "healthEventStore">,
+) {
+  return scopeHealthEvents(
+    user,
+    await dependencies.healthEventStore.listAll(filters),
+    dependencies.hasResourceScope,
+  );
 }
 
 function healthCreateInput(input: z.infer<typeof healthEventCreateSchema>): HealthEventCreateInput {

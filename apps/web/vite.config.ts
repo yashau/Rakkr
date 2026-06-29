@@ -14,9 +14,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:8787",
-      "/healthz": "http://localhost:8787",
-      "/metrics": "http://localhost:8787",
+      // 127.0.0.1 (not localhost): on Windows the dev proxy can resolve
+      // localhost to IPv6 (::1) and hang when the API is published from Docker.
+      "/api": "http://127.0.0.1:8787",
+      "/healthz": "http://127.0.0.1:8787",
+      "/metrics": "http://127.0.0.1:8787",
     },
   },
 });

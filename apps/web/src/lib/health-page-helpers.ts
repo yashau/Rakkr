@@ -13,7 +13,7 @@ import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 
 export type HealthLifecycleAction = "acknowledge" | "reopen" | "resolve" | "suppress";
 
-export type HealthEventFilterKey = Exclude<keyof HealthEventFilters, "limit">;
+export type HealthEventFilterKey = Exclude<keyof HealthEventFilters, "limit" | "offset">;
 
 export interface ActiveHealthEventFilterChip {
   key: HealthEventFilterKey;
@@ -22,7 +22,6 @@ export interface ActiveHealthEventFilterChip {
 }
 
 export interface HealthPageFilterDraft {
-  limit: string;
   nodeId: string;
   openedFromDate: string;
   openedToDate: string;
@@ -37,7 +36,6 @@ export interface HealthPageFilterDraft {
 }
 
 export const emptyHealthPageFilters: HealthPageFilterDraft = {
-  limit: "200",
   nodeId: "",
   openedFromDate: "",
   openedToDate: "",
@@ -64,10 +62,7 @@ export function healthPagePermissions(user: CurrentUser | undefined) {
 }
 
 export function healthEventFiltersFromDraft(draft: HealthPageFilterDraft): HealthEventFilters {
-  const limit = Number(draft.limit);
-
   return {
-    limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : undefined,
     nodeId: trimmed(draft.nodeId),
     openedFrom: localDateBoundaryIso(draft.openedFromDate, "start"),
     openedTo: localDateBoundaryIso(draft.openedToDate, "end"),

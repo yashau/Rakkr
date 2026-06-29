@@ -1,5 +1,6 @@
-import { type ReactNode, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useMemo, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { RecordingJob } from "@rakkr/shared";
 import {
   AlertTriangle,
@@ -17,8 +18,10 @@ import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable } from "@/components/ui/data-table";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -34,7 +37,6 @@ import { api } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 import {
   emptyJobsPageFilters,
-  filterRecordingJobs,
   jobsPagePermissions,
   recordingJobBulkRetryTargets,
   recordingJobBulkStopTargets,
@@ -49,6 +51,8 @@ import {
   type RecordingJobFilterKey,
 } from "@/lib/jobs-page-helpers";
 import { downloadBlob } from "@/lib/recording-page-helpers";
+import { defaultPageSize } from "@/lib/server-pagination";
+import { useServerPagination } from "@/lib/use-server-pagination";
 import { toneTileClass } from "@/lib/status-colors";
 
 const statuses: Array<"" | RecordingJob["status"]> = [
@@ -83,10 +87,13 @@ export function JobsPage() {
     staleTime: 30_000,
   });
   const permissions = jobsPagePermissions(currentUserQuery.data?.data);
+  const apiFilters = useMemo(() => recordingJobApiFilters(filters), [filters]);
+  const pagination = useServerPagination(apiFilters, { defaultPageSize });
   const jobsQuery = useQuery({
     enabled: permissions.canReadJobs,
-    queryFn: () => api.recordingJobs(recordingJobApiFilters(filters)),
-    queryKey: ["recording-jobs", "workbench", filters],
+    placeholderData: keepPreviousData,
+    queryFn: () => api.recordingJobs(pagination.query),
+    queryKey: ["recording-jobs", "workbench", pagination.query],
     refetchInterval: 5000,
   });
   const nodesQuery = useQuery({
@@ -180,9 +187,11 @@ export function JobsPage() {
     );
   }
 
-  const jobs = jobsQuery.data?.data ?? [];
-  const visibleJobs = filterRecordingJobs(jobs, filters);
-  const activeFilterChips = recordingJobFilterChips(recordingJobApiFilters(filters));
+  // Filtering + pagination are server-side now; the page renders exactly the
+  // returned page of jobs.
+  const visibleJobs = jobsQuery.data?.data ?? [];
+  const meta = jobsQuery.data?.meta;
+  const activeFilterChips = recordingJobFilterChips(apiFilters);
   const summary = recordingJobSummary(visibleJobs);
   const visibleJobIds = visibleJobs.map((job) => job.id);
   const selectedVisibleJobIds = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId));
@@ -198,6 +207,19 @@ export function JobsPage() {
     selectedVisibleJobIds,
     permissions.canControlJobs,
   );
+  const columns = recordingJobColumns({
+    canControl: permissions.canControlJobs,
+    lookups: {
+      nodes: nodesQuery.data?.data,
+      recordings: recordingsQuery.data?.data,
+    },
+    onRetry: (jobId) => retryJobMutation.mutate(jobId),
+    onStop: (recordingId) => stopJobMutation.mutate(recordingId),
+    onToggleSelected: (jobId, selected) => setJobSelected(setSelectedJobIds, jobId, selected),
+    retryPending: retryJobMutation.isPending,
+    selectedJobIds: selectedVisibleJobIds,
+    stopPending: stopJobMutation.isPending,
+  });
 
   return (
     <div className="grid gap-4">
@@ -208,7 +230,9 @@ export function JobsPage() {
               <ListChecks className="size-5 text-teal-700" />
               <h2 className="text-lg font-semibold">Recording Jobs</h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">{visibleJobs.length} visible jobs</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {meta?.total ?? visibleJobs.length} matching jobs
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -299,20 +323,16 @@ export function JobsPage() {
             </Select>
           </Field>
           <Field label="Created From">
-            <Input
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, createdFrom: event.target.value }))
-              }
-              type="date"
+            <DatePicker
+              aria-label="Created from"
+              onChange={(value) => setFilters((current) => ({ ...current, createdFrom: value }))}
               value={filters.createdFrom}
             />
           </Field>
           <Field label="Created To">
-            <Input
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, createdTo: event.target.value }))
-              }
-              type="date"
+            <DatePicker
+              aria-label="Created to"
+              onChange={(value) => setFilters((current) => ({ ...current, createdTo: value }))}
               value={filters.createdTo}
             />
           </Field>
@@ -488,29 +508,22 @@ export function JobsPage() {
         </div>
       </section>
 
-      <section className="grid gap-3">
-        {visibleJobs.map((job) => (
-          <JobRow
-            canControl={permissions.canControlJobs}
-            job={job}
-            key={job.id}
-            lookups={{
-              nodes: nodesQuery.data?.data,
-              recordings: recordingsQuery.data?.data,
-            }}
-            onStop={(recordingId) => stopJobMutation.mutate(recordingId)}
-            onRetry={(jobId) => retryJobMutation.mutate(jobId)}
-            onSelectedChange={(selected) => setJobSelected(setSelectedJobIds, job.id, selected)}
-            retryPending={retryJobMutation.isPending}
-            selected={selectedVisibleJobIds.includes(job.id)}
-            stopPending={stopJobMutation.isPending}
-          />
-        ))}
-        {!jobsQuery.isPending && visibleJobs.length === 0 ? (
-          <Alert>
-            <AlertDescription>No recording jobs match the current filters.</AlertDescription>
-          </Alert>
-        ) : null}
+      <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">
+        <DataTable
+          columns={columns}
+          data={visibleJobs}
+          emptyMessage="No recording jobs match the current filters."
+          getRowId={(job) => job.id}
+          isLoading={jobsQuery.isPending}
+        />
+        <DataTablePagination
+          meta={meta}
+          onNext={pagination.nextPage}
+          onPageSizeChange={pagination.setPageSize}
+          onPrevious={pagination.previousPage}
+          pageSize={pagination.pageSize}
+          pageSizes={pagination.pageSizes}
+        />
       </section>
     </div>
   );
@@ -551,114 +564,90 @@ function SummaryTile({
   );
 }
 
-function JobRow({
-  canControl,
-  job,
-  lookups,
-  onStop,
-  onRetry,
-  onSelectedChange,
-  retryPending,
-  selected,
-  stopPending,
-}: {
+interface RecordingJobColumnOptions {
   canControl: boolean;
-  job: RecordingJob;
   lookups: Parameters<typeof recordingJobRelationshipLabel>[1];
-  onStop: (recordingId: string) => void;
   onRetry: (jobId: string) => void;
-  onSelectedChange: (selected: boolean) => void;
+  onStop: (recordingId: string) => void;
+  onToggleSelected: (jobId: string, selected: boolean) => void;
   retryPending: boolean;
-  selected: boolean;
+  selectedJobIds: string[];
   stopPending: boolean;
-}) {
-  const details = recordingJobCaptureDetails(job);
-  const retryAction = recordingJobRetryActionState(job, canControl);
-  const stopAction = recordingJobStopActionState(job, canControl);
+}
 
-  return (
-    <Card className="rounded-lg p-4 shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+function recordingJobColumns({
+  canControl,
+  lookups,
+  onRetry,
+  onStop,
+  onToggleSelected,
+  retryPending,
+  selectedJobIds,
+  stopPending,
+}: RecordingJobColumnOptions): ColumnDef<RecordingJob>[] {
+  const columns: ColumnDef<RecordingJob>[] = [
+    {
+      cell: ({ row }) => (
+        <Checkbox
+          aria-label="Select job"
+          checked={selectedJobIds.includes(row.original.id)}
+          onCheckedChange={(value) => onToggleSelected(row.original.id, value === true)}
+        />
+      ),
+      header: () => <span className="sr-only">Select</span>,
+      id: "select",
+      meta: { cellClassName: "w-8", headClassName: "w-8" },
+    },
+    {
+      cell: ({ row }) => (
+        <Badge className={recordingJobStatusClass(row.original.status)} variant="outline">
+          {row.original.status}
+        </Badge>
+      ),
+      header: "Status",
+      id: "status",
+    },
+    {
+      cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Checkbox
-                  checked={selected}
-                  onCheckedChange={(value) => onSelectedChange(value === true)}
-                />
-              </TooltipTrigger>
-              <TooltipContent>Select job</TooltipContent>
-            </Tooltip>
-            <Badge className={recordingJobStatusClass(job.status)} variant="outline">
-              {job.status}
-            </Badge>
-            <span className="font-medium">{recordingJobRelationshipLabel(job, lookups)}</span>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span>Created {formatDateTime(job.createdAt)}</span>
-            {job.startedAt ? <span>Started {formatDateTime(job.startedAt)}</span> : null}
-            {job.lastHeartbeatAt ? (
-              <span>Heartbeat {formatDateTime(job.lastHeartbeatAt)}</span>
-            ) : null}
-            {job.leaseExpiresAt ? <span>Lease {formatDateTime(job.leaseExpiresAt)}</span> : null}
-            {job.stopRequestedAt ? <span>Stop {formatDateTime(job.stopRequestedAt)}</span> : null}
-            {job.completedAt ? <span>Completed {formatDateTime(job.completedAt)}</span> : null}
-          </div>
-          <div className="mt-2 font-mono text-xs wrap-break-word text-muted-foreground">
-            {job.id}
-          </div>
-          {job.failureReason ? (
-            <p className="mt-2 text-sm text-destructive">{job.failureReason}</p>
+          <div className="font-medium">{recordingJobRelationshipLabel(row.original, lookups)}</div>
+          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+          {row.original.failureReason ? (
+            <p className="mt-1 text-sm text-destructive">{row.original.failureReason}</p>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-2 lg:max-w-xl lg:justify-end">
-          {canControl ? (
-            <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <Button
-                      disabled={!retryAction.canRetry || retryPending}
-                      onClick={() => onRetry(job.id)}
-                      type="button"
-                      variant="outline"
-                    >
-                      <RotateCcw className="size-4" />
-                      Retry
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{retryAction.title}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <Button
-                      disabled={!stopAction.canStop || stopPending}
-                      onClick={() => onStop(job.recordingId)}
-                      type="button"
-                      variant="outline"
-                    >
-                      <Square className="size-4" />
-                      Stop
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{stopAction.title}</TooltipContent>
-              </Tooltip>
-            </>
+      ),
+      header: "Job",
+      id: "job",
+    },
+    {
+      cell: ({ row }) => (
+        <div className="text-xs whitespace-nowrap text-muted-foreground">
+          <div>Created {formatDateTime(row.original.createdAt)}</div>
+          {row.original.startedAt ? (
+            <div>Started {formatDateTime(row.original.startedAt)}</div>
           ) : null}
-          {job.claimedBy ? (
-            <Badge className="max-w-full gap-1 overflow-hidden bg-background" variant="outline">
+          {row.original.completedAt ? (
+            <div>Completed {formatDateTime(row.original.completedAt)}</div>
+          ) : null}
+        </div>
+      ),
+      header: "Timeline",
+      id: "timeline",
+    },
+    {
+      cell: ({ row }) => (
+        <div className="flex flex-wrap gap-1">
+          {row.original.claimedBy ? (
+            <Badge className="gap-1 bg-background" variant="outline">
               <span className="text-muted-foreground">claimed</span>
-              <span className="truncate font-mono">{job.claimedBy}</span>
+              <span className="truncate font-mono">{row.original.claimedBy}</span>
             </Badge>
           ) : null}
-          {details.map((item) => (
+          {recordingJobCaptureDetails(row.original).map((item) => (
             <Badge
-              className="max-w-full gap-1 overflow-hidden bg-background"
-              key={`${job.id}-${item.label}`}
+              className="gap-1 bg-background"
+              key={`${row.original.id}-${item.label}`}
               variant="outline"
             >
               <span className="text-muted-foreground">{item.label}</span>
@@ -666,9 +655,64 @@ function JobRow({
             </Badge>
           ))}
         </div>
-      </div>
-    </Card>
-  );
+      ),
+      header: "Capture",
+      id: "capture",
+    },
+  ];
+
+  if (canControl) {
+    columns.push({
+      cell: ({ row }) => {
+        const retryAction = recordingJobRetryActionState(row.original, canControl);
+        const stopAction = recordingJobStopActionState(row.original, canControl);
+
+        return (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    disabled={!retryAction.canRetry || retryPending}
+                    onClick={() => onRetry(row.original.id)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <RotateCcw className="size-4" />
+                    Retry
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{retryAction.title}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    disabled={!stopAction.canStop || stopPending}
+                    onClick={() => onStop(row.original.recordingId)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <Square className="size-4" />
+                    Stop
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{stopAction.title}</TooltipContent>
+            </Tooltip>
+          </div>
+        );
+      },
+      header: "Actions",
+      id: "actions",
+      meta: { cellClassName: "text-right", headClassName: "text-right" },
+    });
+  }
+
+  return columns;
 }
 
 function setJobSelected(

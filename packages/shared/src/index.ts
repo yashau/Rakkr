@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { recordingEnhancementSchema } from "./enhancement.js";
 export * from "./enhancement.js";
+export * from "./oidc.js";
+export * from "./pagination.js";
 
 export const isoDateTimeSchema = z.string().min(1);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -99,27 +101,6 @@ export const accessPolicySchema = z.object({
   subjectType: accessPolicySubjectTypeSchema,
 });
 export const accessPolicyInputSchema = accessPolicySchema.omit({ id: true });
-export const oidcProviderSchema = z.enum(["azure_ad"]);
-export const oidcPublicConfigSchema = z.object({
-  clientId: z.string().optional(),
-  configured: z.boolean(),
-  discoveryUrl: z.string().url().optional(),
-  enabled: z.boolean(),
-  issuer: z.string().url().optional(),
-  loginAvailable: z.boolean(),
-  missingFields: z.array(z.string()),
-  provider: oidcProviderSchema,
-  redirectUri: z.string().url().optional(),
-  scopes: z.array(z.string().min(1)),
-});
-export const oidcDiscoverySchema = z.object({
-  authorizationEndpoint: z.string().url(),
-  issuer: z.string().url(),
-  jwksUri: z.string().url(),
-  tokenEndpoint: z.string().url(),
-  userinfoEndpoint: z.string().url().optional(),
-});
-
 export const rolePermissions: Record<Role, readonly Permission[]> = {
   admin: permissions.filter((permission) => permission !== "system:admin"),
   auditor: ["audit:read", "health:read", "metrics:read", "recording:read"],
@@ -328,6 +309,17 @@ export const recordingProfileUpdateSchema = z
     vbr: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one profile field is required");
+export const controllerSettingsSchema = z.object({
+  controllerName: z.string().trim().min(1).max(160),
+});
+export const controllerSettingsUpdateSchema = z
+  .object({
+    controllerName: z.string().trim().min(1).max(160).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one controller setting is required");
+export const defaultControllerSettings = controllerSettingsSchema.parse({
+  controllerName: "Rakkr Controller",
+});
 export const channelMapEntrySchema = z.object({
   included: z.boolean(),
   label: z.string().trim().min(1).max(160),
@@ -945,9 +937,6 @@ export type AccessPolicySubjectType = z.infer<typeof accessPolicySubjectTypeSche
 export type AudioLevel = z.infer<typeof audioLevelSchema>;
 export type AudioQuality = z.infer<typeof audioQualitySchema>;
 export type CurrentUser = z.infer<typeof currentUserSchema>;
-export type OidcDiscovery = z.infer<typeof oidcDiscoverySchema>;
-export type OidcProvider = z.infer<typeof oidcProviderSchema>;
-export type OidcPublicConfig = z.infer<typeof oidcPublicConfigSchema>;
 export type HealthEvent = z.infer<typeof healthEventSchema>;
 export type HealthEventStatus = z.infer<typeof healthEventStatusSchema>;
 export type HealthSeverity = z.infer<typeof healthSeveritySchema>;
@@ -959,6 +948,8 @@ export type NodeRuntime = z.infer<typeof nodeRuntimeSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;
 export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
 export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
+export type ControllerSettings = z.infer<typeof controllerSettingsSchema>;
+export type ControllerSettingsUpdate = z.infer<typeof controllerSettingsUpdateSchema>;
 export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobChannelMap = z.infer<typeof recordingJobChannelMapSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;

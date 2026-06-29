@@ -1,79 +1,64 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Save, ShieldCheck, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
-import { useEffect, useId, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
+import { KeyRound, Pencil, Save, ShieldCheck, Trash2, UserCheck, UserX } from "lucide-react";
+import type { CurrentUser } from "@rakkr/shared";
 import { toast } from "sonner";
-import {
-  roles,
-  type AccessGroup,
-  type AccessPolicy,
-  type AccessPolicyInput,
-  type ResourceGrant,
-  type Role,
-} from "@rakkr/shared";
 
+import { AccessCreateUserDialog } from "@/components/access-create-user-dialog";
+import { AccessEditDialog } from "@/components/access-edit-dialog";
+import { AccessResetPasswordDialog } from "@/components/access-reset-password-dialog";
+import { AccessPolicyComposer } from "@/components/access-policy-composer";
+import { ConfirmButton } from "@/components/confirm-button";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { DataTable } from "@/components/ui/data-table";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api, type LocalUserCreateInput, type UserAccessUpdate } from "@/lib/api";
-import { canManageAccessPage } from "@/lib/access-page-helpers";
-import { AccessPolicyComposer } from "@/components/access-policy-composer";
-import { ResourceGrantComposer } from "@/components/resource-grant-composer";
-
-interface AccessDraft {
-  groupsText: string;
-  grantsText: string;
-  roles: Role[];
-}
-
-interface CreateUserDraft {
-  email: string;
-  groupsText: string;
-  grantsText: string;
-  name: string;
-  password: string;
-  roles: Role[];
-}
-
-const emptyCreateUserDraft: CreateUserDraft = {
-  email: "",
-  groupsText: "",
-  grantsText: "",
-  name: "",
-  password: "",
-  roles: ["viewer"],
-};
+import { api, type UserAccessUpdate } from "@/lib/api";
+import {
+  accessPagePermissions,
+  accessUpdateFromDraft,
+  appendTextLine,
+  createInputFromDraft,
+  policiesFromText,
+  policiesToText,
+  type AccessDraft,
+  type CreateUserDraft,
+} from "@/lib/access-page-helpers";
+import { defaultPageSize } from "@/lib/server-pagination";
+import { useServerPagination } from "@/lib/use-server-pagination";
 
 export function AccessPage() {
   const queryClient = useQueryClient();
-  const [createDraft, setCreateDraft] = useState<CreateUserDraft>(emptyCreateUserDraft);
-  const [drafts, setDrafts] = useState<Record<string, AccessDraft>>({});
-  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [policyError, setPolicyError] = useState<string>();
   const [policiesText, setPoliciesText] = useState("");
+  const [editUser, setEditUser] = useState<CurrentUser>();
+  const [resetUser, setResetUser] = useState<CurrentUser>();
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
   });
-  const canManageAccess = canManageAccessPage(currentUserQuery.data?.data);
+  const permissions = accessPagePermissions(currentUserQuery.data?.data);
+  const userFilters = useMemo(() => ({}), []);
+  const pagination = useServerPagination(userFilters, { defaultPageSize });
   const usersQuery = useQuery({
-    enabled: canManageAccess,
-    queryFn: api.accessUsers,
-    queryKey: ["access-users"],
+    enabled: permissions.canRead,
+    placeholderData: keepPreviousData,
+    queryFn: () => api.accessUsers(pagination.query),
+    queryKey: ["access-users", pagination.query],
   });
   const groupsQuery = useQuery({
-    enabled: canManageAccess,
+    enabled: permissions.canRead,
     queryFn: api.accessGroups,
     queryKey: ["access-groups"],
   });
   const policiesQuery = useQuery({
-    enabled: canManageAccess,
+    enabled: permissions.canRead,
     queryFn: api.accessPolicies,
     queryKey: ["access-policies"],
   });
@@ -85,9 +70,11 @@ export function AccessPage() {
         description: "The user's access could not be updated.",
       }),
     onSuccess: () => {
+      toast.success("Access updated");
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      setEditUser(undefined);
     },
   });
   const resetPasswordMutation = useMutation({
@@ -97,9 +84,10 @@ export function AccessPage() {
       toast.error("Password reset failed", {
         description: "The user's password could not be reset.",
       }),
-    onSuccess: (_result, input) => {
+    onSuccess: () => {
+      toast.success("Password reset");
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
-      setPasswordDrafts((current) => ({ ...current, [input.userId]: "" }));
+      setResetUser(undefined);
     },
   });
   const statusMutation = useMutation({
@@ -121,6 +109,7 @@ export function AccessPage() {
         description: "The local user could not be deleted.",
       }),
     onSuccess: () => {
+      toast.success("User deleted");
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
     },
@@ -132,9 +121,9 @@ export function AccessPage() {
         description: "The local user could not be created.",
       }),
     onSuccess: () => {
+      toast.success("User created");
       queryClient.invalidateQueries({ queryKey: ["access-groups"] });
       queryClient.invalidateQueries({ queryKey: ["access-users"] });
-      setCreateDraft(emptyCreateUserDraft);
     },
   });
   const updatePoliciesMutation = useMutation({
@@ -144,12 +133,12 @@ export function AccessPage() {
         description: "The access policies could not be saved.",
       }),
     onSuccess: () => {
+      toast.success("Policies saved");
       queryClient.invalidateQueries({ queryKey: ["access-policies"] });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       setPolicyError(undefined);
     },
   });
-  const users = usersQuery.data?.data;
   const groups = groupsQuery.data?.data ?? [];
 
   useEffect(() => {
@@ -158,31 +147,11 @@ export function AccessPage() {
     }
   }, [policiesQuery.data]);
 
-  useEffect(() => {
-    if (!users) {
-      return;
-    }
-
-    setDrafts((current) => {
-      const next = { ...current };
-
-      for (const user of users) {
-        next[user.id] ??= {
-          groupsText: groupsToText(user.groups),
-          grantsText: grantsToText(user.resourceGrants),
-          roles: user.roles,
-        };
-      }
-
-      return next;
-    });
-  }, [users]);
-
   if (currentUserQuery.isPending) {
     return <LoadingSkeleton label="Loading access" />;
   }
 
-  if (!canManageAccess) {
+  if (!permissions.canRead) {
     return (
       <Alert>
         <ShieldCheck className="size-4" />
@@ -192,558 +161,279 @@ export function AccessPage() {
     );
   }
 
+  const users = usersQuery.data?.data ?? [];
+  const meta = usersQuery.data?.meta;
+  const selfId = currentUserQuery.data?.data.id;
+  const columns = accessUserColumns({
+    canManage: permissions.canManage,
+    onDelete: (userId) => deleteUserMutation.mutate(userId),
+    onEdit: (user) => setEditUser(user),
+    onResetPassword: (user) => setResetUser(user),
+    onToggleStatus: (userId, disabled) => statusMutation.mutate({ disabled, userId }),
+    pending: {
+      delete: deleteUserMutation.isPending,
+      status: statusMutation.isPending,
+    },
+    selfId,
+  });
+
   return (
     <div className="grid gap-4">
-      <div className="flex items-center gap-2">
-        <ShieldCheck className="size-5 text-teal-700" />
-        <h2 className="text-base font-semibold">Access</h2>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-5 text-teal-700" />
+          <div>
+            <h2 className="text-lg font-semibold">Access</h2>
+            <p className="text-sm text-muted-foreground">{meta?.total ?? users.length} users</p>
+          </div>
+        </div>
+        {permissions.canManage ? (
+          <AccessCreateUserDialog
+            onSubmit={submitCreateUser}
+            saving={createUserMutation.isPending}
+          />
+        ) : null}
       </div>
 
-      <Card className="rounded-lg p-4 shadow-sm">
-        <form
-          className="grid gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const parsed = policiesFromText(policiesText);
+      <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">
+        <DataTable
+          columns={columns}
+          data={users}
+          emptyMessage="No users found."
+          getRowId={(user) => user.id}
+          isLoading={usersQuery.isPending}
+        />
+        <DataTablePagination
+          meta={meta}
+          onNext={pagination.nextPage}
+          onPageSizeChange={pagination.setPageSize}
+          onPrevious={pagination.previousPage}
+          pageSize={pagination.pageSize}
+          pageSizes={pagination.pageSizes}
+        />
+      </section>
 
-            if (parsed.error) {
-              setPolicyError(parsed.error);
-              return;
-            }
+      {permissions.canManage ? (
+        <Card className="rounded-lg p-4 shadow-sm">
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const parsed = policiesFromText(policiesText);
 
-            updatePoliciesMutation.mutate(parsed.policies);
-          }}
-        >
-          <div className="grid gap-2">
-            <Label htmlFor="access-policies">Access Policies</Label>
-            <Textarea
-              className="min-h-32 bg-background font-mono text-xs"
-              id="access-policies"
-              onChange={(event) => {
-                setPoliciesText(event.target.value);
+              if (parsed.error) {
+                setPolicyError(parsed.error);
+                return;
+              }
+
+              updatePoliciesMutation.mutate(parsed.policies);
+            }}
+          >
+            <div className="grid gap-2">
+              <Label htmlFor="access-policies">Access Policies</Label>
+              <Textarea
+                className="min-h-32 bg-background font-mono text-xs"
+                id="access-policies"
+                onChange={(event) => {
+                  setPoliciesText(event.target.value);
+                  setPolicyError(undefined);
+                }}
+                placeholder="deny | everyone | node:node_x32_test"
+                value={policiesText}
+              />
+            </div>
+            <AccessPolicyComposer
+              onAppend={(line) => {
+                setPoliciesText((current) => appendTextLine(current, line));
                 setPolicyError(undefined);
               }}
-              placeholder="deny | everyone | node:node_x32_test"
-              value={policiesText}
             />
-          </div>
-          <AccessPolicyComposer
-            onAppend={(line) => {
-              setPoliciesText((current) => appendTextLine(current, line));
-              setPolicyError(undefined);
-            }}
-          />
-          {policyError ? <p className="text-sm text-red-700">{policyError}</p> : null}
-          {groups.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {groups.map((group) => (
-                <Badge className="bg-background" key={group.id} variant="outline">
-                  {group.name}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
-          <Button disabled={updatePoliciesMutation.isPending} type="submit">
-            <Save className="size-4" />
-            Save Policies
-          </Button>
-        </form>
-      </Card>
-
-      <Card className="rounded-lg p-4 shadow-sm">
-        <form
-          className="grid gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            createUserMutation.mutate(createInputFromDraft(createDraft));
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <UserPlus className="size-4 text-teal-700" />
-            <h3 className="text-sm font-semibold">Local User</h3>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="grid gap-2">
-              <Label htmlFor="new-user-email">Email</Label>
-              <Input
-                id="new-user-email"
-                onChange={(event) =>
-                  setCreateDraft((current) => ({ ...current, email: event.target.value }))
-                }
-                type="email"
-                value={createDraft.email}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-user-name">Name</Label>
-              <Input
-                id="new-user-name"
-                onChange={(event) =>
-                  setCreateDraft((current) => ({ ...current, name: event.target.value }))
-                }
-                value={createDraft.name}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-user-password">Password</Label>
-              <Input
-                id="new-user-password"
-                onChange={(event) =>
-                  setCreateDraft((current) => ({ ...current, password: event.target.value }))
-                }
-                type="password"
-                value={createDraft.password}
-              />
-            </div>
-          </div>
-          <RolePicker
-            rolesValue={createDraft.roles}
-            onChange={(nextRoles) =>
-              setCreateDraft((current) => ({
-                ...current,
-                roles: nextRoles,
-              }))
-            }
-          />
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="new-user-groups">Groups</Label>
-              <Textarea
-                className="min-h-20 bg-background font-mono text-xs"
-                id="new-user-groups"
-                onChange={(event) =>
-                  setCreateDraft((current) => ({ ...current, groupsText: event.target.value }))
-                }
-                placeholder="operators"
-                value={createDraft.groupsText}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-user-scopes">Scopes</Label>
-              <Textarea
-                className="min-h-20 bg-background font-mono text-xs"
-                id="new-user-scopes"
-                onChange={(event) =>
-                  setCreateDraft((current) => ({ ...current, grantsText: event.target.value }))
-                }
-                placeholder="node:node_x32_test"
-                value={createDraft.grantsText}
-              />
-              <ResourceGrantComposer
-                onAppend={(line) =>
-                  setCreateDraft((current) => ({
-                    ...current,
-                    grantsText: appendTextLine(current.grantsText, line),
-                  }))
-                }
-              />
-            </div>
-          </div>
-          <Button
-            disabled={
-              createUserMutation.isPending ||
-              !createDraft.email.trim() ||
-              !createDraft.name.trim() ||
-              createDraft.password.length < 8
-            }
-            type="submit"
-          >
-            <UserPlus className="size-4" />
-            Create
-          </Button>
-        </form>
-      </Card>
-
-      {(users ?? []).map((user) => {
-        const draft = drafts[user.id] ?? {
-          groupsText: groupsToText(user.groups),
-          grantsText: grantsToText(user.resourceGrants),
-          roles: user.roles,
-        };
-        const passwordDraft = passwordDrafts[user.id] ?? "";
-        const isSelf = user.id === currentUserQuery.data?.data.id;
-
-        return (
-          <Card className="rounded-lg p-4 shadow-sm" key={user.id}>
-            <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
-              <div className="min-w-0">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold">{user.name}</h3>
-                  <Badge variant="secondary">{user.provider}</Badge>
-                  {user.disabledAt ? <Badge variant="outline">disabled</Badge> : null}
-                </div>
-                <div className="font-mono text-xs text-muted-foreground">{user.email}</div>
-                {user.groups.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {user.groups.map((group) => (
-                      <Badge className="bg-background" key={group.id} variant="outline">
-                        {group.name}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <RolePicker
-                    rolesValue={draft.roles}
-                    onChange={(nextRoles) =>
-                      updateDraft(user.id, setDrafts, {
-                        ...draft,
-                        roles: nextRoles,
-                      })
-                    }
-                  />
-                </div>
+            {policyError ? <p className="text-sm text-red-700">{policyError}</p> : null}
+            {groups.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {groups.map((group) => (
+                  <Badge className="bg-background" key={group.id} variant="outline">
+                    {group.name}
+                  </Badge>
+                ))}
               </div>
+            ) : null}
+            <Button disabled={updatePoliciesMutation.isPending} type="submit">
+              <Save className="size-4" />
+              Save Policies
+            </Button>
+          </form>
+        </Card>
+      ) : null}
 
-              <form
-                className="grid gap-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  updateMutation.mutate({
-                    access: {
-                      groupIds: groupIdsFromText(draft.groupsText),
-                      resourceGrants: grantsFromText(draft.grantsText),
-                      roles: draft.roles.length > 0 ? draft.roles : ["viewer"],
-                    },
-                    userId: user.id,
-                  });
-                }}
-              >
-                <div className="grid gap-2">
-                  <Label htmlFor={`${user.id}-groups`}>Groups</Label>
-                  <Textarea
-                    className="min-h-20 bg-background font-mono text-xs"
-                    id={`${user.id}-groups`}
-                    onChange={(event) =>
-                      updateDraft(user.id, setDrafts, {
-                        ...draft,
-                        groupsText: event.target.value,
-                      })
-                    }
-                    placeholder="operators"
-                    value={draft.groupsText}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor={`${user.id}-scopes`}>Scopes</Label>
-                  <Textarea
-                    id={`${user.id}-scopes`}
-                    className="min-h-32 bg-background font-mono text-xs"
-                    onChange={(event) =>
-                      updateDraft(user.id, setDrafts, {
-                        ...draft,
-                        grantsText: event.target.value,
-                      })
-                    }
-                    value={draft.grantsText}
-                  />
-                  <ResourceGrantComposer
-                    onAppend={(line) =>
-                      updateDraft(user.id, setDrafts, {
-                        ...draft,
-                        grantsText: appendTextLine(draft.grantsText, line),
-                      })
-                    }
-                  />
-                </div>
-                <Button disabled={updateMutation.isPending} type="submit">
-                  <Save className="size-4" />
-                  Save
-                </Button>
-                <div className="grid gap-2 border-t pt-3">
-                  <Label htmlFor={`${user.id}-password`}>Reset Password</Label>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      id={`${user.id}-password`}
-                      onChange={(event) =>
-                        setPasswordDrafts((current) => ({
-                          ...current,
-                          [user.id]: event.target.value,
-                        }))
-                      }
-                      type="password"
-                      value={passwordDraft}
-                    />
-                    <Button
-                      disabled={resetPasswordMutation.isPending || passwordDraft.length < 8}
-                      onClick={() =>
-                        resetPasswordMutation.mutate({
-                          password: passwordDraft,
-                          userId: user.id,
-                        })
-                      }
-                      type="button"
-                      variant="outline"
-                    >
-                      <KeyRound className="size-4" />
-                      Reset
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      disabled={statusMutation.isPending || (isSelf && !user.disabledAt)}
-                      onClick={() =>
-                        statusMutation.mutate({
-                          disabled: !user.disabledAt,
-                          userId: user.id,
-                        })
-                      }
-                      type="button"
-                      variant="outline"
-                    >
-                      {user.disabledAt ? (
-                        <UserCheck className="size-4" />
-                      ) : (
-                        <UserX className="size-4" />
-                      )}
-                      {user.disabledAt ? "Enable" : "Disable"}
-                    </Button>
-                    <Button
-                      disabled={deleteUserMutation.isPending || isSelf}
-                      onClick={() => deleteUserMutation.mutate(user.id)}
-                      type="button"
-                      variant="outline"
-                    >
-                      <Trash2 className="size-4" />
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </Card>
-        );
-      })}
-      {resetPasswordMutation.isError ? (
-        <p className="text-sm text-destructive">Password reset failed.</p>
-      ) : null}
-      {statusMutation.isError ? (
-        <p className="text-sm text-destructive">User status update failed.</p>
-      ) : null}
-      {deleteUserMutation.isError ? (
-        <p className="text-sm text-destructive">User delete failed.</p>
+      {permissions.canManage ? (
+        <>
+          <AccessEditDialog
+            onOpenChange={(open) => (open ? undefined : setEditUser(undefined))}
+            onSubmit={submitAccessUpdate}
+            open={Boolean(editUser)}
+            saving={updateMutation.isPending}
+            user={editUser}
+          />
+          <AccessResetPasswordDialog
+            onOpenChange={(open) => (open ? undefined : setResetUser(undefined))}
+            onSubmit={(userId, password) => resetPasswordMutation.mutate({ password, userId })}
+            open={Boolean(resetUser)}
+            saving={resetPasswordMutation.isPending}
+            user={resetUser}
+          />
+        </>
       ) : null}
     </div>
   );
-}
 
-function RolePicker({
-  onChange,
-  rolesValue,
-}: {
-  onChange: (rolesValue: Role[]) => void;
-  rolesValue: Role[];
-}) {
-  const pickerId = useId();
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {roles.map((role) => {
-        const checkboxId = `${pickerId}-role-${role}`;
-
-        return (
-          <label
-            className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm"
-            htmlFor={checkboxId}
-            key={role}
-          >
-            <Checkbox
-              checked={rolesValue.includes(role)}
-              id={checkboxId}
-              onCheckedChange={(value) =>
-                onChange(
-                  value === true
-                    ? [...rolesValue, role]
-                    : rolesValue.filter((current) => current !== role),
-                )
-              }
-            />
-            {role}
-          </label>
-        );
-      })}
-    </div>
-  );
-}
-
-function policiesToText(policies: AccessPolicy[]) {
-  return policies
-    .map((policy) =>
-      [
-        policy.effect,
-        policySubject(policy),
-        `${policy.resourceType}:${policy.resourceId}`,
-        policy.reason,
-      ]
-        .filter(Boolean)
-        .join(" | "),
-    )
-    .join("\n");
-}
-
-function appendTextLine(current: string, line: string) {
-  const trimmed = current.trim();
-
-  return trimmed ? `${trimmed}\n${line}` : line;
-}
-
-function policySubject(policy: AccessPolicy) {
-  if (policy.subjectType === "everyone") {
-    return "everyone";
+  function submitCreateUser(draft: CreateUserDraft) {
+    createUserMutation.mutate(createInputFromDraft(draft));
   }
 
-  return `${policy.subjectType}:${policy.subjectId ?? ""}`;
+  function submitAccessUpdate(userId: string, draft: AccessDraft) {
+    updateMutation.mutate({ access: accessUpdateFromDraft(draft), userId });
+  }
 }
 
-function policiesFromText(value: string): { error?: string; policies: AccessPolicyInput[] } {
-  const policies: AccessPolicyInput[] = [];
-  const lines = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+interface AccessUserColumnOptions {
+  canManage: boolean;
+  onDelete: (userId: string) => void;
+  onEdit: (user: CurrentUser) => void;
+  onResetPassword: (user: CurrentUser) => void;
+  onToggleStatus: (userId: string, disabled: boolean) => void;
+  pending: {
+    delete: boolean;
+    status: boolean;
+  };
+  selfId: string | undefined;
+}
 
-  for (const [index, line] of lines.entries()) {
-    const parts = line.includes("|")
-      ? line.split("|").map((part) => part.trim())
-      : line.split(/\s+/);
-    const [effect, subject, resource, ...reasonParts] = parts;
+function accessUserColumns({
+  canManage,
+  onDelete,
+  onEdit,
+  onResetPassword,
+  onToggleStatus,
+  pending,
+  selfId,
+}: AccessUserColumnOptions): ColumnDef<CurrentUser>[] {
+  const columns: ColumnDef<CurrentUser>[] = [
+    {
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          <div className="font-medium">{row.original.name}</div>
+          {row.original.id === selfId ? (
+            <Badge className="mt-1 bg-background" variant="outline">
+              you
+            </Badge>
+          ) : null}
+        </div>
+      ),
+      header: "Name",
+      id: "name",
+    },
+    {
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-muted-foreground">{row.original.email}</span>
+      ),
+      header: "Email",
+      id: "email",
+    },
+    {
+      cell: ({ row }) => <Badge variant="secondary">{row.original.provider}</Badge>,
+      header: "Provider",
+      id: "provider",
+    },
+    {
+      cell: ({ row }) =>
+        row.original.roles.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {row.original.roles.map((role) => (
+              <Badge className="bg-background" key={role} variant="outline">
+                {role}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">none</span>
+        ),
+      header: "Roles",
+      id: "roles",
+    },
+    {
+      cell: ({ row }) =>
+        row.original.groups.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {row.original.groups.map((group) => (
+              <Badge className="bg-background" key={group.id} variant="outline">
+                {group.name}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">none</span>
+        ),
+      header: "Groups",
+      id: "groups",
+    },
+    {
+      cell: ({ row }) => (
+        <Badge variant={row.original.disabledAt ? "outline" : "secondary"}>
+          {row.original.disabledAt ? "disabled" : "enabled"}
+        </Badge>
+      ),
+      header: "Status",
+      id: "status",
+    },
+  ];
 
-    if (effect !== "allow" && effect !== "deny") {
-      return { error: `Line ${index + 1} must start with allow or deny.`, policies: [] };
-    }
+  if (canManage) {
+    columns.push({
+      cell: ({ row }) => {
+        const user = row.original;
+        const isSelf = user.id === selfId;
 
-    const parsedSubject = subjectFromText(subject);
-    const parsedResource = resourceFromText(resource);
-
-    if (!parsedSubject || !parsedResource) {
-      return { error: `Line ${index + 1} has an invalid subject or resource.`, policies: [] };
-    }
-
-    policies.push({
-      effect,
-      reason: reasonParts.join(" | ") || undefined,
-      resourceId: parsedResource.resourceId,
-      resourceType: parsedResource.resourceType,
-      subjectId: parsedSubject.subjectId,
-      subjectType: parsedSubject.subjectType,
+        return (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button onClick={() => onEdit(user)} size="sm" type="button" variant="outline">
+              <Pencil className="size-4" />
+              Edit access
+            </Button>
+            <Button onClick={() => onResetPassword(user)} size="sm" type="button" variant="outline">
+              <KeyRound className="size-4" />
+              Reset password
+            </Button>
+            <Button
+              disabled={pending.status || (isSelf && !user.disabledAt)}
+              onClick={() => onToggleStatus(user.id, !user.disabledAt)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {user.disabledAt ? <UserCheck className="size-4" /> : <UserX className="size-4" />}
+              {user.disabledAt ? "Enable" : "Disable"}
+            </Button>
+            <ConfirmButton
+              confirmLabel="Delete"
+              description={`This permanently deletes the local user "${user.name}".`}
+              disabled={pending.delete || isSelf}
+              onConfirm={() => onDelete(user.id)}
+              size="sm"
+              title={`Delete user "${user.name}"?`}
+              variant="destructive"
+            >
+              <Trash2 className="size-4" />
+              Delete
+            </ConfirmButton>
+          </div>
+        );
+      },
+      header: () => <span className="sr-only">Actions</span>,
+      id: "actions",
+      meta: { cellClassName: "text-right", headClassName: "text-right" },
     });
   }
 
-  return { policies };
-}
-
-function subjectFromText(
-  value: string | undefined,
-): Pick<AccessPolicyInput, "subjectId" | "subjectType"> | undefined {
-  if (value === "everyone") {
-    return {
-      subjectType: "everyone" as const,
-    };
-  }
-
-  const parsed = typedToken(value);
-
-  if (!parsed || (parsed.type !== "user" && parsed.type !== "group")) {
-    return undefined;
-  }
-
-  return {
-    subjectId: parsed.id,
-    subjectType: parsed.type === "user" ? "user" : "group",
-  };
-}
-
-function resourceFromText(value: string | undefined) {
-  const parsed = typedToken(value);
-
-  return parsed
-    ? {
-        resourceId: parsed.id,
-        resourceType: parsed.type,
-      }
-    : undefined;
-}
-
-function typedToken(value: string | undefined) {
-  const separator = value?.indexOf(":") ?? -1;
-
-  if (!value || separator <= 0) {
-    return undefined;
-  }
-
-  const type = value.slice(0, separator).trim();
-  const id = value.slice(separator + 1).trim();
-
-  return type && id
-    ? {
-        id,
-        type,
-      }
-    : undefined;
-}
-
-function updateDraft(
-  userId: string,
-  setDrafts: Dispatch<SetStateAction<Record<string, AccessDraft>>>,
-  draft: AccessDraft,
-) {
-  setDrafts((current) => ({
-    ...current,
-    [userId]: draft,
-  }));
-}
-
-function grantsToText(grants: ResourceGrant[]) {
-  return grants.map((grant) => `${grant.resourceType}:${grant.resourceId}`).join("\n");
-}
-
-function groupsToText(groups: AccessGroup[]) {
-  return groups.map((group) => group.id).join("\n");
-}
-
-function groupIdsFromText(value: string) {
-  return uniqueTextValues(value);
-}
-
-function createInputFromDraft(draft: CreateUserDraft): LocalUserCreateInput {
-  return {
-    email: draft.email.trim(),
-    groupIds: groupIdsFromText(draft.groupsText),
-    name: draft.name.trim(),
-    password: draft.password,
-    resourceGrants: grantsFromText(draft.grantsText),
-    roles: draft.roles.length > 0 ? draft.roles : ["viewer"],
-  };
-}
-
-function grantsFromText(value: string): ResourceGrant[] {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const separator = line.indexOf(":");
-
-      return separator === -1
-        ? {
-            resourceId: line,
-            resourceType: "node",
-          }
-        : {
-            resourceId: line.slice(separator + 1).trim(),
-            resourceType: line.slice(0, separator).trim(),
-          };
-    })
-    .filter((grant) => grant.resourceId && grant.resourceType);
-}
-
-function uniqueTextValues(value: string) {
-  return [
-    ...new Set(
-      value
-        .split(/[,\n]/)
-        .map((line) => line.trim())
-        .filter(Boolean),
-    ),
-  ];
+  return columns;
 }

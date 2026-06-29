@@ -1,0 +1,52 @@
+import type { ScheduleSummary } from "@rakkr/shared";
+
+export function schedulesCsv(schedules: ScheduleSummary[]) {
+  return [
+    csvRow([
+      "id",
+      "name",
+      "enabled",
+      "nodeId",
+      "room",
+      "timezone",
+      "nextRunAt",
+      "captureBackend",
+      "captureInterfaceId",
+      "recordingProfileId",
+      "watchdogPolicyId",
+      "retentionPolicyId",
+      "uploadPolicyId",
+      "tags",
+    ]),
+    ...schedules.map((schedule) =>
+      csvRow([
+        schedule.id,
+        schedule.name,
+        String(schedule.enabled),
+        schedule.nodeId,
+        schedule.room,
+        schedule.timezone,
+        schedule.nextRunAt ?? "",
+        schedule.captureBackend ?? "",
+        schedule.captureInterfaceId ?? "",
+        schedule.recordingProfileId ?? "",
+        schedule.watchdogPolicyId ?? "",
+        schedule.retentionPolicyId ?? "",
+        schedule.uploadPolicyId ?? "",
+        schedule.tags.join(";"),
+      ]),
+    ),
+  ].join("\n");
+}
+
+export function scheduleExportFileName() {
+  return `rakkr-schedules-${new Date().toISOString().replaceAll(":", "-").replace(".", "-")}.csv`;
+}
+
+function csvRow(values: string[]) {
+  return values.map(csvCell).join(",");
+}
+
+function csvCell(value: string) {
+  return `"${value.replaceAll('"', '""')}"`;
+}

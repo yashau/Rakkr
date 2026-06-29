@@ -5,12 +5,10 @@ import {
   type RecordingEnhancement,
   type RecordingProfile,
 } from "@rakkr/shared";
-import { Save, SlidersHorizontal, Wand2 } from "lucide-react";
+import { Save, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,14 +21,15 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import { toneBadgeClass } from "@/lib/status-colors";
 import { optionalPositiveNumber, recordingProfileUpdate } from "@/lib/settings-updates";
 
 export function RecordingProfileSettingsCard({
   canManage,
+  onSaved,
   profile,
 }: {
   canManage: boolean;
+  onSaved?: () => void;
   profile: RecordingProfile;
 }) {
   const queryClient = useQueryClient();
@@ -43,8 +42,10 @@ export function RecordingProfileSettingsCard({
       }),
     onSuccess: ({ data }) => {
       setDraft(data);
+      toast.success("Recording profile saved");
       void queryClient.invalidateQueries({ queryKey: ["recording-profiles"] });
       void queryClient.invalidateQueries({ queryKey: ["status"] });
+      onSaved?.();
     },
   });
 
@@ -60,35 +61,7 @@ export function RecordingProfileSettingsCard({
     }));
 
   return (
-    <Card className="rounded-lg p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <SlidersHorizontal className="size-4" />
-            <h3 className="text-base font-semibold">{profile.name}</h3>
-            <Badge className={toneBadgeClass("healthy")} variant="outline">
-              {profile.id}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {profile.codec.toUpperCase()} / {profile.bitrateKbps} kbps / {profile.channelMode}
-          </p>
-        </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {canManage ? "Save recording profile" : "Requires settings manage"}
-          </TooltipContent>
-        </Tooltip>
-      </div>
-
+    <div className="grid gap-4">
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="Name">
           <Input
@@ -325,8 +298,24 @@ export function RecordingProfileSettingsCard({
         </div>
       </div>
 
-      {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}
-    </Card>
+      {mutation.isError ? <p className="text-sm text-destructive">Save failed.</p> : null}
+
+      <div className="flex justify-end">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
+                <Save className="size-4" />
+                Save
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canManage ? "Save recording profile" : "Requires settings manage"}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
   );
 }
 

@@ -5,6 +5,7 @@ import { nodeStatusSchema, type RecorderNode } from "@rakkr/shared";
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { nodeExportFileName, nodeInventoryCsv } from "./node-inventory-export.js";
+import { PAGE_POLICY, paginate, paginationQueryFields, parsePagination } from "./pagination.js";
 
 interface NodeInventoryRouteDependencies {
   app: Hono<AppBindings>;
@@ -30,6 +31,7 @@ const nodeDateFilterSchema = z.preprocess(
 const nodeBackendFilterSchema = z.enum(["alsa", "jack", "pipewire", "unknown"]);
 const nodeListFilterSchema = z
   .object({
+    ...paginationQueryFields,
     backend: nodeBackendFilterSchema.optional(),
     building: nodeLocationFilterSchema,
     floor: nodeLocationFilterSchema,
@@ -66,13 +68,21 @@ export function registerNodeInventoryRoutes({
     }
 
     const filteredNodes = filterNodes(await scopedNodes(currentUser(c)), filters.data);
+    const { data, meta } = paginate(
+      filteredNodes,
+      parsePagination(
+        { limit: filters.data.limit, offset: filters.data.offset },
+        PAGE_POLICY.default,
+      ),
+    );
 
     await recordAuditEvent(c, {
       action: "nodes.read.succeeded",
       auth: currentAuth(c),
       details: {
         filters: filters.data,
-        returnedCount: filteredNodes.length,
+        returnedCount: data.length,
+        total: meta.total,
       },
       outcome: "succeeded",
       permission: "node:read",
@@ -82,7 +92,7 @@ export function registerNodeInventoryRoutes({
       },
     });
 
-    return c.json({ data: filteredNodes });
+    return c.json({ data, meta });
   });
 
   app.get("/api/v1/nodes/export", requirePermission("node:read", "nodes.export"), async (c) => {

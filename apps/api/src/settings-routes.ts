@@ -22,6 +22,10 @@ import {
   createChannelMapAssignmentPlanStore,
   type ChannelMapAssignmentPlanStore,
 } from "./channel-map-assignment-plans.js";
+import {
+  createControllerSettingsStore,
+  type ControllerSettingsStore,
+} from "./controller-settings-store.js";
 import type { AuthResult } from "./auth-service.js";
 import type {
   AppBindings,
@@ -32,6 +36,7 @@ import type {
 import type { SettingsStore } from "./settings-store.js";
 import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
 import { registerSettingsActionRoutes } from "./settings-action-routes.js";
+import { registerSettingsControllerRoutes } from "./settings-controller-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
 import { registerSettingsReadRoutes } from "./settings-read-routes.js";
 import { registerSettingsUploadPolicyRoutes } from "./settings-upload-policy-routes.js";
@@ -52,6 +57,7 @@ interface SettingsRouteDependencies {
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
   channelMapAssignmentPlanStore?: ChannelMapAssignmentPlanStore;
+  controllerSettingsStore?: ControllerSettingsStore;
   uploadProviderStore?: UploadProviderStore;
 }
 
@@ -59,12 +65,20 @@ export function registerSettingsRoutes({
   app,
   currentAuth,
   channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore(),
+  controllerSettingsStore = createControllerSettingsStore(),
   hasResourceScope = async () => true,
   recordAuditEvent,
   requirePermission,
   settingsStore,
   uploadProviderStore = createUploadProviderStore(),
 }: SettingsRouteDependencies) {
+  registerSettingsControllerRoutes({
+    app,
+    controllerSettingsStore,
+    currentAuth,
+    recordAuditEvent,
+    requirePermission,
+  });
   registerSettingsReadRoutes({
     app,
     channelMapAssignmentPlanStore,

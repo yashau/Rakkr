@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { HealthEvent } from "@rakkr/shared";
 import {
   AlertTriangle,
@@ -17,8 +18,10 @@ import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable } from "@/components/ui/data-table";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -52,6 +55,8 @@ import {
   nodeHealthLifecycleInput,
 } from "@/lib/node-page-helpers";
 import { downloadBlob } from "@/lib/recording-page-helpers";
+import { defaultPageSize } from "@/lib/server-pagination";
+import { useServerPagination } from "@/lib/use-server-pagination";
 
 const statuses: Array<"" | HealthEvent["status"]> = [
   "",
@@ -88,10 +93,12 @@ export function HealthPage() {
   });
   const permissions = healthPagePermissions(currentUserQuery.data?.data);
   const apiFilters = useMemo(() => healthEventFiltersFromDraft(filters), [filters]);
+  const pagination = useServerPagination(apiFilters, { defaultPageSize });
   const healthQuery = useQuery({
     enabled: permissions.canReadHealth,
-    queryFn: () => api.healthEvents(apiFilters),
-    queryKey: ["health-events", "workbench", apiFilters],
+    placeholderData: keepPreviousData,
+    queryFn: () => api.healthEvents(pagination.query),
+    queryKey: ["health-events", "workbench", pagination.query],
     refetchInterval: 5000,
   });
   const nodesQuery = useQuery({
@@ -186,6 +193,7 @@ export function HealthPage() {
   }
 
   const events = healthQuery.data?.data ?? [];
+  const meta = healthQuery.data?.meta;
   const activeFilterChips = healthEventFilterChips(apiFilters);
   const summary = healthEventSummary(events);
   const visibleEventIds = events.map((event) => event.id);
@@ -194,6 +202,20 @@ export function HealthPage() {
   );
   const lifecyclePending =
     healthLifecycleMutation.isPending || healthBulkLifecycleMutation.isPending;
+  const columns = healthEventColumns({
+    canManage: permissions.canAcknowledgeHealth,
+    lifecyclePending: healthLifecycleMutation.isPending,
+    lookups: {
+      nodes: nodesQuery.data?.data,
+      recordings: recordingsQuery.data?.data,
+      schedules: schedulesQuery.data?.data,
+    },
+    onAction: (eventId, action) =>
+      healthLifecycleMutation.mutate(nodeHealthLifecycleInput(eventId, action)),
+    onToggleSelected: toggleSelectedEvent,
+    selectedEventIds: selectedVisibleEventIds,
+    selectionDisabled: lifecyclePending,
+  });
 
   return (
     <div className="grid gap-4">
@@ -204,7 +226,9 @@ export function HealthPage() {
               <HeartPulse className="size-5 text-teal-700" />
               <h2 className="text-lg font-semibold">Health Events</h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">{summary.total} visible events</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {meta?.total ?? summary.total} matching events
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -297,30 +321,30 @@ export function HealthPage() {
             />
           </Field>
           <Field label="Opened From">
-            <Input
-              onChange={(event) => setFilter("openedFromDate", event.target.value)}
-              type="date"
+            <DatePicker
+              aria-label="Opened from"
+              onChange={(value) => setFilter("openedFromDate", value)}
               value={filters.openedFromDate}
             />
           </Field>
           <Field label="Opened To">
-            <Input
-              onChange={(event) => setFilter("openedToDate", event.target.value)}
-              type="date"
+            <DatePicker
+              aria-label="Opened to"
+              onChange={(value) => setFilter("openedToDate", value)}
               value={filters.openedToDate}
             />
           </Field>
           <Field label="Resolved From">
-            <Input
-              onChange={(event) => setFilter("resolvedFromDate", event.target.value)}
-              type="date"
+            <DatePicker
+              aria-label="Resolved from"
+              onChange={(value) => setFilter("resolvedFromDate", value)}
               value={filters.resolvedFromDate}
             />
           </Field>
           <Field label="Resolved To">
-            <Input
-              onChange={(event) => setFilter("resolvedToDate", event.target.value)}
-              type="date"
+            <DatePicker
+              aria-label="Resolved to"
+              onChange={(value) => setFilter("resolvedToDate", value)}
               value={filters.resolvedToDate}
             />
           </Field>
@@ -329,14 +353,6 @@ export function HealthPage() {
               onChange={(event) => setFilter("type", event.target.value)}
               placeholder="watchdog.node_offline"
               value={filters.type}
-            />
-          </Field>
-          <Field label="Limit">
-            <Input
-              min={1}
-              onChange={(event) => setFilter("limit", event.target.value)}
-              type="number"
-              value={filters.limit}
             />
           </Field>
           <Field label="Node">
@@ -403,30 +419,22 @@ export function HealthPage() {
         />
       </section>
 
-      <section className="grid gap-3">
-        {events.map((event) => (
-          <HealthEventRow
-            canManage={permissions.canAcknowledgeHealth}
-            event={event}
-            key={event.id}
-            lookups={{
-              nodes: nodesQuery.data?.data,
-              recordings: recordingsQuery.data?.data,
-              schedules: schedulesQuery.data?.data,
-            }}
-            onAction={(action) =>
-              healthLifecycleMutation.mutate(nodeHealthLifecycleInput(event.id, action))
-            }
-            onSelectionChange={(checked) => toggleSelectedEvent(event.id, checked)}
-            pending={healthLifecycleMutation.isPending}
-            selected={selectedVisibleEventIds.includes(event.id)}
-          />
-        ))}
-        {!healthQuery.isPending && events.length === 0 ? (
-          <Alert>
-            <AlertDescription>No health events match the current filters.</AlertDescription>
-          </Alert>
-        ) : null}
+      <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">
+        <DataTable
+          columns={columns}
+          data={events}
+          emptyMessage="No health events match the current filters."
+          getRowId={(event) => event.id}
+          isLoading={healthQuery.isPending}
+        />
+        <DataTablePagination
+          meta={meta}
+          onNext={pagination.nextPage}
+          onPageSizeChange={pagination.setPageSize}
+          onPrevious={pagination.previousPage}
+          pageSize={pagination.pageSize}
+          pageSizes={pagination.pageSizes}
+        />
       </section>
     </div>
   );
@@ -574,85 +582,119 @@ function BulkHealthActions({
   );
 }
 
-function HealthEventRow({
+interface HealthEventColumnOptions {
+  canManage: boolean;
+  lifecyclePending: boolean;
+  lookups: Parameters<typeof healthEventTargetLabel>[1];
+  onAction: (eventId: string, action: HealthLifecycleAction) => void;
+  onToggleSelected: (eventId: string, checked: boolean) => void;
+  selectedEventIds: string[];
+  selectionDisabled: boolean;
+}
+
+function healthEventColumns({
   canManage,
-  event,
+  lifecyclePending,
   lookups,
   onAction,
-  onSelectionChange,
-  pending,
-  selected,
-}: {
-  canManage: boolean;
-  event: HealthEvent;
-  lookups: Parameters<typeof healthEventTargetLabel>[1];
-  onAction: (action: HealthLifecycleAction) => void;
-  onSelectionChange: (checked: boolean) => void;
-  pending: boolean;
-  selected: boolean;
-}) {
-  const target = healthEventTargetLabel(event, lookups);
-
-  return (
-    <Card className="rounded-lg p-4 shadow-sm">
-      <div className="flex gap-3">
+  onToggleSelected,
+  selectedEventIds,
+  selectionDisabled,
+}: HealthEventColumnOptions): ColumnDef<HealthEvent>[] {
+  const columns: ColumnDef<HealthEvent>[] = [
+    {
+      cell: ({ row }) => (
         <Checkbox
-          checked={selected}
-          className="mt-1"
-          disabled={pending}
-          onCheckedChange={(value) => onSelectionChange(value === true)}
+          aria-label="Select event"
+          checked={selectedEventIds.includes(row.original.id)}
+          disabled={selectionDisabled}
+          onCheckedChange={(value) => onToggleSelected(row.original.id, value === true)}
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className={severityClass(event.severity)} variant="outline">
-                  {event.severity}
-                </Badge>
-                <span className="font-medium">{readableHealthEventType(event.type)}</span>
-                <Badge variant={event.status === "resolved" ? "secondary" : "outline"}>
-                  {event.status}
-                </Badge>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span>{formatDateTime(event.openedAt)}</span>
-                {event.acknowledgedAt ? (
-                  <span>Ack {formatDateTime(event.acknowledgedAt)}</span>
-                ) : null}
-                {event.suppressedUntil ? (
-                  <span>Muted until {formatDateTime(event.suppressedUntil)}</span>
-                ) : null}
-                {event.resolvedAt ? <span>Resolved {formatDateTime(event.resolvedAt)}</span> : null}
-              </div>
-              <div className="mt-2 text-sm wrap-break-word text-muted-foreground">
-                {target || event.id}
-              </div>
-              <div className="mt-2 font-mono text-xs text-muted-foreground">{event.id}</div>
-            </div>
-            {canManage ? (
-              <div className="flex flex-wrap gap-2 lg:justify-end">
-                {healthLifecycleActions(event.status).map((action) => (
-                  <HintButton
-                    disabled={pending}
-                    hint={
-                      action === "suppress" ? "Suppress this health event for one hour" : action
-                    }
-                    key={action}
-                    onClick={() => onAction(action)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <HealthActionIcon action={action} />
-                    {actionLabel(action)}
-                  </HintButton>
-                ))}
-              </div>
-            ) : null}
-          </div>
+      ),
+      header: () => <span className="sr-only">Select</span>,
+      id: "select",
+      meta: { cellClassName: "w-8", headClassName: "w-8" },
+    },
+    {
+      cell: ({ row }) => (
+        <Badge className={severityClass(row.original.severity)} variant="outline">
+          {row.original.severity}
+        </Badge>
+      ),
+      header: "Severity",
+      id: "severity",
+    },
+    {
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          <div className="font-medium">{readableHealthEventType(row.original.type)}</div>
+          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
         </div>
-      </div>
-    </Card>
-  );
+      ),
+      header: "Type",
+      id: "type",
+    },
+    {
+      cell: ({ row }) => (
+        <Badge variant={row.original.status === "resolved" ? "secondary" : "outline"}>
+          {row.original.status}
+        </Badge>
+      ),
+      header: "Status",
+      id: "status",
+    },
+    {
+      cell: ({ row }) => (
+        <div className="text-xs whitespace-nowrap text-muted-foreground">
+          <div>{formatDateTime(row.original.openedAt)}</div>
+          {row.original.suppressedUntil ? (
+            <div>Muted until {formatDateTime(row.original.suppressedUntil)}</div>
+          ) : null}
+          {row.original.resolvedAt ? (
+            <div>Resolved {formatDateTime(row.original.resolvedAt)}</div>
+          ) : null}
+        </div>
+      ),
+      header: "Opened",
+      id: "opened",
+    },
+    {
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {healthEventTargetLabel(row.original, lookups) || row.original.id}
+        </span>
+      ),
+      header: "Target",
+      id: "target",
+    },
+  ];
+
+  if (canManage) {
+    columns.push({
+      cell: ({ row }) => (
+        <div className="flex flex-wrap justify-end gap-2">
+          {healthLifecycleActions(row.original.status).map((action) => (
+            <HintButton
+              disabled={lifecyclePending}
+              hint={action === "suppress" ? "Suppress this health event for one hour" : action}
+              key={action}
+              onClick={() => onAction(row.original.id, action)}
+              size="sm"
+              variant="outline"
+            >
+              <HealthActionIcon action={action} />
+              {actionLabel(action)}
+            </HintButton>
+          ))}
+        </div>
+      ),
+      header: "Actions",
+      id: "actions",
+      meta: { cellClassName: "text-right", headClassName: "text-right" },
+    });
+  }
+
+  return columns;
 }
 
 function HealthActionIcon({ action }: { action: HealthLifecycleAction }) {
