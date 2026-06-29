@@ -12,6 +12,10 @@ const popover = "[data-radix-popper-content-wrapper]";
 test("jobs date filter uses the shadcn calendar popover", async ({ page, request }) => {
   await loginAndOpen(page, request, "/jobs");
 
+  // Secondary filters (incl. the created-from date picker) live in the filter
+  // slide-out; open it before driving the calendar.
+  await page.getByRole("button", { name: "Filters" }).click();
+
   // `exact` avoids matching the active-filter chip's "Clear created from filter".
   const trigger = page.getByRole("button", { name: "Created from", exact: true });
   await expect(trigger).toBeVisible();
@@ -43,6 +47,9 @@ test("audit date-time filters use a calendar date plus a native time field", asy
   request,
 }) => {
   await loginAndOpen(page, request, "/audit");
+
+  // The audit filters (incl. the From/To pickers) live in the filter slide-out.
+  await page.getByRole("button", { name: "Filters" }).click();
 
   // From + To each render a calendar-backed date trigger (labelled "From"/"To",
   // showing the "Pick a date" placeholder) plus a native time input. The old

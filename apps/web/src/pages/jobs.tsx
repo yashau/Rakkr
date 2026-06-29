@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { RecordingJob } from "@rakkr/shared";
@@ -11,9 +11,9 @@ import {
   RefreshCw,
   RotateCcw,
   Square,
-  X,
 } from "lucide-react";
 
+import { FilterField, FilterToolbar } from "@/components/filter-toolbar";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,6 @@ import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -191,7 +190,11 @@ export function JobsPage() {
   // returned page of jobs.
   const visibleJobs = jobsQuery.data?.data ?? [];
   const meta = jobsQuery.data?.meta;
-  const activeFilterChips = recordingJobFilterChips(apiFilters);
+  // Free-text search is inline in the toolbar; the slide-out chips/count cover
+  // the remaining filters.
+  const advancedFilterChips = recordingJobFilterChips(apiFilters).filter(
+    (chip) => chip.key !== "search",
+  );
   const summary = recordingJobSummary(visibleJobs);
   const visibleJobIds = visibleJobs.map((job) => job.id);
   const selectedVisibleJobIds = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId));
@@ -234,33 +237,6 @@ export function JobsPage() {
               {meta?.total ?? visibleJobs.length} matching jobs
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={exportMutation.isPending}
-              onClick={() => exportMutation.mutate()}
-              type="button"
-              variant="outline"
-            >
-              <Download className="size-4" />
-              Export CSV
-            </Button>
-            <Button
-              disabled={jobsQuery.isFetching}
-              onClick={() => void jobsQuery.refetch()}
-              type="button"
-              variant="outline"
-            >
-              <RefreshCw className="size-4" />
-              Refresh
-            </Button>
-            <Button
-              onClick={() => setFilters(emptyJobsPageFilters)}
-              type="button"
-              variant="outline"
-            >
-              Reset
-            </Button>
-          </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -275,154 +251,146 @@ export function JobsPage() {
           <SummaryTile icon={AlertTriangle} label="Failed" tone="critical" value={summary.failed} />
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[160px_160px_180px_180px_220px_220px_1fr]">
-          <Field label="Status">
-            <Select
-              onValueChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  status: (value === "__all__" ? "" : value) as JobsPageFilters["status"],
-                }))
-              }
-              value={filters.status || "__all__"}
-            >
-              <SelectTrigger className={selectClassName}>
-                <SelectValue placeholder="all statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                {statuses.map((status) => (
-                  <SelectItem key={status || "all"} value={status || "__all__"}>
-                    {status || "all statuses"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Backend">
-            <Select
-              onValueChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  captureBackend: (value === "__all__"
-                    ? ""
-                    : value) as JobsPageFilters["captureBackend"],
-                }))
-              }
-              value={filters.captureBackend || "__all__"}
-            >
-              <SelectTrigger className={selectClassName}>
-                <SelectValue placeholder="all backends" />
-              </SelectTrigger>
-              <SelectContent>
-                {captureBackends.map((backend) => (
-                  <SelectItem key={backend || "all"} value={backend || "__all__"}>
-                    {backend || "all backends"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Created From">
-            <DatePicker
-              aria-label="Created from"
-              onChange={(value) => setFilters((current) => ({ ...current, createdFrom: value }))}
-              value={filters.createdFrom}
-            />
-          </Field>
-          <Field label="Created To">
-            <DatePicker
-              aria-label="Created to"
-              onChange={(value) => setFilters((current) => ({ ...current, createdTo: value }))}
-              value={filters.createdTo}
-            />
-          </Field>
-          <Field label="Node">
-            {permissions.canReadNodes && (nodesQuery.data?.data.length ?? 0) > 0 ? (
+        <div className="mt-4">
+          <FilterToolbar
+            actions={
+              <>
+                <Button
+                  disabled={exportMutation.isPending}
+                  onClick={() => exportMutation.mutate()}
+                  type="button"
+                  variant="outline"
+                >
+                  <Download className="size-4" />
+                  Export CSV
+                </Button>
+                <Button
+                  disabled={jobsQuery.isFetching}
+                  onClick={() => void jobsQuery.refetch()}
+                  type="button"
+                  variant="outline"
+                >
+                  <RefreshCw className="size-4" />
+                  Refresh
+                </Button>
+              </>
+            }
+            chips={advancedFilterChips}
+            onClearAll={() => setFilters(emptyJobsPageFilters)}
+            onClearChip={(key) => clearRecordingJobFilter(key as RecordingJobFilterKey)}
+            onSearchChange={(value) => setFilters((current) => ({ ...current, search: value }))}
+            search={filters.search}
+            searchPlaceholder="job, node, recording, device, output, failure"
+            sheetDescription="Filter by status, backend, capture interface, node, and created window."
+            sheetTitle="Filter recording jobs"
+          >
+            <FilterField label="Status">
               <Select
                 onValueChange={(value) =>
                   setFilters((current) => ({
                     ...current,
-                    nodeId: value === "__all__" ? "" : value,
+                    status: (value === "__all__" ? "" : value) as JobsPageFilters["status"],
                   }))
                 }
-                value={filters.nodeId || "__all__"}
+                value={filters.status || "__all__"}
               >
                 <SelectTrigger className={selectClassName}>
-                  <SelectValue placeholder="all nodes" />
+                  <SelectValue placeholder="all statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">all nodes</SelectItem>
-                  {nodesQuery.data?.data.map((recorderNode) => (
-                    <SelectItem key={recorderNode.id} value={recorderNode.id}>
-                      {recorderNode.alias}
+                  {statuses.map((status) => (
+                    <SelectItem key={status || "all"} value={status || "__all__"}>
+                      {status || "all statuses"}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            ) : (
+            </FilterField>
+            <FilterField label="Backend">
+              <Select
+                onValueChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    captureBackend: (value === "__all__"
+                      ? ""
+                      : value) as JobsPageFilters["captureBackend"],
+                  }))
+                }
+                value={filters.captureBackend || "__all__"}
+              >
+                <SelectTrigger className={selectClassName}>
+                  <SelectValue placeholder="all backends" />
+                </SelectTrigger>
+                <SelectContent>
+                  {captureBackends.map((backend) => (
+                    <SelectItem key={backend || "all"} value={backend || "__all__"}>
+                      {backend || "all backends"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="Node">
+              {permissions.canReadNodes && (nodesQuery.data?.data.length ?? 0) > 0 ? (
+                <Select
+                  onValueChange={(value) =>
+                    setFilters((current) => ({
+                      ...current,
+                      nodeId: value === "__all__" ? "" : value,
+                    }))
+                  }
+                  value={filters.nodeId || "__all__"}
+                >
+                  <SelectTrigger className={selectClassName}>
+                    <SelectValue placeholder="all nodes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">all nodes</SelectItem>
+                    {nodesQuery.data?.data.map((recorderNode) => (
+                      <SelectItem key={recorderNode.id} value={recorderNode.id}>
+                        {recorderNode.alias}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  onChange={(event) =>
+                    setFilters((current) => ({ ...current, nodeId: event.target.value }))
+                  }
+                  placeholder="node id"
+                  value={filters.nodeId}
+                />
+              )}
+            </FilterField>
+            <FilterField label="Interface">
               <Input
                 onChange={(event) =>
-                  setFilters((current) => ({ ...current, nodeId: event.target.value }))
+                  setFilters((current) => ({
+                    ...current,
+                    captureInterfaceId: event.target.value,
+                  }))
                 }
-                placeholder="node id"
-                value={filters.nodeId}
+                placeholder="interface id"
+                value={filters.captureInterfaceId}
               />
-            )}
-          </Field>
-          <Field label="Interface">
-            <Input
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  captureInterfaceId: event.target.value,
-                }))
-              }
-              placeholder="interface id"
-              value={filters.captureInterfaceId}
-            />
-          </Field>
-          <Field label="Search">
-            <Input
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, search: event.target.value }))
-              }
-              placeholder="job, node, recording, device, output, failure"
-              value={filters.search}
-            />
-          </Field>
+            </FilterField>
+            <FilterField label="Created From">
+              <DatePicker
+                aria-label="Created from"
+                onChange={(value) => setFilters((current) => ({ ...current, createdFrom: value }))}
+                value={filters.createdFrom}
+              />
+            </FilterField>
+            <FilterField label="Created To">
+              <DatePicker
+                aria-label="Created to"
+                onChange={(value) => setFilters((current) => ({ ...current, createdTo: value }))}
+                value={filters.createdTo}
+              />
+            </FilterField>
+          </FilterToolbar>
         </div>
-
-        {activeFilterChips.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {activeFilterChips.map((filter) => (
-              <Badge
-                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
-                key={filter.key}
-                variant="outline"
-              >
-                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
-                <span className="truncate font-mono">{filter.value}</span>
-                <button
-                  aria-label={`Clear ${filter.label} filter`}
-                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  onClick={() => clearRecordingJobFilter(filter.key)}
-                  type="button"
-                >
-                  <X className="size-3" />
-                </button>
-              </Badge>
-            ))}
-            <Button
-              className="h-6 px-2 text-xs"
-              onClick={() => setFilters(emptyJobsPageFilters)}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              Clear all
-            </Button>
-          </div>
-        ) : null}
 
         <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
           <label className="flex items-center gap-2 text-sm" htmlFor="jobs-bulk-select-all">
@@ -531,15 +499,6 @@ export function JobsPage() {
   function clearRecordingJobFilter(key: RecordingJobFilterKey) {
     setFilters((current) => ({ ...current, [recordingJobFilterDraftKeys[key]]: "" }));
   }
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      {children}
-    </div>
-  );
 }
 
 function SummaryTile({

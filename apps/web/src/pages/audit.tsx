@@ -1,18 +1,11 @@
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import {
-  ChevronDown,
-  ChevronRight,
-  Download,
-  RotateCcw,
-  Search,
-  ShieldCheck,
-  X,
-} from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, ChevronRight, Download, ShieldCheck } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { permissions, type AuditEvent } from "@rakkr/shared";
 
+import { FilterField, FilterToolbar } from "@/components/filter-toolbar";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +15,6 @@ import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -30,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { api, type AuditEventFilters } from "@/lib/api";
+import { api } from "@/lib/api";
 import { toneBadgeClass } from "@/lib/status-colors";
 import {
   auditFilterChips,
@@ -158,7 +150,7 @@ const auditColumns: ColumnDef<AuditEvent>[] = [
 
 export function AuditPage() {
   const [draft, setDraft] = useState<AuditFilterDraft>(emptyAuditFilterDraft);
-  const [filters, setFilters] = useState<AuditEventFilters>({});
+  const filters = useMemo(() => auditFiltersFromDraft(draft), [draft]);
   const pagination = useServerPagination(filters, { defaultPageSize });
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
@@ -211,163 +203,102 @@ export function AuditPage() {
         <p className="text-sm text-muted-foreground">Permission decisions and controller actions</p>
       </div>
 
-      <form
-        className="grid gap-3 border-b border-border bg-panel px-4 py-3 md:grid-cols-2 xl:grid-cols-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setFilters(auditFiltersFromDraft(draft));
-        }}
-      >
-        <FilterInput
-          label="Actor"
-          onChange={(value) => updateDraft("actor", value)}
-          value={draft.actor}
-        />
-        <FilterInput
-          label="Action"
-          onChange={(value) => updateDraft("action", value)}
-          value={draft.action}
-        />
-        <div className="grid gap-1">
-          <Label className="text-xs text-muted-foreground" htmlFor="audit-permission">
-            Permission
-          </Label>
-          <Select
-            value={draft.permission || "__all__"}
-            onValueChange={(value) =>
-              updateDraft(
-                "permission",
-                (value === "__all__" ? "" : value) as AuditFilterDraft["permission"],
-              )
-            }
-          >
-            <SelectTrigger
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              id="audit-permission"
-            >
-              <SelectValue placeholder="Any" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Any</SelectItem>
-              {permissions.map((permission) => (
-                <SelectItem key={permission} value={permission}>
-                  {permission}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <FilterInput
-          label="Target"
-          onChange={(value) => updateDraft("target", value)}
-          value={draft.target}
-        />
-        <FilterInput
-          label="Reason"
-          onChange={(value) => updateDraft("reason", value)}
-          value={draft.reason}
-        />
-        <div className="grid gap-1">
-          <Label className="text-xs text-muted-foreground" htmlFor="audit-outcome">
-            Outcome
-          </Label>
-          <Select
-            value={draft.outcome || "__all__"}
-            onValueChange={(value) => updateDraft("outcome", value === "__all__" ? "" : value)}
-          >
-            <SelectTrigger
-              id="audit-outcome"
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <SelectValue placeholder="Any" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Any</SelectItem>
-              {outcomes.map((outcome) => (
-                <SelectItem key={outcome} value={outcome}>
-                  {outcome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <FilterInput
-          label="From"
-          onChange={(value) => updateDraft("from", value)}
-          type="datetime-local"
-          value={draft.from}
-        />
-        <FilterInput
-          label="To"
-          onChange={(value) => updateDraft("to", value)}
-          type="datetime-local"
-          value={draft.to}
-        />
-
-        <div className="flex items-end gap-2">
-          <Button className="h-9" type="submit">
-            <Search className="size-4" />
-            Apply
-          </Button>
-          <Button
-            className="h-9"
-            disabled={!pagePermissions.canExport || auditExportMutation.isPending}
-            onClick={() => auditExportMutation.mutate()}
-            type="button"
-            variant="outline"
-          >
-            <Download className="size-4" />
-            Export
-          </Button>
-          <Button
-            className="h-9"
-            onClick={() => {
-              setDraft(emptyAuditFilterDraft);
-              setFilters({});
-            }}
-            type="button"
-            variant="outline"
-          >
-            <RotateCcw className="size-4" />
-            Clear
-          </Button>
-        </div>
-        {activeFilterChips.length > 0 ? (
-          <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-4">
-            {activeFilterChips.map((filter) => (
-              <Badge
-                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
-                key={filter.key}
-                variant="outline"
-              >
-                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
-                <span className="truncate font-mono">{filter.value}</span>
-                <button
-                  aria-label={`Clear ${filter.label} filter`}
-                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  onClick={() => clearAuditFilter(filter.key)}
-                  type="button"
-                >
-                  <X className="size-3" />
-                </button>
-              </Badge>
-            ))}
+      <div className="border-b border-border bg-panel px-4 py-3">
+        <FilterToolbar
+          actions={
             <Button
-              className="h-6 px-2 text-xs"
-              onClick={() => {
-                setDraft(emptyAuditFilterDraft);
-                setFilters({});
-              }}
-              size="sm"
+              disabled={!pagePermissions.canExport || auditExportMutation.isPending}
+              onClick={() => auditExportMutation.mutate()}
               type="button"
-              variant="ghost"
+              variant="outline"
             >
-              Clear all
+              <Download className="size-4" />
+              Export
             </Button>
-          </div>
-        ) : null}
-      </form>
+          }
+          chips={activeFilterChips}
+          onClearAll={() => setDraft(emptyAuditFilterDraft)}
+          onClearChip={(key) => clearAuditFilter(key as AuditFilterKey)}
+          sheetDescription="Filter permission decisions by actor, action, permission, target, outcome, and time window."
+          sheetTitle="Filter audit trail"
+        >
+          <FilterField label="Actor">
+            <Input
+              onChange={(event) => updateDraft("actor", event.target.value)}
+              placeholder="name or id"
+              value={draft.actor}
+            />
+          </FilterField>
+          <FilterField label="Action">
+            <Input
+              onChange={(event) => updateDraft("action", event.target.value)}
+              placeholder="action"
+              value={draft.action}
+            />
+          </FilterField>
+          <FilterField label="Permission">
+            <Select
+              value={draft.permission || "__all__"}
+              onValueChange={(value) =>
+                updateDraft(
+                  "permission",
+                  (value === "__all__" ? "" : value) as AuditFilterDraft["permission"],
+                )
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Any" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Any</SelectItem>
+                {permissions.map((permission) => (
+                  <SelectItem key={permission} value={permission}>
+                    {permission}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterField>
+          <FilterField label="Outcome">
+            <Select
+              value={draft.outcome || "__all__"}
+              onValueChange={(value) => updateDraft("outcome", value === "__all__" ? "" : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Any" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Any</SelectItem>
+                {outcomes.map((outcome) => (
+                  <SelectItem key={outcome} value={outcome}>
+                    {outcome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterField>
+          <FilterField label="Target">
+            <Input
+              onChange={(event) => updateDraft("target", event.target.value)}
+              placeholder="target"
+              value={draft.target}
+            />
+          </FilterField>
+          <FilterField label="Reason">
+            <Input
+              onChange={(event) => updateDraft("reason", event.target.value)}
+              placeholder="reason"
+              value={draft.reason}
+            />
+          </FilterField>
+          <FilterField label="From">
+            <DateTimePicker onChange={(value) => updateDraft("from", value)} value={draft.from} />
+          </FilterField>
+          <FilterField label="To">
+            <DateTimePicker onChange={(value) => updateDraft("to", value)} value={draft.to} />
+          </FilterField>
+        </FilterToolbar>
+      </div>
 
       <div className="grid gap-2 px-4 py-3">
         <DataTable
@@ -396,7 +327,6 @@ export function AuditPage() {
 
   function clearAuditFilter(key: AuditFilterKey) {
     setDraft((current) => ({ ...current, [auditFilterDraftKeys[key]]: "" }));
-    setFilters((current) => ({ ...current, [key]: undefined }));
   }
 }
 
@@ -461,35 +391,4 @@ function jsonPreview(value: unknown) {
   }
 
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
-}
-
-function FilterInput({
-  label,
-  onChange,
-  type = "text",
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  type?: "datetime-local" | "number" | "text";
-  value: string;
-}) {
-  return (
-    <div className="grid gap-1">
-      <Label className="text-xs text-muted-foreground" htmlFor={`audit-${label}`}>
-        {label}
-      </Label>
-      {type === "datetime-local" ? (
-        <DateTimePicker id={`audit-${label}`} onChange={onChange} value={value} />
-      ) : (
-        <Input
-          id={`audit-${label}`}
-          className="bg-background"
-          onChange={(event) => onChange(event.target.value)}
-          type={type}
-          value={value}
-        />
-      )}
-    </div>
-  );
 }

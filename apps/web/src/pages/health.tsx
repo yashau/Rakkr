@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { HealthEvent } from "@rakkr/shared";
@@ -10,9 +10,9 @@ import {
   RotateCcw,
   ShieldCheck,
   ShieldOff,
-  X,
 } from "lucide-react";
 
+import { FilterField, FilterToolbar } from "@/components/filter-toolbar";
 import { HintButton } from "@/components/hint-button";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -23,7 +23,6 @@ import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -194,7 +193,11 @@ export function HealthPage() {
 
   const events = healthQuery.data?.data ?? [];
   const meta = healthQuery.data?.meta;
-  const activeFilterChips = healthEventFilterChips(apiFilters);
+  // Free-text search is inline in the toolbar; the slide-out chips/count cover
+  // the remaining filters.
+  const advancedFilterChips = healthEventFilterChips(apiFilters).filter(
+    (chip) => chip.key !== "search",
+  );
   const summary = healthEventSummary(events);
   const visibleEventIds = events.map((event) => event.id);
   const selectedVisibleEventIds = selectedEventIds.filter((eventId) =>
@@ -230,25 +233,6 @@ export function HealthPage() {
               {meta?.total ?? summary.total} matching events
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={exportMutation.isPending}
-              onClick={() => exportMutation.mutate()}
-              type="button"
-              variant="outline"
-            >
-              <Download className="size-4" />
-              Export CSV
-            </Button>
-            <Button
-              onClick={() => setFilters(emptyHealthPageFilters)}
-              type="button"
-              variant="outline"
-            >
-              <RotateCcw className="size-4" />
-              Reset
-            </Button>
-          </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -268,144 +252,127 @@ export function HealthPage() {
           />
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <Field label="Status">
-            <Select
-              onValueChange={(value) =>
-                setFilter(
-                  "status",
-                  (value === "__all__" ? "" : value) as HealthPageFilterDraft["status"],
-                )
-              }
-              value={filters.status || "__all__"}
-            >
-              <SelectTrigger className={selectClassName}>
-                <SelectValue placeholder="all statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                {statuses.map((status) => (
-                  <SelectItem key={status || "all"} value={status || "__all__"}>
-                    {status || "all statuses"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Severity">
-            <Select
-              onValueChange={(value) =>
-                setFilter(
-                  "severity",
-                  (value === "__all__" ? "" : value) as HealthPageFilterDraft["severity"],
-                )
-              }
-              value={filters.severity || "__all__"}
-            >
-              <SelectTrigger className={selectClassName}>
-                <SelectValue placeholder="all severities" />
-              </SelectTrigger>
-              <SelectContent>
-                {severities.map((severity) => (
-                  <SelectItem key={severity || "all"} value={severity || "__all__"}>
-                    {severity || "all severities"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Search">
-            <Input
-              onChange={(event) => setFilter("search", event.target.value)}
-              placeholder="too quiet, node, recording"
-              value={filters.search}
-            />
-          </Field>
-          <Field label="Opened From">
-            <DatePicker
-              aria-label="Opened from"
-              onChange={(value) => setFilter("openedFromDate", value)}
-              value={filters.openedFromDate}
-            />
-          </Field>
-          <Field label="Opened To">
-            <DatePicker
-              aria-label="Opened to"
-              onChange={(value) => setFilter("openedToDate", value)}
-              value={filters.openedToDate}
-            />
-          </Field>
-          <Field label="Resolved From">
-            <DatePicker
-              aria-label="Resolved from"
-              onChange={(value) => setFilter("resolvedFromDate", value)}
-              value={filters.resolvedFromDate}
-            />
-          </Field>
-          <Field label="Resolved To">
-            <DatePicker
-              aria-label="Resolved to"
-              onChange={(value) => setFilter("resolvedToDate", value)}
-              value={filters.resolvedToDate}
-            />
-          </Field>
-          <Field label="Type">
-            <Input
-              onChange={(event) => setFilter("type", event.target.value)}
-              placeholder="watchdog.node_offline"
-              value={filters.type}
-            />
-          </Field>
-          <Field label="Node">
-            <Input
-              onChange={(event) => setFilter("nodeId", event.target.value)}
-              value={filters.nodeId}
-            />
-          </Field>
-          <Field label="Schedule">
-            <Input
-              onChange={(event) => setFilter("scheduleId", event.target.value)}
-              value={filters.scheduleId}
-            />
-          </Field>
-          <Field label="Recording">
-            <Input
-              onChange={(event) => setFilter("recordingId", event.target.value)}
-              value={filters.recordingId}
-            />
-          </Field>
-        </div>
-
-        {activeFilterChips.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {activeFilterChips.map((filter) => (
-              <Badge
-                className="max-w-full gap-1 overflow-hidden bg-background pr-1"
-                key={filter.key}
+        <div className="mt-4">
+          <FilterToolbar
+            actions={
+              <Button
+                disabled={exportMutation.isPending}
+                onClick={() => exportMutation.mutate()}
+                type="button"
                 variant="outline"
               >
-                <span className="shrink-0 text-muted-foreground">{filter.label}</span>
-                <span className="truncate font-mono">{filter.value}</span>
-                <button
-                  aria-label={`Clear ${filter.label} filter`}
-                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  onClick={() => clearActiveFilter(filter.key)}
-                  type="button"
-                >
-                  <X className="size-3" />
-                </button>
-              </Badge>
-            ))}
-            <Button
-              className="h-6 px-2 text-xs"
-              onClick={() => setFilters(emptyHealthPageFilters)}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              Clear all
-            </Button>
-          </div>
-        ) : null}
+                <Download className="size-4" />
+                Export CSV
+              </Button>
+            }
+            chips={advancedFilterChips}
+            onClearAll={() => setFilters(emptyHealthPageFilters)}
+            onClearChip={(key) => clearActiveFilter(key as HealthEventFilterKey)}
+            onSearchChange={(value) => setFilter("search", value)}
+            search={filters.search}
+            searchPlaceholder="too quiet, node, recording"
+            sheetDescription="Filter by lifecycle state, severity, time windows, and related resources."
+            sheetTitle="Filter health events"
+          >
+            <FilterField label="Status">
+              <Select
+                onValueChange={(value) =>
+                  setFilter(
+                    "status",
+                    (value === "__all__" ? "" : value) as HealthPageFilterDraft["status"],
+                  )
+                }
+                value={filters.status || "__all__"}
+              >
+                <SelectTrigger className={selectClassName}>
+                  <SelectValue placeholder="all statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statuses.map((status) => (
+                    <SelectItem key={status || "all"} value={status || "__all__"}>
+                      {status || "all statuses"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="Severity">
+              <Select
+                onValueChange={(value) =>
+                  setFilter(
+                    "severity",
+                    (value === "__all__" ? "" : value) as HealthPageFilterDraft["severity"],
+                  )
+                }
+                value={filters.severity || "__all__"}
+              >
+                <SelectTrigger className={selectClassName}>
+                  <SelectValue placeholder="all severities" />
+                </SelectTrigger>
+                <SelectContent>
+                  {severities.map((severity) => (
+                    <SelectItem key={severity || "all"} value={severity || "__all__"}>
+                      {severity || "all severities"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="Opened From">
+              <DatePicker
+                aria-label="Opened from"
+                onChange={(value) => setFilter("openedFromDate", value)}
+                value={filters.openedFromDate}
+              />
+            </FilterField>
+            <FilterField label="Opened To">
+              <DatePicker
+                aria-label="Opened to"
+                onChange={(value) => setFilter("openedToDate", value)}
+                value={filters.openedToDate}
+              />
+            </FilterField>
+            <FilterField label="Resolved From">
+              <DatePicker
+                aria-label="Resolved from"
+                onChange={(value) => setFilter("resolvedFromDate", value)}
+                value={filters.resolvedFromDate}
+              />
+            </FilterField>
+            <FilterField label="Resolved To">
+              <DatePicker
+                aria-label="Resolved to"
+                onChange={(value) => setFilter("resolvedToDate", value)}
+                value={filters.resolvedToDate}
+              />
+            </FilterField>
+            <FilterField label="Type">
+              <Input
+                onChange={(event) => setFilter("type", event.target.value)}
+                placeholder="watchdog.node_offline"
+                value={filters.type}
+              />
+            </FilterField>
+            <FilterField label="Node">
+              <Input
+                onChange={(event) => setFilter("nodeId", event.target.value)}
+                value={filters.nodeId}
+              />
+            </FilterField>
+            <FilterField label="Schedule">
+              <Input
+                onChange={(event) => setFilter("scheduleId", event.target.value)}
+                value={filters.scheduleId}
+              />
+            </FilterField>
+            <FilterField label="Recording">
+              <Input
+                onChange={(event) => setFilter("recordingId", event.target.value)}
+                value={filters.recordingId}
+              />
+            </FilterField>
+          </FilterToolbar>
+        </div>
 
         <BulkHealthActions
           canManage={permissions.canAcknowledgeHealth}
@@ -473,15 +440,6 @@ export function HealthPage() {
       suppressedUntil: action === "suppress" ? defaultNodeHealthSuppressedUntil() : undefined,
     });
   }
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      {children}
-    </div>
-  );
 }
 
 function SummaryTile({
