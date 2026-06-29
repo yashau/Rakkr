@@ -372,6 +372,7 @@ mod tests {
             channels: 2,
             command: "arecord".to_string(),
             device: "hw:CARD=XUSB,DEV=0".to_string(),
+            enhancement: None,
             final_output_path: PathBuf::from("capture.wav"),
             format: "S16_LE".to_string(),
             growth_grace_seconds: 1,

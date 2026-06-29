@@ -125,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
                 .capture_recording_id
                 .as_deref()
                 .context("missing --capture-recording-id")?,
+            rendition: None,
             token,
         })
         .await?;

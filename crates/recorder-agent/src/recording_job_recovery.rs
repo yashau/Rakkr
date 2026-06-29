@@ -157,6 +157,7 @@ pub(crate) async fn reconcile_previous_recording_job(
             file_path: &output_path,
             job_id: Some(&state.job_id),
             recording_id: &state.recording_id,
+            rendition: None,
             token,
         })
         .await

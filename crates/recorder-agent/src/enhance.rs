@@ -12,10 +12,6 @@
 //! (see `telemetry.rs`). The raw audio is always preserved separately; enhancement
 //! is an additional, switchable rendition.
 
-// Transitional: the WAV file helpers are consumed by the recording render
-// integration in the next commit; the engine core is already exercised by tests.
-#![allow(dead_code)]
-
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -38,13 +34,6 @@ impl EnhancementEngine {
             "rnnoise" => Some(Self::Rnnoise),
             "deepfilternet3" | "deepfilternet" | "dfn" => Some(Self::Deepfilternet3),
             _ => None,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Rnnoise => "rnnoise",
-            Self::Deepfilternet3 => "deepfilternet3",
         }
     }
 }

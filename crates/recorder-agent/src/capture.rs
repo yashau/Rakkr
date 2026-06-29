@@ -11,6 +11,7 @@ use tracing::info;
 
 use crate::command_template::{CommandTemplateValues, command_template_args};
 use crate::config::{AgentConfig, CaptureBackend};
+use crate::controller::ControllerRecordingEnhancement;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +42,7 @@ pub struct CapturePlan {
     pub channels: u16,
     pub command: String,
     pub device: String,
+    pub enhancement: Option<ControllerRecordingEnhancement>,
     pub final_output_path: PathBuf,
     pub format: String,
     pub growth_grace_seconds: u64,
@@ -78,6 +80,7 @@ pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CaptureP
             .effective_capture_command(config.capture_backend)
             .to_string(),
         device: config.capture_device.clone(),
+        enhancement: None,
         final_output_path,
         format: config.capture_format.clone(),
         growth_grace_seconds: config.capture_growth_grace_seconds,
