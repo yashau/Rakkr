@@ -806,6 +806,15 @@ if (process.env.RAKKR_API_NO_LISTEN !== "1") {
     uploadRunner,
     watchdogRunner,
   });
+
+  // Seed the demo node as a real enrolled (persisted) row so it is editable in
+  // the console; idempotent and skipped when demo data is disabled.
+  if (process.env.RAKKR_SEED_DEMO_DATA !== "0") {
+    void nodeStore
+      .seed(seedNodes)
+      .catch((error) => console.warn("demo node seeding unavailable", error));
+  }
+
   const listenConfig = apiListenConfig(app.fetch, port);
 
   serve(listenConfig.options, (info) => {
