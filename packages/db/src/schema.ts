@@ -275,6 +275,32 @@ export const nodeCredentials = pgTable(
   }),
 );
 
+export const nodeSshCredentials = pgTable(
+  "node_ssh_credentials",
+  {
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    fingerprint: varchar("fingerprint", { length: 160 }).notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    nodeId: varchar("node_id", { length: 160 })
+      .notNull()
+      .references(() => nodes.id, { onDelete: "cascade" }),
+    // SSH private keys must be replayable to authenticate the runner's SSH
+    // session, so they are encrypted at rest with the controller master key
+    // (AES-256-GCM, see node-ssh-credential-crypto), not hashed.
+    privateKeyEncrypted: text("private_key_encrypted").notNull(),
+    publicKey: text("public_key").notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+    username: varchar("username", { length: 64 }).notNull().default("rakkr"),
+  },
+  (table) => ({
+    nodeIdx: index("node_ssh_credentials_node_idx").on(table.nodeId),
+  }),
+);
+
 export const audioInterfaces = pgTable(
   "audio_interfaces",
   {

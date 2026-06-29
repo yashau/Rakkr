@@ -2,9 +2,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import shutil
+import ssl
 import subprocess
 import tempfile
+import urllib.error
+import urllib.request
 import uuid
+from urllib.parse import quote
 
 ACTIONS = {
     "install_dependencies",
@@ -12,6 +16,16 @@ ACTIONS = {
     "restart_service",
     "rotate_trust",
     "smoke_check",
+}
+
+# Lifecycle actions that (re)write the agent unit/env, so the controller mints a
+# fresh node token for the agent. Read-only actions (smoke_check) leave the
+# running agent's token untouched.
+TOKEN_PROVISION_ACTIONS = {
+    "install_dependencies",
+    "update_binary",
+    "restart_service",
+    "rotate_trust",
 }
 
 
@@ -75,9 +89,13 @@ def run_lifecycle(payload):
     run_id = f"ansible_{uuid.uuid4()}"
     with tempfile.TemporaryDirectory() as tmpdir:
         inventory = os.path.join(tmpdir, "inventory.json")
-        write_inventory(inventory, host.strip(), options, config, tmpdir)
+        # The controller is the system of record for per-node SSH keys + tokens.
+        # When configured, fetch them per run so secrets never live in
+        # RAKKR_ANSIBLE_TARGETS; otherwise fall back to the env/targets config.
+        material = fetch_controller_ssh_material(target.get("nodeId"), action, tmpdir)
+        write_inventory(inventory, host.strip(), options, config, tmpdir, material)
         process = subprocess.run(
-            ansible_command(inventory, action, target, options, config),
+            ansible_command(inventory, action, target, options, config, material),
             capture_output=True,
             env=ansible_env(),
             text=True,
@@ -93,13 +111,16 @@ def run_lifecycle(payload):
     }
 
 
-def write_inventory(path, host, options, config, tmpdir):
+def write_inventory(path, host, options, config, tmpdir, material=None):
+    material = material or {}
     user = (
         options.get("sshUser")
+        or material.get("username")
         or config_value(config, "sshUser")
         or os.environ.get("RAKKR_ANSIBLE_DEFAULT_SSH_USER", "rakkr")
     )
-    key_file = prepare_key_file(
+    # Controller-fetched key wins; otherwise fall back to per-node/env key file.
+    key_file = material.get("keyFile") or prepare_key_file(
         config_value(config, "sshKeyFile") or os.environ.get("RAKKR_ANSIBLE_SSH_KEY_FILE"),
         tmpdir,
     )
@@ -144,6 +165,70 @@ def write_inventory(path, host, options, config, tmpdir):
         inventory_file.write("\n")
 
 
+def fetch_controller_ssh_material(node_id, action, tmpdir):
+    base = os.environ.get("RAKKR_RUNNER_CONTROLLER_URL")
+    token = os.environ.get("RAKKR_RUNNER_TOKEN")
+
+    if not base or not token or not isinstance(node_id, str) or not node_id.strip():
+        return None
+
+    mint = "1" if action in TOKEN_PROVISION_ACTIONS else "0"
+    url = (
+        f"{base.rstrip('/')}/api/v1/nodes/{quote(node_id.strip())}"
+        f"/ssh-credential/material?mintToken={mint}"
+    )
+    request = urllib.request.Request(url, headers={"authorization": f"Bearer {token}"})
+
+    try:
+        with urllib.request.urlopen(
+            request, timeout=controller_fetch_timeout_seconds(), context=controller_ssl_context()
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        # 404 = no managed SSH credential yet; fall back to env/targets config.
+        if error.code == 404:
+            return None
+        raise ValueError(f"controller_ssh_fetch_failed_{error.code}")
+    except urllib.error.URLError as error:
+        raise ValueError(f"controller_ssh_fetch_unreachable:{error.reason}")
+
+    data = payload.get("data") or {}
+    private_key = data.get("privateKey")
+
+    if not isinstance(private_key, str) or not private_key.strip():
+        return None
+
+    key_file = os.path.join(tmpdir, "controller_ssh_key")
+    with open(key_file, "w", encoding="utf-8") as handle:
+        handle.write(private_key if private_key.endswith("\n") else f"{private_key}\n")
+    os.chmod(key_file, 0o600)
+
+    return {
+        "controllerToken": data.get("controllerToken"),
+        "keyFile": key_file,
+        "publicKey": data.get("publicKey"),
+        "username": data.get("username"),
+    }
+
+
+def controller_ssl_context():
+    if os.environ.get("RAKKR_RUNNER_ALLOW_INSECURE", "0") == "1":
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
+
+    ca_file = os.environ.get("RAKKR_RUNNER_CONTROLLER_CA")
+    if ca_file and os.path.exists(ca_file):
+        return ssl.create_default_context(cafile=ca_file)
+
+    return ssl.create_default_context()
+
+
+def controller_fetch_timeout_seconds():
+    return int(os.environ.get("RAKKR_RUNNER_CONTROLLER_TIMEOUT_SECONDS", "20"))
+
+
 def prepare_key_file(key_file, tmpdir):
     if not key_file:
         return None
@@ -157,7 +242,8 @@ def prepare_key_file(key_file, tmpdir):
     return target
 
 
-def ansible_command(inventory, action, target, options, config):
+def ansible_command(inventory, action, target, options, config, material=None):
+    material = material or {}
     extra_vars = {
         "rakkr_agent_binary_src": os.environ.get(
             "RAKKR_ANSIBLE_BINARY_SRC",
@@ -182,9 +268,14 @@ def ansible_command(inventory, action, target, options, config):
         "rakkr_controller_url": str_option(options, "controllerUrl")
         or config_value(config, "controllerUrl")
         or os.environ.get("RAKKR_ANSIBLE_CONTROLLER_URL"),
-        "rakkr_controller_token": str_option(options, "controllerToken")
+        # Controller-minted token (per-deploy) wins over per-run/config/env tokens.
+        "rakkr_controller_token": material.get("controllerToken")
+        or str_option(options, "controllerToken")
         or config_value(config, "controllerToken")
         or os.environ.get("RAKKR_ANSIBLE_CONTROLLER_TOKEN"),
+        # OpenSSH public key the controller holds for this node; rotate_trust
+        # installs it into the agent user's authorized_keys.
+        "rakkr_authorized_key": material.get("publicKey"),
         "rakkr_allow_insecure_controller": str_option(options, "allowInsecureController")
         or config_value(config, "allowInsecureController")
         or os.environ.get("RAKKR_ANSIBLE_ALLOW_INSECURE_CONTROLLER"),

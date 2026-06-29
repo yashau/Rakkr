@@ -54,6 +54,28 @@
     - "{{ rakkr_agent_config_dir }}"
   when: rakkr_lifecycle_action in ["install_dependencies", "update_binary", "rotate_trust"]
 
+- name: Ensure recorder agent SSH directory exists
+  ansible.builtin.file:
+    group: "{{ rakkr_agent_group }}"
+    mode: "0700"
+    owner: "{{ rakkr_agent_user }}"
+    path: "{{ rakkr_agent_state_dir }}/.ssh"
+    state: directory
+  when:
+    - rakkr_lifecycle_action in ["install_dependencies", "update_binary", "rotate_trust"]
+    - rakkr_authorized_key | default('') | length > 0
+
+- name: Install controller-managed authorized key
+  ansible.builtin.copy:
+    content: "{{ rakkr_authorized_key }}\n"
+    dest: "{{ rakkr_agent_state_dir }}/.ssh/authorized_keys"
+    group: "{{ rakkr_agent_group }}"
+    mode: "0600"
+    owner: "{{ rakkr_agent_user }}"
+  when:
+    - rakkr_lifecycle_action in ["install_dependencies", "update_binary", "rotate_trust"]
+    - rakkr_authorized_key | default('') | length > 0
+
 - name: Deploy recorder-agent binary
   ansible.builtin.include_tasks: update_binary.yml
   when: rakkr_lifecycle_action == "update_binary"

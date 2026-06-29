@@ -32,6 +32,7 @@ import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
+import { createNodeSshCredentialStore } from "./node-ssh-credential-store.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
 import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
@@ -58,6 +59,7 @@ const listenMonitorStore = createListenMonitorStore();
 const listenSessionStore = createListenSessionStore();
 const meterFrameStore = createMeterFrameStore();
 const nodeStore = createNodeStore(seedNodes);
+const sshCredentialStore = createNodeSshCredentialStore();
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
@@ -727,6 +729,7 @@ registerNodeRoutes({
   recordAuditEvent,
   requirePermission,
   scopedNodes,
+  sshCredentialStore,
 });
 
 registerScheduleRoutes({

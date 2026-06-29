@@ -56,6 +56,41 @@ docker compose up -d --build ansible-runner
 The runner copies the mounted private key into a per-run temp directory with
 `0600` permissions before invoking Ansible.
 
+## Controller-managed SSH credentials (preferred)
+
+The controller is the system of record for each node's SSH key and controller
+token. When the runner is pointed at the controller it fetches the per-node SSH
+private key (and, for deploy actions, a freshly-minted controller token) at run
+time, so **no SSH secrets need to live in `RAKKR_ANSIBLE_TARGETS`** — it shrinks
+to a non-secret host map.
+
+```powershell
+$env:RAKKR_RUNNER_CONTROLLER_URL = "https://controller.internal:8787"
+$env:RAKKR_RUNNER_TOKEN = "<shared runner token, also set as RAKKR_RUNNER_TOKEN on the API>"
+# Self-signed controller CA (optional): point at a mounted bundle, or allow insecure for dev.
+$env:RAKKR_RUNNER_CONTROLLER_CA = "/run/rakkr/controller-ca.pem"
+# $env:RAKKR_RUNNER_ALLOW_INSECURE = "1"   # dev only
+$env:RAKKR_ANSIBLE_TARGETS = '{"node_x32_test":{"host":"172.22.145.152"}}'
+```
+
+Provision a node's key with the operator API (`node:manage`):
+
+```bash
+curl -X POST https://controller.internal:8787/api/v1/nodes/node_x32_test/ssh-credential/rotate \
+  -H "authorization: Bearer <session token>"
+# -> returns the OpenSSH public key + SHA256 fingerprint (private key stays controller-side)
+```
+
+The controller stores the private key encrypted at rest with the master key
+(`RAKKR_NODE_SSH_MASTER_KEY`, falling back to `RAKKR_SECRET_KEY`). The runner
+`rotate_trust`/`install_dependencies`/`update_binary` actions install the public
+half into the agent user's `authorized_keys`. The runner writes the fetched
+private key to a per-run `0600` temp file and deletes it when the run ends.
+
+When `RAKKR_RUNNER_CONTROLLER_URL`/`RAKKR_RUNNER_TOKEN` are unset, or the node has
+no managed SSH credential yet (HTTP 404), the runner falls back to the
+`RAKKR_ANSIBLE_TARGETS`/env key described above.
+
 ## Binary Deployment
 
 `update_binary` deploys the recorder-agent from a published GitHub release by

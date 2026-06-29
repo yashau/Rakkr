@@ -26,6 +26,8 @@ import { registerNodeActionRoutes } from "./node-action-routes.js";
 import { registerNodeInventoryRoutes } from "./node-inventory-routes.js";
 import { nodeLifecycleService, type NodeLifecycleService } from "./node-lifecycle.js";
 import { registerNodeLifecycleRoutes } from "./node-lifecycle-routes.js";
+import { registerNodeSshCredentialRoutes } from "./node-ssh-credential-routes.js";
+import type { NodeSshCredentialStore } from "./node-ssh-credential-store.js";
 import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
 
@@ -45,6 +47,7 @@ interface NodeRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
+  sshCredentialStore: NodeSshCredentialStore;
 }
 
 const nodeInterfaceSchema = z.object({
@@ -143,6 +146,7 @@ export function registerNodeRoutes({
   recordAuditEvent,
   requirePermission,
   scopedNodes,
+  sshCredentialStore,
 }: NodeRouteDependencies) {
   registerNodeInventoryRoutes({
     app,
@@ -169,6 +173,16 @@ export function registerNodeRoutes({
     recordAuditEvent,
     requirePermission,
     scopedNodes,
+  });
+  registerNodeSshCredentialRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    nodeStore,
+    recordAuditEvent,
+    requirePermission,
+    scopedNodes,
+    sshCredentialStore,
   });
 
   app.post(

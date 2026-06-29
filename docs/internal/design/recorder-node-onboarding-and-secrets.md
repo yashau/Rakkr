@@ -264,11 +264,23 @@ correct from its very first registration.
   Enrollment interfaces are now advisory. Covered by API unit/route tests and the
   fake-controller smoke.
 
-- **Phase 1 — Credential store + runner fetch.** Add `node_ssh_credentials`,
-  the master key, and runner→controller credential fetch. Immediately removes
-  SSH secrets from `RAKKR_ANSIBLE_TARGETS`. Builds directly on this session's
-  runner/role config-threading. Migrate the existing rig (`node_x32_test`) from
-  the temporary manual token to a managed credential.
+- **Phase 1 — Credential store + runner fetch. ✅ IMPLEMENTED.** Added
+  `node_ssh_credentials` (migration `0031`) with controller-side ed25519/RSA
+  keypair generation + AES-256-GCM encryption at rest under a dedicated master
+  key (`RAKKR_NODE_SSH_MASTER_KEY`, falls back to `RAKKR_SECRET_KEY`):
+  `node-ssh-credential-crypto.ts` + `node-ssh-credential-store.ts`. Routes
+  (`node-ssh-credential-routes.ts`): operator `node:manage` rotate + read (public
+  half only), and a runner-scoped `GET /nodes/:id/ssh-credential/material`
+  (Bearer `RAKKR_RUNNER_TOKEN`) returning the decrypted key + an optional
+  freshly-minted controller token (`?mintToken=1` for deploy actions). `runner.py`
+  fetches per-node SSH key + token from the controller when
+  `RAKKR_RUNNER_CONTROLLER_URL`/`RAKKR_RUNNER_TOKEN` are set (falling back to
+  `RAKKR_ANSIBLE_TARGETS`), and the `recorder_node` role installs the public key
+  into the agent user's `authorized_keys`. Private keys are never returned to
+  operators or logged. Covered by crypto + route tests. **Rig migration is
+  operational:** call the rotate endpoint for `node_x32_test`, place/confirm the
+  public key on the rig (or run `rotate_trust`), then drop the SSH key from
+  `RAKKR_ANSIBLE_TARGETS`.
 - **Phase 2 — Day-0 bootstrap.** Bootstrap tokens + bootstrap endpoint +
   `--bootstrap` agent mode + the `rakkr.org/agent.sh` installer and
   autoinstall / cloud-init templates.
