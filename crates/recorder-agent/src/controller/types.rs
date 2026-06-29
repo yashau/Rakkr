@@ -13,6 +13,9 @@ pub struct CacheFileUpload<'a> {
     pub file_path: &'a std::path::Path,
     pub job_id: Option<&'a str>,
     pub recording_id: &'a str,
+    /// Optional rendition marker forwarded as `?rendition=raw|enhanced`. `None`
+    /// uploads the primary (legacy) recording file.
+    pub rendition: Option<&'a str>,
     pub token: &'a str,
 }
 
@@ -38,6 +41,7 @@ pub struct ControllerCaptureCommand {
     pub capture_sample_rate: u32,
     pub channel_map: Option<ControllerRecordingJobChannelMap>,
     pub duration_seconds: u64,
+    pub enhancement: Option<ControllerRecordingEnhancement>,
     pub output_bitrate_kbps: Option<u32>,
     pub output_codec: Option<String>,
     pub output_file_name: String,
@@ -46,6 +50,69 @@ pub struct ControllerCaptureCommand {
     pub track_group_id: Option<String>,
     pub track_index: Option<u32>,
     pub track_total: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerRecordingEnhancement {
+    pub keep_raw: bool,
+    pub denoise: ControllerEnhancementDenoise,
+    pub highpass: ControllerEnhancementHighpass,
+    pub lowpass: ControllerEnhancementLowpass,
+    pub deesser: ControllerEnhancementDeesser,
+    pub compressor: ControllerEnhancementCompressor,
+    pub loudnorm: ControllerEnhancementLoudnorm,
+    pub gate: ControllerEnhancementGate,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerEnhancementDenoise {
+    pub enabled: bool,
+    pub engine: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerEnhancementHighpass {
+    pub enabled: bool,
+    pub hz: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerEnhancementLowpass {
+    pub enabled: bool,
+    pub hz: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerEnhancementDeesser {
+    pub enabled: bool,
+    pub intensity: f32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerEnhancementCompressor {
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerEnhancementLoudnorm {
+    pub enabled: bool,
+    pub target_i: f32,
+    pub true_peak: f32,
+    pub lra: f32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerEnhancementGate {
+    pub enabled: bool,
+    pub threshold_db: f32,
 }
 
 #[derive(Debug, Deserialize)]

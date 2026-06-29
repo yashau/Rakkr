@@ -96,6 +96,7 @@ export interface RecordingPlaybackSession {
 }
 
 export interface ListenMonitorSession {
+  enhance: boolean;
   mode: "agent_audio_chunk" | "controller_meter_preview";
   nodeId: string;
   sessionId: string;
@@ -831,7 +832,10 @@ export const api = {
       method: "POST",
     }),
   recordingFile: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/file`),
-  recordingStream: (recordingId: string) => fetchBlob(`/api/v1/recordings/${recordingId}/stream`),
+  recordingStream: (recordingId: string, rendition?: "enhanced" | "raw") =>
+    fetchBlob(
+      `/api/v1/recordings/${recordingId}/stream${rendition ? `?rendition=${rendition}` : ""}`,
+    ),
   runScheduleNow: (scheduleId: string) =>
     fetchJson<{ data: RecordingSummary; job: RecordingJob }>(
       `/api/v1/schedules/${scheduleId}/run-now`,
@@ -855,8 +859,10 @@ export const api = {
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
       method: "POST",
     }),
-  startListen: (nodeId: string) =>
+  startListen: (nodeId: string, enhance = false) =>
     fetchJson<{ data: ListenMonitorSession }>(`/api/v1/nodes/${nodeId}/listen`, {
+      body: JSON.stringify({ enhance }),
+      headers: { "content-type": "application/json" },
       method: "POST",
     }),
   listenStream: (streamUrl: string) => fetchBlob(streamUrl),

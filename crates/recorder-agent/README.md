@@ -101,6 +101,19 @@ The agent writes a lifecycle-managed local JSONL health log and, when a node tok
 | System health | Disk pressure, CPU pressure, audio-backend unavailable/recovered |
 | Cache health | Recorder-cache cleanup, delete failure, tracking sync, tracking failure |
 
+## 🎙️ Voice enhancement
+
+`src/enhance.rs` denoises 48 kHz mono audio in-process with **DeepFilterNet3**
+(`deep_filter`, tract inference, embedded model) or **RNNoise** (`nnnoiseless`) — no
+extra node packages. When a recording profile enables enhancement,
+`channel_map::render_enhanced_output` produces an enhanced rendition (ffmpeg downmix
+→ in-process denoise → ffmpeg voice chain: high-pass, low-pass, de-esser,
+compressor, loudnorm, gate) and the agent uploads it alongside the preserved raw
+master. The live-listen monitor reuses the same denoiser **on demand**: when the
+controller's node config reports a listener wants enhanced audio, the meter loop
+denoises the captured 48 kHz PCM and posts an extra `?rendition=enhanced` monitor
+chunk; otherwise only the raw chunk is sent. See [Audio enhancement](https://github.com/yashau/Rakkr/blob/main/docs/guides/audio-enhancement.md).
+
 ## 🔊 Backends
 
 | Backend | Capture | Meter |

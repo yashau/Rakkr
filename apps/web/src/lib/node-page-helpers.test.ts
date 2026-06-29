@@ -6,6 +6,9 @@ import {
   defaultNodeHealthSuppressedUntil,
   listenMonitorModeLabel,
   listenMonitorPollInterval,
+  liveListenRendition,
+  liveListenRenditionLabel,
+  liveListenRenditions,
   nodeFilterChips,
   nodeHealthLifecycleActions,
   nodeHealthLifecycleInput,
@@ -122,6 +125,14 @@ test("listen monitor helpers expose source labels and bounded refresh intervals"
   assert.equal(listenMonitorPollInterval(1250), 1250);
   assert.equal(listenMonitorPollInterval(10_000), 3000);
   assert.equal(listenMonitorPollInterval(Number.NaN), 1500);
+});
+
+test("live listen rendition helpers map the session enhance flag to a labeled toggle", () => {
+  assert.deepEqual(liveListenRenditions, ["raw", "enhanced"]);
+  assert.equal(liveListenRendition(false), "raw");
+  assert.equal(liveListenRendition(true), "enhanced");
+  assert.equal(liveListenRenditionLabel("raw"), "Raw");
+  assert.equal(liveListenRenditionLabel("enhanced"), "Enhanced");
 });
 
 test("node health lifecycle actions match event status", () => {

@@ -17,7 +17,10 @@ use crate::recording_job_recovery::{
     write_recoverable_job_state,
 };
 use crate::recording_job_segments::stitch_recovered_capture_segments;
-use crate::recording_job_upload::{UploadCheckpoint, write_upload_checkpoint_state};
+use crate::recording_job_upload::{
+    RenditionUploadInputs, UploadCheckpoint, append_job_health_event, upload_recording_renditions,
+    write_upload_checkpoint_state,
+};
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 use anyhow::Context;
@@ -30,7 +33,8 @@ use tracing::{info, warn};
 use types::DataEnvelope;
 pub use types::{
     CacheFileUpload, ControllerCaptureCommand, ControllerChannelMapBundle,
-    ControllerChannelMapEntry, ControllerRecordingJob, ControllerRecordingJobChannelMap,
+    ControllerChannelMapEntry, ControllerRecordingEnhancement, ControllerRecordingJob,
+    ControllerRecordingJobChannelMap,
 };
 #[cfg(test)]
 pub use types::{ControllerChannelMapAssignment, ControllerChannelMapTemplate};
@@ -99,6 +103,7 @@ pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {
         file_path,
         job_id: None,
         recording_id,
+        rendition: None,
         token,
     })
     .await
@@ -558,16 +563,16 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     };
     write_upload_checkpoint_state(config, &job, "upload_pending", &upload_checkpoint, None)?;
 
-    let upload_result = upload_cache_file(CacheFileUpload {
-        allow_insecure_controller: config.allow_insecure_controller,
+    // Produce the best-effort enhanced rendition and upload both renditions.
+    let upload_result = upload_recording_renditions(RenditionUploadInputs {
+        capture_plan: &capture_plan,
+        config,
         content_type: upload_content_type,
-        controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
-        controller_url: &config.controller_url,
-        duration_seconds: Some(job.command.duration_seconds),
-        file_name: Some(upload_file_name.clone()),
-        file_path: &output_path,
-        job_id: Some(&job.id),
-        recording_id: &job.recording_id,
+        duration_seconds: job.command.duration_seconds,
+        file_name: &upload_file_name,
+        job: &job,
+        output_path: &output_path,
+        raw_output_path: &raw_output_path,
         token,
     })
     .await;
@@ -666,7 +671,11 @@ pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()>
         );
     }
 
-    let url = recording_cache_url(input.controller_url, input.recording_id);
+    let mut url = recording_cache_url(input.controller_url, input.recording_id);
+    if let Some(rendition) = input.rendition {
+        url.push_str("?rendition=");
+        url.push_str(rendition);
+    }
     let mut request = controller_http_client_with_ca(input.controller_ca_cert_path)?
         .put(&url)
         .bearer_auth(input.token)
@@ -790,30 +799,6 @@ pub async fn sync_health_event(
         let body = response.text().await.unwrap_or_default();
 
         anyhow::bail!("controller rejected health event with {status}: {body}");
-    }
-
-    Ok(())
-}
-
-pub(crate) async fn append_job_health_event(
-    config: &AgentConfig,
-    token: &str,
-    job: &ControllerRecordingJob,
-    event_type: &str,
-    severity: &str,
-    details: serde_json::Value,
-) -> anyhow::Result<()> {
-    let event = health_log::append_health_event_with_targets(
-        config,
-        event_type,
-        severity,
-        details,
-        Some(job.recording_id.clone()),
-        None,
-    )?;
-
-    if let Err(error) = sync_health_event(config, token, &event).await {
-        warn!(event_type, error = %error, "failed to sync recording job health event");
     }
 
     Ok(())

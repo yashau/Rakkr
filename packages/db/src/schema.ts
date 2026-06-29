@@ -475,7 +475,12 @@ export const recordings = pgTable(
     checksum: varchar("checksum", { length: 160 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     durationSeconds: integer("duration_seconds").notNull().default(0),
+    // Voice-enhancement renditions. `cachePath` stays the default-playback file;
+    // `rawCachePath`/`enhancedCachePath` are set when both renditions exist so the
+    // player and live monitor can switch between raw and enhanced audio.
+    enhancedCachePath: text("enhanced_cache_path"),
     folder: text("folder").notNull(),
+    rawCachePath: text("raw_cache_path"),
     healthStatus: varchar("health_status", { length: 32 }).notNull().default("unknown"),
     id: varchar("id", { length: 160 }).primaryKey(),
     metadata: jsonb("metadata")

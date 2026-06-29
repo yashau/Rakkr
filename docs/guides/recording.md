@@ -73,6 +73,11 @@ length used for scheduled auto-splitting. The built-in default is a voice
 MP3-VBR profile (~128 kbps). Defaults are configuration, never hard-coded engine
 behavior.
 
+Profiles also carry the [voice-enhancement chain](audio-enhancement.md) — in-process
+noise suppression (DeepFilterNet3 or RNNoise) plus high-pass, loudness
+normalization, and more — which produces an enhanced rendition alongside the
+preserved raw master.
+
 ## The recording library
 
 The **Recordings** page (`recording:read`) is the operational library:

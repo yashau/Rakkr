@@ -9,7 +9,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, type ListenMonitorSession } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
-import { listenMonitorModeLabel, listenMonitorPollInterval } from "@/lib/node-page-helpers";
+import {
+  type LiveListenRendition,
+  listenMonitorModeLabel,
+  listenMonitorPollInterval,
+  liveListenRendition,
+  liveListenRenditionLabel,
+  liveListenRenditions,
+} from "@/lib/node-page-helpers";
 
 export interface ListenMonitorPreview {
   nodeAlias: string;
@@ -18,11 +25,13 @@ export interface ListenMonitorPreview {
 
 interface ListenMonitorPanelProps {
   onClose: () => void;
+  onSessionChange: (session: ListenMonitorSession) => void;
   preview: ListenMonitorPreview;
 }
 
-export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps) {
+export function ListenMonitorPanel({ onClose, onSessionChange, preview }: ListenMonitorPanelProps) {
   const pollInterval = listenMonitorPollInterval(preview.session.targetLatencyMs);
+  const activeRendition = liveListenRendition(preview.session.enhance);
   const [audioUrl, setAudioUrl] = useState<string>();
   const [refreshedAt, setRefreshedAt] = useState<string>();
   const stopMutation = useMutation({
@@ -33,6 +42,22 @@ export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps
       }),
     onSettled: onClose,
   });
+  // Switching rendition restarts the session with the other enhance flag: the
+  // controller selects the stream rendition from the session, and the agent only
+  // produces enhanced chunks while a session asks for them.
+  const switchMutation = useMutation({
+    mutationFn: async (rendition: LiveListenRendition) => {
+      await api.stopListen(preview.session).catch(() => undefined);
+
+      return api.startListen(preview.session.nodeId, rendition === "enhanced");
+    },
+    onError: () =>
+      toast.error("Switch audio failed", {
+        description: "The live listen rendition could not be changed.",
+      }),
+    onSuccess: ({ data }) => onSessionChange(data),
+  });
+  const renditionBusy = switchMutation.isPending || stopMutation.isPending;
   const streamQuery = useQuery({
     queryFn: () => api.listenStream(preview.session.streamUrl),
     queryKey: ["nodes", "listen-monitor", preview.session.nodeId, preview.session.sessionId],
@@ -70,6 +95,24 @@ export function ListenMonitorPanel({ onClose, preview }: ListenMonitorPanelProps
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex overflow-hidden rounded-md border border-border">
+            {liveListenRenditions.map((rendition) => (
+              <button
+                aria-pressed={activeRendition === rendition}
+                className={`px-2.5 py-1 text-xs font-medium disabled:opacity-60 ${
+                  activeRendition === rendition
+                    ? "bg-zinc-950 text-white"
+                    : "bg-background text-stone-600 hover:bg-stone-100"
+                }`}
+                disabled={renditionBusy || activeRendition === rendition}
+                key={rendition}
+                onClick={() => switchMutation.mutate(rendition)}
+                type="button"
+              >
+                {liveListenRenditionLabel(rendition)}
+              </button>
+            ))}
+          </div>
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex">

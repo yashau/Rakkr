@@ -4,6 +4,7 @@ import path from "node:path";
 import { createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
 import {
   defaultVoiceRecordingProfile,
+  recordingEnhancementSchema,
   type RetentionPolicy,
   type RecordingJob,
   type RecordingJobStatus,
@@ -83,6 +84,7 @@ export async function createRecordingJob(
       channelMap: options.channelMap,
       durationSeconds:
         options.durationSeconds ?? positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SECONDS, 3_600),
+      enhancement: profile.enhancement,
       outputBitrateKbps: profile.bitrateKbps,
       outputCodec: profile.codec,
       outputFileName: `${recording.id}.${profile.codec}`,
@@ -634,6 +636,7 @@ function commandFromValue(value: unknown): RecordingJobCommand {
     captureSampleRate: positiveIntegerFromUnknown(value.captureSampleRate, 48_000),
     channelMap: channelMapFromValue(value.channelMap),
     durationSeconds: positiveIntegerFromUnknown(value.durationSeconds, 3_600),
+    enhancement: enhancementFromValue(value.enhancement),
     outputBitrateKbps: optionalPositiveInteger(value.outputBitrateKbps),
     outputCodec: outputCodecFromUnknown(value.outputCodec),
     outputFileName: stringFromUnknown(value.outputFileName, "recording.wav"),
@@ -730,6 +733,16 @@ function channelModeFromUnknown(
 
 function outputCodecFromUnknown(value: unknown): RecordingJobCommand["outputCodec"] {
   return value === "mp3" || value === "flac" || value === "wav" ? value : undefined;
+}
+
+function enhancementFromValue(value: unknown): RecordingJobCommand["enhancement"] {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const result = recordingEnhancementSchema.safeParse(value);
+
+  return result.success ? result.data : undefined;
 }
 
 function recorderCacheRetentionFromValue(

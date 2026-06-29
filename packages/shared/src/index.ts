@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { recordingEnhancementSchema } from "./enhancement.js";
+export * from "./enhancement.js";
+
 export const isoDateTimeSchema = z.string().min(1);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const dbfsSchema = z.number().min(-160).max(24);
@@ -304,6 +307,7 @@ export const recordingProfileSchema = z.object({
   bitrateKbps: z.number().int().positive(),
   channelMode: channelModeSchema,
   codec: z.enum(["mp3", "flac", "wav"]),
+  enhancement: recordingEnhancementSchema.optional(),
   id: z.string().min(1),
   maxTrackSeconds: z.number().int().positive().max(604_800).optional(),
   name: z.string().min(1),
@@ -316,6 +320,7 @@ export const recordingProfileUpdateSchema = z
     bitrateKbps: z.number().int().positive().max(512).optional(),
     channelMode: channelModeSchema.optional(),
     codec: z.enum(["mp3", "flac", "wav"]).optional(),
+    enhancement: recordingEnhancementSchema.optional(),
     maxTrackSeconds: z.number().int().positive().max(604_800).nullable().optional(),
     name: z.string().trim().min(1).max(160).optional(),
     silenceDetectionEnabled: z.boolean().optional(),
@@ -602,6 +607,8 @@ export const recordingSummarySchema = z.object({
   cachePath: z.string().min(1).optional(),
   checksum: z.string().min(1).optional(),
   durationSeconds: z.number().int().nonnegative(),
+  enhancedCachePath: z.string().min(1).optional(),
+  rawCachePath: z.string().min(1).optional(),
   folder: z.string().min(1),
   healthStatus: z.enum(["healthy", "warning", "critical", "unknown"]),
   id: z.string().min(1),
@@ -653,6 +660,7 @@ export const recordingJobSchema = z.object({
     captureSampleRate: z.number().int().positive(),
     channelMap: recordingJobChannelMapSchema.optional(),
     durationSeconds: z.number().int().positive(),
+    enhancement: recordingEnhancementSchema.optional(),
     outputBitrateKbps: z.number().int().positive().optional(),
     outputCodec: z.enum(["mp3", "flac", "wav"]).optional(),
     outputFileName: z.string().min(1),
@@ -852,17 +860,6 @@ export const healthEventSchema = z.object({
   suppressedUntil: isoDateTimeSchema.nullable(),
   type: z.string().min(1),
 });
-
-export const defaultVoiceRecordingProfile = {
-  bitrateKbps: 128,
-  channelMode: "mono_to_stereo_mix",
-  codec: "mp3",
-  id: "voice-mp3-vbr",
-  name: "Voice MP3 VBR",
-  silenceDetectionEnabled: false,
-  silenceSkipEnabled: false,
-  vbr: true,
-} satisfies RecordingProfile;
 
 export const defaultStubUploadPolicy = {
   deleteCacheAfterUpload: false,

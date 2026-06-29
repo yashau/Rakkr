@@ -10,15 +10,15 @@ use crate::capture::{CaptureChild, CapturePlan, spawn_capture_plan};
 use crate::channel_map::channel_map_details;
 use crate::config::{AgentConfig, CaptureBackend};
 use crate::controller::{
-    CacheFileUpload, ControllerRecordingJob, append_job_health_event, mark_recording_job_failed,
-    sync_health_event, upload_cache_file,
+    CacheFileUpload, ControllerRecordingJob, mark_recording_job_failed, sync_health_event,
+    upload_cache_file,
 };
 use crate::health_log;
 use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
 use crate::recording_job_segments::{
     RecoveredCaptureSegment, RuntimeCaptureRecovery, preserve_recovered_capture_segment,
 };
-use crate::recording_job_upload::apply_recovered_upload_retention;
+use crate::recording_job_upload::{append_job_health_event, apply_recovered_upload_retention};
 use crate::state::{
     AgentJobState, AgentRecoveredCaptureSegment, read_job_state, write_job_state_snapshot,
 };
@@ -157,6 +157,7 @@ pub(crate) async fn reconcile_previous_recording_job(
             file_path: &output_path,
             job_id: Some(&state.job_id),
             recording_id: &state.recording_id,
+            rendition: None,
             token,
         })
         .await

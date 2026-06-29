@@ -7,7 +7,8 @@ use std::process::Command;
 
 use crate::capture::{CaptureChild, CapturePlan};
 use crate::config::AgentConfig;
-use crate::controller::{ControllerRecordingJob, append_job_health_event};
+use crate::controller::ControllerRecordingJob;
+use crate::recording_job_upload::append_job_health_event;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RecoveredCaptureSegment {

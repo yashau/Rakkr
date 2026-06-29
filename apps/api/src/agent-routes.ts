@@ -2,7 +2,6 @@ import type { Context, Hono } from "hono";
 import type { RecordingSummary } from "@rakkr/shared";
 
 import {
-  assignedChannelMaps,
   durationFromHeader,
   nodeActor,
   nodeHealthEventDetails,
@@ -14,11 +13,13 @@ import {
 } from "./agent-route-helpers.js";
 import { nodeHealthEventScopeFailure } from "./agent-health-event-scope.js";
 import { bearerToken } from "./auth-utils.js";
+import { registerAgentChannelMapRoute } from "./agent-channel-map-route.js";
 import { registerAgentMeterFrameRoute } from "./agent-meter-frame-route.js";
 import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
 import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
+import type { ListenSessionStore } from "./listen-session-store.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { NodeStoreError, type NodeCredentialAuth, type NodeStore } from "./node-store.js";
 import {
@@ -32,7 +33,7 @@ import {
 } from "./recording-jobs.js";
 import { agentCacheFileJobScope, agentJobRecordingScope } from "./agent-job-recording-scope.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
-import { storeRecordingFile } from "./recording-cache.js";
+import { applyStoredRendition, storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -42,6 +43,7 @@ import { enqueueRecordingUpload } from "./upload-queue.js";
 interface AgentRouteDependencies {
   app: Hono<AppBindings>;
   healthEventStore: HealthEventStore;
+  listenSessionStore?: ListenSessionStore;
   meterFrameStore: MeterFrameStore;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
@@ -61,6 +63,7 @@ type NodeServicePermission = "health:acknowledge" | "node:control" | "recording:
 export function registerAgentRoutes({
   app,
   healthEventStore,
+  listenSessionStore,
   meterFrameStore,
   nodeStore,
   recordAuditEvent,
@@ -70,6 +73,7 @@ export function registerAgentRoutes({
 }: AgentRouteDependencies) {
   registerAgentNodeConfigRoute({
     app,
+    listenSessionStore,
     nodeStore,
     recordAuditEvent,
   });
@@ -79,67 +83,11 @@ export function registerAgentRoutes({
     nodeStore,
     recordAuditEvent,
   });
-
-  app.get("/api/v1/nodes/:nodeId/channel-map-assignments", async (c) => {
-    const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(
-      c,
-      "nodes.channel_map_assignments.read",
-      {
-        id: nodeId,
-        type: "node",
-      },
-      "node:control",
-    );
-
-    if (auth.response) {
-      return auth.response;
-    }
-
-    if (auth.credential.nodeId !== nodeId) {
-      await recordNodeCredentialFailure(
-        c,
-        "nodes.channel_map_assignments.read.failed",
-        "node_scope_denied",
-        {
-          actor: auth.credential,
-          permission: "node:control",
-          target: { id: nodeId, type: "node" },
-        },
-      );
-      return c.json({ error: "Node credential cannot access this node" }, 403);
-    }
-
-    const node = await nodeStore.find(nodeId);
-
-    if (!node) {
-      await recordNodeCredentialFailure(
-        c,
-        "nodes.channel_map_assignments.read.failed",
-        "node_not_found",
-        {
-          actor: auth.credential,
-          permission: "node:control",
-          target: { id: nodeId, type: "node" },
-        },
-      );
-      return c.json({ error: "Node not found" }, 404);
-    }
-
-    const assignments = await assignedChannelMaps(node, settingsStore);
-
-    await recordAuditEvent(c, {
-      action: "nodes.channel_map_assignments.read.succeeded",
-      actor: nodeActor(auth.credential),
-      details: {
-        assignmentCount: assignments.length,
-      },
-      outcome: "succeeded",
-      permission: "node:control",
-      target: { id: nodeId, type: "node" },
-    });
-
-    return c.json({ data: assignments });
+  registerAgentChannelMapRoute({
+    app,
+    nodeStore,
+    recordAuditEvent,
+    settingsStore,
   });
 
   app.post("/api/v1/nodes/:nodeId/heartbeat", async (c) => {
@@ -617,12 +565,19 @@ export function registerAgentRoutes({
       return c.json({ error: "Invalid x-rakkr-duration-seconds header" }, 400);
     }
 
+    const renditionParam = c.req.query("rendition");
+    const rendition =
+      renditionParam === "raw" || renditionParam === "enhanced" ? renditionParam : undefined;
     const before = recordingFileSnapshot(recording);
-    const stored = await storeRecordingFile(recording, {
-      bytes,
-      fileName: c.req.header("x-rakkr-file-name"),
-      mimeType: c.req.header("content-type"),
-    }).catch(async (error: unknown) => {
+    const stored = await storeRecordingFile(
+      recording,
+      {
+        bytes,
+        fileName: c.req.header("x-rakkr-file-name"),
+        mimeType: c.req.header("content-type"),
+      },
+      rendition,
+    ).catch(async (error: unknown) => {
       await recordRecordingFileFailure(c, {
         actor: auth.credential,
         createHealthEvent: true,
@@ -634,19 +589,16 @@ export function registerAgentRoutes({
       });
       throw error;
     });
-
-    recording.cached = true;
-    recording.cachePath = stored.cachePath;
-    recording.checksum = stored.checksum;
-    recording.durationSeconds =
-      durationSeconds ?? stored.durationSeconds ?? Math.max(recording.durationSeconds, 1);
-    recording.status = "cached";
-    recording.waveformPreview = stored.waveformPreview;
+    // The raw rendition is supplementary (no job completion or cloud queue).
+    const supplementary = applyStoredRendition(recording, stored, rendition, durationSeconds);
     await recordingStore.save(recording);
-    const job = scopedJob.job
-      ? await completeRecordingJob(recording.id, scopedJob.job.id)
-      : undefined;
-    const uploadQueueItem = await queueCachedRecordingUpload(c, auth.credential, recording);
+    const job =
+      !supplementary && scopedJob.job
+        ? await completeRecordingJob(recording.id, scopedJob.job.id)
+        : undefined;
+    const uploadQueueItem = supplementary
+      ? undefined
+      : await queueCachedRecordingUpload(c, auth.credential, recording);
     const syncedRecording = await syncAndFindRecording(recording);
 
     await recordAuditEvent(c, {
@@ -661,6 +613,7 @@ export function registerAgentRoutes({
         jobId,
         jobStatus: job?.status,
         mimeType: stored.mimeType,
+        rendition: rendition ?? "primary",
         size: stored.size,
         uploadQueueItemId: uploadQueueItem?.id,
         waveformPeaks: stored.waveformPreview?.peaks.length,

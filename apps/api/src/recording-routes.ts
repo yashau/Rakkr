@@ -115,6 +115,9 @@ export function registerRecordingRoutes({
     permission: "recording:download" | "recording:playback",
   ) {
     const recording = await findScopedRecording(c, recordingId);
+    const renditionParam = c.req.query("rendition");
+    const rendition =
+      renditionParam === "raw" || renditionParam === "enhanced" ? renditionParam : undefined;
     const action =
       disposition === "attachment" ? "recordings.download.file" : "recordings.playback.stream";
 
@@ -134,7 +137,7 @@ export function registerRecordingRoutes({
     }
 
     try {
-      const file = await loadRecordingFile(recording);
+      const file = await loadRecordingFile(recording, rendition);
 
       await recordAuditEvent(c, {
         action: `${action}.succeeded`,
@@ -142,6 +145,7 @@ export function registerRecordingRoutes({
         details: {
           disposition,
           fileName: file.fileName,
+          rendition: rendition ?? "default",
           size: file.size,
         },
         outcome: "succeeded",

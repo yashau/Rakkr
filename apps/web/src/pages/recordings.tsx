@@ -45,16 +45,15 @@ import {
   downloadBlob,
   emptyRecordingFilterDraft,
   filtersFromDraft,
+  availableRecordingRenditions,
   groupHealthEventsByRecording,
   groupUploadItemsByRecording,
   isCachedRecording,
   healthStatuses,
   isTerminalRecording,
-  playbackPreviewFromSession,
   recordingPagePermissions,
   recordingFilterChips,
   recordingFilterDraftKeys,
-  replacePlaybackPreview,
   type RecordingFilterDraft,
   type RecordingFilterKey,
   type RecordingPlaybackPreview,
@@ -65,6 +64,7 @@ import {
   selectClassName,
   uploadQueueStatusSummary,
 } from "@/lib/recording-page-helpers";
+import { useRecordingPlaybackMutation } from "@/lib/recording-playback";
 
 export function RecordingsPage() {
   const queryClient = useQueryClient();
@@ -146,37 +146,10 @@ export function RecordingsPage() {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
     },
   });
-  const playbackMutation = useMutation({
-    mutationFn: async (recordingId: string) => {
-      const playback = await api.startPlayback(recordingId);
-      const stream = await api.recordingStream(recordingId);
-
-      return {
-        playback: playback.data,
-        stream,
-      };
-    },
-    onError: () =>
-      setNotice({
-        detail: "The selected recording could not be opened for playback.",
-        title: "Playback unavailable",
-      }),
-    onSuccess: (response) => {
-      const url = URL.createObjectURL(response.stream.blob);
-      const preview = playbackPreviewFromSession(response.playback, response.stream, url);
-
-      setAudioPreview((current) => {
-        const next = replacePlaybackPreview(current, preview);
-
-        audioPreviewRef.current = next;
-
-        return next;
-      });
-      setNotice({
-        detail: `${response.playback.sessionId} started at ${formatDateTime(response.playback.startedAt)}`,
-        title: "Playback ready",
-      });
-    },
+  const playbackMutation = useRecordingPlaybackMutation({
+    audioPreviewRef,
+    setAudioPreview,
+    setNotice,
   });
   const downloadMutation = useMutation({
     mutationFn: async (recordingId: string) => {
@@ -532,7 +505,16 @@ export function RecordingsPage() {
       ) : null}
 
       {audioPreview ? (
-        <RecordingPlaybackDock onClose={closeAudioPreview} preview={audioPreview} />
+        <RecordingPlaybackDock
+          availableRenditions={availableRecordingRenditions(
+            recordings.find((recording) => recording.id === audioPreview.recordingId),
+          )}
+          onClose={closeAudioPreview}
+          onSelectRendition={(rendition) =>
+            playbackMutation.mutate({ recordingId: audioPreview.recordingId, rendition })
+          }
+          preview={audioPreview}
+        />
       ) : null}
 
       {!pagePermissions.canReadRecordings ? (
@@ -961,7 +943,7 @@ export function RecordingsPage() {
                 key={recording.id}
                 onDelete={() => deleteRecordingMutation.mutate(recording.id)}
                 onDownload={() => downloadMutation.mutate(recording.id)}
-                onPlayback={() => playbackMutation.mutate(recording.id)}
+                onPlayback={() => playbackMutation.mutate({ recordingId: recording.id })}
                 onQueueUpload={(uploadPolicyId) =>
                   enqueueUploadMutation.mutate({ recordingId: recording.id, uploadPolicyId })
                 }

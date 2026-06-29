@@ -362,6 +362,13 @@ available.
   controller sync, jobs, health, cache, inventory, command templates, or capture
   behavior.
 - Use Miri-compatible patterns where existing tests rely on Miri.
+- Voice enhancement is in-process: `src/enhance.rs` denoises 48 kHz mono with
+  DeepFilterNet3 (`deep_filter`, tract, embedded model) or RNNoise (`nnnoiseless`);
+  `channel_map::render_enhanced_output` produces the enhanced rendition (ffmpeg
+  downmix -> in-process denoise -> ffmpeg voice chain) and the agent dual-uploads
+  enhanced + raw. The chain is configured per recording profile; raw is always
+  preserved. Engine tests are excluded under Miri (tract intrinsics). See
+  `docs/guides/audio-enhancement.md`.
 - The agent release version is calendar `YYYY.MM.DD-N`, stamped at build time from
   the release tag: the release workflow sets `RAKKR_AGENT_VERSION` and
   `src/version.rs` embeds it via `option_env!` (unstamped dev/CI builds report

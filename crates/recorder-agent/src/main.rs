@@ -7,6 +7,8 @@ mod command_template;
 mod config;
 mod controller;
 mod controller_http;
+mod enhance;
+mod enhanced_render;
 mod health_log;
 mod inventory;
 mod meter_command;
@@ -124,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
                 .capture_recording_id
                 .as_deref()
                 .context("missing --capture-recording-id")?,
+            rendition: None,
             token,
         })
         .await?;
@@ -154,6 +157,11 @@ async fn main() -> anyhow::Result<()> {
     let mut recording_jobs = JoinSet::new();
     let mut recording_job_limit = config.max_concurrent_recordings.max(1);
     let mut system_health_state = system_health::SystemHealthState::default();
+    // Live-monitor denoiser: created on demand when a listener requests enhanced
+    // audio (driven by the controller node-config poll) and dropped when no one is
+    // listening enhanced, so DSP only runs while it is actually consumed.
+    let mut monitor_enhancer: Option<enhance::Enhancer> = None;
+    let mut monitor_enhancer_engine: Option<enhance::EnhancementEngine> = None;
     let token = config.controller_token.as_deref();
 
     append_and_sync_health_event(
@@ -205,6 +213,7 @@ async fn main() -> anyhow::Result<()> {
                     &meter_context,
                     tick,
                     &mut meter_capture_failure,
+                    monitor_enhancer.as_mut(),
                 ).await?;
                 let frame = &sample.frame;
 
@@ -378,6 +387,12 @@ async fn main() -> anyhow::Result<()> {
                                 recording_job_limit = next_limit;
                             }
 
+                            reconcile_monitor_enhancer(
+                                node_config.monitor_enhancement_engine(),
+                                &mut monitor_enhancer,
+                                &mut monitor_enhancer_engine,
+                            );
+
                             if node_config_sync_failed {
                                 node_config_sync_failed = false;
                                 append_and_sync_health_event(
@@ -483,6 +498,39 @@ async fn run_idle_recorder_cache_sweep(
     .await
 }
 
+/// Bring the live-monitor denoiser in line with the controller's requested engine.
+/// Creates the enhancer when an engine is first requested, rebuilds it on an engine
+/// change, and drops it once no listener wants enhanced audio, so DSP only runs
+/// on demand.
+fn reconcile_monitor_enhancer(
+    requested: Option<enhance::EnhancementEngine>,
+    enhancer: &mut Option<enhance::Enhancer>,
+    current_engine: &mut Option<enhance::EnhancementEngine>,
+) {
+    match requested {
+        Some(engine) if *current_engine == Some(engine) => {}
+        Some(engine) => match enhance::Enhancer::new(engine) {
+            Ok(ready) => {
+                *enhancer = Some(ready);
+                *current_engine = Some(engine);
+                info!(engine = ?engine, "live monitor enhancement enabled");
+            }
+            Err(error) => {
+                *enhancer = None;
+                *current_engine = None;
+                warn!(error = %error, "failed to initialize live monitor enhancer");
+            }
+        },
+        None => {
+            if enhancer.is_some() {
+                info!("live monitor enhancement disabled");
+            }
+            *enhancer = None;
+            *current_engine = None;
+        }
+    }
+}
+
 async fn sync_monitor_chunk(
     config: &AgentConfig,
     token: &str,
@@ -493,7 +541,7 @@ async fn sync_monitor_chunk(
         return Ok(());
     }
 
-    match monitor_sync::post_monitor_chunk(config, token, sample).await {
+    match monitor_sync::post_monitor_chunk(config, token, sample, &sample.monitor_wav, None).await {
         Ok(()) if *monitor_sync_failed => {
             *monitor_sync_failed = false;
             append_and_sync_health_event(
@@ -527,6 +575,17 @@ async fn sync_monitor_chunk(
         Err(error) => {
             warn!(error = %error, "failed to post monitor chunk");
         }
+    }
+
+    // Enhanced monitor audio is best-effort: only produced when a listener has
+    // requested it, and posted alongside (not instead of) the raw chunk. Failures
+    // here must not flip the raw sync health state, so they are logged only.
+    if let Some(enhanced) = sample.enhanced_monitor_wav.as_deref()
+        && let Err(error) =
+            monitor_sync::post_monitor_chunk(config, token, sample, enhanced, Some("enhanced"))
+                .await
+    {
+        warn!(error = %error, "failed to post enhanced monitor chunk");
     }
 
     Ok(())
@@ -653,6 +712,7 @@ async fn next_meter_sample(
     context: &MeterLoopContext<'_>,
     tick: u64,
     meter_capture_failure: &mut Option<MeterFailureKind>,
+    enhancer: Option<&mut enhance::Enhancer>,
 ) -> anyhow::Result<MeterSample> {
     match config.meter_backend {
         MeterBackend::Synthetic => synthetic_meter_sample(
@@ -663,7 +723,12 @@ async fn next_meter_sample(
         )
         .context("failed to create synthetic meter frame"),
         MeterBackend::Alsa | MeterBackend::Jack | MeterBackend::Pipewire => {
-            match alsa_meter_sample(context.node_id, context.interface_id, context.capture) {
+            match alsa_meter_sample(
+                context.node_id,
+                context.interface_id,
+                context.capture,
+                enhancer,
+            ) {
                 Ok(sample) => {
                     if let Some(kind) = meter_capture_failure.take() {
                         append_and_sync_health_event(

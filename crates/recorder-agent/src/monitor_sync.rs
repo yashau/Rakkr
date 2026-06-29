@@ -13,9 +13,15 @@ pub async fn post_monitor_chunk(
     config: &AgentConfig,
     token: &str,
     sample: &MeterSample,
+    audio: &[u8],
+    rendition: Option<&str>,
 ) -> anyhow::Result<()> {
     config.validate_controller_transport()?;
-    let url = node_url(&config.controller_url, &config.node_id, "listen/chunk");
+    let mut url = node_url(&config.controller_url, &config.node_id, "listen/chunk");
+    if let Some(rendition) = rendition {
+        url.push_str("?rendition=");
+        url.push_str(rendition);
+    }
     let response = controller_http_client(config)?
         .post(&url)
         .bearer_auth(token)
@@ -28,7 +34,7 @@ pub async fn post_monitor_chunk(
             HeaderName::from_static(DURATION_MS_HEADER),
             sample.monitor_duration_ms.to_string(),
         )
-        .body(sample.monitor_wav.clone())
+        .body(audio.to_vec())
         .send()
         .await
         .context("post monitor chunk to controller")?;

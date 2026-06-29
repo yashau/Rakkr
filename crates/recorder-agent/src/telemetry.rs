@@ -5,6 +5,7 @@ use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::enhance::Enhancer;
 use crate::meter_command::{MeterCaptureConfig, meter_command_args};
 
 #[derive(Debug, Serialize)]
@@ -20,6 +21,9 @@ pub struct MeterSample {
     pub frame: MeterFrame,
     pub monitor_duration_ms: u64,
     pub monitor_wav: Vec<u8>,
+    // Denoised 16 kHz mono chunk, produced on demand when a listener wants enhanced
+    // monitor audio. None otherwise.
+    pub enhanced_monitor_wav: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -128,13 +132,14 @@ pub fn alsa_meter_frame(
     interface_id: &str,
     config: &MeterCaptureConfig<'_>,
 ) -> anyhow::Result<MeterFrame> {
-    Ok(alsa_meter_sample(node_id, interface_id, config)?.frame)
+    Ok(alsa_meter_sample(node_id, interface_id, config, None)?.frame)
 }
 
 pub fn alsa_meter_sample(
     node_id: &str,
     interface_id: &str,
     config: &MeterCaptureConfig<'_>,
+    enhancer: Option<&mut Enhancer>,
 ) -> anyhow::Result<MeterSample> {
     let sample_format = PcmSampleFormat::parse(config.format)?;
 
@@ -153,7 +158,14 @@ pub fn alsa_meter_sample(
         );
     }
 
-    meter_sample_from_pcm(node_id, interface_id, &output.stdout, config, sample_format)
+    meter_sample_from_pcm(
+        node_id,
+        interface_id,
+        &output.stdout,
+        config,
+        sample_format,
+        enhancer,
+    )
 }
 
 fn meter_sample_from_pcm(
@@ -162,6 +174,7 @@ fn meter_sample_from_pcm(
     pcm: &[u8],
     config: &MeterCaptureConfig<'_>,
     sample_format: PcmSampleFormat,
+    enhancer: Option<&mut Enhancer>,
 ) -> anyhow::Result<MeterSample> {
     let captured_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -186,10 +199,20 @@ fn meter_sample_from_pcm(
         sample_format,
     )?;
 
+    // On-demand enhanced chunk: denoise must run at 48 kHz, so only when the
+    // capture rate matches. Best-effort; a failure just omits the enhanced chunk.
+    let enhanced_monitor_wav = match enhancer {
+        Some(enhancer) if config.sample_rate == crate::enhance::ENHANCE_SAMPLE_RATE => {
+            enhanced_monitor_wav(pcm, config.channel_count, sample_format, enhancer).ok()
+        }
+        _ => None,
+    };
+
     Ok(MeterSample {
         frame,
         monitor_duration_ms,
         monitor_wav,
+        enhanced_monitor_wav,
     })
 }
 
@@ -353,6 +376,7 @@ pub fn synthetic_meter_sample(
         frame,
         monitor_duration_ms,
         monitor_wav,
+        enhanced_monitor_wav: None,
     })
 }
 
@@ -501,6 +525,55 @@ fn pcm_monitor_wav(
     }
 
     Ok(wav_mono_s16le(&samples, target_sample_rate))
+}
+
+// Denoise the captured 48 kHz PCM (mixed to mono) in-process, then downsample to
+// the 16 kHz monitor chunk. Caller guarantees the source rate is 48 kHz.
+fn enhanced_monitor_wav(
+    pcm: &[u8],
+    channel_count: u16,
+    sample_format: PcmSampleFormat,
+    enhancer: &mut Enhancer,
+) -> anyhow::Result<Vec<u8>> {
+    let channels = usize::from(channel_count);
+    let sample_bytes = sample_format.bytes_per_sample();
+    let frame_bytes = channels * sample_bytes;
+
+    if frame_bytes == 0 || pcm.len() < frame_bytes || !pcm.len().is_multiple_of(frame_bytes) {
+        anyhow::bail!("monitor PCM payload has incomplete interleaved frames");
+    }
+
+    let source_frames = pcm.len() / frame_bytes;
+    let mut mono = Vec::with_capacity(source_frames);
+    for index in 0..source_frames {
+        let frame = &pcm[index * frame_bytes..(index + 1) * frame_bytes];
+        let mixed = (0..channels)
+            .map(|channel| {
+                let offset = channel * sample_bytes;
+                sample_format.normalized_sample(&frame[offset..offset + sample_bytes])
+            })
+            .sum::<f64>()
+            / channels as f64;
+        mono.push(mixed as f32);
+    }
+
+    let denoised = enhancer.process_mono(&mono)?;
+    let source_rate = f64::from(crate::enhance::ENHANCE_SAMPLE_RATE);
+    let target_rate = f64::from(MONITOR_CHUNK_SAMPLE_RATE);
+    let target_samples = ((denoised.len() as f64 / source_rate) * target_rate)
+        .round()
+        .max(1.0) as usize;
+    let mut samples = Vec::with_capacity(target_samples);
+
+    for index in 0..target_samples {
+        let source_index = ((index as f64 * source_rate) / target_rate)
+            .floor()
+            .min((denoised.len().max(1) - 1) as f64) as usize;
+        let value = f64::from(denoised[source_index]) * f64::from(i16::MAX);
+        samples.push(value.clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16);
+    }
+
+    Ok(wav_mono_s16le(&samples, MONITOR_CHUNK_SAMPLE_RATE))
 }
 
 fn meter_frame_monitor_wav(frame: &MeterFrame, duration_ms: u64) -> Vec<u8> {

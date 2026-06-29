@@ -43,6 +43,7 @@ pub fn capture_plan_for_job(
         channels,
         command: config.effective_capture_command(backend).to_string(),
         device: job.command.capture_device.clone(),
+        enhancement: job.command.enhancement.clone(),
         final_output_path,
         format: job.command.capture_format.clone(),
         growth_grace_seconds: config.capture_growth_grace_seconds,
@@ -209,12 +210,12 @@ fn capture_channel_map_from_bundle(
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct ChannelRenderPlan {
-    filter: String,
-    output_channels: u16,
+pub(crate) struct ChannelRenderPlan {
+    pub(crate) filter: String,
+    pub(crate) output_channels: u16,
 }
 
-fn channel_render_plan(channel_map: &CaptureChannelMap) -> Option<ChannelRenderPlan> {
+pub(crate) fn channel_render_plan(channel_map: &CaptureChannelMap) -> Option<ChannelRenderPlan> {
     let entries = included_entries(channel_map);
 
     if entries.is_empty() {
@@ -393,7 +394,7 @@ fn render_command_args(
     args
 }
 
-fn output_codec_args(plan: &CapturePlan) -> Vec<OsString> {
+pub(crate) fn output_codec_args(plan: &CapturePlan) -> Vec<OsString> {
     match plan.output_codec.as_str() {
         "flac" => os_args(["-codec:a", "flac"]),
         "mp3" if plan.output_vbr => {
@@ -533,6 +534,7 @@ mod tests {
             capture_format: "S16_LE".to_string(),
             capture_interface_id: Some("interface_1".to_string()),
             capture_sample_rate: 48_000,
+            enhancement: None,
             channel_map: Some(ControllerRecordingJobChannelMap {
                 assignment_id: "pinned_assignment".to_string(),
                 channel_mode: "mono_to_stereo_mix".to_string(),
@@ -758,6 +760,7 @@ mod tests {
             channels: 2,
             command: "arecord".to_string(),
             device: "default".to_string(),
+            enhancement: None,
             final_output_path: PathBuf::from(final_output_path),
             format: "S16_LE".to_string(),
             growth_grace_seconds: 10,

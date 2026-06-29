@@ -498,6 +498,10 @@ export function registerNodeRoutes({
         return c.json({ error: "Node not found" }, 404);
       }
 
+      const requestBody = (await c.req.json().catch(() => undefined)) as
+        | { enhance?: unknown }
+        | undefined;
+      const enhance = requestBody?.enhance === true;
       const sessionId = `listen_${randomUUID()}`;
       const monitorChunk = freshMonitorChunk(await listenMonitorStore.latest(node.id));
       const mode = monitorChunk ? "agent_audio_chunk" : "controller_meter_preview";
@@ -505,6 +509,7 @@ export function registerNodeRoutes({
       const stopUrl = listenStopUrl(node.id, sessionId);
       const targetLatencyMs = monitorChunk?.durationMs ?? monitorChunkDurationMs;
       const session = await listenSessionStore.start({
+        enhance,
         mode,
         nodeId: node.id,
         sessionId,
@@ -538,6 +543,7 @@ export function registerNodeRoutes({
       return c.json(
         {
           data: {
+            enhance: session.enhance,
             mode: session.mode,
             nodeId: session.nodeId,
             sessionId: session.sessionId,
@@ -587,7 +593,13 @@ export function registerNodeRoutes({
         return c.json({ error: "Listen session not found" }, sessionId ? 404 : 400);
       }
 
-      const monitorChunk = freshMonitorChunk(await listenMonitorStore.latest(node.id));
+      // Prefer the enhanced rendition when the session requested it and a fresh
+      // enhanced chunk exists; otherwise fall back to the raw monitor chunk.
+      const enhancedChunk = session.enhance
+        ? freshMonitorChunk(await listenMonitorStore.latest(node.id, "enhanced"))
+        : undefined;
+      const monitorChunk =
+        enhancedChunk ?? freshMonitorChunk(await listenMonitorStore.latest(node.id, "raw"));
       const frame = monitorChunk ? undefined : await monitorMeterFrame(node.id);
 
       if (!monitorChunk && !frame) {

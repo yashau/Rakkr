@@ -92,6 +92,7 @@ export default defineConfig({
             { label: "Authentication & RBAC", slug: "guides/authentication-and-rbac" },
             { label: "Nodes & inventory", slug: "guides/nodes-and-inventory" },
             { label: "Recording", slug: "guides/recording" },
+            { label: "Audio enhancement", slug: "guides/audio-enhancement" },
             { label: "Scheduling", slug: "guides/scheduling" },
             { label: "Health watchdog", slug: "guides/health-watchdog" },
             { label: "Storage & uploads", slug: "guides/storage-and-uploads" },

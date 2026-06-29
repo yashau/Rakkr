@@ -67,12 +67,14 @@ export function registerAgentMonitorRoutes({
       return c.json({ error: "Invalid monitor chunk size" }, 400);
     }
 
+    const rendition = c.req.query("rendition") === "enhanced" ? "enhanced" : "raw";
     const stored = await listenMonitorStore.save({
       audio,
       capturedAt: headers.data.capturedAt,
       contentType: headers.data.contentType,
       durationMs: headers.data.durationMs,
       nodeId,
+      rendition,
     });
 
     await recordAuditEvent(c, {
@@ -82,6 +84,7 @@ export function registerAgentMonitorRoutes({
         capturedAt: stored.capturedAt,
         durationMs: stored.durationMs,
         receivedAt: stored.receivedAt,
+        rendition: stored.rendition,
         sizeBytes: audio.byteLength,
         source: stored.source,
       },

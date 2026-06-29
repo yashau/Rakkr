@@ -12,6 +12,7 @@ export function recordingProfileUpdate(profile: RecordingProfile): RecordingProf
     bitrateKbps: profile.bitrateKbps,
     channelMode: profile.channelMode,
     codec: profile.codec,
+    enhancement: profile.enhancement,
     maxTrackSeconds: profile.maxTrackSeconds ?? null,
     name: profile.name,
     silenceDetectionEnabled: profile.silenceDetectionEnabled,

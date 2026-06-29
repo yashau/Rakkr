@@ -431,7 +431,13 @@ export function NodesPage() {
       ) : null}
 
       {listenPreview ? (
-        <ListenMonitorPanel onClose={() => setListenPreview(undefined)} preview={listenPreview} />
+        <ListenMonitorPanel
+          onClose={() => setListenPreview(undefined)}
+          onSessionChange={(session) =>
+            setListenPreview((current) => (current ? { ...current, session } : current))
+          }
+          preview={listenPreview}
+        />
       ) : null}
 
       <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">

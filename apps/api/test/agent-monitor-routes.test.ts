@@ -52,6 +52,7 @@ test("agent monitor chunk route stores latest node audio chunk", async () => {
     capturedAt: "2026-06-20T08:30:00.000Z",
     durationMs: 1000,
     receivedAt: stored?.receivedAt,
+    rendition: "raw",
     sizeBytes: audio.byteLength,
     source: "agent_audio_chunk",
   });

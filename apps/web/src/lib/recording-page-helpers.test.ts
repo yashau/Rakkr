@@ -75,6 +75,7 @@ test("recording playback preview tracks session and file details", () => {
     fileName: "council-voice.mp3",
     objectUrl: "blob:preview-new",
     recordingId: "rec_web_action_test",
+    rendition: "enhanced",
     sessionId: "playback_test",
     startedAt: "2026-06-18T12:00:00.000Z",
   });
@@ -350,6 +351,7 @@ function playbackPreview(objectUrl: string): RecordingPlaybackPreview {
     fileName: "council-voice.mp3",
     objectUrl,
     recordingId: "rec_web_action_test",
+    rendition: "enhanced",
     sessionId: "playback_test",
     startedAt: "2026-06-18T12:00:00.000Z",
   };
