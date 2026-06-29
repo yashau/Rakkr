@@ -195,6 +195,7 @@ Current partial implementation:
 - RBAC-gated node alias, site/building/floor/room, network, tag, and note edits with audit history.
 - RBAC-gated interface aliases, hardware paths, serials, system refs, sample rates, and channel aliases with audit history.
 - Node-authenticated heartbeat updates status, last seen, OS/kernel/runtime, IPs, and audio backends.
+- Node-authenticated startup inventory reconcile (`POST /nodes/:id/inventory`) makes the agent the source of hardware truth: interfaces are matched by stable identity (system ref) so persisted ids — and channel-map assignments keyed on them — survive, operator interface/channel aliases are preserved, devices the agent stops reporting are flagged absent (not deleted), and real changes audit `nodes.inventory.reconciled` (idempotent no-op otherwise). Enrollment interfaces are advisory until first contact.
 - Agent service routes audit missing node credentials with route-specific permission families.
 - Persisted nodes derive offline status after missed heartbeat threshold.
 - Watchdog creates and resolves central health events when node heartbeats go stale/recover.

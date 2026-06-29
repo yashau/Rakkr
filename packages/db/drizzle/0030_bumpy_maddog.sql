@@ -1,0 +1,1 @@
+ALTER TABLE "audio_interfaces" ADD COLUMN "absent_at" timestamp with time zone;

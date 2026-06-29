@@ -724,27 +724,43 @@ pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()>
     Ok(())
 }
 
+// Shared POST to a node-scoped controller endpoint. Validates transport, posts
+// the JSON body, and bails on a non-success status (the `label` keeps the
+// failure messages that health evidence + smokes assert on). Returns the
+// validated response so callers can read headers (e.g. heartbeat clock skew).
+async fn post_node_endpoint<T: serde::Serialize + ?Sized>(
+    config: &AgentConfig,
+    token: &str,
+    suffix: &str,
+    body: &T,
+    label: &str,
+) -> anyhow::Result<reqwest::Response> {
+    config.validate_controller_transport()?;
+    let url = node_url(&config.controller_url, &config.node_id, suffix);
+    let response = controller_http_client(config)?
+        .post(&url)
+        .bearer_auth(token)
+        .json(body)
+        .send()
+        .await
+        .with_context(|| format!("post {label} to controller"))?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let detail = response.text().await.unwrap_or_default();
+
+        anyhow::bail!("controller rejected {label} with {status}: {detail}");
+    }
+
+    Ok(response)
+}
+
 pub async fn post_meter_frame(
     config: &AgentConfig,
     token: &str,
     frame: &MeterFrame,
 ) -> anyhow::Result<()> {
-    config.validate_controller_transport()?;
-    let url = node_url(&config.controller_url, &config.node_id, "meter-frame");
-    let response = controller_http_client(config)?
-        .post(&url)
-        .bearer_auth(token)
-        .json(frame)
-        .send()
-        .await
-        .context("post meter frame to controller")?;
-    let status = response.status();
-
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-
-        anyhow::bail!("controller rejected meter frame with {status}: {body}");
-    }
+    post_node_endpoint(config, token, "meter-frame", frame, "meter frame").await?;
 
     Ok(())
 }
@@ -754,29 +770,24 @@ pub async fn post_node_heartbeat(
     token: &str,
     inventory: &NodeInventory,
 ) -> anyhow::Result<Option<i64>> {
-    config.validate_controller_transport()?;
-    let url = node_url(&config.controller_url, &config.node_id, "heartbeat");
-    let response = controller_http_client(config)?
-        .post(&url)
-        .bearer_auth(token)
-        .json(inventory)
-        .send()
-        .await
-        .context("post node heartbeat to controller")?;
-    let status = response.status();
-    let clock_skew_seconds = response
+    let response =
+        post_node_endpoint(config, token, "heartbeat", inventory, "node heartbeat").await?;
+
+    Ok(response
         .headers()
         .get(DATE)
         .and_then(|value| value.to_str().ok())
-        .and_then(controller_clock_skew_seconds);
+        .and_then(controller_clock_skew_seconds))
+}
 
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
+pub async fn post_node_inventory(
+    config: &AgentConfig,
+    token: &str,
+    inventory: &NodeInventory,
+) -> anyhow::Result<()> {
+    post_node_endpoint(config, token, "inventory", inventory, "node inventory").await?;
 
-        anyhow::bail!("controller rejected node heartbeat with {status}: {body}");
-    }
-
-    Ok(clock_skew_seconds)
+    Ok(())
 }
 
 pub async fn sync_health_event(
@@ -784,22 +795,7 @@ pub async fn sync_health_event(
     token: &str,
     event: &AgentHealthEvent,
 ) -> anyhow::Result<()> {
-    config.validate_controller_transport()?;
-    let url = node_url(&config.controller_url, &config.node_id, "health-events");
-    let response = controller_http_client(config)?
-        .post(&url)
-        .bearer_auth(token)
-        .json(event)
-        .send()
-        .await
-        .context("sync health event to controller")?;
-    let status = response.status();
-
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-
-        anyhow::bail!("controller rejected health event with {status}: {body}");
-    }
+    post_node_endpoint(config, token, "health-events", event, "health event").await?;
 
     Ok(())
 }

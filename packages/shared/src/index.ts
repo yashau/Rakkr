@@ -194,6 +194,7 @@ export const audioChannelSchema = z.object({
 });
 
 export const audioInterfaceSchema = z.object({
+  absent: z.boolean().optional(), // flagged absent by inventory reconcile; see node-store
   alias: z.string().min(1),
   backend: z.enum(["alsa", "jack", "pipewire", "unknown"]),
   channelCount: z.number().int().nonnegative(),
@@ -212,9 +213,7 @@ export const nodeRuntimeSchema = z.object({
   osName: z.string().min(1).optional(),
   uptimeSeconds: z.number().int().nonnegative().optional(),
 });
-export const defaultNodeRecordingCapacity = {
-  maxConcurrentRecordings: 1,
-} as const;
+export const defaultNodeRecordingCapacity = { maxConcurrentRecordings: 1 } as const;
 export const nodeRecordingCapacitySchema = z.object({
   maxConcurrentRecordings: z.number().int().positive().max(128),
 });

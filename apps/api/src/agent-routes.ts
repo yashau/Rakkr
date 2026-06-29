@@ -14,6 +14,7 @@ import {
 import { nodeHealthEventScopeFailure } from "./agent-health-event-scope.js";
 import { bearerToken } from "./auth-utils.js";
 import { registerAgentChannelMapRoute } from "./agent-channel-map-route.js";
+import { registerAgentInventoryRoute } from "./agent-inventory-route.js";
 import { registerAgentMeterFrameRoute } from "./agent-meter-frame-route.js";
 import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
 import type { HealthEventStore } from "./health-store.js";
@@ -88,6 +89,11 @@ export function registerAgentRoutes({
     nodeStore,
     recordAuditEvent,
     settingsStore,
+  });
+  registerAgentInventoryRoute({
+    app,
+    nodeStore,
+    recordAuditEvent,
   });
 
   app.post("/api/v1/nodes/:nodeId/heartbeat", async (c) => {

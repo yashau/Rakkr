@@ -179,6 +179,32 @@ async fn main() -> anyhow::Result<()> {
     .await
     .context("append startup health event")?;
 
+    // The agent owns hardware truth: reconcile the discovered interfaces with the
+    // controller on startup so node.interfaces reflect the real devices (operator
+    // labels + channel-map assignments are preserved controller-side by stable id).
+    if let Some(token) = token {
+        match controller::post_node_inventory(&config, token, &inventory).await {
+            Ok(()) => {
+                info!(
+                    interface_count = inventory.interfaces.len(),
+                    "reconciled node inventory with controller"
+                );
+            }
+            Err(error) => {
+                warn!(error = %error, "failed to reconcile node inventory with controller");
+                append_and_sync_health_event(
+                    &config,
+                    Some(token),
+                    "agent.node_inventory.sync_failed",
+                    "warning",
+                    inventory::heartbeat_health_details(&inventory, Some(error.to_string())),
+                )
+                .await
+                .context("append node inventory sync failure event")?;
+            }
+        }
+    }
+
     if let Some(token) = token {
         match recording_job_recovery::reconcile_previous_recording_job(&config, token).await {
             Ok(()) => {}

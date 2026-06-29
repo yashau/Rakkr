@@ -20,6 +20,23 @@ import type {
 
 import { hashToken, isUuid } from "./auth-utils.js";
 import { nodeWithDerivedLiveness } from "./node-liveness.js";
+import {
+  type InterfaceReconcileSummary,
+  reconcilePersistedInterfaces,
+  reconcileSeedInterfaces,
+} from "./node-inventory-reconcile.js";
+import {
+  nodeAudioDefaultsFromMetadata,
+  nodeMetadata,
+  nodeRecordingCapacityFromMetadata,
+  nodeRuntimeFromInput,
+  nodeRuntimeFromMetadata,
+  nonEmptyAudioDefaults,
+  numberArray,
+  record,
+  stringArray,
+  stringOrUndefined,
+} from "./node-metadata.js";
 
 type AudioChannelRow = typeof audioChannels.$inferSelect;
 type AudioInterfaceRow = typeof audioInterfaces.$inferSelect;
@@ -109,6 +126,11 @@ export interface NodeEnrollmentResult {
   node: RecorderNode;
 }
 
+export interface NodeInventoryReconcileResult {
+  node: RecorderNode;
+  summary: InterfaceReconcileSummary;
+}
+
 export interface NodeCredentialAuth {
   credentialId: string;
   nodeId: string;
@@ -130,6 +152,11 @@ export interface NodeStore {
   find(nodeId: string): Promise<RecorderNode | undefined>;
   heartbeat(nodeId: string, input: NodeHeartbeatInput): Promise<RecorderNode | undefined>;
   list(): Promise<RecorderNode[]>;
+  /** Reconcile the node's audio interfaces from the agent's discovered inventory. */
+  reconcileInterfaces(
+    nodeId: string,
+    interfaces: NodeInterfaceInput[],
+  ): Promise<NodeInventoryReconcileResult | undefined>;
   rotateCredential(nodeId: string, actorUserId?: string): Promise<NodeEnrollmentResult | undefined>;
   /** Idempotently persist seed nodes as real enrolled rows (no-op without a database). */
   seed(nodes: RecorderNode[]): Promise<void>;
@@ -178,6 +205,23 @@ class SeedOnlyNodeStore implements NodeStore {
 
   async list() {
     return this.seedNodes;
+  }
+
+  async reconcileInterfaces(nodeId: string, interfaces: NodeInterfaceInput[]) {
+    const index = this.seedNodes.findIndex((node) => node.id === nodeId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    const { interfaces: nextInterfaces, summary } = reconcileSeedInterfaces(
+      this.seedNodes[index].interfaces,
+      interfaces,
+    );
+
+    this.seedNodes[index] = { ...this.seedNodes[index], interfaces: nextInterfaces };
+
+    return { node: this.seedNodes[index], summary };
   }
 
   async rotateCredential(): Promise<NodeEnrollmentResult> {
@@ -354,6 +398,38 @@ class PostgresNodeStore implements NodeStore {
     } catch (error) {
       this.markUnavailable(error);
       return seed;
+    }
+  }
+
+  async reconcileInterfaces(nodeId: string, interfaces: NodeInterfaceInput[]) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      throw new NodeStoreError("Node inventory storage is unavailable", "database_unavailable");
+    }
+
+    const [node] = await db
+      .select({ id: nodeRows.id })
+      .from(nodeRows)
+      .where(eq(nodeRows.id, nodeId))
+      .limit(1);
+
+    if (!node) {
+      return undefined;
+    }
+
+    try {
+      const summary = await reconcilePersistedInterfaces(db, nodeId, interfaces);
+      const reconciled = await this.find(nodeId);
+
+      if (!reconciled) {
+        throw new NodeStoreError("Reconciled node could not be loaded", "node_not_found");
+      }
+
+      return { node: reconciled, summary };
+    } catch (error) {
+      this.markUnavailable(error);
+      throw error;
     }
   }
 
@@ -775,6 +851,7 @@ function interfaceFromRows(
   channels: AudioChannelRow[],
 ): AudioInterface {
   return {
+    absent: audioInterface.absentAt ? true : undefined,
     alias: audioInterface.alias,
     backend: backend(audioInterface.backend),
     channelCount: audioInterface.channelCount,
@@ -815,130 +892,8 @@ function locationFromValue(value: unknown): RecorderNode["location"] {
   };
 }
 
-function nodeMetadata(
-  existingMetadata: unknown,
-  runtime: NodeRuntime | undefined,
-  recordingCapacity = nodeRecordingCapacityFromMetadata(existingMetadata),
-  audioDefaults = nodeAudioDefaultsFromMetadata(existingMetadata),
-) {
-  const metadata = { ...record(existingMetadata) };
-
-  delete metadata.audioDefaults;
-  delete metadata.recordingCapacity;
-  delete metadata.runtime;
-
-  return {
-    ...metadata,
-    ...(audioDefaults ? { audioDefaults } : {}),
-    ...(recordingCapacity ? { recordingCapacity } : {}),
-    ...(runtime ? { runtime } : {}),
-  };
-}
-
-function nodeRuntimeFromInput(runtime: NodeRuntime | undefined, existingMetadata: unknown) {
-  return runtime ?? nodeRuntimeFromMetadata(existingMetadata);
-}
-
-function nodeRuntimeFromMetadata(metadata: unknown): NodeRuntime | undefined {
-  const runtime = record(metadata)?.runtime;
-  const parsed = record(runtime);
-
-  if (!parsed) {
-    return undefined;
-  }
-
-  return {
-    architecture: stringOrUndefined(parsed.architecture),
-    audioBackends: audioBackends(parsed.audioBackends),
-    kernelRelease: stringOrUndefined(parsed.kernelRelease),
-    osName: stringOrUndefined(parsed.osName),
-    uptimeSeconds: nonNegativeIntegerOrUndefined(parsed.uptimeSeconds),
-  };
-}
-
-function nodeRecordingCapacityFromMetadata(metadata: unknown): NodeRecordingCapacity | undefined {
-  const recordingCapacity = record(record(metadata)?.recordingCapacity);
-  const maxConcurrentRecordings = nonNegativeIntegerOrUndefined(
-    recordingCapacity?.maxConcurrentRecordings,
-  );
-
-  return maxConcurrentRecordings && maxConcurrentRecordings > 0
-    ? { maxConcurrentRecordings }
-    : undefined;
-}
-
-function nodeAudioDefaultsFromMetadata(metadata: unknown): NodeAudioCommandDefaults | undefined {
-  const parsed = record(record(metadata)?.audioDefaults);
-
-  if (!parsed) {
-    return undefined;
-  }
-
-  return nonEmptyAudioDefaults({
-    captureArgsTemplate: stringOrUndefined(parsed.captureArgsTemplate),
-    captureBackend: captureBackendOrUndefined(parsed.captureBackend),
-    captureChannels: positiveIntegerOrUndefined(parsed.captureChannels),
-    captureCommand: stringOrUndefined(parsed.captureCommand),
-    captureDevice: stringOrUndefined(parsed.captureDevice),
-    captureFormat: stringOrUndefined(parsed.captureFormat),
-    captureSampleRate: positiveIntegerOrUndefined(parsed.captureSampleRate),
-    meterArgsTemplate: stringOrUndefined(parsed.meterArgsTemplate),
-  });
-}
-
-function nonEmptyAudioDefaults(
-  defaults: NodeAudioCommandDefaults,
-): NodeAudioCommandDefaults | undefined {
-  const entries = Object.entries(defaults).filter(([, value]) => value !== undefined);
-
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
-}
-
-function captureBackendOrUndefined(value: unknown) {
-  return value === "alsa" || value === "jack" || value === "pipewire" ? value : undefined;
-}
-
 function backend(value: string): AudioInterface["backend"] {
   return value === "alsa" || value === "jack" || value === "pipewire" ? value : "unknown";
-}
-
-function audioBackends(value: unknown): NodeRuntime["audioBackends"] {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is NodeRuntime["audioBackends"][number] =>
-          item === "alsa" || item === "jack" || item === "pipewire" || item === "unknown",
-      )
-    : [];
-}
-
-function numberArray(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item): item is number => typeof item === "number")
-    : [];
-}
-
-function nonNegativeIntegerOrUndefined(value: unknown) {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
-}
-
-function positiveIntegerOrUndefined(value: unknown) {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
-}
-
-function stringArray(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
-function stringOrUndefined(value: unknown) {
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 function seedNodesEnabled() {

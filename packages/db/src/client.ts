@@ -7,6 +7,7 @@ import {
   gt,
   gte,
   ilike,
+  inArray,
   isNull,
   lte,
   or,
@@ -26,4 +27,4 @@ export async function closeDatabase(database: ReturnType<typeof createDatabase>)
   await database.$client.end();
 }
 
-export { and, asc, count, desc, eq, gt, gte, ilike, isNull, lte, or, sql, type SQL };
+export { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, or, sql, type SQL };

@@ -978,6 +978,7 @@ function createObserved() {
     failures: 0,
     heartbeats: 0,
     healthEvents: [],
+    inventoryReconciles: 0,
     jobStatusReads: 0,
     jobStatusReadFailures: 0,
     claimNextReadFailures: 0,

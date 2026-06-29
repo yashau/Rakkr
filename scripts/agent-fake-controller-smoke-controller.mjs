@@ -104,6 +104,19 @@ export function createFakeControllerHandler({
       return json(response, 202, { data: { ok: true } });
     }
 
+    if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/inventory`) {
+      const body = await readBody(request);
+      observed.inventoryReconciles += 1;
+      const interfaces = Array.isArray(body?.interfaces) ? body.interfaces : [];
+      return json(response, 202, {
+        data: {
+          changed: true,
+          node: { id: nodeId, interfaces },
+          summary: { absent: [], added: [], reactivated: [], unchanged: 0, updated: [] },
+        },
+      });
+    }
+
     if (request.method === "POST" && url.pathname === `/api/v1/nodes/${nodeId}/meter-frame`) {
       await readBody(request);
       if (scenario.meterFrameFailuresRemaining > 0) {

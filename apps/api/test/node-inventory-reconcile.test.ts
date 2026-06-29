@@ -1,0 +1,154 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { AudioInterface } from "@rakkr/shared";
+import type { NodeInterfaceInput } from "../src/node-store.js";
+
+const { reconcileSeedInterfaces, reconcileSummaryChanged } =
+  await import("../src/node-inventory-reconcile.js");
+
+test("reconcile preserves operator labels while updating hardware facts", () => {
+  const existing: AudioInterface[] = [
+    {
+      alias: "Studio A Console",
+      backend: "alsa",
+      channelCount: 2,
+      channels: [
+        { alias: "Host Mic", index: 1 },
+        { alias: "Guest Mic", index: 2 },
+      ],
+      id: "iface-uuid-1",
+      sampleRates: [48000],
+      systemName: "X-USB USB Audio",
+      systemRef: "hw:CARD=X32,DEV=0",
+    },
+  ];
+
+  const { interfaces, summary } = reconcileSeedInterfaces(existing, [
+    agentInterface({
+      alias: "X-USB USB Audio",
+      channelCount: 4,
+      channels: [
+        { alias: "Input 1", index: 1 },
+        { alias: "Input 2", index: 2 },
+        { alias: "Input 3", index: 3 },
+        { alias: "Input 4", index: 4 },
+      ],
+      sampleRates: [44100, 48000],
+      systemName: "X-USB USB Audio",
+      systemRef: "hw:CARD=X32,DEV=0",
+    }),
+  ]);
+
+  assert.equal(interfaces.length, 1);
+  const [reconciled] = interfaces;
+  // Stable id preserved so channel-map assignments keep resolving.
+  assert.equal(reconciled.id, "iface-uuid-1");
+  // Operator interface label preserved.
+  assert.equal(reconciled.alias, "Studio A Console");
+  // Agent hardware facts applied.
+  assert.equal(reconciled.channelCount, 4);
+  assert.deepEqual(reconciled.sampleRates, [44100, 48000]);
+  // Operator channel aliases preserved; new channels filled from the agent.
+  assert.deepEqual(
+    reconciled.channels.map((channel) => channel.alias),
+    ["Host Mic", "Guest Mic", "Input 3", "Input 4"],
+  );
+  assert.deepEqual(summary.updated, ["X-USB USB Audio"]);
+  assert.equal(reconcileSummaryChanged(summary), true);
+});
+
+test("reconcile flags interfaces the agent no longer reports as absent", () => {
+  const existing: AudioInterface[] = [
+    {
+      alias: "Kept",
+      backend: "alsa",
+      channelCount: 2,
+      channels: [],
+      id: "iface-kept",
+      sampleRates: [48000],
+      systemName: "Kept",
+      systemRef: "hw:CARD=KEEP,DEV=0",
+    },
+    {
+      alias: "Removed",
+      backend: "alsa",
+      channelCount: 2,
+      channels: [],
+      id: "iface-removed",
+      sampleRates: [48000],
+      systemName: "Removed",
+      systemRef: "hw:CARD=GONE,DEV=0",
+    },
+  ];
+
+  const { interfaces, summary } = reconcileSeedInterfaces(existing, [
+    agentInterface({
+      alias: "Kept",
+      systemName: "Kept",
+      systemRef: "hw:CARD=KEEP,DEV=0",
+    }),
+  ]);
+
+  const removed = interfaces.find((audioInterface) => audioInterface.id === "iface-removed");
+  const kept = interfaces.find((audioInterface) => audioInterface.id === "iface-kept");
+
+  // Absent device is flagged, not dropped — channel-map history survives.
+  assert.equal(removed?.absent, true);
+  assert.equal(kept?.absent, undefined);
+  assert.deepEqual(summary.absent, ["Removed"]);
+  assert.deepEqual(summary.unchanged, 1);
+});
+
+test("reconcile adds a brand-new interface and is a no-op on a repeat report", () => {
+  const first = reconcileSeedInterfaces(
+    [],
+    [agentInterface({ systemName: "New Card", systemRef: "hw:CARD=NEW,DEV=0" })],
+  );
+
+  assert.deepEqual(first.summary.added, ["New Card"]);
+  assert.equal(first.interfaces.length, 1);
+
+  const second = reconcileSeedInterfaces(first.interfaces, [
+    agentInterface({ systemName: "New Card", systemRef: "hw:CARD=NEW,DEV=0" }),
+  ]);
+
+  assert.equal(reconcileSummaryChanged(second.summary), false);
+  assert.equal(second.summary.unchanged, 1);
+});
+
+test("reconcile reactivates a previously-absent interface that reappears", () => {
+  const absent: AudioInterface[] = [
+    {
+      absent: true,
+      alias: "Flaky USB",
+      backend: "alsa",
+      channelCount: 2,
+      channels: [],
+      id: "iface-flaky",
+      sampleRates: [48000],
+      systemName: "Flaky USB",
+      systemRef: "hw:CARD=FLAKY,DEV=0",
+    },
+  ];
+
+  const { interfaces, summary } = reconcileSeedInterfaces(absent, [
+    agentInterface({ systemName: "Flaky USB", systemRef: "hw:CARD=FLAKY,DEV=0" }),
+  ]);
+
+  assert.equal(interfaces[0].id, "iface-flaky");
+  assert.equal(interfaces[0].absent, undefined);
+  assert.deepEqual(summary.reactivated, ["Flaky USB"]);
+});
+
+function agentInterface(input: Partial<NodeInterfaceInput> = {}): NodeInterfaceInput {
+  return {
+    alias: "Agent Interface",
+    backend: "alsa",
+    channelCount: 2,
+    channels: [],
+    sampleRates: [48000],
+    systemName: "Agent Interface",
+    systemRef: "hw:CARD=AGENT,DEV=0",
+    ...input,
+  };
+}

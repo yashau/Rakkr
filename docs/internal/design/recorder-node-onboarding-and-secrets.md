@@ -252,11 +252,17 @@ correct from its very first registration.
 
 ## 6. Rollout / phasing
 
-- **Interface reconcile (independent — can land first).** Agent reports its
-  discovered inventory on startup; the controller reconciles `node.interfaces`
-  (§3.5). Depends on nothing else here (just the existing node-token auth), so it
-  can ship ahead of the credential work and immediately replaces the rig's
-  hand-entered interfaces with the real ones.
+- **Interface reconcile (independent — can land first). ✅ IMPLEMENTED.** Agent
+  reports its discovered inventory on startup (`controller::post_node_inventory`
+  in `main`, before the heartbeat loop); the controller reconciles
+  `node.interfaces` via `POST /api/v1/nodes/:id/inventory` (node-token auth,
+  `node:control`, `apps/api/src/agent-inventory-route.ts` +
+  `node-inventory-reconcile.ts`). Interfaces match by stable system ref so
+  persisted ids and channel-map assignments survive; operator labels are kept;
+  absent devices are flagged via the new `audio_interfaces.absent_at` column
+  (migration `0030`); real changes audit `nodes.inventory.reconciled`.
+  Enrollment interfaces are now advisory. Covered by API unit/route tests and the
+  fake-controller smoke.
 
 - **Phase 1 — Credential store + runner fetch.** Add `node_ssh_credentials`,
   the master key, and runner→controller credential fetch. Immediately removes

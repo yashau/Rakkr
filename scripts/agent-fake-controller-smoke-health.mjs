@@ -53,10 +53,11 @@ export async function runSystemHealthScenario({
         observed.healthEvents.some((event) => event.type === "agent.system.disk_recovered") &&
         observed.healthEvents.some((event) => event.type === "agent.system.cpu_recovered") &&
         observed.nodeHeartbeats >= 2 &&
+        observed.inventoryReconciles >= 1 &&
         observed.meterFrames >= 2,
       20_000,
       () =>
-        `heartbeats=${observed.nodeHeartbeats} meters=${observed.meterFrames} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+        `heartbeats=${observed.nodeHeartbeats} inventory=${observed.inventoryReconciles} meters=${observed.meterFrames} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
     );
   } finally {
     child.kill();

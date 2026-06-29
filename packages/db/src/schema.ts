@@ -278,6 +278,10 @@ export const nodeCredentials = pgTable(
 export const audioInterfaces = pgTable(
   "audio_interfaces",
   {
+    // Set when the agent's startup inventory reconcile no longer reports this
+    // interface. Absent interfaces are flagged (preserving channel-map history)
+    // rather than hard-deleted; cleared when the device is reported again.
+    absentAt: timestamp("absent_at", { withTimezone: true }),
     alias: varchar("alias", { length: 160 }).notNull(),
     backend: varchar("backend", { length: 40 }).notNull(),
     channelCount: integer("channel_count").notNull(),
