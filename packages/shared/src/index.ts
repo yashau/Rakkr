@@ -354,6 +354,10 @@ export const recordingEnhancementSchema = z.object({
     .default({ enabled: false, thresholdDb: -40 }),
 });
 
+// Fully-defaulted enhancement chain, for editors and code paths that need a
+// starting value when a profile has none.
+export const defaultRecordingEnhancement = recordingEnhancementSchema.parse({});
+
 export const recordingProfileSchema = z.object({
   bitrateKbps: z.number().int().positive(),
   channelMode: channelModeSchema,

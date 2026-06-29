@@ -1,7 +1,11 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { RecordingProfile } from "@rakkr/shared";
-import { Save, SlidersHorizontal } from "lucide-react";
+import {
+  defaultRecordingEnhancement,
+  type RecordingEnhancement,
+  type RecordingProfile,
+} from "@rakkr/shared";
+import { Save, SlidersHorizontal, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +51,13 @@ export function RecordingProfileSettingsCard({
   useEffect(() => {
     setDraft(profile);
   }, [profile]);
+
+  const enhancement = draft.enhancement ?? defaultRecordingEnhancement;
+  const updateEnhancement = (patch: Partial<RecordingEnhancement>) =>
+    setDraft((current) => ({
+      ...current,
+      enhancement: { ...(current.enhancement ?? defaultRecordingEnhancement), ...patch },
+    }));
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
@@ -177,6 +188,141 @@ export function RecordingProfileSettingsCard({
             setDraft((current) => ({ ...current, silenceSkipEnabled: checked }))
           }
         />
+      </div>
+
+      <div className="mt-5 border-t border-border pt-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Wand2 className="size-4" />
+          <h4 className="text-sm font-semibold">Audio enhancement</h4>
+          <span className="text-xs text-muted-foreground">
+            Applied to the enhanced rendition; the raw master is kept separately
+          </span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Toggle
+            checked={enhancement.denoise.enabled}
+            disabled={!canManage}
+            label="Denoise"
+            onChange={(checked) =>
+              updateEnhancement({ denoise: { ...enhancement.denoise, enabled: checked } })
+            }
+          />
+          <Field label="Denoise Engine">
+            <Select
+              disabled={!canManage || !enhancement.denoise.enabled}
+              onValueChange={(value) =>
+                updateEnhancement({
+                  denoise: {
+                    ...enhancement.denoise,
+                    engine: value as RecordingEnhancement["denoise"]["engine"],
+                  },
+                })
+              }
+              value={enhancement.denoise.engine}
+            >
+              <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="deepfilternet3">DeepFilterNet3</SelectItem>
+                <SelectItem value="rnnoise">RNNoise</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Toggle
+            checked={enhancement.keepRaw}
+            disabled={!canManage}
+            label="Keep Raw Master"
+            onChange={(checked) => updateEnhancement({ keepRaw: checked })}
+          />
+          <Toggle
+            checked={enhancement.highpass.enabled}
+            disabled={!canManage}
+            label="High-pass"
+            onChange={(checked) =>
+              updateEnhancement({ highpass: { ...enhancement.highpass, enabled: checked } })
+            }
+          />
+          <Field label="High-pass Hz">
+            <Input
+              disabled={!canManage || !enhancement.highpass.enabled}
+              min={20}
+              onChange={(event) =>
+                updateEnhancement({
+                  highpass: { ...enhancement.highpass, hz: Number(event.target.value) },
+                })
+              }
+              type="number"
+              value={enhancement.highpass.hz}
+            />
+          </Field>
+          <Toggle
+            checked={enhancement.lowpass.enabled}
+            disabled={!canManage}
+            label="Low-pass"
+            onChange={(checked) =>
+              updateEnhancement({ lowpass: { ...enhancement.lowpass, enabled: checked } })
+            }
+          />
+          <Field label="Low-pass Hz">
+            <Input
+              disabled={!canManage || !enhancement.lowpass.enabled}
+              min={2000}
+              onChange={(event) =>
+                updateEnhancement({
+                  lowpass: { ...enhancement.lowpass, hz: Number(event.target.value) },
+                })
+              }
+              type="number"
+              value={enhancement.lowpass.hz}
+            />
+          </Field>
+          <Toggle
+            checked={enhancement.loudnorm.enabled}
+            disabled={!canManage}
+            label="Loudness Norm"
+            onChange={(checked) =>
+              updateEnhancement({ loudnorm: { ...enhancement.loudnorm, enabled: checked } })
+            }
+          />
+          <Field label="Loudness Target (LUFS)">
+            <Input
+              disabled={!canManage || !enhancement.loudnorm.enabled}
+              max={-5}
+              onChange={(event) =>
+                updateEnhancement({
+                  loudnorm: { ...enhancement.loudnorm, targetI: Number(event.target.value) },
+                })
+              }
+              type="number"
+              value={enhancement.loudnorm.targetI}
+            />
+          </Field>
+          <Toggle
+            checked={enhancement.deesser.enabled}
+            disabled={!canManage}
+            label="De-esser"
+            onChange={(checked) =>
+              updateEnhancement({ deesser: { ...enhancement.deesser, enabled: checked } })
+            }
+          />
+          <Toggle
+            checked={enhancement.compressor.enabled}
+            disabled={!canManage}
+            label="Compressor"
+            onChange={(checked) =>
+              updateEnhancement({ compressor: { ...enhancement.compressor, enabled: checked } })
+            }
+          />
+          <Toggle
+            checked={enhancement.gate.enabled}
+            disabled={!canManage}
+            label="Noise Gate"
+            onChange={(checked) =>
+              updateEnhancement({ gate: { ...enhancement.gate, enabled: checked } })
+            }
+          />
+        </div>
       </div>
 
       {mutation.isError ? <p className="mt-3 text-sm text-destructive">Save failed.</p> : null}
