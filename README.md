@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/rakkr-logo-text-navy.svg" alt="Rakkr" width="320" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/rakkr-logo-text-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/rakkr-logo-text-navy.svg" />
+  <img src="docs/assets/rakkr-logo-text-navy.svg" alt="Rakkr" width="320" />
+</picture>
 
 ### Reliable room recording for Linux — that proves it actually worked.
 
@@ -10,11 +14,11 @@ not the morning after.
 
 <br>
 
-[![CI](https://github.com/yashau/Rakkr/actions/workflows/ci.yml/badge.svg)](https://github.com/yashau/Rakkr/actions/workflows/ci.yml)
-&nbsp;![Controller](https://img.shields.io/badge/controller-Hono%20%2B%20React-16a34a)
-&nbsp;![Agent](https://img.shields.io/badge/agent-Rust-7c2d12)
-&nbsp;![Audio](https://img.shields.io/badge/audio-ALSA%20·%20PipeWire%20·%20JACK-7c3aed)
-&nbsp;![Runtime](https://img.shields.io/badge/runtime-Linux%20%2B%20Docker-111827)
+[![CI](https://img.shields.io/github/actions/workflow/status/yashau/Rakkr/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/yashau/Rakkr/actions/workflows/ci.yml)
+&nbsp;![Controller](https://img.shields.io/badge/controller-Hono%20%2B%20React-16a34a?style=for-the-badge)
+&nbsp;![Agent](https://img.shields.io/badge/agent-Rust-7c2d12?style=for-the-badge)
+&nbsp;![Audio](https://img.shields.io/badge/audio-ALSA%20·%20PipeWire%20·%20JACK-7c3aed?style=for-the-badge)
+&nbsp;![Runtime](https://img.shields.io/badge/runtime-Linux%20%2B%20Docker-111827?style=for-the-badge)
 
 **[Website](https://rakkr.org)** · **[Documentation](https://docs.rakkr.org/)** · [Quick start](https://docs.rakkr.org/getting-started/quick-start/) · [Architecture](https://docs.rakkr.org/architecture/overview/) · [Reference](https://docs.rakkr.org/reference/configuration/)
 
