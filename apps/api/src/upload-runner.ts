@@ -366,7 +366,11 @@ async function reconcileChunkedRecordingUpload(
     const failed = items.filter((item) => item.status === "failed");
     const nextStatus = chunkUploadStatus(settled, succeeded.length, failed.length);
 
-    if (settled && succeeded.length > 0) {
+    // Only release a chunk's cached object once EVERY destination for that chunk
+    // is confirmed. A partial chunk still has retryable failed destinations whose
+    // only source is this cached object, so deleting it now would strand them
+    // permanently — mirrors the whole-recording gate above.
+    if (settled && failed.length === 0 && succeeded.length > 0) {
       await deleteChunkCacheIfPolicyAllows(succeeded, chunk);
     }
 

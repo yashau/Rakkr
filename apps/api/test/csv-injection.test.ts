@@ -20,7 +20,9 @@ test("neutralizeCsvFormula prefixes formula triggers and leaves safe values inta
 });
 
 test("recordingManifestCsv neutralises a formula-injection recording name (conditional-quote path)", () => {
-  const csv = recordingManifestCsv([recording({ name: "=HYPERLINK(\"http://evil\")", tags: ["@cmd"] })]);
+  const csv = recordingManifestCsv([
+    recording({ name: '=HYPERLINK("http://evil")', tags: ["@cmd"] }),
+  ]);
 
   // The malicious cells are written as text, not as bare formulas.
   assert.match(csv, /'=HYPERLINK/u);

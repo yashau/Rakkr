@@ -61,12 +61,15 @@ test("upload-secret encryption refuses the dev fallback key in production", () =
 });
 
 test("upload-secret encryption round-trips with a strong production key", () => {
-  withEnv({ RAKKR_REQUIRE_SECRET_KEY: "1", RAKKR_SECRET_KEY: "a-strong-32-byte-production-key!!" }, () => {
-    const sealed = encryptSecret("smb-password");
+  withEnv(
+    { RAKKR_REQUIRE_SECRET_KEY: "1", RAKKR_SECRET_KEY: "a-strong-32-byte-production-key!!" },
+    () => {
+      const sealed = encryptSecret("smb-password");
 
-    assert.equal(isEncryptedSecret(sealed), true);
-    assert.equal(decryptSecret(sealed), "smb-password");
-  });
+      assert.equal(isEncryptedSecret(sealed), true);
+      assert.equal(decryptSecret(sealed), "smb-password");
+    },
+  );
 });
 
 test("upload-secret encryption still works with the dev fallback outside production", () => {
@@ -79,13 +82,19 @@ test("upload-secret encryption still works with the dev fallback outside product
 
 test("SSH private-key encryption refuses the dev fallback master key in production", () => {
   withEnv({ RAKKR_REQUIRE_SECRET_KEY: "1" }, () => {
-    assert.throws(() => encryptPrivateKey("-----BEGIN KEY-----"), /not set; refusing to use the insecure/u);
+    assert.throws(
+      () => encryptPrivateKey("-----BEGIN KEY-----"),
+      /not set; refusing to use the insecure/u,
+    );
   });
 });
 
 test("SSH private-key encryption round-trips with a strong production master key", () => {
   withEnv(
-    { RAKKR_REQUIRE_SECRET_KEY: "1", RAKKR_NODE_SSH_MASTER_KEY: "a-strong-ssh-master-key-32bytes!" },
+    {
+      RAKKR_REQUIRE_SECRET_KEY: "1",
+      RAKKR_NODE_SSH_MASTER_KEY: "a-strong-ssh-master-key-32bytes!",
+    },
     () => {
       const sealed = encryptPrivateKey("-----BEGIN KEY-----");
 

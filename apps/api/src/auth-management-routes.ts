@@ -12,7 +12,7 @@ import {
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot, localAdminId } from "./auth-utils.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
-import { numberFromQuery, paginate } from "./pagination.js";
+import { PAGE_POLICY, numberFromQuery, paginate, parsePagination } from "./pagination.js";
 
 interface AuthManagementRouteDependencies {
   app: Hono<AppBindings>;
@@ -91,10 +91,16 @@ export function registerAuthManagementRoutes({
     "/api/v1/auth/groups",
     requirePermission("auth:manage", "auth.groups.read", () => ({ type: "auth" })),
     async (c) => {
-      const { data, meta } = paginate(await authService.localGroups(), {
-        limit: numberFromQuery(c.req.query("limit")),
-        offset: numberFromQuery(c.req.query("offset")),
-      });
+      const { data, meta } = paginate(
+        await authService.localGroups(),
+        parsePagination(
+          {
+            limit: numberFromQuery(c.req.query("limit")),
+            offset: numberFromQuery(c.req.query("offset")),
+          },
+          PAGE_POLICY.default,
+        ),
+      );
 
       await recordAuditEvent(c, {
         action: "auth.groups.read.succeeded",
@@ -118,10 +124,16 @@ export function registerAuthManagementRoutes({
     "/api/v1/auth/users",
     requirePermission("auth:manage", "auth.users.read", () => ({ type: "auth" })),
     async (c) => {
-      const { data, meta } = paginate(await authService.localUsers(), {
-        limit: numberFromQuery(c.req.query("limit")),
-        offset: numberFromQuery(c.req.query("offset")),
-      });
+      const { data, meta } = paginate(
+        await authService.localUsers(),
+        parsePagination(
+          {
+            limit: numberFromQuery(c.req.query("limit")),
+            offset: numberFromQuery(c.req.query("offset")),
+          },
+          PAGE_POLICY.default,
+        ),
+      );
 
       await recordAuditEvent(c, {
         action: "auth.users.read.succeeded",

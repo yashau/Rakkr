@@ -92,6 +92,38 @@ test("auth management read and action-summary routes audit successes and missing
   );
 });
 
+test("auth users/groups list routes clamp pagination to the page policy", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const authService = new LocalAuthService("");
+  const currentUser = manager(await authService.localAdmin());
+
+  registerAuthManagementRoutes({
+    app,
+    authService,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allowPermission(),
+  });
+
+  for (const base of ["/api/v1/auth/users", "/api/v1/auth/groups"]) {
+    const omitted = (await (await app.request(base)).json()) as { meta: { limit?: number } };
+    const huge = (await (await app.request(`${base}?limit=99999`)).json()) as {
+      meta: { limit?: number };
+    };
+    const zero = (await (await app.request(`${base}?limit=0`)).json()) as {
+      meta: { limit?: number };
+    };
+
+    // Pre-fix: an omitted limit returned every row (meta.limit undefined), a huge
+    // limit was honoured verbatim, and limit=0 produced a garbled empty page.
+    assert.equal(omitted.meta.limit, 50, `${base} should default to the page policy`);
+    assert.equal(huge.meta.limit, 200, `${base} should clamp to the page-policy max`);
+    assert.equal(zero.meta.limit, 1, `${base} should floor limit at 1`);
+  }
+});
+
 function allowPermission(): RequirePermission {
   return () => async (_c, next) => {
     await next();

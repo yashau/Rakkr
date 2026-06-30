@@ -14,6 +14,12 @@ UTC/DST core were checked and found **correct**. The gaps cluster where behaviou
 only be proven against real hardware/Postgres/time, exactly as the source-of-truth doc
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
+**Landed this branch (7, each with a red→green test):** G1, G1b, G3, G6, G7, G10, G12.
+**Catalogued (confirmed, fix needs a DB/Rust slice or product call):** G2, G4, G5, G9, G11, G13.
+**Coverage gaps / suspected:** G14–G23.
+Rebased onto `origin/main` (`844f6a8e`); **G1b is a fresh-on-main catch** — PR #14 reintroduced
+the G1 data-loss pattern in its new chunked-upload path, which this audit caught on rebase.
+
 ---
 
 ## CRITICAL
@@ -28,6 +34,18 @@ normal multi-destination operation.
 **Fix:** gate cache release on `failed.length === 0`. **Test:** `upload-runner.test.ts` →
 "keeps cache for partial uploads even when a succeeded policy deletes cache".
 
+### G1b — Chunked uploads delete a chunk's cache on partial success (same bug, in code merged today) · `FIXED`
+`apps/api/src/upload-runner.ts:369` (`reconcileChunkedRecordingUpload`).
+Found during rebase: PR #14 ("configurable time-based chunked recording", merged to
+`main` after this audit began) added a per-chunk reconciliation path that deletes a
+chunk's cached object whenever `settled && succeeded.length > 0` — ignoring
+`failed.length`. A `partial` chunk (one destination failed, still retryable) loses its
+only source, identical to G1 but at the chunk level. The chunked reconciliation path had
+**zero test coverage**, which is how it shipped.
+**Fix:** gate on `settled && failed.length === 0 && succeeded.length > 0`. **Test:**
+`upload-runner.test.ts` → "keeps a chunk's cache when one destination fails (chunked
+recordings)" — verified red (ENOENT/data loss) against #14's gate, green after the fix.
+
 ### G2 — Raw master permanently lost despite `keepRaw` when the supplementary raw upload fails · `CATALOGUED`
 `crates/recorder-agent/src/recording_job_upload.rs:264-292`, `controller.rs:615-624`,
 `recording_job_recovery.rs:484-532`, `recorder_cache_retention.rs:90-111`.
@@ -37,9 +55,21 @@ With enhancement on, `keepRaw=true` (default), and recorder-cache retention
 `Ok` is returned. The caller then marks `uploaded`, runs retention (deletes the local
 raw), and completes the job. The raw never reached the controller and the local copy is
 gone — only the DNN-denoised rendition survives, violating "raw is ALWAYS preserved".
-**Fix:** when `keepRaw` is set and retention will delete the local copy, propagate the
-raw-upload error so `upload_result` is `Err` (job stays `upload_pending`, retention is
-skipped, raw is retained for retry).
+**Re-verified against current `main` (post-#14):** still present — `recording_job_upload.rs:296-308`
+swallows the raw-upload `Err` as a warning and returns the primary's `Ok`. (#14's chunked
+path inherits the same shape per chunk.)
+**Fix (refined — DON'T just propagate the error):** naively returning `Err` would block the
+job from ever completing on a non-transient raw-upload failure, which contradicts the
+design ("enhanced is the primary that completes the job; raw is supplementary"). The
+surgical fix: surface whether the raw was secured (uploaded, or not required) from
+`upload_recording_renditions`, and have the retention step **skip deleting the local raw**
+(`apply_recorder_cache_retention` / `delete_recorder_cache_files`) whenever `keepRaw` is set
+and the raw upload did not succeed — the local copy is then the preservation of record and
+can be re-uploaded later. This keeps the invariant without stalling completion.
+**Why left CATALOGUED:** correct fix changes the rendition-upload return contract + caller
+retention logic, and a unit test needs the `upload_cache_file`/`render_enhanced_output`
+seam made injectable (today they're free functions hitting HTTP + ffmpeg). That's its own
+reviewed slice — happy to implement on request. This is the highest-severity item still open.
 
 ### G3 — CSV formula injection in all six exporters · `FIXED`
 `recording-listing.ts`, `recording-job-export.ts`, `schedule-export.ts`,
@@ -70,17 +100,23 @@ request (503) so the caller retries, or make `dbAvailable` a re-probing circuit 
 surface the degraded state via `/metrics` + a health event. Left CATALOGUED because the
 right semantics is an architectural decision, not a one-line fix.
 
-### G5 — Non-atomic recording-job claim (read-modify-write) → double-claim / double-capture · `FIXED`
+### G5 — Non-atomic recording-job claim (read-modify-write) → double-claim / double-capture · `CATALOGUED`
 `apps/api/src/recording-jobs.ts:129-147` (`claimRecordingJob`), backed by the
 unconditional upsert at `:557-573`. *(Found independently by two hunters.)*
 The claim reads the job, checks `status === "queued"` in app memory, then `save()`s an
 `INSERT … ON CONFLICT DO UPDATE SET status='running'` with **no** `WHERE status='queued'`
 guard. Two concurrent agent polls can both observe `queued` and both win — the same job
-(or capture group) claimed twice, defeating capture-once/split-many. Tests never catch it
-because the in-memory store does the read-modify-write synchronously within one tick.
-**Fix:** make the claim atomic — conditional compare-and-set on `status==='queued'`,
-treat "not claimable" as zero rows. (The bootstrap-token `consume` already does this.)
-**Test:** interleaved double-claim returns exactly one winner.
+(or capture group) claimed twice, defeating capture-once/split-many.
+**Fix:** make the claim atomic — a single conditional `UPDATE … SET status='running',
+claimed_by=$1, lease_expires_at=$2 WHERE id=$3 AND status='queued' RETURNING *`, treating
+zero rows as "already claimed" (the bootstrap-token `consume` at `node-bootstrap-store.ts`
+is the in-repo model). The JSON store re-checks status inside the same call.
+**Why left CATALOGUED:** the race only manifests with real concurrent DB round-trips; the
+in-memory test store serialises the read-modify-write within one tick, so a faithful
+**failing** test needs `RAKKR_API_TEST_DATABASE_URL` (Postgres). Shipping the store
+refactor without a red→green proof would violate this audit's own discipline — flagged for
+a DB-backed slice. (`33f50ae5` "Make claim-next-group test deterministic" already hints at
+known nondeterminism here.)
 
 ### G6 — Crypto fails open: dev key silently used when `RAKKR_SECRET_KEY` unset in prod · `FIXED`
 `apps/api/src/secret-box.ts:9-34`, `node-ssh-credential-crypto.ts:32-51`.
@@ -146,10 +182,13 @@ sustained math; agent evidence does not.) **Fix:** require N consecutive frames 
 cumulative duration with hysteresis.
 
 ### G12 — `auth/groups` & `auth/users` bypass pagination clamping · `FIXED`
-`apps/api/src/auth-management-routes.ts:94-97,121-124`. These privileged routes read
-`limit`/`offset` via `numberFromQuery` (no bounds) and skip `parsePagination(PAGE_POLICY)`.
-`limit=0`/negative → garbled page; NaN/blank → entire table. Every other list route 400s
-on `limit=0`. **Fix:** route both through `paginationQueryFields` + `parsePagination`.
+`apps/api/src/auth-management-routes.ts:94,121`. These privileged routes read `limit`/
+`offset` via `numberFromQuery` (no bounds) and skipped `parsePagination(PAGE_POLICY)`. An
+omitted `limit` returned the **entire** table (`paginate` returns all rows when limit is
+undefined); `limit=0` produced a garbled empty page.
+**Fix:** route both through `parsePagination(…, PAGE_POLICY.default)` like every other list
+route. **Test:** `auth-management-routes.test.ts` → "clamp pagination to the page policy"
+(omitted→50, 99999→200, 0→1).
 
 ### G13 — Unbounded response when `limit` omitted on `paginate()`-direct routes · `CATALOGUED`
 `apps/api/src/pagination.ts:86-100` reached by `recording-upload-queue-routes.ts:95-98`

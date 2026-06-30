@@ -13,6 +13,7 @@ process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(runnerRoot, "destina
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(runnerRoot, "policies.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(runnerRoot, "queue.json");
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(runnerRoot, "cache");
+process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(runnerRoot, "chunks.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
@@ -21,6 +22,7 @@ const { createUploadDestinationStore } = await import("../src/upload-destination
 const { registerUploadRunnerRoutes } = await import("../src/upload-runner-routes.js");
 const { createUploadRunner } = await import("../src/upload-runner.js");
 const { enqueueRecordingUpload, listUploadQueueItems } = await import("../src/upload-queue.js");
+const { upsertRecordingChunk } = await import("../src/recording-chunks.js");
 
 test.after(async () => {
   await rm(runnerRoot, { force: true, recursive: true });
@@ -293,6 +295,91 @@ test("upload runner keeps cache for partial uploads even when a succeeded policy
   assert.equal(updated?.cached, true);
   assert.equal(updated?.cachePath, partialRecording.cachePath);
   await assert.doesNotReject(readFile(cachePath));
+});
+
+test("upload runner keeps a chunk's cache when one destination fails (chunked recordings)", async () => {
+  const auditStore = createAuditStore("");
+  const destinationStore = createUploadDestinationStore();
+  const contents = "chunk-retain-bytes";
+  const chunkedRecording = recording("rec_upload_chunk_retain", contents);
+  const recordingStore = memoryRecordingStore([chunkedRecording]);
+  const chunkId = "rec_upload_chunk_retain:1";
+  const chunkCacheRel = `chunks/${chunkId}.mp3`;
+  const chunkCachePath = path.join(runnerRoot, "cache", chunkCacheRel);
+
+  await mkdir(path.dirname(chunkCachePath), { recursive: true });
+  await writeFile(chunkCachePath, contents);
+  await upsertRecordingChunk({
+    cachePath: chunkCacheRel,
+    createdAt: "2026-06-18T12:00:00.000Z",
+    durationSeconds: 60,
+    id: chunkId,
+    index: 1,
+    jobId: "job_chunk_retain",
+    offsetSeconds: 0,
+    recordingId: chunkedRecording.id,
+    status: "cached",
+    total: 1,
+  });
+
+  const good = fakeSmbClient();
+  const runner = createUploadRunner({
+    auditStore,
+    destinationStore,
+    limit: 5,
+    recordingStore,
+    smbClientFactory: (config) =>
+      config.smb?.server === "good.example.lan" ? good.client : throwingSmbClient(),
+  });
+
+  const goodDestination = await destinationStore.create({
+    displayName: "Good Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "good.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const badDestination = await destinationStore.create({
+    displayName: "Bad Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "bad.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const deletePolicy = await createUploadPolicy({
+    deleteCacheAfterUpload: true,
+    destinationId: goodDestination.id,
+    enabled: true,
+    maxAttempts: 1,
+    name: "Archive chunk then delete cache",
+    trigger: "manual",
+  });
+  await enqueueRecordingUpload(chunkedRecording, {
+    cachePath: chunkCacheRel,
+    chunkId,
+    chunkIndex: 1,
+    destinationId: goodDestination.id,
+    fileName: "chunk-1.mp3",
+    maxAttempts: 1,
+    policyId: deletePolicy.id,
+    provider: "smb",
+  });
+  await enqueueRecordingUpload(chunkedRecording, {
+    cachePath: chunkCacheRel,
+    chunkId,
+    chunkIndex: 1,
+    destinationId: badDestination.id,
+    fileName: "chunk-1.mp3",
+    maxAttempts: 1,
+    provider: "smb",
+  });
+
+  await runner.runOnce();
+
+  // The bad destination is still retryable and the chunk's cached object is its
+  // only source, so it must survive even though the good destination's policy
+  // deletes cache — the chunk analogue of the whole-recording partial gate.
+  await assert.doesNotReject(readFile(chunkCachePath));
 });
 
 test("upload runner routes expose status and run-now control", async () => {

@@ -100,9 +100,7 @@ const DEFAULT_WATCHDOG_METER_MAX_AGE_SECONDS = 120;
 export function watchdogMeterMaxAgeSeconds() {
   const parsed = Number(process.env.RAKKR_WATCHDOG_METER_MAX_AGE_SECONDS);
 
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_WATCHDOG_METER_MAX_AGE_SECONDS;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WATCHDOG_METER_MAX_AGE_SECONDS;
 }
 
 export function meterFrameIsFresh(
