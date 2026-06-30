@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/rakkr-logo.svg" alt="Rakkr" width="96" height="96" />
-
-# Rakkr
+<img src="docs/assets/rakkr-logo-text-navy.svg" alt="Rakkr" width="320" />
 
 ### Reliable room recording for Linux — that proves it actually worked.
 
