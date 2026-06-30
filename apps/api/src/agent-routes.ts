@@ -14,6 +14,7 @@ import {
 import { nodeHealthEventScopeFailure } from "./agent-health-event-scope.js";
 import { bearerToken } from "./auth-utils.js";
 import { registerAgentChannelMapRoute } from "./agent-channel-map-route.js";
+import { registerAgentClaimGroupRoute } from "./agent-claim-group-route.js";
 import { registerAgentInventoryRoute } from "./agent-inventory-route.js";
 import { registerAgentMeterFrameRoute } from "./agent-meter-frame-route.js";
 import { registerAgentNodeConfigRoute } from "./agent-node-config-route.js";
@@ -25,7 +26,6 @@ import type { MeterFrameStore } from "./meter-store.js";
 import { NodeStoreError, type NodeCredentialAuth, type NodeStore } from "./node-store.js";
 import {
   cancelRecordingJob,
-  claimNextRecordingGroup,
   claimRecordingJob,
   completeRecordingJob,
   failRecordingJob,
@@ -98,6 +98,12 @@ export function registerAgentRoutes({
     app,
     nodeStore,
     recordAuditEvent,
+  });
+  registerAgentClaimGroupRoute({
+    app,
+    nodeStore,
+    recordAuditEvent,
+    recordingStore,
   });
 
   app.post("/api/v1/nodes/:nodeId/heartbeat", async (c) => {
@@ -365,61 +371,6 @@ export function registerAgentRoutes({
 
       return c.json({ data: job });
     }
-  });
-
-  app.post("/api/v1/nodes/:nodeId/recording-jobs/claim-next-group", async (c) => {
-    const nodeId = c.req.param("nodeId");
-    const auth = await authenticateNode(c, "recording_jobs.claim_next_group", {
-      id: nodeId,
-      type: "node",
-    });
-
-    if (auth.response) {
-      return auth.response;
-    }
-
-    if (auth.credential.nodeId !== nodeId) {
-      await recordNodeCredentialFailure(
-        c,
-        "recording_jobs.claim_next_group.failed",
-        "node_scope_denied",
-        {
-          actor: auth.credential,
-          target: { id: nodeId, type: "node" },
-        },
-      );
-      return c.json({ error: "Node credential cannot access this node" }, 403);
-    }
-
-    // Claims the next queued job and every queued sibling sharing its capture
-    // group, so the agent captures the shared device once and renders each
-    // job's channel subset from that single capture.
-    const claimed = await claimNextRecordingGroup(nodeId, auth.credential.nodeId);
-
-    if (claimed.length === 0) {
-      await recordAuditEvent(c, {
-        action: "recording_jobs.claim_next_group.succeeded",
-        actor: nodeActor(auth.credential),
-        details: { claimed: false },
-        outcome: "succeeded",
-        permission: "recording:control",
-        target: { id: nodeId, type: "node" },
-      });
-      return c.body(null, 204);
-    }
-
-    for (const job of claimed) {
-      const recording = await recordingStore.find(job.recordingId);
-
-      if (recording) {
-        recording.status = "recording";
-        await recordingStore.save(recording);
-      }
-
-      await recordJobSuccess(c, "recording_jobs.claim_next_group.succeeded", auth.credential, job);
-    }
-
-    return c.json({ data: claimed });
   });
 
   app.post("/api/v1/recording-jobs/:jobId/claim", async (c) => {

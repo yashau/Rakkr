@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
-import { z } from "zod";
 import {
-  captureChannelSelectionSchema,
-  channelModeSchema,
   defaultKeepControllerCacheRetentionPolicy,
   defaultVoiceRecordingProfile,
   type RecorderNode,
@@ -11,14 +8,13 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import {
-  activeCaptureSessionKeys,
-  buildCaptureClaims,
-  detectChannelConflicts,
-  interfaceKey,
-  resolveCaptureGroupId,
-} from "./channel-conflicts.js";
+import { buildCaptureClaims, evaluateAdHocCapture } from "./channel-conflicts.js";
 import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
+import {
+  adHocCaptureSeconds,
+  recordingSelectedExportSchema,
+  recordingStartRequestSchema,
+} from "./recording-route-helpers.js";
 import type { HealthEventStore } from "./health-store.js";
 import type {
   AppBindings,
@@ -83,36 +79,6 @@ interface RecordingRouteDependencies {
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
   settingsStore: SettingsStore;
   uploadDestinationStore: UploadDestinationStore;
-}
-
-const recordingStartRequestSchema = z
-  .object({
-    captureBackend: z.enum(["alsa", "jack", "pipewire"]).optional(),
-    captureChannelSelection: captureChannelSelectionSchema.optional(),
-    captureInterfaceId: z.string().trim().min(1).max(160).optional(),
-    channelMode: channelModeSchema.optional(),
-    folder: z.string().trim().min(1).max(240).optional(),
-    name: z.string().trim().min(1).max(240).optional(),
-    nodeId: z.string().trim().min(1).max(160),
-    recordingProfileId: z.string().trim().min(1).max(160).optional(),
-    retentionPolicyId: z.string().trim().min(1).max(160).optional(),
-    tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
-    uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).max(16).optional(),
-  })
-  .strict();
-const recordingSelectedExportSchema = z
-  .object({
-    recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
-  })
-  .strict();
-
-// Upper bound used to project an ad-hoc capture window for channel-conflict
-// detection (ad-hoc recordings are open-ended but bounded by this cap, matching
-// the recorder job duration default).
-function adHocCaptureSeconds() {
-  const parsed = Number(process.env.RAKKR_AGENT_CAPTURE_SECONDS);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 3_600;
 }
 
 export function registerRecordingRoutes({
@@ -791,62 +757,30 @@ export function registerRecordingRoutes({
       );
       const captureClaims = buildCaptureClaims(activeJobs, recordingsById);
       const captureWindowStartMs = now.getTime();
-      const captureRequest = {
-        captureInterfaceId: resolvedCaptureInterfaceId,
-        channels: (channelSelection ?? "all") as number[] | "all",
-        endMs: captureWindowStartMs + adHocCaptureSeconds() * 1_000,
-        nodeId: node.id,
-        startMs: captureWindowStartMs,
-      };
-      const channelConflicts = detectChannelConflicts(captureClaims, captureRequest);
+      const captureDecision = evaluateAdHocCapture(
+        captureClaims,
+        {
+          captureInterfaceId: resolvedCaptureInterfaceId,
+          channels: (channelSelection ?? "all") as number[] | "all",
+          endMs: captureWindowStartMs + adHocCaptureSeconds() * 1_000,
+          nodeId: node.id,
+          startMs: captureWindowStartMs,
+        },
+        node.recordingCapacity?.maxConcurrentRecordings ?? 1,
+      );
 
-      if (channelConflicts.length > 0) {
-        const busyChannels = [
-          ...new Set(channelConflicts.flatMap((conflict) => conflict.channels)),
-        ].sort((left, right) => left - right);
-        const conflictingClaim = channelConflicts[0].claim;
-
-        await recordRecordingStartFailure(c, "capture_channels_busy", node.id, node.alias, {
-          id: conflictingClaim.jobId,
-          type: "recording_job",
-        });
-        return c.json(
-          {
-            busyChannels,
-            captureInterfaceId: resolvedCaptureInterfaceId,
-            conflictingJobId: conflictingClaim.jobId,
-            conflictingRecordingId: conflictingClaim.recordingId,
-            error:
-              busyChannels.length > 0
-                ? "Requested channels are already in use"
-                : "Capture interface is already in use",
-            reason: "capture_channels_busy",
-          },
-          409,
+      if (!captureDecision.ok) {
+        await recordRecordingStartFailure(
+          c,
+          captureDecision.reason,
+          node.id,
+          node.alias,
+          captureDecision.target,
         );
+        return c.json(captureDecision.body, 409);
       }
 
-      const activeSessionKeys = activeCaptureSessionKeys(captureClaims, node.id);
-      const maxConcurrentRecordings = node.recordingCapacity?.maxConcurrentRecordings ?? 1;
-      const requestSessionKey = interfaceKey(resolvedCaptureInterfaceId);
-
-      if (
-        !activeSessionKeys.has(requestSessionKey) &&
-        activeSessionKeys.size >= maxConcurrentRecordings
-      ) {
-        await recordRecordingStartFailure(c, "node_capture_capacity_reached", node.id, node.alias);
-        return c.json(
-          {
-            activeSessionCount: activeSessionKeys.size,
-            error: "Recorder node is at capture capacity",
-            maxConcurrentRecordings,
-            reason: "node_capture_capacity_reached",
-          },
-          409,
-        );
-      }
-
-      const captureGroupId = resolveCaptureGroupId(captureClaims, captureRequest);
+      const captureGroupId = captureDecision.captureGroupId;
 
       const recording: RecordingSummary = {
         cached: false,
