@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/rakkr-logo-text-navy.svg" alt="Rakkr" width="320" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/rakkr-logo-text-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/rakkr-logo-text-navy.svg" />
+  <img src="docs/assets/rakkr-logo-text-navy.svg" alt="Rakkr" width="320" />
+</picture>
 
 ### Reliable room recording for Linux — that proves it actually worked.
 
