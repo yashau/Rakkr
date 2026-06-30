@@ -1,7 +1,6 @@
 import type {
   AuditEvent,
   AuditOutcome,
-  ChannelMode,
   ChannelMapTemplate,
   ChannelMapAssignmentPlan,
   ChannelMapAssignmentPlanInput,
@@ -52,7 +51,11 @@ import type {
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
 import type { ControllerStatus } from "./status-types";
-import type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-types";
+import type {
+  RecordingStartInput,
+  WatchdogCalibrationInput,
+  WatchdogCalibrationResult,
+} from "./api-types";
 
 export type { ControllerStatus } from "./status-types";
 export type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-types";
@@ -143,19 +146,6 @@ export type RecordingBulkDeleteInput = { recordingIds: string[] };
 
 export interface RecordingBulkUploadQueueInput extends UploadQueueInput {
   recordingIds: string[];
-}
-
-export interface RecordingStartInput {
-  captureBackend?: NonNullable<RecordingJob["command"]["captureBackend"]>;
-  captureChannelSelection?: number[];
-  captureInterfaceId?: string;
-  channelMode?: ChannelMode;
-  folder?: string;
-  name?: string;
-  nodeId: string;
-  recordingProfileId?: string;
-  tags?: string[];
-  uploadPolicyIds?: string[];
 }
 
 export interface UploadQueueInput {

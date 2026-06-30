@@ -1,6 +1,6 @@
 import type { ChannelMode, RecorderNode } from "@rakkr/shared";
 
-import type { RecordingStartInput } from "@/lib/api";
+import type { RecordingStartInput } from "@/lib/api-types";
 
 export interface RecordingStartDraft {
   captureBackend: "" | NonNullable<RecordingStartInput["captureBackend"]>;

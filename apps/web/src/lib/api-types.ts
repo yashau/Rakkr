@@ -1,4 +1,17 @@
-import type { WatchdogPolicyUpdate } from "@rakkr/shared";
+import type { ChannelMode, RecordingJob, WatchdogPolicyUpdate } from "@rakkr/shared";
+
+export interface RecordingStartInput {
+  captureBackend?: NonNullable<RecordingJob["command"]["captureBackend"]>;
+  captureChannelSelection?: number[];
+  captureInterfaceId?: string;
+  channelMode?: ChannelMode;
+  folder?: string;
+  name?: string;
+  nodeId: string;
+  recordingProfileId?: string;
+  tags?: string[];
+  uploadPolicyIds?: string[];
+}
 
 export interface WatchdogCalibrationInput {
   apply?: boolean;
