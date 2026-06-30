@@ -141,6 +141,7 @@ export default defineConfig({
             { label: "Development", slug: "contributing/development" },
             { label: "Testing", slug: "contributing/testing" },
             { label: "Baselines & verification", slug: "contributing/baselines" },
+            { label: "Audit & gap-hunt workflow", slug: "contributing/audit-workflow" },
           ],
         },
       ],
