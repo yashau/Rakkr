@@ -57,6 +57,14 @@ export default defineConfig({
       title: "Rakkr",
       description:
         "Reliable room recording for Linux — a centrally managed audio recording platform.",
+      favicon: "/favicon.svg",
+      logo: {
+        // The brand mark (navy tile, white "r", red dot) sits beside the
+        // "Rakkr" wordmark, matching the marketing site's nav.
+        src: "./src/assets/logo.svg",
+        alt: "Rakkr",
+        replacesTitle: false,
+      },
       components: {
         // Our Markdown bodies open with their own `# H1` (the docs are also
         // rendered on GitHub), so suppress Starlight's duplicate title heading.

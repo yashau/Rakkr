@@ -1,0 +1,6 @@
+<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Brand mark: navy tile, white "r", red recording dot. -->
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#0d2b4e" />
+  <text x="9" y="24.5" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="26" fill="#ffffff">r</text>
+  <circle cx="23.5" cy="8.5" r="3.2" fill="#e5484d" />
+</svg>
