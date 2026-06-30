@@ -24,6 +24,7 @@ const RESOURCE_SCOPED_AUDIT_TARGET_TYPES = new Set([
   "retention_policy",
   "room",
   "schedule",
+  "upload_destination",
   "upload_policy",
   "upload_provider",
   "watchdog_policy",

@@ -13,12 +13,12 @@ import { recordingHasCachedFile } from "./recording-cache.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { paginate, paginationQueryFields } from "./pagination.js";
 import { uniqueRecordingIds } from "./recording-metadata.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 import { uploadPolicyForQueue, uploadQueueInputForPolicy } from "./upload-policies.js";
 import {
   enqueueRecordingUpload,
   listUploadQueueItems,
   retryUploadQueueItem,
-  uploadProviderFromValue,
 } from "./upload-queue.js";
 
 interface RecordingUploadQueueRouteDependencies {
@@ -28,13 +28,12 @@ interface RecordingUploadQueueRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
+  uploadDestinationStore: UploadDestinationStore;
 }
 
 const uploadQueueRequestSchema = z
   .object({
-    provider: z.unknown().optional(),
     reason: z.string().trim().min(1).max(240).optional(),
-    target: z.string().trim().min(1).max(500).optional(),
     uploadPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
@@ -73,6 +72,7 @@ export function registerRecordingUploadQueueRoutes({
   recordAuditEvent,
   requirePermission,
   scopedRecordings,
+  uploadDestinationStore,
 }: RecordingUploadQueueRouteDependencies) {
   app.get(
     "/api/v1/upload-queue",
@@ -262,6 +262,7 @@ export function registerRecordingUploadQueueRoutes({
         currentUser,
         recordAuditEvent,
         scopedRecordings,
+        uploadDestinationStore,
       });
 
       if (!result.ok) {
@@ -333,7 +334,7 @@ export function registerRecordingUploadQueueRoutes({
 
       for (const recording of cachedRecordings) {
         const policy = await uploadPolicyForQueue(
-          body.data.uploadPolicyId ?? recording.uploadPolicyId,
+          body.data.uploadPolicyId ?? recording.uploadPolicyIds?.[0],
         );
 
         if (!policy.enabled) {
@@ -347,13 +348,7 @@ export function registerRecordingUploadQueueRoutes({
         }
 
         queueInputs.push({
-          input: {
-            ...uploadQueueInputForPolicy(policy, body.data.reason),
-            provider: body.data.provider
-              ? uploadProviderFromValue(body.data.provider)
-              : policy.provider,
-            target: body.data.target ?? policy.target,
-          },
+          input: await uploadQueueInputForPolicy(policy, uploadDestinationStore, body.data.reason),
           recording,
         });
       }
@@ -568,9 +563,14 @@ async function enqueueOne(
     currentUser,
     recordAuditEvent,
     scopedRecordings,
+    uploadDestinationStore,
   }: Pick<
     RecordingUploadQueueRouteDependencies,
-    "currentAuth" | "currentUser" | "recordAuditEvent" | "scopedRecordings"
+    | "currentAuth"
+    | "currentUser"
+    | "recordAuditEvent"
+    | "scopedRecordings"
+    | "uploadDestinationStore"
   >,
 ) {
   const recording = (await scopedRecordings(currentUser(c))).find(
@@ -594,7 +594,7 @@ async function enqueueOne(
     };
   }
 
-  const policy = await uploadPolicyForQueue(body.uploadPolicyId ?? recording.uploadPolicyId);
+  const policy = await uploadPolicyForQueue(body.uploadPolicyId ?? recording.uploadPolicyIds?.[0]);
 
   if (!policy.enabled) {
     await recordUploadQueueFailure(c, {
@@ -613,11 +613,10 @@ async function enqueueOne(
     };
   }
 
-  const item = await enqueueRecordingUpload(recording, {
-    ...uploadQueueInputForPolicy(policy, body.reason),
-    provider: body.provider ? uploadProviderFromValue(body.provider) : policy.provider,
-    target: body.target ?? policy.target,
-  });
+  const item = await enqueueRecordingUpload(
+    recording,
+    await uploadQueueInputForPolicy(policy, uploadDestinationStore, body.reason),
+  );
 
   await recordAuditEvent(c, {
     action: "recordings.upload_queue.enqueue.succeeded",

@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import type { RecordingSummary } from "@rakkr/shared";
+import type { RecordingSummary, UploadPolicy, UploadQueueItem } from "@rakkr/shared";
 
 import {
   durationFromHeader,
@@ -38,7 +38,8 @@ import { applyStoredRendition, storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
-import { uploadPolicyForCachedRecording, uploadQueueInputForPolicy } from "./upload-policies.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
+import { uploadPoliciesForCachedRecording, uploadQueueInputForPolicy } from "./upload-policies.js";
 import { enqueueRecordingUpload } from "./upload-queue.js";
 
 interface AgentRouteDependencies {
@@ -51,6 +52,7 @@ interface AgentRouteDependencies {
   recordingStore: RecordingStore;
   scheduleStore?: ScheduleStore;
   settingsStore: SettingsStore;
+  uploadDestinationStore: UploadDestinationStore;
 }
 
 type AuthenticatedNode =
@@ -71,6 +73,7 @@ export function registerAgentRoutes({
   recordingStore,
   scheduleStore,
   settingsStore,
+  uploadDestinationStore,
 }: AgentRouteDependencies) {
   registerAgentNodeConfigRoute({
     app,
@@ -602,9 +605,10 @@ export function registerAgentRoutes({
       !supplementary && scopedJob.job
         ? await completeRecordingJob(recording.id, scopedJob.job.id)
         : undefined;
-    const uploadQueueItem = supplementary
-      ? undefined
+    const uploadQueueItems = supplementary
+      ? []
       : await queueCachedRecordingUpload(c, auth.credential, recording);
+    const uploadQueueItem = uploadQueueItems[0];
     const syncedRecording = await syncAndFindRecording(recording);
 
     await recordAuditEvent(c, {
@@ -622,6 +626,7 @@ export function registerAgentRoutes({
         rendition: rendition ?? "primary",
         size: stored.size,
         uploadQueueItemId: uploadQueueItem?.id,
+        uploadQueueItemIds: uploadQueueItems.map((item) => item.id),
         waveformPeaks: stored.waveformPreview?.peaks.length,
       },
       outcome: "succeeded",
@@ -633,7 +638,10 @@ export function registerAgentRoutes({
       },
     });
 
-    return c.json({ data: { file: stored, recording: syncedRecording, uploadQueueItem } }, 201);
+    return c.json(
+      { data: { file: stored, recording: syncedRecording, uploadQueueItem, uploadQueueItems } },
+      201,
+    );
   });
 
   async function authenticateNode(
@@ -854,21 +862,41 @@ export function registerAgentRoutes({
     });
   }
 
+  // Fan out one independent upload-queue item per enabled on_recording_cached
+  // policy attached to the recording; each is pinned to its own destination.
   async function queueCachedRecordingUpload(
     c: Context<AppBindings>,
     actor: NodeCredentialAuth,
     recording: RecordingSummary,
   ) {
-    const policy = await uploadPolicyForCachedRecording(recording);
+    const policies = await uploadPoliciesForCachedRecording(recording);
+    const items: UploadQueueItem[] = [];
 
-    if (!policy) {
-      return undefined;
+    for (const policy of policies) {
+      const item = await queueCachedRecordingUploadForPolicy(c, actor, recording, policy);
+
+      if (item) {
+        items.push(item);
+      }
     }
 
+    return items;
+  }
+
+  async function queueCachedRecordingUploadForPolicy(
+    c: Context<AppBindings>,
+    actor: NodeCredentialAuth,
+    recording: RecordingSummary,
+    policy: UploadPolicy,
+  ) {
     try {
       const item = await enqueueRecordingUpload(
         recording,
-        uploadQueueInputForPolicy(policy, "policy_on_recording_cached"),
+        await uploadQueueInputForPolicy(
+          policy,
+          uploadDestinationStore,
+          "policy_on_recording_cached",
+        ),
       );
 
       await recordAuditEvent(c, {

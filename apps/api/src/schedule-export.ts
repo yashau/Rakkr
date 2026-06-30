@@ -15,7 +15,7 @@ export function schedulesCsv(schedules: ScheduleSummary[]) {
       "recordingProfileId",
       "watchdogPolicyId",
       "retentionPolicyId",
-      "uploadPolicyId",
+      "uploadPolicyIds",
       "tags",
     ]),
     ...schedules.map((schedule) =>
@@ -32,7 +32,7 @@ export function schedulesCsv(schedules: ScheduleSummary[]) {
         schedule.recordingProfileId ?? "",
         schedule.watchdogPolicyId ?? "",
         schedule.retentionPolicyId ?? "",
-        schedule.uploadPolicyId ?? "",
+        schedule.uploadPolicyIds.join(";"),
         schedule.tags.join(";"),
       ]),
     ),

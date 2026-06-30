@@ -27,7 +27,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Audio devices | Generic Linux audio interfaces; ALSA direct is the reliability default, PipeWire is the modern routed backend, X32 Rack is only the first test fixture |
 | Default profile | Voice, MP3 VBR, 128kbps target, fully configurable |
 | Scheduling | Human-friendly rules; no cron language exposed |
-| Storage | Local node cache plus SMB/S3 upload providers |
+| Storage | Local node cache plus multiple named SMB/S3 upload destinations |
 | Observability | Local lifecycle log, central events, Prometheus/Mimir path |
 | Dates | Store UTC ISO 8601; display browser timezone in year-first format |
 
@@ -67,7 +67,7 @@ This document is the short source of truth: product intent, non-negotiables, cur
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, schedule backend/interface selection, checked baseline |
 | Recording library | ✅ | Metadata, organization, playback, download, manifest, waveform, cache/upload status, checked baseline |
 | Health watchdog | 🟨 | Checked scheduled and agent low-signal, speech/noise, SNR, intelligibility, hum/static/broadband/correlation telemetry, deterministic agent meter-health quality evidence/fault scores, policy-tuned broadband quality alerts, synthetic calibration, field calibration helper, offline, local-log, metrics, timeline, central health workbench, node health lifecycle controls, controller-synced audio-backend unavailable/recovery details, generic meter capture-failed fallback, system disk/CPU pressure/recovery, node heartbeat/config/meter-frame/monitor chunk sync failure/recovery evidence, recording-job capture start/runtime/too-small/stall/render/upload evidence, recorder-cache cleanup/delete-failure/tracking sync, claim-next/status-poll/control-plane/channel-map failure and controller-terminal handoff, X32 hardware low-signal local/synced health, and PCH hardware flatline local/synced health; long-duration real-room validation remains |
-| Storage upload | ✅ | Direct SMB/S3 providers (no mounts), UI-configured + encrypted secrets, policies, auto-queue, audited runner, metrics, checked baseline |
+| Storage upload | ✅ | Multiple named direct SMB/S3 destinations (no mounts), UI-managed + encrypted secrets, policies that select a destination + subfolder, multi-policy schedules/recordings with per-destination fan-out and partial/uploaded reconciliation, auto-queue, audited runner, metrics, checked baseline |
 | OIDC | ✅ | Azure AD-ready PKCE flow, persistent state, user sync, logout cleanup, checked setup |
 | Transport security | ✅ | HTTPS controller mode, agent plaintext guard, agent controller-CA trust, certificate-rotation scaffold, optional/required mTLS listener config, checked baseline |
 | Observability | ✅ | Local JSONL/SQLite logs, central events, metrics, alerts, Mimir config, Grafana baseline |

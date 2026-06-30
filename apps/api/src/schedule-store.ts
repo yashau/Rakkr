@@ -289,7 +289,7 @@ class PostgresScheduleStore implements ScheduleStore {
           tags: row.tags,
           timezone: row.timezone,
           titleTemplate: row.titleTemplate,
-          uploadPolicyId: row.uploadPolicyId,
+          uploadPolicyIds: row.uploadPolicyIds,
           watchdogPolicyId: row.watchdogPolicyId,
         },
         target: schedulesTable.id,
@@ -332,7 +332,7 @@ function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
     tags: schedule.tags,
     timezone: schedule.timezone,
     titleTemplate: schedule.titleTemplate,
-    uploadPolicyId: schedule.uploadPolicyId,
+    uploadPolicyIds: schedule.uploadPolicyIds,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 }
@@ -356,9 +356,15 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
     tags: stringArray(row.tags),
     timezone: row.timezone,
     titleTemplate: row.titleTemplate,
-    uploadPolicyId: row.uploadPolicyId ?? defaultStubUploadPolicy.id,
+    uploadPolicyIds: scheduleUploadPolicyIds(row.uploadPolicyIds),
     watchdogPolicyId: row.watchdogPolicyId ?? defaultScheduledVoiceWatchdogPolicy.id,
   };
+}
+
+function scheduleUploadPolicyIds(value: unknown) {
+  const ids = stringArray(value);
+
+  return ids.length > 0 ? ids : [defaultStubUploadPolicy.id];
 }
 
 function scheduleRecurrence(schedule: ScheduleSummary) {

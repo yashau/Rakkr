@@ -6,13 +6,26 @@ import {
   type S3ProviderConfig,
   type S3ProviderPreset,
   type SmbProviderConfig,
-  type UploadProviderConfigUpdate,
-  type UploadProviderRuntimeStatus,
+  type UploadDestinationInput,
+  type UploadDestinationKind,
+  type UploadDestinationRuntimeStatus,
+  type UploadDestinationUpdate,
 } from "@rakkr/shared";
-import { Pencil, Save } from "lucide-react";
+import { Pencil, PlusCircle, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Field, Toggle } from "@/components/settings-fields";
+import { HintButton } from "@/components/hint-button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -37,112 +50,174 @@ import { toneBadgeClass } from "@/lib/status-colors";
 import { uploadProviderStatusClass } from "@/lib/upload-status";
 import { cn } from "@/lib/utils";
 
-interface ProviderDraft {
+interface DestinationDraft {
   displayName: string;
   enabled: boolean;
+  kind: UploadDestinationKind;
   s3: S3ProviderConfig;
   s3SecretAccessKey: string;
   smb: SmbProviderConfig;
   smbPassword: string;
 }
 
-export function SettingsUploadProvidersSection({
+type EditorState =
+  | { destination?: undefined; mode: "create" }
+  | { destination: UploadDestinationRuntimeStatus; mode: "edit" };
+
+export function SettingsUploadDestinationsSection({
   canManage,
   canRead,
 }: {
   canManage: boolean;
   canRead: boolean;
 }) {
-  const [editing, setEditing] = useState<UploadProviderRuntimeStatus>();
-  const providersQuery = useQuery({
+  const queryClient = useQueryClient();
+  const [editor, setEditor] = useState<EditorState>();
+  const [pendingDelete, setPendingDelete] = useState<UploadDestinationRuntimeStatus>();
+  const destinationsQuery = useQuery({
     enabled: canRead,
-    queryFn: api.uploadProviders,
-    queryKey: ["upload-providers"],
+    queryFn: api.uploadDestinations,
+    queryKey: ["upload-destinations"],
   });
-  // `stub` is an API/test-only provider and is never shown in the operator UI.
-  const providers = (providersQuery.data?.data ?? []).filter(
-    (provider) => provider.provider !== "stub",
-  );
-  const enabledCount = providers.filter((provider) => provider.enabled).length;
-  const columns = uploadProviderColumns({ canManage, onEdit: setEditing });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteUploadDestination(id),
+    onError: () =>
+      toast.error("Delete failed", {
+        description: "The upload destination could not be deleted.",
+      }),
+    onSuccess: () => {
+      toast.success("Upload destination deleted");
+      void queryClient.invalidateQueries({ queryKey: ["upload-destinations"] });
+      setPendingDelete(undefined);
+    },
+  });
+  const destinations = destinationsQuery.data?.data ?? [];
+  const enabledCount = destinations.filter((destination) => destination.enabled).length;
+  const columns = uploadDestinationColumns({
+    canManage,
+    onDelete: setPendingDelete,
+    onEdit: (destination) => setEditor({ destination, mode: "edit" }),
+  });
 
   return (
     <div className="grid gap-4">
       <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Upload Providers</h2>
+          <h2 className="text-lg font-semibold">Upload Destinations</h2>
           <p className="text-sm text-muted-foreground">
-            Direct SMB and S3 storage targets. Recordings upload over the network with no mounts.
+            Named SMB and S3 storage targets. Upload policies select a destination; recordings
+            upload over the network with no mounts.
           </p>
         </div>
-        <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
-          {enabledCount} enabled
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
+            {enabledCount} enabled
+          </Badge>
+          <HintButton
+            disabled={!canManage}
+            hint={canManage ? "Add upload destination" : "Requires settings manage"}
+            onClick={() => setEditor({ mode: "create" })}
+            variant="outline"
+          >
+            <PlusCircle className="size-4" />
+            New
+          </HintButton>
+        </div>
       </section>
 
       <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">
         <DataTable
           columns={columns}
-          data={providers}
-          emptyMessage="No upload providers are available."
-          getRowId={(provider) => provider.provider}
-          isLoading={providersQuery.isPending}
+          data={destinations}
+          emptyMessage="No upload destinations are configured."
+          getRowId={(destination) => destination.id}
+          isLoading={destinationsQuery.isPending}
         />
       </section>
 
       <Dialog
-        onOpenChange={(open) => (open ? undefined : setEditing(undefined))}
-        open={Boolean(editing)}
+        onOpenChange={(open) => (open ? undefined : setEditor(undefined))}
+        open={Boolean(editor)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit {editing?.provider === "s3" ? "S3 Bucket" : "SMB Share"}</DialogTitle>
+            <DialogTitle>
+              {editor?.mode === "edit" ? "Edit Upload Destination" : "New Upload Destination"}
+            </DialogTitle>
             <DialogDescription>
-              {editing?.provider === "s3"
-                ? "Configure the bucket, region or endpoint, and access keys for direct S3 uploads."
-                : "Configure the server, share, and credentials for direct SMB uploads."}
+              Configure the server/share or bucket, region or endpoint, and credentials for direct
+              uploads.
             </DialogDescription>
           </DialogHeader>
-          {editing ? (
-            <UploadProviderEditor
+          {editor ? (
+            <UploadDestinationEditor
               canManage={canManage}
-              onSaved={() => setEditing(undefined)}
-              provider={editing}
+              destination={editor.mode === "edit" ? editor.destination : undefined}
+              onSaved={() => setEditor(undefined)}
             />
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        onOpenChange={(open) => (open ? undefined : setPendingDelete(undefined))}
+        open={Boolean(pendingDelete)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete upload destination?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? `"${pendingDelete.displayName}" will be removed. Policies pointing at it will fail until repointed.`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMutation.isPending}
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function UploadProviderEditor({
+function UploadDestinationEditor({
   canManage,
+  destination,
   onSaved,
-  provider,
 }: {
   canManage: boolean;
+  destination?: UploadDestinationRuntimeStatus;
   onSaved: () => void;
-  provider: UploadProviderRuntimeStatus;
 }) {
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<ProviderDraft>(() => initialDraft(provider));
+  const isCreate = !destination;
+  const [draft, setDraft] = useState<DestinationDraft>(() => initialDraft(destination));
   const mutation = useMutation({
-    mutationFn: () => api.updateUploadProvider(provider.provider, buildUpdate(provider, draft)),
+    mutationFn: () =>
+      destination
+        ? api.updateUploadDestination(destination.id, buildUpdate(draft))
+        : api.createUploadDestination(buildCreate(draft)),
     onError: () =>
       toast.error("Save failed", {
-        description: "The upload provider settings could not be saved.",
+        description: "The upload destination could not be saved.",
       }),
     onSuccess: () => {
-      toast.success("Upload provider saved");
-      void queryClient.invalidateQueries({ queryKey: ["upload-providers"] });
+      toast.success("Upload destination saved");
+      void queryClient.invalidateQueries({ queryKey: ["upload-destinations"] });
       onSaved();
     },
   });
 
   useEffect(() => {
-    setDraft(initialDraft(provider));
-  }, [provider]);
+    setDraft(initialDraft(destination));
+  }, [destination]);
 
   return (
     <div className="grid gap-4">
@@ -156,39 +231,60 @@ function UploadProviderEditor({
             value={draft.displayName}
           />
         </Field>
-        <Toggle
-          checked={draft.enabled}
-          disabled={!canManage}
-          label="Enabled"
-          onChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
-        />
+        <Field label="Kind">
+          <Select
+            disabled={!canManage || !isCreate}
+            onValueChange={(value) =>
+              setDraft((current) => ({ ...current, kind: value as UploadDestinationKind }))
+            }
+            value={draft.kind}
+          >
+            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="smb">SMB</SelectItem>
+              <SelectItem value="s3">S3</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
       </div>
 
-      {provider.provider === "smb" ? (
+      <Toggle
+        checked={draft.enabled}
+        disabled={!canManage}
+        label="Enabled"
+        onChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
+      />
+
+      {draft.kind === "smb" ? (
         <SmbFields
           canManage={canManage}
           draft={draft}
-          hasPassword={provider.hasSmbPassword}
+          hasPassword={destination?.hasSmbPassword ?? false}
           setDraft={setDraft}
         />
       ) : (
         <S3Fields
           canManage={canManage}
           draft={draft}
-          hasSecret={provider.hasS3SecretAccessKey}
+          hasSecret={destination?.hasS3SecretAccessKey ?? false}
           setDraft={setDraft}
         />
       )}
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          Required {provider.requiredFields.length ? provider.requiredFields.join(", ") : "none"}
-        </span>
-        {provider.missingFields.length > 0 ? (
-          <span className="text-destructive">Missing {provider.missingFields.join(", ")}</span>
-        ) : null}
-        {provider.reason ? <span>{provider.reason}</span> : null}
-      </div>
+      {destination ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            Required{" "}
+            {destination.requiredFields.length ? destination.requiredFields.join(", ") : "none"}
+          </span>
+          {destination.missingFields.length > 0 ? (
+            <span className="text-destructive">Missing {destination.missingFields.join(", ")}</span>
+          ) : null}
+          {destination.reason ? <span>{destination.reason}</span> : null}
+        </div>
+      ) : null}
 
       {mutation.isError ? <p className="text-sm text-destructive">Save failed.</p> : null}
 
@@ -203,7 +299,7 @@ function UploadProviderEditor({
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            {canManage ? "Save upload provider" : "Requires settings manage"}
+            {canManage ? "Save upload destination" : "Requires settings manage"}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -218,9 +314,9 @@ function SmbFields({
   setDraft,
 }: {
   canManage: boolean;
-  draft: ProviderDraft;
+  draft: DestinationDraft;
   hasPassword: boolean;
-  setDraft: React.Dispatch<React.SetStateAction<ProviderDraft>>;
+  setDraft: React.Dispatch<React.SetStateAction<DestinationDraft>>;
 }) {
   const updateSmb = (patch: Partial<SmbProviderConfig>) =>
     setDraft((current) => ({ ...current, smb: { ...current.smb, ...patch } }));
@@ -299,9 +395,9 @@ function S3Fields({
   setDraft,
 }: {
   canManage: boolean;
-  draft: ProviderDraft;
+  draft: DestinationDraft;
   hasSecret: boolean;
-  setDraft: React.Dispatch<React.SetStateAction<ProviderDraft>>;
+  setDraft: React.Dispatch<React.SetStateAction<DestinationDraft>>;
 }) {
   const regionListId = useId();
   const preset = s3ProviderPresets.find((entry) => entry.preset === draft.s3.preset);
@@ -402,18 +498,19 @@ function S3Fields({
   );
 }
 
-function initialDraft(provider: UploadProviderRuntimeStatus): ProviderDraft {
+function initialDraft(destination?: UploadDestinationRuntimeStatus): DestinationDraft {
   return {
-    displayName: provider.displayName,
-    enabled: provider.enabled,
-    s3: { preset: "aws", ...provider.s3 },
+    displayName: destination?.displayName ?? "",
+    enabled: destination?.enabled ?? false,
+    kind: destination?.kind ?? "smb",
+    s3: { preset: "aws", ...destination?.s3 },
     s3SecretAccessKey: "",
-    smb: { ...provider.smb },
+    smb: { ...destination?.smb },
     smbPassword: "",
   };
 }
 
-function applyPreset(draft: ProviderDraft, preset: S3ProviderPreset): ProviderDraft {
+function applyPreset(draft: DestinationDraft, preset: S3ProviderPreset): DestinationDraft {
   const info = s3ProviderPresets.find((entry) => entry.preset === preset);
 
   return {
@@ -427,11 +524,28 @@ function applyPreset(draft: ProviderDraft, preset: S3ProviderPreset): ProviderDr
   };
 }
 
-function buildUpdate(
-  provider: UploadProviderRuntimeStatus,
-  draft: ProviderDraft,
-): UploadProviderConfigUpdate {
-  if (provider.provider === "smb") {
+function buildCreate(draft: DestinationDraft): UploadDestinationInput {
+  if (draft.kind === "smb") {
+    return {
+      displayName: draft.displayName,
+      enabled: draft.enabled,
+      kind: "smb",
+      smb: cleanSmb(draft.smb),
+      ...(draft.smbPassword ? { smbPassword: draft.smbPassword } : {}),
+    };
+  }
+
+  return {
+    displayName: draft.displayName,
+    enabled: draft.enabled,
+    kind: "s3",
+    s3: cleanS3(draft.s3),
+    ...(draft.s3SecretAccessKey ? { s3SecretAccessKey: draft.s3SecretAccessKey } : {}),
+  };
+}
+
+function buildUpdate(draft: DestinationDraft): UploadDestinationUpdate {
+  if (draft.kind === "smb") {
     return {
       displayName: draft.displayName,
       enabled: draft.enabled,
@@ -483,23 +597,30 @@ function parsePort(value: string) {
   return value.trim() && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function uploadProviderColumns({
+function uploadDestinationColumns({
   canManage,
+  onDelete,
   onEdit,
 }: {
   canManage: boolean;
-  onEdit: (provider: UploadProviderRuntimeStatus) => void;
-}): ColumnDef<UploadProviderRuntimeStatus>[] {
-  const columns: ColumnDef<UploadProviderRuntimeStatus>[] = [
+  onDelete: (destination: UploadDestinationRuntimeStatus) => void;
+  onEdit: (destination: UploadDestinationRuntimeStatus) => void;
+}): ColumnDef<UploadDestinationRuntimeStatus>[] {
+  const columns: ColumnDef<UploadDestinationRuntimeStatus>[] = [
     {
       cell: ({ row }) => (
         <div className="min-w-0">
           <div className="font-medium text-foreground">{row.original.displayName}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.provider}</div>
+          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
         </div>
       ),
       header: "Name",
       id: "name",
+    },
+    {
+      cell: ({ row }) => <span className="text-sm uppercase">{row.original.kind}</span>,
+      header: "Kind",
+      id: "kind",
     },
     {
       cell: ({ row }) => (
@@ -523,7 +644,7 @@ function uploadProviderColumns({
 
   columns.push({
     cell: ({ row }) => (
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <Button
           disabled={!canManage}
           onClick={() => onEdit(row.original)}
@@ -533,6 +654,16 @@ function uploadProviderColumns({
         >
           <Pencil className="size-4" />
           Edit
+        </Button>
+        <Button
+          disabled={!canManage}
+          onClick={() => onDelete(row.original)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Trash2 className="size-4" />
+          <span className="sr-only">Delete</span>
         </Button>
       </div>
     ),

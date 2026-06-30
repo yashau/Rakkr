@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type {
   AuditEvent,
   HealthEvent,
+  RecordingSummary,
+  UploadQueueItem,
   UploadQueueRunItem,
   UploadQueueRunSummary,
 } from "@rakkr/shared";
@@ -11,7 +13,7 @@ import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import { deleteRecordingCacheFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
-import type { UploadProviderStore } from "./upload-providers.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 import { runUploadQueueOnce } from "./upload-executor.js";
 import { uploadPolicyForQueue } from "./upload-policies.js";
 import { listUploadQueueItems } from "./upload-queue.js";
@@ -19,9 +21,9 @@ import type { SmbClientFactory } from "./upload-smb.js";
 
 interface UploadRunnerDependencies {
   auditStore: AuditStore;
+  destinationStore: UploadDestinationStore;
   healthEventStore?: HealthEventStore;
   limit?: number;
-  providerStore: UploadProviderStore;
   recordingIds?: ReadonlySet<string>;
   recordingStore?: RecordingStore;
   // Test-only override so SMB uploads can be exercised without a live server.
@@ -112,9 +114,9 @@ export type UploadRunner = ReturnType<typeof createUploadRunner>;
 export async function runUploadQueuePass(
   {
     auditStore,
+    destinationStore,
     healthEventStore,
     limit = uploadRunnerBatchSize(),
-    providerStore,
     recordingIds,
     recordingStore,
     smbClientFactory,
@@ -122,9 +124,9 @@ export async function runUploadQueuePass(
   now = new Date(),
 ) {
   const summary = await runUploadQueueOnce({
+    destinationStore,
     limit,
     now,
-    providerStore,
     recordingIds,
     smbClientFactory,
   });
@@ -136,14 +138,21 @@ export async function runUploadQueuePass(
   await appendUploadRunAudit(auditStore, summary, limit);
 
   for (const item of summary.items) {
-    const retention = await applyUploadRetention(item, recordingStore);
     const healthEvent = await appendUploadFailureHealthEvent(
       healthEventStore,
       recordingStore,
       item,
     );
 
-    await appendUploadItemAudit(auditStore, item, retention, healthEvent?.id);
+    await appendUploadItemAudit(auditStore, item, healthEvent?.id);
+  }
+
+  // Reconcile each affected recording once all its upload items have settled:
+  // derive uploaded/partial status and run the gated cache deletion.
+  const touchedRecordingIds = [...new Set(summary.items.map((item) => item.recordingId))];
+
+  for (const recordingId of touchedRecordingIds) {
+    await reconcileRecordingUpload(recordingId, recordingStore, auditStore);
   }
 
   return summary;
@@ -179,7 +188,6 @@ async function appendUploadRunAudit(
 async function appendUploadItemAudit(
   auditStore: AuditStore,
   item: UploadQueueRunItem,
-  retention?: UploadRetentionResult,
   healthEventId?: string,
 ) {
   const outcome = uploadItemOutcome(item);
@@ -197,7 +205,6 @@ async function appendUploadItemAudit(
       ...(item.checksumVerification ? { checksumVerification: item.checksumVerification } : {}),
       ...(healthEventId ? { healthEventId } : {}),
       provider: item.provider,
-      ...(retention ? { retention } : {}),
       status: item.status,
     },
     id: `audit_${randomUUID()}`,
@@ -239,53 +246,127 @@ async function appendUploadFailureHealthEvent(
   return event;
 }
 
-async function applyUploadRetention(
-  item: UploadQueueRunItem,
-  recordingStore?: RecordingStore,
-): Promise<UploadRetentionResult | undefined> {
-  if (item.status !== "succeeded" || !recordingStore) {
-    return undefined;
+// Recording-level reconciliation: once every non-stub upload item for a recording
+// is terminal, derive its overall status (uploaded/partial) and run the gated
+// cache deletion. Independent destinations never block one another; a single
+// destination failure yields `partial` rather than failing the recording.
+async function reconcileRecordingUpload(
+  recordingId: string,
+  recordingStore: RecordingStore | undefined,
+  auditStore: AuditStore,
+): Promise<void> {
+  if (!recordingStore) {
+    return;
   }
 
-  if (item.provider === "stub") {
-    return { skipped: "stub_provider" };
+  const recording = await recordingStore.find(recordingId);
+
+  if (!recording) {
+    return;
   }
 
-  const queueItem = (await listUploadQueueItems()).find(
-    (candidate) => candidate.id === item.itemId,
+  const items = (await listUploadQueueItems()).filter(
+    (item) => item.recordingId === recordingId && item.provider !== "stub",
   );
-  const policy = await uploadPolicyForQueue(queueItem?.uploadPolicyId);
 
-  if (!policy.deleteCacheAfterUpload) {
-    return { policyId: policy.id, skipped: "policy_keeps_cache" };
+  if (items.length === 0) {
+    return;
   }
 
-  const recording = await recordingStore.find(item.recordingId);
-
-  if (!recording?.cachePath) {
-    return { policyId: policy.id, skipped: "recording_cache_missing" };
+  // Wait until every destination has reached a terminal state.
+  if (items.some((item) => item.status !== "succeeded" && item.status !== "failed")) {
+    return;
   }
 
-  try {
-    const cacheDeleted = await deleteRecordingCacheFile(recording);
+  const succeeded = items.filter((item) => item.status === "succeeded");
+  const failed = items.filter((item) => item.status === "failed");
 
-    await recordingStore.save({
-      ...recording,
-      cachePath: undefined,
-      cached: false,
-      status: "uploaded",
-    });
-
-    return {
-      cacheDeleted,
-      policyId: policy.id,
-    };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "cache_retention_failed",
-      policyId: policy.id,
-    };
+  // All destinations failed: leave the recording cached; failures already raised
+  // per-item health events and remain retryable.
+  if (succeeded.length === 0) {
+    return;
   }
+
+  const status: RecordingSummary["status"] = failed.length > 0 ? "partial" : "uploaded";
+  const retention = await resolveCacheDeletion(succeeded, recording);
+  const cacheDeleted = retention.cacheDeleted === true;
+
+  await recordingStore.save({
+    ...recording,
+    ...(cacheDeleted ? { cachePath: undefined, cached: false } : {}),
+    status,
+  });
+
+  await appendReconcileAudit(
+    auditStore,
+    recording,
+    status,
+    succeeded.length,
+    failed.length,
+    retention,
+  );
+}
+
+// Cache-deletion gate: only delete the shared cache file when all items are
+// terminal (guaranteed by the caller) and a succeeded destination's policy asks
+// for it — so a still-pending destination never loses the source file.
+async function resolveCacheDeletion(
+  succeededItems: UploadQueueItem[],
+  recording: RecordingSummary,
+): Promise<UploadRetentionResult> {
+  if (!recording.cachePath) {
+    return { skipped: "recording_cache_missing" };
+  }
+
+  for (const item of succeededItems) {
+    const policy = await uploadPolicyForQueue(item.uploadPolicyId);
+
+    if (policy.deleteCacheAfterUpload) {
+      try {
+        const cacheDeleted = await deleteRecordingCacheFile(recording);
+
+        return { cacheDeleted, policyId: policy.id };
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : "cache_retention_failed",
+          policyId: policy.id,
+        };
+      }
+    }
+  }
+
+  return { skipped: "policy_keeps_cache" };
+}
+
+async function appendReconcileAudit(
+  auditStore: AuditStore,
+  recording: RecordingSummary,
+  status: RecordingSummary["status"],
+  succeeded: number,
+  failed: number,
+  retention: UploadRetentionResult,
+) {
+  await auditStore.append({
+    action: `recordings.upload_queue.reconciled.${status === "uploaded" ? "succeeded" : "partial"}`,
+    actor: uploadRunnerActor(),
+    actorContext: {},
+    correlationIds: { recordingId: recording.id },
+    createdAt: new Date().toISOString(),
+    details: {
+      failed,
+      retention,
+      status,
+      succeeded,
+    },
+    id: `audit_${randomUUID()}`,
+    outcome: status === "uploaded" ? "succeeded" : "partial",
+    permission: "recording:control",
+    target: {
+      id: recording.id,
+      name: recording.name,
+      type: "recording",
+    },
+  });
 }
 
 function uploadRunOutcome(summary: UploadQueueRunSummary): AuditEvent["outcome"] {

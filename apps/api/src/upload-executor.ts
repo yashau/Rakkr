@@ -10,10 +10,10 @@ import type {
   UploadQueueRunSummary,
 } from "@rakkr/shared";
 import {
-  createUploadProviderStore,
-  type ResolvedUploadProviderConfig,
-  type UploadProviderStore,
-} from "./upload-providers.js";
+  createUploadDestinationStore,
+  type ResolvedUploadDestinationConfig,
+  type UploadDestinationStore,
+} from "./upload-destinations.js";
 import { defaultSmbClientFactory, uploadViaSmb, type SmbClientFactory } from "./upload-smb.js";
 import {
   failUploadQueueItem,
@@ -23,9 +23,9 @@ import {
 } from "./upload-queue.js";
 
 interface UploadExecutorOptions {
+  destinationStore?: UploadDestinationStore;
   limit?: number;
   now?: Date;
-  providerStore?: UploadProviderStore;
   recordingIds?: ReadonlySet<string>;
   s3Client?: S3Sender;
   smbClientFactory?: SmbClientFactory;
@@ -45,7 +45,7 @@ export async function runUploadQueueOnce(
   options: UploadExecutorOptions = {},
 ): Promise<UploadQueueRunSummary> {
   const limit = Math.max(0, options.limit ?? 10);
-  const providerStore = options.providerStore ?? createUploadProviderStore();
+  const destinationStore = options.destinationStore ?? createUploadDestinationStore();
   const dueItems = (await listDueUploadQueueItems(options.now))
     .filter((item) => !options.recordingIds || options.recordingIds.has(item.recordingId))
     .slice(0, limit);
@@ -58,11 +58,7 @@ export async function runUploadQueueOnce(
       continue;
     }
 
-    const provider = await providerStore.findStatus(item.provider);
-    const providerResult =
-      provider.status === "ready"
-        ? await runProviderUpload(item, options, providerStore)
-        : { ok: false, reason: provider.reason ?? `provider_${provider.status}` };
+    const providerResult = await runProviderUpload(item, options, destinationStore);
     const next = providerResult.ok
       ? await succeedUploadQueueItem(item.id)
       : await failUploadQueueItem(item.id, providerResult.reason ?? "upload_failed");
@@ -91,7 +87,7 @@ export async function runUploadQueueOnce(
 async function runProviderUpload(
   item: UploadQueueItem,
   options: UploadExecutorOptions,
-  providerStore: UploadProviderStore,
+  destinationStore: UploadDestinationStore,
 ): Promise<ProviderUploadResult> {
   if (!item.cachePath) {
     return { ok: false, reason: "cache_path_missing" };
@@ -99,6 +95,20 @@ async function runProviderUpload(
 
   if (item.provider === "stub") {
     return { ok: true };
+  }
+
+  if (!item.destinationId) {
+    return { ok: false, reason: "destination_missing" };
+  }
+
+  const destination = await destinationStore.find(item.destinationId);
+
+  if (!destination) {
+    return { ok: false, reason: "destination_not_found" };
+  }
+
+  if (destination.status !== "ready") {
+    return { ok: false, reason: destination.reason ?? `destination_${destination.status}` };
   }
 
   try {
@@ -110,12 +120,23 @@ async function runProviderUpload(
       return { ok: false, reason: "source_checksum_mismatch" };
     }
 
-    const config = await providerStore.resolveConfig(item.provider);
+    const config = await destinationStore.resolveConfig(item.destinationId);
+
+    if (!config) {
+      return { ok: false, reason: "destination_not_found" };
+    }
+
     const fileName = uploadFileName(item);
 
     if (item.provider === "smb") {
       await uploadViaSmb(
-        { config, fileName, sourceChecksumHex: sourceChecksum.hex, sourcePath },
+        {
+          config,
+          fileName,
+          pathOverride: item.pathOverride,
+          sourceChecksumHex: sourceChecksum.hex,
+          sourcePath,
+        },
         options.smbClientFactory ?? defaultSmbClientFactory,
       );
 
@@ -148,7 +169,7 @@ async function runProviderUpload(
 }
 
 async function uploadToS3(
-  config: ResolvedUploadProviderConfig,
+  config: ResolvedUploadDestinationConfig,
   sourcePath: string,
   fileName: string,
   item: UploadQueueItem,
@@ -170,7 +191,7 @@ async function uploadToS3(
       ChecksumSHA256: sourceChecksum.base64,
       ContentLength: (await stat(sourcePath)).size,
       ContentType: contentType(fileName),
-      Key: s3Key(config.s3?.prefix, fileName),
+      Key: s3Key(config.s3?.prefix, item.pathOverride, fileName),
       Metadata: {
         checksum: item.checksum ?? "",
         recording_id: item.recordingId,
@@ -180,7 +201,7 @@ async function uploadToS3(
   );
 }
 
-function buildS3Client(config: ResolvedUploadProviderConfig): S3Client {
+function buildS3Client(config: ResolvedUploadDestinationConfig): S3Client {
   const s3 = config.s3 ?? {};
   const clientConfig: S3ClientConfig = {
     // The SDK always requires a region; custom/compatible endpoints often ignore
@@ -206,10 +227,12 @@ function buildS3Client(config: ResolvedUploadProviderConfig): S3Client {
   return new S3Client(clientConfig);
 }
 
-function s3Key(prefix: string | undefined, fileName: string) {
-  const cleanPrefix = (prefix ?? "").replace(/^\/+|\/+$/g, "");
+function s3Key(prefix: string | undefined, pathOverride: string | undefined, fileName: string) {
+  const parts = [prefix, pathOverride]
+    .map((value) => (value ?? "").replace(/^\/+|\/+$/g, ""))
+    .filter((value) => value.length > 0);
 
-  return cleanPrefix ? path.posix.join(cleanPrefix, fileName) : fileName;
+  return parts.length > 0 ? path.posix.join(...parts, fileName) : fileName;
 }
 
 interface FileSha256 {

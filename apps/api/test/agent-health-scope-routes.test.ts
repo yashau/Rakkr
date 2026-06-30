@@ -219,7 +219,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
     tags: ["agent"],
     timezone: "UTC",
     titleTemplate: "{{date}} Agent Schedule",
-    uploadPolicyId: "upload-policy-stub",
+    uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
     ...input,
   };

@@ -81,7 +81,7 @@ export const schedules: ScheduleSummary[] = [
     tags: ["scheduled", "voice"],
     timezone: "Indian/Maldives",
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
-    uploadPolicyId: defaultStubUploadPolicy.id,
+    uploadPolicyIds: [defaultStubUploadPolicy.id],
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];
@@ -106,7 +106,7 @@ export const recordings: RecordingSummary[] = [
       "Call to order and roll call.",
       "Motion approved for the June finance packet.",
     ],
-    uploadPolicyId: defaultStubUploadPolicy.id,
+    uploadPolicyIds: [defaultStubUploadPolicy.id],
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];

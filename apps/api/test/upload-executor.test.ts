@@ -8,10 +8,10 @@ import type { RecordingSummary } from "@rakkr/shared";
 
 const uploadRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-executor-"));
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(uploadRoot, "cache");
-process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(uploadRoot, "providers.json");
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(uploadRoot, "destinations.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(uploadRoot, "queue.json");
 
-const { createUploadProviderStore } = await import("../src/upload-providers.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 const { runUploadQueueOnce } = await import("../src/upload-executor.js");
 const { enqueueRecordingUpload, listUploadQueueItems, startUploadQueueItem } =
   await import("../src/upload-queue.js");
@@ -60,12 +60,13 @@ test("skips in-flight upload items until their recovery lease expires", async ()
 });
 
 test("defers provider failures until the retry budget is exhausted", async () => {
-  const providerStore = createUploadProviderStore();
+  const destinationStore = createUploadDestinationStore();
 
   // Enabled but missing the secret access key -> not configured.
-  await providerStore.update("s3", {
+  const destination = await destinationStore.create({
     displayName: "Archive S3",
     enabled: true,
+    kind: "s3",
     s3: {
       accessKeyId: "AKIAEXAMPLE",
       bucket: "rakkr-archive",
@@ -75,10 +76,11 @@ test("defers provider failures until the retry budget is exhausted", async () =>
   });
 
   const queued = await enqueueRecordingUpload(recording("rec_s3_upload"), {
+    destinationId: destination.id,
     maxAttempts: 1,
     provider: "s3",
   });
-  const result = await runUploadQueueOnce({ providerStore });
+  const result = await runUploadQueueOnce({ destinationStore });
   const item = (await listUploadQueueItems()).find((candidate) => candidate.id === queued.id);
 
   assert.equal(result.attempted, 1);
@@ -91,14 +93,15 @@ test("defers provider failures until the retry budget is exhausted", async () =>
 });
 
 test("uploads SMB queue items directly to the share over the network", async () => {
-  const providerStore = createUploadProviderStore();
+  const destinationStore = createUploadDestinationStore();
   const smb = fakeSmbClient();
   const contents = "smb-bytes";
 
   await cacheRecording("rec_smb_upload", contents);
-  await providerStore.update("smb", {
+  const destination = await destinationStore.create({
     displayName: "Recordings Share",
     enabled: true,
+    kind: "smb",
     smb: {
       path: "meetings/2026",
       server: "files.example.lan",
@@ -109,10 +112,11 @@ test("uploads SMB queue items directly to the share over the network", async () 
   });
 
   const queued = await enqueueRecordingUpload(recording("rec_smb_upload", contents), {
+    destinationId: destination.id,
     maxAttempts: 1,
     provider: "smb",
   });
-  const result = await runUploadQueueOnce({ providerStore, smbClientFactory: () => smb.client });
+  const result = await runUploadQueueOnce({ destinationStore, smbClientFactory: () => smb.client });
   const item = (await listUploadQueueItems()).find((candidate) => candidate.id === queued.id);
 
   assert.equal(result.succeeded, 1);
@@ -133,14 +137,15 @@ test("uploads SMB queue items directly to the share over the network", async () 
 });
 
 test("uploads S3 queue items with explicit credentials, bucket, key, and metadata", async () => {
-  const providerStore = createUploadProviderStore();
+  const destinationStore = createUploadDestinationStore();
   const sentCommands = [];
   const contents = "s3-bytes";
 
   await cacheRecording("rec_s3_ready_upload", contents);
-  await providerStore.update("s3", {
+  const destination = await destinationStore.create({
     displayName: "Archive S3",
     enabled: true,
+    kind: "s3",
     s3: {
       accessKeyId: "AKIAEXAMPLE",
       bucket: "rakkr-archive",
@@ -150,12 +155,15 @@ test("uploads S3 queue items with explicit credentials, bucket, key, and metadat
     s3SecretAccessKey: "s3-secret",
   });
 
+  // pathOverride is appended to the destination prefix in the object key.
   const queued = await enqueueRecordingUpload(recording("rec_s3_ready_upload", contents), {
+    destinationId: destination.id,
     maxAttempts: 1,
+    pathOverride: "council",
     provider: "s3",
   });
   const result = await runUploadQueueOnce({
-    providerStore,
+    destinationStore,
     s3Client: {
       async send(command) {
         sentCommands.push(command);
@@ -175,18 +183,19 @@ test("uploads S3 queue items with explicit credentials, bucket, key, and metadat
   assert.equal(item?.status, "succeeded");
   assert.equal(input?.Bucket, "rakkr-archive");
   assert.equal(input?.ChecksumSHA256, sha256Base64(contents));
-  assert.equal(input?.Key, "meetings/Council Meeting.mp3");
+  assert.equal(input?.Key, "meetings/council/Council Meeting.mp3");
   assert.equal(input?.Metadata?.checksum, sha256Prefixed(contents));
   assert.equal(input?.Metadata?.recording_id, "rec_s3_ready_upload");
 });
 
 test("fails real provider upload when cached file checksum disagrees with metadata", async () => {
-  const providerStore = createUploadProviderStore();
+  const destinationStore = createUploadDestinationStore();
 
   await cacheRecording("rec_smb_checksum_mismatch", "actual-bytes");
-  await providerStore.update("smb", {
+  const destination = await destinationStore.create({
     displayName: "Recordings Share",
     enabled: true,
+    kind: "smb",
     smb: { server: "files.example.lan", share: "recordings", username: "svc" },
     smbPassword: "s3cr3t",
   });
@@ -197,12 +206,13 @@ test("fails real provider upload when cached file checksum disagrees with metada
       checksum: sha256Prefixed("different-bytes"),
     },
     {
+      destinationId: destination.id,
       maxAttempts: 1,
       provider: "smb",
     },
   );
   const result = await runUploadQueueOnce({
-    providerStore,
+    destinationStore,
     smbClientFactory: () => {
       throw new Error("smb_client_should_not_be_used");
     },

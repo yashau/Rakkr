@@ -365,7 +365,7 @@ function recording(input: Partial<RecordingSummary>): RecordingSummary {
     source: "ad_hoc",
     status: "cached",
     tags: ["voice"],
-    uploadPolicyId: "upload-policy-stub",
+    uploadPolicyIds: ["upload-policy-stub"],
     ...input,
   };
 }

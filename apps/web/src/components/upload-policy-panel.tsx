@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadPolicy, UploadPolicyInput, UploadPolicyUpdate } from "@rakkr/shared";
@@ -18,6 +18,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 
+// Sentinel select value representing the built-in queue-only (no destination) policy.
+const STUB_DESTINATION = "__stub__";
+
 export function UploadPolicyEditor({
   canManage,
   onSaved,
@@ -29,6 +32,11 @@ export function UploadPolicyEditor({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(policy);
+  const destinationsQuery = useQuery({
+    queryFn: api.uploadDestinations,
+    queryKey: ["upload-destinations"],
+  });
+  const destinations = destinationsQuery.data?.data ?? [];
   const mutation = useMutation({
     mutationFn: () => api.updateUploadPolicy(policy.id, policyUpdate(draft)),
     onError: () =>
@@ -57,23 +65,27 @@ export function UploadPolicyEditor({
             value={draft.name}
           />
         </Field>
-        <Field label="Provider">
+        <Field label="Destination">
           <Select
             disabled={!canManage}
             onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                provider: value as UploadPolicy["provider"],
+                destinationId: value === STUB_DESTINATION ? undefined : value,
               }))
             }
-            value={draft.provider}
+            value={draft.destinationId ?? STUB_DESTINATION}
           >
             <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="smb">SMB</SelectItem>
-              <SelectItem value="s3">S3</SelectItem>
+              <SelectItem value={STUB_DESTINATION}>Queue only (no upload)</SelectItem>
+              {destinations.map((destination) => (
+                <SelectItem key={destination.id} value={destination.id}>
+                  {destination.displayName} ({destination.kind.toUpperCase()})
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </Field>
@@ -106,6 +118,19 @@ export function UploadPolicyEditor({
             }
             type="number"
             value={draft.maxAttempts}
+          />
+        </Field>
+        <Field label="Subfolder (optional)">
+          <Input
+            disabled={!canManage || !draft.destinationId}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                pathOverride: event.target.value || undefined,
+              }))
+            }
+            placeholder="appended to the destination path"
+            value={draft.pathOverride ?? ""}
           />
         </Field>
       </div>
@@ -176,11 +201,11 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 function policyUpdate(policy: UploadPolicy): UploadPolicyUpdate {
   return {
     deleteCacheAfterUpload: policy.deleteCacheAfterUpload,
+    destinationId: policy.destinationId,
     enabled: policy.enabled,
     maxAttempts: policy.maxAttempts,
     name: policy.name,
-    provider: policy.provider,
-    target: optionalText(policy.target),
+    pathOverride: optionalText(policy.pathOverride),
     trigger: policy.trigger,
   };
 }
@@ -191,7 +216,6 @@ export function defaultUploadPolicyInput(): UploadPolicyInput {
     enabled: true,
     maxAttempts: 5,
     name: "New Upload Policy",
-    provider: "smb",
     trigger: "manual",
   };
 }

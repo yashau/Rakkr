@@ -264,7 +264,7 @@ function recording(id: string, name: string): RecordingSummary {
     source: "schedule",
     status: "cached",
     tags: [],
-    uploadPolicyId: "upload-policy-stub",
+    uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
   };
 }
@@ -289,7 +289,7 @@ function schedule(id: string, name: string): ScheduleSummary {
     tags: [],
     titleTemplate: "Council Daily",
     timezone: "UTC",
-    uploadPolicyId: "upload-policy-stub",
+    uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
   };
 }

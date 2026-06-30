@@ -7,14 +7,14 @@ import {
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
   recordingProfileUpdateSchema,
-  uploadProviderConfigUpdateSchema,
-  uploadProviderSchema,
+  uploadDestinationInputSchema,
+  uploadDestinationUpdateSchema,
   watchdogPolicyUpdateSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
   type ChannelMapAssignmentPlan,
   type RecordingProfile,
-  type UploadProviderRuntimeStatus,
+  type UploadDestinationRuntimeStatus,
   type WatchdogPolicy,
 } from "@rakkr/shared";
 
@@ -34,7 +34,10 @@ import type {
   RequirePermission,
 } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
-import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
+import {
+  createUploadDestinationStore,
+  type UploadDestinationStore,
+} from "./upload-destinations.js";
 import { registerSettingsActionRoutes } from "./settings-action-routes.js";
 import { registerSettingsControllerRoutes } from "./settings-controller-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
@@ -45,7 +48,7 @@ import {
   firstHiddenChannelMapAssignmentTarget,
   profileSettingsTarget,
   uniqueChannelMapAssignmentTargets,
-  uploadProviderSettingsTarget,
+  uploadDestinationSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
 
@@ -58,7 +61,7 @@ interface SettingsRouteDependencies {
   settingsStore: SettingsStore;
   channelMapAssignmentPlanStore?: ChannelMapAssignmentPlanStore;
   controllerSettingsStore?: ControllerSettingsStore;
-  uploadProviderStore?: UploadProviderStore;
+  uploadDestinationStore?: UploadDestinationStore;
 }
 
 export function registerSettingsRoutes({
@@ -70,7 +73,7 @@ export function registerSettingsRoutes({
   recordAuditEvent,
   requirePermission,
   settingsStore,
-  uploadProviderStore = createUploadProviderStore(),
+  uploadDestinationStore = createUploadDestinationStore(),
 }: SettingsRouteDependencies) {
   registerSettingsControllerRoutes({
     app,
@@ -87,7 +90,7 @@ export function registerSettingsRoutes({
     recordAuditEvent,
     requirePermission,
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
   registerSettingsDetailRoutes({
     app,
@@ -97,7 +100,7 @@ export function registerSettingsRoutes({
     recordAuditEvent,
     requirePermission,
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
   registerSettingsActionRoutes({
     app,
@@ -107,7 +110,7 @@ export function registerSettingsRoutes({
     recordAuditEvent,
     requirePermission,
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
   registerSettingsUploadPolicyRoutes({
     app,
@@ -234,64 +237,132 @@ export function registerSettingsRoutes({
     },
   );
 
-  app.patch(
-    "/api/v1/settings/upload-providers/:provider",
-    requirePermission("settings:manage", "settings.upload_providers.update", async (c) => {
-      const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
-
-      return provider.success
-        ? uploadProviderSettingsTarget(await uploadProviderStore.findStatus(provider.data))
-        : { id: c.req.param("provider"), type: "upload_provider" };
-    }),
+  app.post(
+    "/api/v1/settings/upload-destinations",
+    requirePermission("settings:manage", "settings.upload_destinations.create", () => ({
+      type: "settings",
+    })),
     async (c) => {
-      const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
-
-      if (!provider.success) {
-        await recordSettingsFailure(
-          c,
-          "settings.upload_providers.update.failed",
-          "provider_not_found",
-          { id: c.req.param("provider"), type: "upload_provider" },
-        );
-        return c.json({ error: "Upload provider not found" }, 404);
-      }
-
-      const before = await uploadProviderStore.findStatus(provider.data);
-      const body = uploadProviderConfigUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+      const body = uploadDestinationInputSchema.safeParse(await c.req.json().catch(() => ({})));
 
       if (!body.success) {
         await recordSettingsFailure(
           c,
-          "settings.upload_providers.update.failed",
+          "settings.upload_destinations.create.failed",
           "invalid_request",
-          uploadProviderSettingsTarget(before),
         );
-        return c.json({ error: "Invalid upload provider", issues: body.error.issues }, 400);
+        return c.json({ error: "Invalid upload destination", issues: body.error.issues }, 400);
       }
 
-      const updated = await uploadProviderStore.update(provider.data, body.data);
+      const created = await uploadDestinationStore.create(body.data);
+
+      await recordAuditEvent(c, {
+        action: "settings.upload_destinations.create.succeeded",
+        after: uploadDestinationSnapshot(created),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: uploadDestinationSettingsTarget(created),
+      });
+
+      return c.json({ data: created }, 201);
+    },
+  );
+
+  app.patch(
+    "/api/v1/settings/upload-destinations/:id",
+    requirePermission("settings:manage", "settings.upload_destinations.update", async (c) => {
+      const id = c.req.param("id") ?? "";
+      const destination = await uploadDestinationStore.find(id);
+
+      return destination
+        ? uploadDestinationSettingsTarget(destination)
+        : { id, type: "upload_destination" };
+    }),
+    async (c) => {
+      const id = c.req.param("id") ?? "";
+      const before = await uploadDestinationStore.find(id);
+
+      if (!before) {
+        await recordSettingsFailure(c, "settings.upload_destinations.update.failed", "not_found", {
+          id,
+          type: "upload_destination",
+        });
+        return c.json({ error: "Upload destination not found" }, 404);
+      }
+
+      const body = uploadDestinationUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.upload_destinations.update.failed",
+          "invalid_request",
+          uploadDestinationSettingsTarget(before),
+        );
+        return c.json({ error: "Invalid upload destination", issues: body.error.issues }, 400);
+      }
+
+      const updated = await uploadDestinationStore.update(id, body.data);
 
       if (!updated) {
         await recordSettingsFailure(
           c,
-          "settings.upload_providers.update.failed",
-          "provider_not_found",
-          uploadProviderSettingsTarget(before),
+          "settings.upload_destinations.update.failed",
+          "not_found",
+          uploadDestinationSettingsTarget(before),
         );
-        return c.json({ error: "Upload provider not found" }, 404);
+        return c.json({ error: "Upload destination not found" }, 404);
       }
 
       await recordAuditEvent(c, {
-        action: "settings.upload_providers.update.succeeded",
-        after: uploadProviderSnapshot(updated),
+        action: "settings.upload_destinations.update.succeeded",
+        after: uploadDestinationSnapshot(updated),
         auth: currentAuth(c),
-        before: uploadProviderSnapshot(before),
+        before: uploadDestinationSnapshot(before),
         outcome: "succeeded",
         permission: "settings:manage",
-        target: uploadProviderSettingsTarget(updated),
+        target: uploadDestinationSettingsTarget(updated),
       });
 
       return c.json({ data: updated });
+    },
+  );
+
+  app.delete(
+    "/api/v1/settings/upload-destinations/:id",
+    requirePermission("settings:manage", "settings.upload_destinations.delete", async (c) => {
+      const id = c.req.param("id") ?? "";
+      const destination = await uploadDestinationStore.find(id);
+
+      return destination
+        ? uploadDestinationSettingsTarget(destination)
+        : { id, type: "upload_destination" };
+    }),
+    async (c) => {
+      const id = c.req.param("id") ?? "";
+      const before = await uploadDestinationStore.find(id);
+
+      if (!before) {
+        await recordSettingsFailure(c, "settings.upload_destinations.delete.failed", "not_found", {
+          id,
+          type: "upload_destination",
+        });
+        return c.json({ error: "Upload destination not found" }, 404);
+      }
+
+      await uploadDestinationStore.delete(id);
+
+      await recordAuditEvent(c, {
+        action: "settings.upload_destinations.delete.succeeded",
+        auth: currentAuth(c),
+        before: uploadDestinationSnapshot(before),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: uploadDestinationSettingsTarget(before),
+      });
+
+      return c.json({ data: { id } });
     },
   );
 
@@ -870,23 +941,24 @@ function profileSnapshot(profile: RecordingProfile) {
   };
 }
 
-function uploadProviderSnapshot(provider: UploadProviderRuntimeStatus) {
+function uploadDestinationSnapshot(destination: UploadDestinationRuntimeStatus) {
   // Built from the masked runtime status: the non-secret smb/s3 config plus
   // hasSmbPassword/hasS3SecretAccessKey indicators. Secret values (SMB password,
   // S3 secret access key) are never present here and must never be audited.
   return {
-    configured: provider.configured,
-    displayName: provider.displayName,
-    enabled: provider.enabled,
-    hasS3SecretAccessKey: provider.hasS3SecretAccessKey,
-    hasSmbPassword: provider.hasSmbPassword,
-    implemented: provider.implemented,
-    missingFields: provider.missingFields,
-    provider: provider.provider,
-    s3: provider.s3,
-    smb: provider.smb,
-    status: provider.status,
-    target: provider.target,
+    configured: destination.configured,
+    displayName: destination.displayName,
+    enabled: destination.enabled,
+    hasS3SecretAccessKey: destination.hasS3SecretAccessKey,
+    hasSmbPassword: destination.hasSmbPassword,
+    id: destination.id,
+    implemented: destination.implemented,
+    kind: destination.kind,
+    missingFields: destination.missingFields,
+    s3: destination.s3,
+    smb: destination.smb,
+    status: destination.status,
+    target: destination.target,
   };
 }
 

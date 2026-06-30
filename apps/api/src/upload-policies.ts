@@ -8,10 +8,12 @@ import {
   uploadPolicySchema,
   uploadPolicyUpdateSchema,
   type RecordingSummary,
+  type UploadDestinationRuntimeStatus,
   type UploadPolicy,
   type UploadPolicyInput,
   type UploadPolicyUpdate,
 } from "@rakkr/shared";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 
 type UploadPolicyRow = typeof uploadPoliciesTable.$inferSelect;
 
@@ -209,11 +211,11 @@ class PostgresUploadPolicyStore implements UploadPolicyStore {
       .onConflictDoUpdate({
         set: {
           deleteCacheAfterUpload: policy.deleteCacheAfterUpload,
+          destinationId: policy.destinationId ?? null,
           enabled: policy.enabled,
           maxAttempts: policy.maxAttempts,
           name: policy.name,
-          provider: policy.provider,
-          target: policy.target ?? null,
+          pathOverride: policy.pathOverride ?? null,
           trigger: policy.trigger,
           updatedAt: new Date(policy.updatedAt),
         },
@@ -255,24 +257,71 @@ export async function uploadPolicyForQueue(policyId: string | undefined) {
   return (await findUploadPolicy(policyId)) ?? defaultStubUploadPolicy;
 }
 
-export async function uploadPolicyForCachedRecording(recording: RecordingSummary) {
+// All enabled `on_recording_cached` policies attached to a cached recording. The
+// upload runner fans out one independent queue item per returned policy.
+export async function uploadPoliciesForCachedRecording(recording: RecordingSummary) {
   if (!recording.cached || recording.status !== "cached") {
+    return [];
+  }
+
+  const policies: UploadPolicy[] = [];
+
+  for (const policyId of recording.uploadPolicyIds ?? []) {
+    const policy = await findUploadPolicy(policyId);
+
+    if (policy && policy.enabled && policy.trigger === "on_recording_cached") {
+      policies.push(policy);
+    }
+  }
+
+  return policies;
+}
+
+// Back-compat singular helper retained for baseline checks; prefer the plural.
+export async function uploadPolicyForCachedRecording(recording: RecordingSummary) {
+  return (await uploadPoliciesForCachedRecording(recording))[0];
+}
+
+export async function uploadQueueInputForPolicy(
+  policy: UploadPolicy,
+  destinationStore: UploadDestinationStore,
+  reason?: string,
+) {
+  if (!policy.destinationId) {
+    return {
+      maxAttempts: policy.maxAttempts,
+      policyId: policy.id,
+      provider: "stub" as const,
+      reason,
+    };
+  }
+
+  const destination = await destinationStore.find(policy.destinationId);
+
+  return {
+    destinationId: policy.destinationId,
+    maxAttempts: policy.maxAttempts,
+    pathOverride: policy.pathOverride,
+    policyId: policy.id,
+    // The kind drives the executor branch; a missing destination keeps a non-stub
+    // value so the executor fails visibly with destination_not_found.
+    provider: destination?.kind ?? "s3",
+    reason,
+    target: destinationDisplayTarget(destination, policy.pathOverride),
+  };
+}
+
+function destinationDisplayTarget(
+  destination: UploadDestinationRuntimeStatus | undefined,
+  pathOverride: string | undefined,
+) {
+  if (!destination?.target) {
     return undefined;
   }
 
-  const policy = await uploadPolicyForQueue(recording.uploadPolicyId);
-
-  return policy.enabled && policy.trigger === "on_recording_cached" ? policy : undefined;
-}
-
-export function uploadQueueInputForPolicy(policy: UploadPolicy, reason?: string) {
-  return {
-    maxAttempts: policy.maxAttempts,
-    policyId: policy.id,
-    provider: policy.provider,
-    reason,
-    target: policy.target,
-  };
+  return pathOverride
+    ? `${destination.target}/${pathOverride.replace(/^\/+/, "")}`
+    : destination.target;
 }
 
 function loadUploadPolicies() {
@@ -307,12 +356,12 @@ function isPolicyStore(value: unknown): value is { policies: unknown[] } {
 function policyFromRow(row: UploadPolicyRow): UploadPolicy {
   return uploadPolicySchema.parse({
     deleteCacheAfterUpload: row.deleteCacheAfterUpload,
+    destinationId: row.destinationId ?? undefined,
     enabled: row.enabled,
     id: row.id,
     maxAttempts: row.maxAttempts,
     name: row.name,
-    provider: row.provider,
-    target: row.target ?? undefined,
+    pathOverride: row.pathOverride ?? undefined,
     trigger: row.trigger,
     updatedAt: row.updatedAt.toISOString(),
   });
@@ -321,12 +370,12 @@ function policyFromRow(row: UploadPolicyRow): UploadPolicy {
 function policyToRow(policy: UploadPolicy) {
   return {
     deleteCacheAfterUpload: policy.deleteCacheAfterUpload,
+    destinationId: policy.destinationId ?? null,
     enabled: policy.enabled,
     id: policy.id,
     maxAttempts: policy.maxAttempts,
     name: policy.name,
-    provider: policy.provider,
-    target: policy.target ?? null,
+    pathOverride: policy.pathOverride ?? null,
     trigger: policy.trigger,
     updatedAt: new Date(policy.updatedAt),
   };

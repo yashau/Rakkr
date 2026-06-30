@@ -15,7 +15,7 @@ import { findUploadPolicy } from "./upload-policies.js";
 export type ScheduleSettingsSelection = Partial<
   Pick<
     ScheduleInput,
-    "recordingProfileId" | "retentionPolicyId" | "uploadPolicyId" | "watchdogPolicyId"
+    "recordingProfileId" | "retentionPolicyId" | "uploadPolicyIds" | "watchdogPolicyId"
   >
 >;
 
@@ -83,20 +83,22 @@ export async function scheduleSettingsSelectionFailure(
     }
   }
 
-  if (selection.uploadPolicyId !== undefined) {
-    const policy = await findUploadPolicy(selection.uploadPolicyId);
+  if (selection.uploadPolicyIds !== undefined) {
+    for (const uploadPolicyId of selection.uploadPolicyIds) {
+      const policy = await findUploadPolicy(uploadPolicyId);
 
-    if (!policy) {
-      return settingsNotFound("upload_policy_not_found", {
-        id: selection.uploadPolicyId,
-        type: "upload_policy",
-      });
-    }
+      if (!policy) {
+        return settingsNotFound("upload_policy_not_found", {
+          id: uploadPolicyId,
+          type: "upload_policy",
+        });
+      }
 
-    const target = uploadPolicySettingsTarget(policy);
+      const target = uploadPolicySettingsTarget(policy);
 
-    if (!(await dependencies.hasResourceScope(user, target))) {
-      return settingsHidden(target);
+      if (!(await dependencies.hasResourceScope(user, target))) {
+        return settingsHidden(target);
+      }
     }
   }
 

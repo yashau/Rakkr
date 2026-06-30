@@ -38,9 +38,9 @@ import type {
   ScheduleOccurrencePreview,
   ScheduleSummary,
   ScheduleUpdate,
-  UploadProvider,
-  UploadProviderConfigUpdate,
-  UploadProviderRuntimeStatus,
+  UploadDestinationInput,
+  UploadDestinationRuntimeStatus,
+  UploadDestinationUpdate,
   UploadPolicy,
   UploadPolicyInput,
   UploadPolicyUpdate,
@@ -151,13 +151,11 @@ export interface RecordingStartInput {
   nodeId: string;
   recordingProfileId?: string;
   tags?: string[];
-  uploadPolicyId?: string;
+  uploadPolicyIds?: string[];
 }
 
 export interface UploadQueueInput {
-  provider?: UploadProvider;
   reason?: string;
-  target?: string;
   uploadPolicyId?: string;
 }
 
@@ -610,8 +608,8 @@ export const api = {
     }),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
-  uploadProviders: () =>
-    fetchJson<{ data: UploadProviderRuntimeStatus[] }>("/api/v1/settings/upload-providers"),
+  uploadDestinations: () =>
+    fetchJson<{ data: UploadDestinationRuntimeStatus[] }>("/api/v1/settings/upload-destinations"),
   uploadPolicies: () => fetchJson<{ data: UploadPolicy[] }>("/api/v1/settings/upload-policies"),
   retentionPolicies: () =>
     fetchJson<{ data: RetentionPolicy[] }>("/api/v1/settings/retention-policies"),
@@ -699,9 +697,17 @@ export const api = {
       },
       method: "PATCH",
     }),
-  updateUploadProvider: (provider: UploadProvider, input: UploadProviderConfigUpdate) =>
-    fetchJson<{ data: UploadProviderRuntimeStatus }>(
-      `/api/v1/settings/upload-providers/${provider}`,
+  createUploadDestination: (input: UploadDestinationInput) =>
+    fetchJson<{ data: UploadDestinationRuntimeStatus }>("/api/v1/settings/upload-destinations", {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  updateUploadDestination: (id: string, input: UploadDestinationUpdate) =>
+    fetchJson<{ data: UploadDestinationRuntimeStatus }>(
+      `/api/v1/settings/upload-destinations/${id}`,
       {
         body: JSON.stringify(input),
         headers: {
@@ -710,6 +716,10 @@ export const api = {
         method: "PATCH",
       },
     ),
+  deleteUploadDestination: (id: string) =>
+    fetchJson<{ data: { id: string } }>(`/api/v1/settings/upload-destinations/${id}`, {
+      method: "DELETE",
+    }),
   createUploadPolicy: (input: UploadPolicyInput) =>
     fetchJson<{ data: UploadPolicy }>("/api/v1/settings/upload-policies", {
       body: JSON.stringify(input),

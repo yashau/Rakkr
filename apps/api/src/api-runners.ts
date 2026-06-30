@@ -9,7 +9,7 @@ import { createRetentionRunner } from "./retention-runner.js";
 import { createScheduleRunner } from "./schedule-runner.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
-import type { UploadProviderStore } from "./upload-providers.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 import { createUploadRunner } from "./upload-runner.js";
 import { createWatchdogRunner } from "./watchdog-runner.js";
 
@@ -21,7 +21,7 @@ interface ApiRunnerDependencies {
   recordingStore: RecordingStore;
   scheduleStore: ScheduleStore;
   settingsStore: SettingsStore;
-  uploadProviderStore: UploadProviderStore;
+  uploadDestinationStore: UploadDestinationStore;
 }
 
 export function createApiRunners({
@@ -32,7 +32,7 @@ export function createApiRunners({
   recordingStore,
   scheduleStore,
   settingsStore,
-  uploadProviderStore,
+  uploadDestinationStore,
 }: ApiRunnerDependencies) {
   return {
     recordingJobLeaseRunner: createRecordingJobLeaseRunner(),
@@ -49,8 +49,8 @@ export function createApiRunners({
     }),
     uploadRunner: createUploadRunner({
       auditStore,
+      destinationStore: uploadDestinationStore,
       healthEventStore,
-      providerStore: uploadProviderStore,
       recordingStore,
     }),
     watchdogRunner: createWatchdogRunner({

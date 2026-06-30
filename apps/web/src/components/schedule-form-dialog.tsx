@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { PlusCircle, Save, Sparkles, Trash2 } from "lucide-react";
 import { type AudioInterface, type RecorderNode, type ScheduleDayOfWeek } from "@rakkr/shared";
 
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
@@ -58,6 +60,30 @@ export function ScheduleFormDialog({
   const [quickRecurrence, setQuickRecurrence] = useState("");
   const [quickRecurrenceError, setQuickRecurrenceError] = useState(false);
   const selectedNode = nodes.find((node) => node.id === draft.nodeId);
+  const recordingProfilesQuery = useQuery({
+    enabled: open,
+    queryFn: api.recordingProfiles,
+    queryKey: ["recording-profiles"],
+  });
+  const watchdogPoliciesQuery = useQuery({
+    enabled: open,
+    queryFn: api.watchdogPolicies,
+    queryKey: ["watchdog-policies"],
+  });
+  const retentionPoliciesQuery = useQuery({
+    enabled: open,
+    queryFn: api.retentionPolicies,
+    queryKey: ["retention-policies"],
+  });
+  const uploadPoliciesQuery = useQuery({
+    enabled: open,
+    queryFn: api.uploadPolicies,
+    queryKey: ["upload-policies"],
+  });
+  const recordingProfiles = recordingProfilesQuery.data?.data ?? [];
+  const watchdogPolicies = watchdogPoliciesQuery.data?.data ?? [];
+  const retentionPolicies = retentionPoliciesQuery.data?.data ?? [];
+  const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];
 
   // Reset the quick-recurrence helper whenever the dialog opens or closes so a
   // stale phrase never carries between schedules.
@@ -409,12 +435,21 @@ export function ScheduleFormDialog({
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="schedule-profile">Recording Profile</Label>
-              <Input
-                id="schedule-profile"
-                onChange={(event) => updateDraft("recordingProfileId", event.target.value)}
-                required
+              <Select
+                onValueChange={(value) => updateDraft("recordingProfileId", value)}
                 value={draft.recordingProfileId}
-              />
+              >
+                <SelectTrigger className={selectClass} id="schedule-profile">
+                  <SelectValue placeholder="Select a recording profile" />
+                </SelectTrigger>
+                <SelectContent>
+                  {recordingProfiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-capture-backend">Backend</Label>
@@ -462,30 +497,66 @@ export function ScheduleFormDialog({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
-              <Input
-                id="schedule-watchdog"
-                onChange={(event) => updateDraft("watchdogPolicyId", event.target.value)}
-                required
+              <Select
+                onValueChange={(value) => updateDraft("watchdogPolicyId", value)}
                 value={draft.watchdogPolicyId}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-upload-policy">Upload Policy</Label>
-              <Input
-                id="schedule-upload-policy"
-                onChange={(event) => updateDraft("uploadPolicyId", event.target.value)}
-                required
-                value={draft.uploadPolicyId}
-              />
+              >
+                <SelectTrigger className={selectClass} id="schedule-watchdog">
+                  <SelectValue placeholder="Select a watchdog policy" />
+                </SelectTrigger>
+                <SelectContent>
+                  {watchdogPolicies.map((policy) => (
+                    <SelectItem key={policy.id} value={policy.id}>
+                      {policy.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-retention-policy">Retention Policy</Label>
-              <Input
-                id="schedule-retention-policy"
-                onChange={(event) => updateDraft("retentionPolicyId", event.target.value)}
-                required
+              <Select
+                onValueChange={(value) => updateDraft("retentionPolicyId", value)}
                 value={draft.retentionPolicyId}
-              />
+              >
+                <SelectTrigger className={selectClass} id="schedule-retention-policy">
+                  <SelectValue placeholder="Select a retention policy" />
+                </SelectTrigger>
+                <SelectContent>
+                  {retentionPolicies.map((policy) => (
+                    <SelectItem key={policy.id} value={policy.id}>
+                      {policy.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Upload Policies</Label>
+              {uploadPolicies.length > 0 ? (
+                <ToggleGroup
+                  className="flex flex-wrap justify-start gap-2"
+                  onValueChange={(value) => updateDraft("uploadPolicyIds", value)}
+                  type="multiple"
+                  value={draft.uploadPolicyIds}
+                >
+                  {uploadPolicies.map((policy) => (
+                    <ToggleGroupItem
+                      className="rounded-md border border-input px-3 data-[state=on]:border-ring"
+                      key={policy.id}
+                      value={policy.id}
+                    >
+                      {policy.name}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              ) : (
+                <p className="text-sm text-muted-foreground">No upload policies are configured.</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Each selected policy uploads independently to its destination when a recording is
+                cached.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-tags">Tags</Label>

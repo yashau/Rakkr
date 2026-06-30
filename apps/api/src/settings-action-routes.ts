@@ -1,6 +1,5 @@
 import type { Context, Hono } from "hono";
 import type { ChannelMapAssignmentPlan, Permission, RecordingProfile } from "@rakkr/shared";
-import { uploadProviderSchema } from "@rakkr/shared";
 
 import type { ChannelMapAssignmentPlanStore } from "./channel-map-assignment-plans.js";
 import type { AuthResult } from "./auth-service.js";
@@ -14,12 +13,12 @@ import type { SettingsStore } from "./settings-store.js";
 import {
   channelMapTemplateSettingsTarget,
   firstHiddenChannelMapAssignmentTarget,
+  uploadDestinationSettingsTarget,
   uploadPolicySettingsTarget,
-  uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
 import { findUploadPolicy } from "./upload-policies.js";
-import type { UploadProviderStore } from "./upload-providers.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 
 interface SettingsActionRouteDependencies {
   app: Hono<AppBindings>;
@@ -32,7 +31,7 @@ interface SettingsActionRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
-  uploadProviderStore: UploadProviderStore;
+  uploadDestinationStore: UploadDestinationStore;
 }
 
 interface SettingsActionState {
@@ -52,7 +51,7 @@ export function registerSettingsActionRoutes({
   recordAuditEvent,
   requirePermission,
   settingsStore,
-  uploadProviderStore,
+  uploadDestinationStore,
 }: SettingsActionRouteDependencies) {
   app.get(
     "/api/v1/settings/recording-profiles/:profileId/actions",
@@ -310,62 +309,47 @@ export function registerSettingsActionRoutes({
   );
 
   app.get(
-    "/api/v1/settings/upload-providers/:provider/actions",
-    settingsRead("settings.upload_providers.actions.read", requirePermission, async (c) => {
-      const providerId = c.req.param("provider") ?? "";
-      const provider = uploadProviderSchema.safeParse(providerId);
+    "/api/v1/settings/upload-destinations/:id/actions",
+    settingsRead("settings.upload_destinations.actions.read", requirePermission, async (c) => {
+      const id = c.req.param("id") ?? "";
+      const status = await uploadDestinationStore.find(id);
 
-      return provider.success
-        ? uploadProviderSettingsTarget(await uploadProviderStore.findStatus(provider.data))
-        : { id: providerId, type: "upload_provider" };
+      return status ? uploadDestinationSettingsTarget(status) : { id, type: "upload_destination" };
     }),
     async (c) => {
-      const provider = uploadProviderSchema.safeParse(c.req.param("provider") ?? "");
-
-      if (!provider.success) {
-        await recordSettingsActionRead(c, {
-          action: "settings.upload_providers.actions.read.failed",
-          auth: currentAuth(c),
-          recordAuditEvent,
-          reason: "not_found",
-          target: { id: c.req.param("provider") ?? "", type: "upload_provider" },
-        });
-
-        return c.json({ error: "Upload provider not found" }, 404);
-      }
-
-      const status = await uploadProviderStore.findStatus(provider.data);
+      const id = c.req.param("id") ?? "";
+      const status = await uploadDestinationStore.find(id);
 
       if (!status) {
         await recordSettingsActionRead(c, {
-          action: "settings.upload_providers.actions.read.failed",
+          action: "settings.upload_destinations.actions.read.failed",
           auth: currentAuth(c),
           recordAuditEvent,
           reason: "not_found",
-          target: { id: provider.data, type: "upload_provider" },
+          target: { id, type: "upload_destination" },
         });
 
-        return c.json({ error: "Upload provider not found" }, 404);
+        return c.json({ error: "Upload destination not found" }, 404);
       }
 
       const actions = updateOnlyActions(
         currentAuth(c).user?.permissions ?? [],
-        `/api/v1/settings/upload-providers/${status.provider}`,
+        `/api/v1/settings/upload-destinations/${status.id}`,
       );
 
       await recordSettingsActionRead(c, {
-        action: "settings.upload_providers.actions.read.succeeded",
+        action: "settings.upload_destinations.actions.read.succeeded",
         auth: currentAuth(c),
         recordAuditEvent,
-        target: uploadProviderSettingsTarget(status),
+        target: uploadDestinationSettingsTarget(status),
         visibleActionCount: Object.keys(actions).length,
       });
 
       return c.json({
         data: {
           actions,
-          links: detailUpdateLinks(`/api/v1/settings/upload-providers/${status.provider}`),
-          provider: status,
+          destination: status,
+          links: detailUpdateLinks(`/api/v1/settings/upload-destinations/${status.id}`),
         },
       });
     },

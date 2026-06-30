@@ -24,7 +24,10 @@ process.env.RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH = path.join(
 );
 process.env.RAKKR_RECORDING_PROFILE_STORE_PATH = path.join(settingsReadRoot, "profiles.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(settingsReadRoot, "upload-policies.json");
-process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(settingsReadRoot, "upload-providers.json");
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(
+  settingsReadRoot,
+  "upload-providers.json",
+);
 process.env.RAKKR_WATCHDOG_POLICY_STORE_PATH = path.join(
   settingsReadRoot,
   "watchdog-policies.json",
@@ -36,7 +39,7 @@ const { createChannelMapAssignmentPlanStore } =
 const { registerSettingsRoutes } = await import("../src/settings-routes.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
-const { createUploadProviderStore } = await import("../src/upload-providers.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 
 test.after(async () => {
   await rm(settingsReadRoot, { force: true, recursive: true });
@@ -48,7 +51,7 @@ test("settings list read routes audit visible resource counts", async () => {
   const currentUser = viewer();
   const settingsStore = createSettingsStore();
   const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
-  const uploadProviderStore = createUploadProviderStore();
+  const uploadDestinationStore = createUploadDestinationStore();
   const template = await settingsStore.createChannelMapTemplate({
     channelMode: "mono_to_stereo_mix",
     entries: [
@@ -77,8 +80,6 @@ test("settings list read routes audit visible resource counts", async () => {
     id: `upload-policy-list-${randomUUID()}`,
     maxAttempts: 3,
     name: "List Upload Policy",
-    provider: "stub",
-    target: "stub://list",
     trigger: "manual",
   });
 
@@ -89,7 +90,7 @@ test("settings list read routes audit visible resource counts", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
   const paths = [
@@ -98,7 +99,7 @@ test("settings list read routes audit visible resource counts", async () => {
     "/api/v1/settings/channel-map-templates",
     "/api/v1/settings/channel-map-assignments",
     "/api/v1/settings/channel-map-assignment-plans",
-    "/api/v1/settings/upload-providers",
+    "/api/v1/settings/upload-destinations",
     "/api/v1/settings/upload-policies",
   ];
   const responses = await Promise.all(paths.map((routePath) => app.request(routePath)));
@@ -113,8 +114,8 @@ test("settings list read routes audit visible resource counts", async () => {
     "settings.channel_map_assignments.read.succeeded",
     "settings.channel_map_templates.read.succeeded",
     "settings.recording_profiles.read.succeeded",
+    "settings.upload_destinations.read.succeeded",
     "settings.upload_policies.read.succeeded",
-    "settings.upload_providers.read.succeeded",
     "settings.watchdog_policies.read.succeeded",
   ]);
   assert.deepEqual(
@@ -124,8 +125,8 @@ test("settings list read routes audit visible resource counts", async () => {
       `settings.channel_map_assignments.read.succeeded:${bodies[3]?.data.length}`,
       `settings.channel_map_templates.read.succeeded:${bodies[2]?.data.length}`,
       `settings.recording_profiles.read.succeeded:${bodies[0]?.data.length}`,
+      `settings.upload_destinations.read.succeeded:${bodies[5]?.data.length}`,
       `settings.upload_policies.read.succeeded:${bodies[6]?.data.length}`,
-      `settings.upload_providers.read.succeeded:${bodies[5]?.data.length}`,
       `settings.watchdog_policies.read.succeeded:${bodies[1]?.data.length}`,
     ].sort(),
   );
@@ -138,7 +139,7 @@ test("settings detail read routes audit successes and missing resources", async 
   const currentUser = viewer();
   const settingsStore = createSettingsStore();
   const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
-  const uploadProviderStore = createUploadProviderStore();
+  const uploadDestinationStore = createUploadDestinationStore();
   const template = await settingsStore.createChannelMapTemplate({
     channelMode: "mono_to_stereo_mix",
     entries: [
@@ -162,9 +163,14 @@ test("settings detail read routes audit successes and missing resources", async 
     id: `upload-policy-detail-audit-${randomUUID()}`,
     maxAttempts: 3,
     name: "Detail Audit Upload Policy",
-    provider: "stub",
-    target: "stub://detail-audit",
     trigger: "manual",
+  });
+  const uploadDestination = await uploadDestinationStore.create({
+    displayName: "Detail Audit Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
   });
 
   registerSettingsRoutes({
@@ -174,7 +180,7 @@ test("settings detail read routes audit successes and missing resources", async 
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
   const successResponses = await Promise.all([
@@ -182,7 +188,7 @@ test("settings detail read routes audit successes and missing resources", async 
     app.request("/api/v1/settings/watchdog-policies/scheduled-voice-watchdog"),
     app.request(`/api/v1/settings/channel-map-templates/${template.id}`),
     app.request(`/api/v1/settings/channel-map-assignment-plans/${plan.id}`),
-    app.request("/api/v1/settings/upload-providers/stub"),
+    app.request(`/api/v1/settings/upload-destinations/${uploadDestination.id}`),
     app.request(`/api/v1/settings/upload-policies/${uploadPolicy.id}`),
   ]);
   const missingResponses = await Promise.all([
@@ -190,7 +196,7 @@ test("settings detail read routes audit successes and missing resources", async 
     app.request("/api/v1/settings/watchdog-policies/policy_missing"),
     app.request("/api/v1/settings/channel-map-templates/template_missing"),
     app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing"),
-    app.request("/api/v1/settings/upload-providers/not-a-provider"),
+    app.request("/api/v1/settings/upload-destinations/destination_missing"),
     app.request("/api/v1/settings/upload-policies/policy_missing"),
   ]);
   const successAudits = await auditStore.list({
@@ -205,16 +211,16 @@ test("settings detail read routes audit successes and missing resources", async 
     "settings.channel_map_assignment_plans.detail.read.succeeded",
     "settings.channel_map_templates.detail.read.succeeded",
     "settings.recording_profiles.detail.read.succeeded",
+    "settings.upload_destinations.detail.read.succeeded",
     "settings.upload_policies.detail.read.succeeded",
-    "settings.upload_providers.detail.read.succeeded",
     "settings.watchdog_policies.detail.read.succeeded",
   ]);
   assert.deepEqual(failedAudits.map((event) => event.action).sort(), [
     "settings.channel_map_assignment_plans.detail.read.failed",
     "settings.channel_map_templates.detail.read.failed",
     "settings.recording_profiles.detail.read.failed",
+    "settings.upload_destinations.detail.read.failed",
     "settings.upload_policies.detail.read.failed",
-    "settings.upload_providers.detail.read.failed",
     "settings.watchdog_policies.detail.read.failed",
   ]);
   assert.ok(successAudits.every((event) => event.target.id));

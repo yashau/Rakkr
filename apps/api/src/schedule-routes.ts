@@ -827,7 +827,7 @@ function scheduleSearchText(schedule: ScheduleSummary) {
     schedule.tags.join(" "),
     schedule.timezone,
     schedule.titleTemplate,
-    schedule.uploadPolicyId,
+    schedule.uploadPolicyIds.join(" "),
     schedule.watchdogPolicyId,
   ]
     .filter(Boolean)
@@ -876,7 +876,7 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
     tags: uniqueTags(input.tags),
     timezone: input.timezone,
     titleTemplate: input.titleTemplate,
-    uploadPolicyId: input.uploadPolicyId,
+    uploadPolicyIds: input.uploadPolicyIds,
     watchdogPolicyId: input.watchdogPolicyId,
   };
 }

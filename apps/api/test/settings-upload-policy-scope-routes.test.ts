@@ -25,14 +25,14 @@ process.env.RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH = path.join(
 );
 process.env.RAKKR_RECORDING_PROFILE_STORE_PATH = path.join(scopeRoot, "profiles.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(scopeRoot, "upload-policies.json");
-process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(scopeRoot, "upload-providers.json");
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(scopeRoot, "upload-providers.json");
 process.env.RAKKR_WATCHDOG_POLICY_STORE_PATH = path.join(scopeRoot, "watchdog-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
 const { registerSettingsRoutes } = await import("../src/settings-routes.js");
 const { createUploadPolicy, findUploadPolicy } = await import("../src/upload-policies.js");
-const { createUploadProviderStore } = await import("../src/upload-providers.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 
 test.after(async () => {
   await rm(scopeRoot, { force: true, recursive: true });
@@ -61,7 +61,7 @@ test("upload policy routes honor resource-scope denies", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
     settingsStore: createSettingsStore(),
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const listResponse = await app.request("/api/v1/settings/upload-policies");

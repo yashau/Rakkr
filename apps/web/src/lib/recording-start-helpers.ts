@@ -10,7 +10,7 @@ export interface RecordingStartDraft {
   nodeId: string;
   recordingProfileId: string;
   tags: string;
-  uploadPolicyId: string;
+  uploadPolicyIds: string[];
 }
 
 export const emptyRecordingStartDraft: RecordingStartDraft = {
@@ -21,7 +21,7 @@ export const emptyRecordingStartDraft: RecordingStartDraft = {
   nodeId: "",
   recordingProfileId: "",
   tags: "ad-hoc, voice",
-  uploadPolicyId: "",
+  uploadPolicyIds: [],
 };
 
 export function startInputFromDraft(draft: RecordingStartDraft): RecordingStartInput {
@@ -33,7 +33,7 @@ export function startInputFromDraft(draft: RecordingStartDraft): RecordingStartI
     nodeId: draft.nodeId,
     recordingProfileId: textOrUndefined(draft.recordingProfileId),
     tags: tagsFromText(draft.tags),
-    uploadPolicyId: textOrUndefined(draft.uploadPolicyId),
+    uploadPolicyIds: draft.uploadPolicyIds.length > 0 ? draft.uploadPolicyIds : undefined,
   };
 }
 
