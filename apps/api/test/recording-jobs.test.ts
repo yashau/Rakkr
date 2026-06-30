@@ -18,7 +18,6 @@ const {
   expireRecordingJobLeases,
   failRecordingJob,
   onRecordingJobLeaseExpired,
-  recordingJob,
   retryRecordingJob,
 } = await import("../src/recording-jobs.js");
 
@@ -111,7 +110,7 @@ test("recording job lease expiry notifies terminal listeners", async () => {
   }
 });
 
-test("claim next recording group claims same-group siblings and leaves other groups queued", async () => {
+test("claim next recording group claims same-group siblings then a later group on its own", async () => {
   const nodeId = `node_group_${randomUUID()}`;
   const groupId = `cap_${randomUUID()}`;
   const jobA = await createRecordingJob(recording({ id: `rec_a_${randomUUID()}`, nodeId }), {
@@ -124,18 +123,23 @@ test("claim next recording group claims same-group siblings and leaves other gro
     captureGroupId: groupId,
     captureInterfaceId: "iface_group",
   });
+
+  // With only the shared group queued, both siblings are claimed for one
+  // capture session regardless of which is picked as the primary.
+  const claimed = await claimNextRecordingGroup(nodeId, nodeId);
+
+  assert.deepEqual(new Set(claimed.map((job) => job.id)), new Set([jobA.id, jobB.id]));
+  assert.ok(claimed.every((job) => job.status === "running"));
+
+  // A separate group queued afterward is claimed on its own, not pulled into the
+  // first session.
   const jobOther = await createRecordingJob(recording({ id: `rec_c_${randomUUID()}`, nodeId }), {
     captureGroupId: `cap_other_${randomUUID()}`,
     captureInterfaceId: "iface_group",
   });
+  const nextClaimed = await claimNextRecordingGroup(nodeId, nodeId);
 
-  const claimed = await claimNextRecordingGroup(nodeId, nodeId);
-
-  // The shared-group siblings are claimed together for one capture session.
-  assert.deepEqual(new Set(claimed.map((job) => job.id)), new Set([jobA.id, jobB.id]));
-  assert.ok(claimed.every((job) => job.status === "running"));
-  // The unrelated group stays queued for a later capture session.
-  assert.equal((await recordingJob(jobOther.id))?.status, "queued");
+  assert.deepEqual(new Set(nextClaimed.map((job) => job.id)), new Set([jobOther.id]));
 });
 
 function recording(overrides: Partial<RecordingSummary> = {}): RecordingSummary {
