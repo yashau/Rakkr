@@ -1,4 +1,6 @@
 import {
+  ChevronDown,
+  ChevronRight,
   Download,
   Fingerprint,
   Pencil,
@@ -103,6 +105,7 @@ export function RecordingCard({
 }) {
   const fileReady = isCachedRecording(recording);
   const deleteDisabled = deletePending || !isTerminalRecording(recording);
+  const [expanded, setExpanded] = useState(false);
   const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(
     recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "",
   );
@@ -116,32 +119,50 @@ export function RecordingCard({
     <Card className="rounded-lg p-4 shadow-sm">
       <div className="grid gap-4">
         <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div className="flex items-start gap-2">
             {onSelectedChange ? (
               <Checkbox
                 aria-label={`Select ${recording.name}`}
                 checked={selected}
+                className="mt-1"
                 onCheckedChange={(value) => onSelectedChange(value === true)}
               />
             ) : null}
-            <h2 className="truncate text-base font-semibold">{recording.name}</h2>
-            <Badge
-              className={toneBadgeClass(
-                recording.healthStatus === "healthy" ? "healthy" : "warning",
-              )}
-              variant="outline"
+            <button
+              aria-expanded={expanded}
+              aria-label={`${expanded ? "Collapse" : "Expand"} ${recording.name}`}
+              className="flex min-w-0 flex-1 items-start gap-2 text-left"
+              onClick={() => setExpanded((value) => !value)}
+              type="button"
             >
-              {recording.healthStatus}
-            </Badge>
-            <Badge variant="secondary">{recording.status}</Badge>
+              <div className="grid min-w-0 flex-1 gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate text-base font-semibold">{recording.name}</h2>
+                  <Badge
+                    className={toneBadgeClass(
+                      recording.healthStatus === "healthy" ? "healthy" : "warning",
+                    )}
+                    variant="outline"
+                  >
+                    {recording.healthStatus}
+                  </Badge>
+                  <Badge variant="secondary">{recording.status}</Badge>
+                </div>
+                <p className="truncate text-sm text-muted-foreground">{recording.folder}</p>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span>{formatDateTime(recording.recordedAt)}</span>
+                  <span>{formatDuration(recording.durationSeconds)}</span>
+                  <span>{recording.source}</span>
+                </div>
+              </div>
+              {expanded ? (
+                <ChevronDown className="mt-1 size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
+              )}
+            </button>
           </div>
-          <p className="truncate text-sm text-muted-foreground">{recording.folder}</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span>{formatDateTime(recording.recordedAt)}</span>
-            <span>{formatDuration(recording.durationSeconds)}</span>
-            <span>{recording.source}</span>
-          </div>
-          {relationships.length > 0 ? (
+          {expanded && relationships.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {relationships.map((item) => (
                 <Badge
@@ -155,7 +176,7 @@ export function RecordingCard({
               ))}
             </div>
           ) : null}
-          {recording.tags.length > 0 ? (
+          {expanded && recording.tags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {recording.tags.map((tag) => (
                 <Badge className="bg-background" key={tag} variant="outline">
@@ -164,12 +185,12 @@ export function RecordingCard({
               ))}
             </div>
           ) : null}
-          {recording.notes ? (
+          {expanded && recording.notes ? (
             <p className="mt-3 rounded-md border border-border bg-muted/20 p-2 text-sm whitespace-pre-wrap text-muted-foreground">
               {recording.notes}
             </p>
           ) : null}
-          {recording.transcriptSnippets?.length ? (
+          {expanded && recording.transcriptSnippets?.length ? (
             <div className="mt-3 grid gap-1.5 rounded-md border border-border bg-muted/20 p-2 text-sm text-muted-foreground">
               {recording.transcriptSnippets.slice(0, 3).map((snippet) => (
                 <p className="max-h-10 overflow-hidden" key={snippet}>
@@ -183,7 +204,7 @@ export function RecordingCard({
               ) : null}
             </div>
           ) : null}
-          {recording.checksum || recording.waveformPreview ? (
+          {expanded && (recording.checksum || recording.waveformPreview) ? (
             <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/20 p-2">
               {recording.checksum ? (
                 <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
@@ -204,7 +225,7 @@ export function RecordingCard({
               ) : null}
             </div>
           ) : null}
-          {jobs.length > 0 ? (
+          {expanded && jobs.length > 0 ? (
             <div className="mt-3 grid gap-2">
               {jobs.map((job) => {
                 const captureDetails = recordingJobCaptureDetails(job);
@@ -242,7 +263,7 @@ export function RecordingCard({
               })}
             </div>
           ) : null}
-          {uploadItems.length > 0 ? (
+          {expanded && uploadItems.length > 0 ? (
             <div className="mt-3 grid gap-2">
               {uploadItems.map((item) => (
                 <div
@@ -278,77 +299,89 @@ export function RecordingCard({
               ))}
             </div>
           ) : null}
-          {canReadHealth ? (
-            <QualityTimeline events={events} recording={recording} />
-          ) : (
-            <p className="mt-3 text-xs text-muted-foreground">Quality timeline unavailable.</p>
-          )}
+          {expanded ? (
+            canReadHealth ? (
+              <QualityTimeline events={events} recording={recording} />
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">Quality timeline unavailable.</p>
+            )
+          ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          {canEdit ? (
-            <Button disabled={editPending} onClick={onEdit} variant="outline">
-              <Pencil className="size-4" />
-              Edit
-            </Button>
-          ) : null}
-          {canControl && recording.status === "recording" ? (
-            <Button disabled={stopPending} onClick={onStop} variant="outline">
-              <Square className="size-4" />
-              Stop
-            </Button>
-          ) : null}
-          {canPlayback ? (
-            <Button disabled={!fileReady || playbackPending} onClick={onPlayback} variant="outline">
-              <Play className="size-4" />
-              Play
-            </Button>
-          ) : null}
-          {canDownload ? (
-            <Button disabled={!fileReady || downloadPending} onClick={onDownload} variant="outline">
-              <Download className="size-4" />
-              Download
-            </Button>
-          ) : null}
-          {canDelete ? (
-            <ConfirmButton
-              confirmLabel="Delete"
-              description="This permanently deletes the recording metadata and its cached file."
-              disabled={deleteDisabled}
-              onConfirm={onDelete}
-              title={`Delete "${recording.name}"?`}
-              variant="destructive"
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </ConfirmButton>
-          ) : null}
-          {canControl ? (
-            <>
-              {uploadPolicies.length > 0 ? (
-                <Select onValueChange={setSelectedUploadPolicyId} value={selectedUploadPolicyId}>
-                  <SelectTrigger className="h-9 w-44">
-                    <SelectValue placeholder="Upload policy" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {uploadPolicies.map((policy) => (
-                      <SelectItem key={policy.id} value={policy.id}>
-                        {policy.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
+        {expanded ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            {canEdit ? (
+              <Button disabled={editPending} onClick={onEdit} variant="outline">
+                <Pencil className="size-4" />
+                Edit
+              </Button>
+            ) : null}
+            {canControl && recording.status === "recording" ? (
+              <Button disabled={stopPending} onClick={onStop} variant="outline">
+                <Square className="size-4" />
+                Stop
+              </Button>
+            ) : null}
+            {canPlayback ? (
               <Button
-                disabled={!fileReady || uploadPending}
-                onClick={() => onQueueUpload(selectedUploadPolicyId || undefined)}
+                disabled={!fileReady || playbackPending}
+                onClick={onPlayback}
                 variant="outline"
               >
-                <UploadCloud className="size-4" />
-                Queue Upload
+                <Play className="size-4" />
+                Play
               </Button>
-            </>
-          ) : null}
-        </div>
+            ) : null}
+            {canDownload ? (
+              <Button
+                disabled={!fileReady || downloadPending}
+                onClick={onDownload}
+                variant="outline"
+              >
+                <Download className="size-4" />
+                Download
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <ConfirmButton
+                confirmLabel="Delete"
+                description="This permanently deletes the recording metadata and its cached file."
+                disabled={deleteDisabled}
+                onConfirm={onDelete}
+                title={`Delete "${recording.name}"?`}
+                variant="destructive"
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </ConfirmButton>
+            ) : null}
+            {canControl ? (
+              <>
+                {uploadPolicies.length > 0 ? (
+                  <Select onValueChange={setSelectedUploadPolicyId} value={selectedUploadPolicyId}>
+                    <SelectTrigger className="h-9 w-44">
+                      <SelectValue placeholder="Upload policy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {uploadPolicies.map((policy) => (
+                        <SelectItem key={policy.id} value={policy.id}>
+                          {policy.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                <Button
+                  disabled={!fileReady || uploadPending}
+                  onClick={() => onQueueUpload(selectedUploadPolicyId || undefined)}
+                  variant="outline"
+                >
+                  <UploadCloud className="size-4" />
+                  Queue Upload
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </Card>
   );

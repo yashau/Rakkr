@@ -101,7 +101,7 @@ export function RecordingStartPanel({
         );
       }}
     >
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-8">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="grid min-w-0 gap-1.5">
           <Label htmlFor="recording-start-node">Node</Label>
           <Select
@@ -182,29 +182,8 @@ export function RecordingStartPanel({
             </SelectContent>
           </Select>
         </div>
-        <div className="grid min-w-0 gap-1.5">
-          <Label htmlFor="recording-start-profile">Profile</Label>
-          <Select
-            onValueChange={(value) =>
-              setDraft((current) => ({
-                ...current,
-                recordingProfileId: value,
-              }))
-            }
-            value={selectedRecordingProfileId}
-          >
-            <SelectTrigger className={selectClassName} id="recording-start-profile">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {recordingProfiles.map((profile) => (
-                <SelectItem key={profile.id} value={profile.id}>
-                  {profile.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="grid min-w-0 gap-1.5">
           <Label htmlFor="recording-start-name">Name</Label>
           <Input
@@ -230,6 +209,31 @@ export function RecordingStartPanel({
             onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))}
             value={draft.tags}
           />
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 gap-1.5">
+          <Label htmlFor="recording-start-profile">Profile</Label>
+          <Select
+            onValueChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                recordingProfileId: value,
+              }))
+            }
+            value={selectedRecordingProfileId}
+          >
+            <SelectTrigger className={selectClassName} id="recording-start-profile">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {recordingProfiles.map((profile) => (
+                <SelectItem key={profile.id} value={profile.id}>
+                  {profile.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid min-w-0 gap-1.5">
           <Label htmlFor="recording-start-upload-policy">Upload</Label>
