@@ -12,27 +12,43 @@ The controller exposes Prometheus metrics at **`GET /metrics`** (gated by
 metric names; for the alerting, scrape, and dashboard artifacts see
 [Observability](../observability/README.md).
 
+Most series carry labels — the common ones are `node_id`, `channel` (and
+`interface_id`) on per-channel audio metrics, `severity`/`status`/`event_type` on
+health metrics, `action`/`outcome`/`permission`/`actor_type` on audit, and
+`provider`/`status` on uploads. Counters end in `_total`; everything else is a
+gauge.
+
+## Controller
+
+| Metric                                | Meaning                            |
+| ------------------------------------- | ---------------------------------- |
+| `rakkr_controller_started_at_seconds` | Controller process start timestamp. |
+
 ## Nodes
 
-| Metric                             | Meaning                             |
-| ---------------------------------- | ----------------------------------- |
-| `rakkr_node_online`                | Whether a node is currently online. |
-| `rakkr_node_offline_alerts_active` | Active node-offline alerts.         |
+| Metric                             | Meaning                                                    |
+| ---------------------------------- | ---------------------------------------------------------- |
+| `rakkr_node_online`                | Whether a recorder node is reachable.                      |
+| `rakkr_node_offline_alerts_active` | Unresolved node-offline health events (by node/severity/status). |
 
 ## Audio input quality
 
-Per-node/interface audio quality, derived from meter frames:
+Per-channel audio quality, derived from the latest meter frame (labelled by
+`node_id`/`interface_id`/`channel`):
 
-| Metric                              | Meaning                               |
-| ----------------------------------- | ------------------------------------- |
-| `rakkr_input_rms_dbfs`              | Input RMS level (dBFS).               |
-| `rakkr_input_peak_dbfs`             | Input peak level (dBFS).              |
-| `rakkr_input_clipping_ratio`        | Fraction of samples clipping.         |
-| `rakkr_input_speech_score`          | Speech-presence score.                |
-| `rakkr_input_noise_score`           | Noise score.                          |
-| `rakkr_input_broadband_noise_score` | Broadband-noise score.                |
-| `rakkr_input_estimated_snr_db`      | Estimated signal-to-noise ratio (dB). |
-| `rakkr_input_intelligibility_score` | First-pass intelligibility score.     |
+| Metric                                   | Meaning                                            |
+| ---------------------------------------- | -------------------------------------------------- |
+| `rakkr_input_rms_dbfs`                   | Latest RMS input level (dBFS).                     |
+| `rakkr_input_peak_dbfs`                  | Latest peak input level (dBFS).                    |
+| `rakkr_input_clipping_ratio`             | Latest clipping state.                             |
+| `rakkr_input_speech_score`               | Speech-likelihood score.                           |
+| `rakkr_input_noise_score`                | Non-speech noise score.                            |
+| `rakkr_input_broadband_noise_score`      | Broadband-noise likelihood score.                  |
+| `rakkr_input_hum_score`                  | Hum-likelihood score.                              |
+| `rakkr_input_static_score`               | Static-likelihood score.                           |
+| `rakkr_input_estimated_snr_db`           | Estimated signal-to-noise ratio (dB).              |
+| `rakkr_input_intelligibility_score`      | First-pass voice intelligibility score.            |
+| `rakkr_input_channel_correlation_score`  | Strongest same-interface channel correlation score. |
 
 ## Live listen monitor
 
@@ -43,34 +59,33 @@ Per-node/interface audio quality, derived from meter frames:
 
 ## Recordings & jobs
 
-| Metric                                  | Meaning                        |
-| --------------------------------------- | ------------------------------ |
-| `rakkr_recording_active`                | Active recordings.             |
-| `rakkr_recording_duration_seconds`      | Recording duration.            |
-| `rakkr_recording_bytes_written`         | Bytes written for a recording. |
-| `rakkr_recording_watchdog_alerts_total` | Watchdog alerts raised.        |
-| `rakkr_device_xruns_total`              | Audio device xruns.            |
+| Metric                                   | Meaning                                                  |
+| ---------------------------------------- | -------------------------------------------------------- |
+| `rakkr_recording_active`                 | Active recording jobs by node.                           |
+| `rakkr_recording_cached`                 | Cached recordings by node.                               |
+| `rakkr_recording_duration_seconds`       | Recording duration by recording.                         |
+| `rakkr_recording_bytes_written`          | Controller-cached recording bytes by recording.          |
+| `rakkr_recording_jobs`                   | Recording jobs by node and status.                       |
+| `rakkr_recording_watchdog_alerts_active` | Unresolved watchdog health events (by severity).         |
+| `rakkr_recording_watchdog_alerts_total`  | Watchdog health events raised (by severity).             |
+| `rakkr_device_xruns_active`              | Unresolved audio-xrun health events.                     |
+| `rakkr_device_xruns_total`               | Audio-xrun health events (by severity).                  |
 
 ## Uploads
 
-| Metric                                  | Meaning                            |
-| --------------------------------------- | ---------------------------------- |
-| `rakkr_upload_queue_depth`              | Items waiting in the upload queue. |
-| `rakkr_upload_queue_oldest_due_seconds` | Age of the oldest due queue item.  |
-| `rakkr_upload_failures_total`           | Upload failures.                   |
+| Metric                                  | Meaning                                          |
+| --------------------------------------- | ------------------------------------------------ |
+| `rakkr_upload_queue_depth`              | Upload queue items by provider and status.       |
+| `rakkr_upload_queue_oldest_due_seconds` | Age of the oldest due queue item.                |
+| `rakkr_upload_failures_total`           | Upload failures.                                 |
 
 ## Events
 
-| Metric                      | Meaning                 |
-| --------------------------- | ----------------------- |
-| `rakkr_audit_events_total`  | Audit events recorded.  |
-| `rakkr_health_events_total` | Health events recorded. |
+| Metric                       | Meaning                                                       |
+| ---------------------------- | ------------------------------------------------------------- |
+| `rakkr_audit_events_total`   | Audit events by action, outcome, permission, and actor type.  |
+| `rakkr_health_events_active` | Unresolved health events by severity and status.              |
+| `rakkr_health_events_total`  | Health events by event type, severity, and status.            |
 
-## What's exported overall
-
-The exposition covers controller availability, node status, recording
-duration/cache bytes, meter quality, listen-monitor freshness, audit and
-health-event totals/active counts, watchdog alerts, xruns, and upload queue
-depth/overdue/failures. The checked Prometheus alert rules, Mimir remote-write
-example, and Grafana dashboard live under
-[`docs/observability/`](../observability/README.md).
+The checked Prometheus alert rules, Mimir remote-write example, and Grafana
+dashboard live under [`docs/observability/`](../observability/README.md).

@@ -22,7 +22,7 @@ mirrors these rules for usability, but the **API is the only enforcement point**
 ### Local sign-in
 
 `POST /api/v1/auth/login` takes `{ email, password }`, verified against a
-DB-persisted user (Argon2/bcrypt) or the env-configured local admin. On success
+DB-persisted user (scrypt) or the env-configured local admin. On success
 the controller mints `rakkr_<random>`, stores only its SHA-256 hash, and returns
 a token with a 12-hour TTL. Disabling, deleting, or password-resetting a user
 revokes their active sessions.

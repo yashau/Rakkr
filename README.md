@@ -57,7 +57,7 @@ something to be **measured and proven**:
 | Can we make speech clearer?    | In-process DeepFilterNet3 / RNNoise enhancement for recordings and live listen, raw always kept |
 | Can we recover with evidence?  | Local health logs, synced health events, full audit trail, job-state transitions          |
 | Can we test without a room?    | Fake-controller smokes, ALSA loopback, a golden speech fixture, deterministic fault lanes |
-| Do outputs keep moving?        | Local cache, retry queue, stub/SMB/S3 providers, retention after confirmed upload         |
+| Do outputs keep moving?        | Local cache, controller upload runner, retry queue, multiple SMB/S3 destinations, retention after confirmed upload |
 
 ## Architecture
 
@@ -66,11 +66,16 @@ flowchart LR
   room["Room audio"] --> agent["🦀 Recorder agent"]
   agent -->|"capture · meters · health"| cache["💾 Local cache"]
   agent <-->|"encrypted HTTP / WS"| api["🧠 Controller API"]
+  cache -->|"upload raw + enhanced"| api
+  api -->|"upload runner · SMB/S3 fan-out"| storage["☁️ SMB / S3"]
   api <--> db[("Postgres + Drizzle")]
   api --> ui["🖥️ Operator console"]
-  cache -->|"upload"| storage["☁️ SMB / S3"]
   api --> metrics["📈 /metrics → Prometheus / Grafana"]
 ```
+
+The agent uploads recordings to the **controller**; the controller's upload runner
+is what pushes them out to one or more SMB/S3 destinations. Nodes never talk to
+object storage directly.
 
 Read the [architecture overview](https://docs.rakkr.org/architecture/overview/) for how the
 control loop, RBAC, and evidence channels fit together.

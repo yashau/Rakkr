@@ -28,9 +28,10 @@ flowchart TB
 
   console["Operator console (React)"] -->|"bearer session"| api
   agent <-->|"node credential, HTTP/WS over TLS"| api
+  localcache -->|"upload raw + enhanced renditions"| api
   api --> metrics["/metrics"]
   metrics --> prom["Prometheus / Mimir / Grafana"]
-  localcache -->|"upload"| storage["SMB / S3"]
+  api -->|"upload runner: SMB/S3 fan-out"| storage["SMB / S3 destinations"]
   ansible["Ansible runner"] -->|"SSH"| node
   api -->|"lifecycle actions"| ansible
 ```
@@ -75,9 +76,12 @@ The core loop is a lease-based job queue between controller and agent:
    recovers from device loss / disk shortfall, and **heartbeats** the job while
    polling for controller-driven stop/cancel.
 4. **Render & upload.** It applies the channel map, re-encodes to the profile's
-   codec, and uploads the file as the recording's cache.
+   codec (plus a denoised **enhanced** rendition when the profile enables it), and
+   uploads the rendition(s) to the **controller** as the recording's cache. Nodes
+   never push to object storage themselves.
 5. **Finalize.** The controller marks the job terminal, syncs recording health,
-   and (per policy) auto-queues an upload to SMB/S3.
+   and (per policy) auto-queues an upload — one queue item per upload policy — for
+   the controller's upload runner to fan out to each configured SMB/S3 destination.
 6. **Sweep.** Once uploads are confirmed, cache-retention policies clean up.
 
 A controller-side **job-lease runner** fails orphaned jobs whose lease expires, so

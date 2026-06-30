@@ -32,8 +32,9 @@ recurrence, so operators rarely build rules by hand.
 - **Explicit timezone** per schedule — all windows are computed in it.
 - **Start-early / stop-late buffers** — begin before and end after the nominal
   window to avoid clipping the start or end of a session.
-- **Pause ranges** — date ranges during which the schedule is suspended.
-- **Exceptions** — `skip` a specific occurrence or `pause` a span.
+- **Exceptions** — `skip` a single occurrence by date, or `pause` the schedule
+  across a `startDate`–`endDate` range (a pause is an exception action, not a
+  separate control).
 - No arbitrary product limit on the number of schedules.
 
 ## Schedule-owned metadata

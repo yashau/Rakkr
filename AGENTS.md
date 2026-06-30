@@ -338,6 +338,19 @@ available.
   tokens are single-use + atomic-consume; startup inventory reconcile preserves
   operator labels + channel-maps and flags absent interfaces. See
   `docs/guides/node-onboarding.md` and `docs/internal/design/recorder-node-onboarding-and-secrets.md`.
+- Uploads to external storage are **controller-only** — the recorder agent never
+  touches SMB/S3. The agent uploads recording renditions to the controller cache
+  (the `…/recordings/:id/cache-file` route); the controller's **upload runner**
+  (`upload-runner.ts`) is the only thing that writes to object storage. Operators
+  define multiple named **destinations** (`upload_destinations`, encrypted secrets
+  via `RAKKR_SECRET_KEY`), and **upload policies** each select one destination plus
+  an optional subfolder. Schedules and recordings carry a *list* of policy ids
+  (`uploadPolicyIds`), so one recording fans out to several destinations as
+  independent queue items, reconciled to `uploaded` (all ok) or `partial` (some
+  failed). Execution is direct SMB 2.1/3.x + S3 (no mounts, no external binaries),
+  checksum-verified; controller-cache retention runs only after a confirmed upload.
+  `upload_providers`/`uploadPolicyId`/`provider`/`target` are legacy columns
+  retained for backfill. See `docs/guides/storage-and-uploads.md`.
 - If adding new settings, recordings, schedules, health, upload, or node
   behavior, check whether a baseline doc and verifier script also need updates.
 
@@ -389,10 +402,16 @@ available.
   layout — keep them in sync. See `docs/guides/node-onboarding.md`.
 - Voice enhancement is in-process: `src/enhance.rs` denoises 48 kHz mono with
   DeepFilterNet3 (`deep_filter`, tract, embedded model) or RNNoise (`nnnoiseless`);
-  `channel_map::render_enhanced_output` produces the enhanced rendition (ffmpeg
-  downmix -> in-process denoise -> ffmpeg voice chain) and the agent dual-uploads
-  enhanced + raw. The chain is configured per recording profile; raw is always
-  preserved. Engine tests are excluded under Miri (tract intrinsics). See
+  `enhanced_render::render_enhanced_output` produces the enhanced rendition (ffmpeg
+  channel-map/downmix -> in-process denoise -> ffmpeg voice chain). The agent then
+  uploads **both renditions to the controller** via
+  `PUT /api/v1/recordings/:id/cache-file?rendition=enhanced|raw` (`recording_job_upload.rs`):
+  the enhanced rendition is the primary that completes the job; the raw master is a
+  supplementary upload, sent only when the primary succeeds and the profile's
+  `keepRaw` is set. The agent never pushes to SMB/S3 — the controller's upload
+  runner does that (see API guidance below). The chain is configured per recording
+  profile (`packages/shared/src/enhancement.ts`) and raw is always preserved.
+  Engine tests are excluded under Miri (tract intrinsics). See
   `docs/guides/audio-enhancement.md`.
 - The agent release version is calendar `YYYY.MM.DD-N`, stamped at build time from
   the release tag: the release workflow sets `RAKKR_AGENT_VERSION` and

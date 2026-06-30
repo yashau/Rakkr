@@ -85,11 +85,13 @@ Conventions:
 | `POST /nodes/:id/meter-frame`                     | —                                    | Push a meter frame.                       |
 | `POST /nodes/:id/listen/chunk`                    | `node:control`                       | Ingest live-listen audio (`?rendition`).  |
 | `POST /nodes/:id/health-events`                   | `health:acknowledge`                 | Sync a health event.                      |
-| `POST /nodes/:id/recording-jobs/claim-next`       | `recording:control`                  | Claim the next queued job.                |
+| `GET /nodes/:id/recording-jobs/next`              | `recording:control`                  | Poll the next queued job (peek, no lease). |
+| `POST /nodes/:id/recording-jobs/claim-next`       | `recording:control`                  | Atomically claim the next queued job.     |
+| `POST /recording-jobs/:jid/claim`                 | `recording:control`                  | Claim a specific queued job by id.        |
 | `POST /recording-jobs/:jid/heartbeat`             | `recording:control`                  | Job heartbeat.                            |
 | `GET /recording-jobs/:jid`                        | `recording:control`/`recording:read` | Read job (dual-mode auth).                |
 | `POST /recording-jobs/:jid/cancelled` · `/failed` | `recording:control`                  | Terminal job state.                       |
-| `PUT /recordings/:rid/cache-file`                 | `recording:control`                  | Upload captured audio; completes the job. |
+| `PUT /recordings/:rid/cache-file`                 | `recording:control`                  | Upload a captured/rendered file (`?rendition=raw\|enhanced`); the primary completes the job, `raw` is supplementary. |
 
 ## Onboarding & runner routes (special auth)
 
@@ -142,7 +144,7 @@ reads under `settings:read`. Mutations require `settings:manage`.
 | ------------------------------------------- | --------------- | -------------------------------------------------------------------------------- |
 | Recording profiles                          | `settings:read` | `PATCH /settings/recording-profiles/:id`                                         |
 | Watchdog policies                           | `settings:read` | `PATCH /settings/watchdog-policies/:id` (+ calibrate)                            |
-| Upload providers / policies                 | `settings:read` | `PATCH`/`POST` providers & policies                                              |
+| Upload destinations / policies              | `settings:read` | `PATCH`/`POST` destinations & policies                                           |
 | Channel-map templates / assignments / plans | `settings:read` | create/update templates; `PUT` assignments (+ bulk, rollback); stage/apply plans |
 | Retention policies                          | `settings:read` | `POST` / `PATCH /settings/retention-policies/:id`                                |
 
