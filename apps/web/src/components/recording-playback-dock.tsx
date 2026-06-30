@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatDateTime } from "@/lib/dates";
 import type { RecordingPlaybackPreview, RecordingRendition } from "@/lib/recording-page-helpers";
 
@@ -32,23 +33,25 @@ export function RecordingPlaybackDock({
         </div>
         <div className="flex items-center gap-2">
           {availableRenditions.length > 1 ? (
-            <div className="flex overflow-hidden rounded-md border border-border">
+            <ToggleGroup
+              className="gap-0 overflow-hidden rounded-md border border-border"
+              onValueChange={(value) => {
+                if (value) onSelectRendition(value as RecordingRendition);
+              }}
+              size="sm"
+              type="single"
+              value={preview.rendition}
+            >
               {availableRenditions.map((rendition) => (
-                <button
-                  aria-pressed={preview.rendition === rendition}
-                  className={`px-2.5 py-1 text-xs font-medium ${
-                    preview.rendition === rendition
-                      ? "bg-zinc-950 text-white"
-                      : "bg-background text-stone-600 hover:bg-stone-100"
-                  }`}
+                <ToggleGroupItem
+                  className="rounded-none border-0 px-2.5 text-xs font-medium"
                   key={rendition}
-                  onClick={() => onSelectRendition(rendition)}
-                  type="button"
+                  value={rendition}
                 >
                   {renditionLabels[rendition]}
-                </button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
           ) : null}
           <Button aria-label="Close playback" onClick={onClose} size="icon" variant="ghost">
             <X className="size-4" />

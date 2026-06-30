@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, type ListenMonitorSession } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
@@ -95,24 +96,26 @@ export function ListenMonitorPanel({ onClose, onSessionChange, preview }: Listen
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex overflow-hidden rounded-md border border-border">
+          <ToggleGroup
+            className="gap-0 overflow-hidden rounded-md border border-border"
+            onValueChange={(value) => {
+              if (value) switchMutation.mutate(value as LiveListenRendition);
+            }}
+            size="sm"
+            type="single"
+            value={activeRendition}
+          >
             {liveListenRenditions.map((rendition) => (
-              <button
-                aria-pressed={activeRendition === rendition}
-                className={`px-2.5 py-1 text-xs font-medium disabled:opacity-60 ${
-                  activeRendition === rendition
-                    ? "bg-zinc-950 text-white"
-                    : "bg-background text-stone-600 hover:bg-stone-100"
-                }`}
-                disabled={renditionBusy || activeRendition === rendition}
+              <ToggleGroupItem
+                className="rounded-none border-0 px-2.5 text-xs font-medium"
+                disabled={renditionBusy}
                 key={rendition}
-                onClick={() => switchMutation.mutate(rendition)}
-                type="button"
+                value={rendition}
               >
                 {liveListenRenditionLabel(rendition)}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex">

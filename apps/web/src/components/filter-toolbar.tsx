@@ -96,9 +96,9 @@ export function FilterToolbar({
                 <Filter className="size-4" />
                 Filters
                 {activeCount > 0 ? (
-                  <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground tabular-nums">
+                  <Badge className="ml-1 h-5 min-w-5 justify-center rounded-full px-1.5 tabular-nums">
                     {activeCount}
-                  </span>
+                  </Badge>
                 ) : null}
               </Button>
             </SheetTrigger>

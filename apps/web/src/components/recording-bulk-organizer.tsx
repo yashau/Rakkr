@@ -97,12 +97,25 @@ export function RecordingBulkOrganizer({
   const bulkUploadDisabled = uploadDisabled || selectedCount === 0 || uploadEligibleCount === 0;
   const uploadPolicyId = selectedUploadPolicyId || uploadPolicies[0]?.id;
 
+  // Fold the eligibility counts into the selected badge, only surfacing the ones
+  // the operator is permitted to act on (deletable needs canDelete, cached canUpload).
+  const selectionDetails: string[] = [];
+  if (canDelete) {
+    selectionDetails.push(`${deleteEligibleCount} deletable`);
+  }
+  if (canUpload) {
+    selectionDetails.push(`${uploadEligibleCount} cached`);
+  }
+  const selectionSummary = `${selectedCount} selected${
+    selectionDetails.length > 0 ? ` (${selectionDetails.join(", ")})` : ""
+  }`;
+
   return (
     <section className="grid gap-3 rounded-lg border border-border bg-panel p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-semibold">Bulk organize</h3>
-          <Badge variant="secondary">{selectedCount} selected</Badge>
+          <Badge variant="secondary">{selectionSummary}</Badge>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -140,6 +153,21 @@ export function RecordingBulkOrganizer({
               Export selected
             </Button>
           ) : null}
+          {canDelete ? (
+            <ConfirmButton
+              confirmLabel="Delete"
+              description="This permanently deletes the selected terminal recordings and their cached files."
+              disabled={bulkDeleteDisabled}
+              onConfirm={onDeleteSelected}
+              title={`Delete ${deleteEligibleCount} selected recording${
+                deleteEligibleCount === 1 ? "" : "s"
+              }?`}
+              variant="destructive"
+            >
+              <Trash2 className="size-4" />
+              Delete selected
+            </ConfirmButton>
+          ) : null}
         </div>
       </div>
       {canEdit ? (
@@ -154,27 +182,8 @@ export function RecordingBulkOrganizer({
           selectedCount={selectedCount}
         />
       ) : null}
-      {canDelete ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">{deleteEligibleCount} deletable</Badge>
-          <ConfirmButton
-            confirmLabel="Delete"
-            description="This permanently deletes the selected terminal recordings and their cached files."
-            disabled={bulkDeleteDisabled}
-            onConfirm={onDeleteSelected}
-            title={`Delete ${deleteEligibleCount} selected recording${
-              deleteEligibleCount === 1 ? "" : "s"
-            }?`}
-            variant="destructive"
-          >
-            <Trash2 className="size-4" />
-            Delete selected
-          </ConfirmButton>
-        </div>
-      ) : null}
       {canUpload ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">{uploadEligibleCount} cached</Badge>
           {uploadPolicies.length > 0 ? (
             <Select
               onValueChange={(value) => setSelectedUploadPolicyId(value)}
