@@ -128,12 +128,13 @@ export function registerSettingsUploadPolicyRoutes({
 
 function uploadPolicySnapshot(policy: UploadPolicy) {
   return {
+    deleteCacheAfterUpload: policy.deleteCacheAfterUpload,
+    destinationId: policy.destinationId,
     enabled: policy.enabled,
     id: policy.id,
     maxAttempts: policy.maxAttempts,
     name: policy.name,
-    provider: policy.provider,
-    target: policy.target,
+    pathOverride: policy.pathOverride,
     trigger: policy.trigger,
   };
 }

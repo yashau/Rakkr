@@ -28,7 +28,7 @@ process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(
   "retention-policies.json",
 );
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(settingsActionRoot, "upload-policies.json");
-process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(
   settingsActionRoot,
   "upload-providers.json",
 );
@@ -45,7 +45,7 @@ const { registerRetentionPolicyRoutes } = await import("../src/retention-policy-
 const { registerSettingsRoutes } = await import("../src/settings-routes.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
-const { createUploadProviderStore } = await import("../src/upload-providers.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 
 test.after(async () => {
   await rm(settingsActionRoot, { force: true, recursive: true });
@@ -56,7 +56,7 @@ test("settings action summaries expose ready links for managed resources", async
   const currentUser = viewer(["settings:manage", "settings:read"]);
   const settingsStore = createSettingsStore();
   const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
-  const uploadProviderStore = createUploadProviderStore();
+  const uploadDestinationStore = createUploadDestinationStore();
   const template = await settingsStore.createChannelMapTemplate(
     channelMapInput(`channel_map_actions_${randomUUID()}`, "Action Summary Map"),
   );
@@ -69,9 +69,14 @@ test("settings action summaries expose ready links for managed resources", async
     id: `upload-policy-actions-${randomUUID()}`,
     maxAttempts: 3,
     name: "Action Summary Upload",
-    provider: "stub",
-    target: "stub://actions",
     trigger: "manual",
+  });
+  const uploadDestination = await uploadDestinationStore.create({
+    displayName: "Action Summary Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
   });
   const retentionPolicy = await createRetentionPolicy({
     action: "delete_cache",
@@ -86,7 +91,7 @@ test("settings action summaries expose ready links for managed resources", async
     channelMapAssignmentPlanStore,
     currentUser,
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
   const profile = await actions(app, "/api/v1/settings/recording-profiles/voice-mp3-vbr/actions");
@@ -102,7 +107,10 @@ test("settings action summaries expose ready links for managed resources", async
     app,
     `/api/v1/settings/channel-map-assignment-plans/${plan.id}/actions`,
   );
-  const provider = await actions(app, "/api/v1/settings/upload-providers/stub/actions");
+  const destination = await actions(
+    app,
+    `/api/v1/settings/upload-destinations/${uploadDestination.id}/actions`,
+  );
   const upload = await actions(app, `/api/v1/settings/upload-policies/${uploadPolicy.id}/actions`);
   const retention = await actions(
     app,
@@ -122,7 +130,10 @@ test("settings action summaries expose ready links for managed resources", async
     templateId: template.id,
   });
   assert.equal(planSummary.actions.apply.enabled, true);
-  assert.equal(provider.actions.update.href, "/api/v1/settings/upload-providers/stub");
+  assert.equal(
+    destination.actions.update.href,
+    `/api/v1/settings/upload-destinations/${uploadDestination.id}`,
+  );
   assert.equal(upload.actions.update.href, `/api/v1/settings/upload-policies/${uploadPolicy.id}`);
   assert.equal(
     retention.actions.update.href,
@@ -138,8 +149,8 @@ test("settings action summaries expose ready links for managed resources", async
     ["settings.channel_map_templates.actions.read.succeeded", "settings:read", 5],
     ["settings.recording_profiles.actions.read.succeeded", "settings:read", 2],
     ["settings.retention_policies.actions.read.succeeded", "settings:read", 2],
+    ["settings.upload_destinations.actions.read.succeeded", "settings:read", 2],
     ["settings.upload_policies.actions.read.succeeded", "settings:read", 2],
-    ["settings.upload_providers.actions.read.succeeded", "settings:read", 2],
     ["settings.watchdog_policies.actions.read.succeeded", "settings:read", 3],
   ]);
 });
@@ -147,7 +158,7 @@ test("settings action summaries expose ready links for managed resources", async
 test("settings action summaries explain missing permission and rollout blockers", async () => {
   const settingsStore = createSettingsStore();
   const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
-  const uploadProviderStore = createUploadProviderStore();
+  const uploadDestinationStore = createUploadDestinationStore();
   const template = await settingsStore.createChannelMapTemplate(
     channelMapInput(`channel_map_blocked_${randomUUID()}`, "Blocked Action Map"),
   );
@@ -164,7 +175,7 @@ test("settings action summaries explain missing permission and rollout blockers"
     channelMapAssignmentPlanStore,
     currentUser: viewer(["settings:read"]),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
   const readOnlyPlan = await actions(
@@ -187,7 +198,7 @@ test("settings action summaries explain missing permission and rollout blockers"
     channelMapAssignmentPlanStore,
     currentUser: viewer(["settings:manage", "settings:read"]),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
   const managerPlan = await actions(
@@ -211,7 +222,7 @@ test("settings action summary routes deny users without settings read", async ()
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyMissingPermission(auditStore, currentUser),
     settingsStore: createSettingsStore(),
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const responses = await Promise.all([
@@ -219,7 +230,7 @@ test("settings action summary routes deny users without settings read", async ()
     app.request("/api/v1/settings/watchdog-policies/scheduled-voice-watchdog/actions"),
     app.request("/api/v1/settings/channel-map-templates/template_missing/actions"),
     app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing/actions"),
-    app.request("/api/v1/settings/upload-providers/stub/actions"),
+    app.request("/api/v1/settings/upload-destinations/destination_missing/actions"),
     app.request("/api/v1/settings/upload-policies/upload-policy-missing/actions"),
   ]);
   const deniedEvents = await auditStore.list({ outcome: "denied", permission: "settings:read" });
@@ -232,8 +243,8 @@ test("settings action summary routes deny users without settings read", async ()
     "settings.channel_map_assignment_plans.actions.read",
     "settings.channel_map_templates.actions.read",
     "settings.recording_profiles.actions.read",
+    "settings.upload_destinations.actions.read",
     "settings.upload_policies.actions.read",
-    "settings.upload_providers.actions.read",
     "settings.watchdog_policies.actions.read",
   ]);
 });
@@ -246,7 +257,7 @@ test("settings action summary routes audit missing resources", async () => {
     channelMapAssignmentPlanStore: createChannelMapAssignmentPlanStore(),
     currentUser,
     settingsStore: createSettingsStore(),
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const responses = await Promise.all([
@@ -254,7 +265,7 @@ test("settings action summary routes audit missing resources", async () => {
     app.request("/api/v1/settings/watchdog-policies/watchdog_missing/actions"),
     app.request("/api/v1/settings/channel-map-templates/template_missing/actions"),
     app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing/actions"),
-    app.request("/api/v1/settings/upload-providers/not-a-provider/actions"),
+    app.request("/api/v1/settings/upload-destinations/destination_missing/actions"),
     app.request("/api/v1/settings/upload-policies/upload-policy-missing/actions"),
     app.request("/api/v1/settings/retention-policies/retention-missing/actions"),
   ]);
@@ -269,8 +280,8 @@ test("settings action summary routes audit missing resources", async () => {
     "settings.channel_map_templates.actions.read.failed",
     "settings.recording_profiles.actions.read.failed",
     "settings.retention_policies.actions.read.failed",
+    "settings.upload_destinations.actions.read.failed",
     "settings.upload_policies.actions.read.failed",
-    "settings.upload_providers.actions.read.failed",
     "settings.watchdog_policies.actions.read.failed",
   ]);
   assert.ok(failedEvents.every((event) => event.reason === "not_found"));
@@ -293,13 +304,13 @@ function registerAllSettingsRoutes({
   channelMapAssignmentPlanStore,
   currentUser,
   settingsStore,
-  uploadProviderStore,
+  uploadDestinationStore,
 }: {
   app: Hono<AppBindings>;
   channelMapAssignmentPlanStore: ReturnType<typeof createChannelMapAssignmentPlanStore>;
   currentUser: CurrentUser;
   settingsStore: ReturnType<typeof createSettingsStore>;
-  uploadProviderStore: ReturnType<typeof createUploadProviderStore>;
+  uploadDestinationStore: ReturnType<typeof createUploadDestinationStore>;
 }) {
   const auditStore = createAuditStore("");
 
@@ -310,7 +321,7 @@ function registerAllSettingsRoutes({
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
   registerRetentionPolicyRoutes({
     app,

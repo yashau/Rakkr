@@ -107,13 +107,13 @@ export function RecordingCard({
   const deleteDisabled = deletePending || !isTerminalRecording(recording);
   const [expanded, setExpanded] = useState(false);
   const [selectedUploadPolicyId, setSelectedUploadPolicyId] = useState(
-    recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "",
+    recording.uploadPolicyIds?.[0] ?? uploadPolicies[0]?.id ?? "",
   );
   const relationships = recordingRelationshipBadges(recording, relationshipReferences);
 
   useEffect(() => {
-    setSelectedUploadPolicyId(recording.uploadPolicyId ?? uploadPolicies[0]?.id ?? "");
-  }, [recording.uploadPolicyId, uploadPolicies]);
+    setSelectedUploadPolicyId(recording.uploadPolicyIds?.[0] ?? uploadPolicies[0]?.id ?? "");
+  }, [recording.uploadPolicyIds, uploadPolicies]);
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">

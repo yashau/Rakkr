@@ -251,7 +251,7 @@ test("recording relationship badges prefer permitted friendly reference names", 
         trackGroupId: "track_group_1",
         trackIndex: 2,
         trackTotal: 4,
-        uploadPolicyId: "upload_stub",
+        uploadPolicyIds: ["upload_stub"],
       }),
       {
         nodes: [recorderNode()],
@@ -278,7 +278,7 @@ test("recording relationship badges fall back to ids without reference access", 
         nodeId: "node_web_action_test",
         recordingProfileId: "profile_voice",
         scheduleId: "sched_council",
-        uploadPolicyId: "upload_stub",
+        uploadPolicyIds: ["upload_stub"],
       }),
     ),
     [
@@ -384,7 +384,7 @@ function schedule(): ScheduleSummary {
     tags: ["voice"],
     timezone: "Indian/Maldives",
     titleTemplate: "Council {{date}}",
-    uploadPolicyId: "upload_stub",
+    uploadPolicyIds: ["upload_stub"],
     watchdogPolicyId: "watchdog_voice",
   };
 }
@@ -396,7 +396,6 @@ function uploadPolicy(): UploadPolicy {
     id: "upload_stub",
     maxAttempts: 5,
     name: "Stub Upload",
-    provider: "stub",
     trigger: "manual",
     updatedAt: "2026-06-18T12:00:00.000Z",
   };

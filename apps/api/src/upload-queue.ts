@@ -21,7 +21,9 @@ import { recordingFileName } from "./recording-cache.js";
 type UploadQueueItemRow = typeof uploadQueueItemsTable.$inferSelect;
 
 interface EnqueueUploadInput {
+  destinationId?: string;
   maxAttempts?: number;
+  pathOverride?: string;
   policyId?: string;
   provider?: UploadProvider;
   reason?: string;
@@ -66,11 +68,13 @@ class JsonUploadQueueStore implements UploadQueueStore {
       cachePath: recording.cachePath,
       checksum: recording.checksum,
       createdAt: now,
+      destinationId: input.destinationId,
       fileName: recordingFileName(recording),
       id: `upload_${randomUUID()}`,
       lastError: input.reason ?? "provider_not_configured",
       maxAttempts: input.maxAttempts ?? Number(process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS ?? 5),
       nextAttemptAt: now,
+      pathOverride: input.pathOverride,
       provider,
       recordingId: recording.id,
       status: "queued",
@@ -233,11 +237,13 @@ class PostgresUploadQueueStore implements UploadQueueStore {
         cachePath: recording.cachePath,
         checksum: recording.checksum,
         createdAt: now,
+        destinationId: input.destinationId,
         fileName: recordingFileName(recording),
         id: `upload_${randomUUID()}`,
         lastError: input.reason ?? "provider_not_configured",
         maxAttempts: input.maxAttempts ?? Number(process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS ?? 5),
         nextAttemptAt: now,
+        pathOverride: input.pathOverride,
         provider,
         recordingId: recording.id,
         status: "queued",
@@ -444,10 +450,12 @@ class PostgresUploadQueueStore implements UploadQueueStore {
           attemptCount: item.attemptCount,
           cachePath: item.cachePath ?? null,
           checksum: item.checksum ?? null,
+          destinationId: item.destinationId ?? null,
           fileName: item.fileName,
           lastError: item.lastError ?? null,
           maxAttempts: item.maxAttempts,
           nextAttemptAt: new Date(item.nextAttemptAt),
+          pathOverride: item.pathOverride ?? null,
           provider: item.provider,
           recordingId: item.recordingId,
           status: item.status,
@@ -526,6 +534,11 @@ function reusableUploadQueueItem(
   recording: RecordingSummary,
   input: EnqueueUploadInput,
 ) {
+  // Items pinned to different destinations (even of the same kind) are distinct.
+  if (item.destinationId !== input.destinationId) {
+    return false;
+  }
+
   if (activeStatuses.has(item.status)) {
     return true;
   }
@@ -534,6 +547,7 @@ function reusableUploadQueueItem(
     item.status === "succeeded" &&
     item.cachePath === recording.cachePath &&
     item.checksum === recording.checksum &&
+    item.pathOverride === input.pathOverride &&
     item.target === input.target &&
     item.uploadPolicyId === input.policyId
   );
@@ -569,11 +583,13 @@ function queueItemFromRow(row: UploadQueueItemRow): UploadQueueItem {
     cachePath: row.cachePath ?? undefined,
     checksum: row.checksum ?? undefined,
     createdAt: row.createdAt.toISOString(),
+    destinationId: row.destinationId ?? undefined,
     fileName: row.fileName,
     id: row.id,
     lastError: row.lastError ?? undefined,
     maxAttempts: row.maxAttempts,
     nextAttemptAt: row.nextAttemptAt.toISOString(),
+    pathOverride: row.pathOverride ?? undefined,
     provider: row.provider,
     recordingId: row.recordingId,
     status: row.status,
@@ -589,11 +605,13 @@ function queueItemToRow(item: UploadQueueItem) {
     cachePath: item.cachePath ?? null,
     checksum: item.checksum ?? null,
     createdAt: new Date(item.createdAt),
+    destinationId: item.destinationId ?? null,
     fileName: item.fileName ?? path.basename(item.cachePath ?? `${item.recordingId}.mp3`),
     id: item.id,
     lastError: item.lastError ?? null,
     maxAttempts: item.maxAttempts,
     nextAttemptAt: new Date(item.nextAttemptAt),
+    pathOverride: item.pathOverride ?? null,
     provider: item.provider,
     recordingId: item.recordingId,
     status: item.status,

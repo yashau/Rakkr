@@ -7,6 +7,7 @@ import type { RecordingSummary } from "@rakkr/shared";
 
 const policyRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-policies-"));
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(policyRoot, "policies.json");
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(policyRoot, "destinations.json");
 
 const {
   createUploadPolicy,
@@ -16,23 +17,33 @@ const {
   uploadPolicyForQueue,
   uploadQueueInputForPolicy,
 } = await import("../src/upload-policies.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 
 test.after(async () => {
   await rm(policyRoot, { force: true, recursive: true });
 });
 
 test("creates and updates upload policy templates", async () => {
+  const destinationStore = createUploadDestinationStore();
+  const destination = await destinationStore.create({
+    displayName: "Archive Bucket",
+    enabled: true,
+    kind: "s3",
+    s3: { accessKeyId: "AKIA", bucket: "rakkr-archive", prefix: "meetings", region: "us-east-1" },
+    s3SecretAccessKey: "secret",
+  });
+
   const created = await createUploadPolicy({
     deleteCacheAfterUpload: true,
+    destinationId: destination.id,
     enabled: true,
     maxAttempts: 7,
     name: "Scheduled S3",
-    provider: "s3",
-    target: "s3://rakkr-archive/meetings",
+    pathOverride: "council",
     trigger: "on_recording_cached",
   });
 
-  assert.equal(created.provider, "s3");
+  assert.equal(created.destinationId, destination.id);
   assert.equal(created.deleteCacheAfterUpload, true);
   assert.equal(created.trigger, "on_recording_cached");
 
@@ -40,13 +51,18 @@ test("creates and updates upload policy templates", async () => {
   const autoPolicy = await uploadPolicyForCachedRecording(cachedRecording);
 
   assert.equal(autoPolicy?.id, created.id);
-  assert.deepEqual(uploadQueueInputForPolicy(autoPolicy!, "policy_on_recording_cached"), {
-    maxAttempts: 7,
-    policyId: created.id,
-    provider: "s3",
-    reason: "policy_on_recording_cached",
-    target: "s3://rakkr-archive/meetings",
-  });
+  assert.deepEqual(
+    await uploadQueueInputForPolicy(autoPolicy!, destinationStore, "policy_on_recording_cached"),
+    {
+      destinationId: destination.id,
+      maxAttempts: 7,
+      pathOverride: "council",
+      policyId: created.id,
+      provider: "s3",
+      reason: "policy_on_recording_cached",
+      target: "s3://rakkr-archive/meetings/council",
+    },
+  );
   assert.equal(await uploadPolicyForCachedRecording(recording("upload-policy-stub")), undefined);
   assert.equal(
     await uploadPolicyForCachedRecording({
@@ -58,18 +74,27 @@ test("creates and updates upload policy templates", async () => {
   );
 
   const updated = await updateUploadPolicy(created.id, {
-    provider: "stub",
-    target: "stub://queue-only",
+    destinationId: destination.id,
+    maxAttempts: 9,
   });
 
-  assert.equal(updated?.provider, "stub");
-  assert.equal(updated?.maxAttempts, 7);
-  assert.equal((await uploadPolicyForQueue(updated?.id)).provider, "stub");
+  assert.equal(updated?.destinationId, destination.id);
+  assert.equal(updated?.maxAttempts, 9);
+  assert.equal((await uploadPolicyForQueue(updated?.id)).destinationId, destination.id);
   assert.equal(
     (await listUploadPolicies()).find((policy) => policy.id === updated?.id)?.maxAttempts,
-    7,
+    9,
   );
   assert.ok((await listUploadPolicies()).some((policy) => policy.id === "upload-policy-stub"));
+
+  // The built-in stub policy has no destination and resolves to a stub queue input.
+  const stubPolicy = await uploadPolicyForQueue("upload-policy-stub");
+  assert.deepEqual(await uploadQueueInputForPolicy(stubPolicy, destinationStore), {
+    maxAttempts: stubPolicy.maxAttempts,
+    policyId: "upload-policy-stub",
+    provider: "stub",
+    reason: undefined,
+  });
 });
 
 function recording(uploadPolicyId: string): RecordingSummary {
@@ -85,6 +110,6 @@ function recording(uploadPolicyId: string): RecordingSummary {
     source: "schedule",
     status: "cached",
     tags: [],
-    uploadPolicyId,
+    uploadPolicyIds: [uploadPolicyId],
   };
 }

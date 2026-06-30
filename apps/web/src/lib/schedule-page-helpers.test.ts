@@ -134,7 +134,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
     tags: ["voice"],
     timezone: "UTC",
     titleTemplate: "Council {yyyy}-{mm}-{dd}",
-    uploadPolicyId: "upload_stub",
+    uploadPolicyIds: ["upload_stub"],
     watchdogPolicyId: "watchdog_voice",
     ...input,
   };

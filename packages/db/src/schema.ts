@@ -30,6 +30,7 @@ export const recordingStatusEnum = pgEnum("recording_status", [
   "failed",
   "cached",
   "uploaded",
+  "partial",
 ]);
 export const recordingJobStatusEnum = pgEnum("recording_job_status", [
   "queued",
@@ -462,13 +463,35 @@ export const uploadProviders = pgTable("upload_providers", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Named SMB/S3 upload targets. Unlike upload_providers (one row per kind), many
+// destinations of each kind may exist; upload policies reference one by id.
+export const uploadDestinations = pgTable("upload_destinations", {
+  // Non-secret typed connection config (smb/s3 fields).
+  config: jsonb("config")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  displayName: varchar("display_name", { length: 160 }).notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  id: varchar("id", { length: 160 }).primaryKey(),
+  kind: varchar("kind", { length: 32 }).notNull(),
+  // Encrypted secret material (smbPassword, s3SecretAccessKey).
+  secrets: jsonb("secrets")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const uploadPolicies = pgTable("upload_policies", {
   deleteCacheAfterUpload: boolean("delete_cache_after_upload").notNull().default(false),
+  destinationId: varchar("destination_id", { length: 160 }),
   enabled: boolean("enabled").notNull().default(false),
   id: varchar("id", { length: 160 }).primaryKey(),
   maxAttempts: integer("max_attempts").notNull().default(5),
   name: varchar("name", { length: 160 }).notNull(),
-  provider: varchar("provider", { length: 32 }).notNull(),
+  pathOverride: text("path_override"),
+  // Legacy columns superseded by destinationId/pathOverride; retained nullable for
+  // backfill and dropped in a later migration.
+  provider: varchar("provider", { length: 32 }),
   target: text("target"),
   trigger: varchar("trigger", { length: 40 }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -481,11 +504,13 @@ export const uploadQueueItems = pgTable(
     cachePath: text("cache_path"),
     checksum: varchar("checksum", { length: 160 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    destinationId: varchar("destination_id", { length: 160 }),
     fileName: text("file_name").notNull(),
     id: varchar("id", { length: 160 }).primaryKey(),
     lastError: text("last_error"),
     maxAttempts: integer("max_attempts").notNull().default(5),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull(),
+    pathOverride: text("path_override"),
     provider: varchar("provider", { length: 32 }).notNull(),
     recordingId: varchar("recording_id", { length: 160 }).notNull(),
     status: varchar("status", { length: 32 }).notNull(),
@@ -494,6 +519,10 @@ export const uploadQueueItems = pgTable(
     uploadPolicyId: varchar("upload_policy_id", { length: 160 }),
   },
   (table) => ({
+    destinationStatusIdx: index("upload_queue_items_destination_status_idx").on(
+      table.destinationId,
+      table.status,
+    ),
     dueIdx: index("upload_queue_items_due_idx").on(table.status, table.nextAttemptAt),
     providerStatusIdx: index("upload_queue_items_provider_status_idx").on(
       table.provider,
@@ -524,7 +553,12 @@ export const schedules = pgTable(
       .default(sql`'[]'::jsonb`),
     timezone: varchar("timezone", { length: 80 }).notNull(),
     titleTemplate: text("title_template").notNull(),
+    // Legacy single-policy column superseded by uploadPolicyIds; retained nullable
+    // for backfill and dropped in a later migration.
     uploadPolicyId: varchar("upload_policy_id", { length: 160 }),
+    uploadPolicyIds: jsonb("upload_policy_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     watchdogPolicyId: varchar("watchdog_policy_id", { length: 160 }),
   },
   (table) => ({

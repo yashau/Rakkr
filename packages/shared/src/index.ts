@@ -26,6 +26,7 @@ export const recordingStatusSchema = z.enum([
   "failed",
   "cached",
   "uploaded",
+  "partial",
 ]);
 export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
 export const uploadProviderStatusSchema = z.enum([
@@ -547,7 +548,7 @@ export const scheduleSummarySchema = z.object({
   tags: z.array(z.string().min(1)),
   timezone: z.string().min(1),
   titleTemplate: z.string().min(1),
-  uploadPolicyId: z.string().min(1).default("upload-policy-stub"),
+  uploadPolicyIds: z.array(z.string().min(1)).default(["upload-policy-stub"]),
   watchdogPolicyId: z.string().min(1),
 });
 export const scheduleInputSchema = z.object({
@@ -566,7 +567,7 @@ export const scheduleInputSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
   timezone: z.string().trim().min(1).max(80),
   titleTemplate: z.string().trim().min(1).max(500),
-  uploadPolicyId: z.string().trim().min(1).max(160).default("upload-policy-stub"),
+  uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).default(["upload-policy-stub"]),
   watchdogPolicyId: z.string().trim().min(1).max(160),
 });
 export const scheduleUpdateSchema = z
@@ -585,7 +586,7 @@ export const scheduleUpdateSchema = z
     tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
     timezone: z.string().trim().min(1).max(80).optional(),
     titleTemplate: z.string().trim().min(1).max(500).optional(),
-    uploadPolicyId: z.string().trim().min(1).max(160).optional(),
+    uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).optional(),
     watchdogPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one schedule field is required");
@@ -619,7 +620,7 @@ export const recordingSummarySchema = z.object({
   trackGroupId: z.string().min(1).optional(),
   trackIndex: z.number().int().positive().optional(),
   trackTotal: z.number().int().positive().optional(),
-  uploadPolicyId: z.string().min(1).optional(),
+  uploadPolicyIds: z.array(z.string().min(1)).optional(),
   watchdogPolicyId: z.string().min(1).optional(),
   waveformPreview: z
     .object({
@@ -689,11 +690,13 @@ export const uploadQueueItemSchema = z.object({
   cachePath: z.string().min(1).optional(),
   checksum: z.string().min(1).optional(),
   createdAt: isoDateTimeSchema,
+  destinationId: z.string().min(1).optional(),
   fileName: z.string().min(1).optional(),
   id: z.string().min(1),
   lastError: z.string().min(1).optional(),
   maxAttempts: z.number().int().positive(),
   nextAttemptAt: isoDateTimeSchema,
+  pathOverride: z.string().min(1).optional(),
   provider: uploadProviderSchema,
   recordingId: z.string().min(1),
   status: uploadQueueStatusSchema,
@@ -767,36 +770,89 @@ export const uploadProviderRuntimeStatusSchema = z.object({
   target: z.string().optional(),
   updatedAt: isoDateTimeSchema,
 });
+
+// A named SMB or S3 upload target. Many destinations of each kind may exist; the
+// `stub` queue-only provider is a built-in and is never a destination row.
+export const uploadDestinationKindSchema = z.enum(["smb", "s3"]);
+export const uploadDestinationSchema = z.object({
+  displayName: z.string().trim().min(1).max(160),
+  enabled: z.boolean(),
+  id: z.string().min(1),
+  kind: uploadDestinationKindSchema,
+  s3: s3ProviderConfigSchema.optional(),
+  smb: smbProviderConfigSchema.optional(),
+  updatedAt: isoDateTimeSchema,
+});
+// Secrets are write-only: not trimmed and cleared by passing an empty string.
+export const uploadDestinationInputSchema = z.object({
+  displayName: z.string().trim().min(1).max(160),
+  enabled: z.boolean().default(false),
+  id: z.string().trim().min(1).max(160).optional(),
+  kind: uploadDestinationKindSchema,
+  s3: s3ProviderConfigSchema.optional(),
+  s3SecretAccessKey: z.string().max(1024).optional(),
+  smb: smbProviderConfigSchema.optional(),
+  smbPassword: z.string().max(1024).optional(),
+});
+export const uploadDestinationUpdateSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(160).optional(),
+    enabled: z.boolean().optional(),
+    s3: s3ProviderConfigSchema.optional(),
+    s3SecretAccessKey: z.string().max(1024).optional(),
+    smb: smbProviderConfigSchema.optional(),
+    smbPassword: z.string().max(1024).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one destination field is required");
+export const uploadDestinationRuntimeStatusSchema = z.object({
+  configured: z.boolean(),
+  displayName: z.string(),
+  enabled: z.boolean(),
+  hasS3SecretAccessKey: z.boolean(),
+  hasSmbPassword: z.boolean(),
+  id: z.string().min(1),
+  implemented: z.boolean(),
+  kind: uploadDestinationKindSchema,
+  missingFields: z.array(z.string()),
+  reason: z.string().optional(),
+  requiredFields: z.array(z.string()),
+  s3: s3ProviderConfigSchema.optional(),
+  smb: smbProviderConfigSchema.optional(),
+  status: uploadProviderStatusSchema,
+  target: z.string().optional(),
+  updatedAt: isoDateTimeSchema,
+});
+
 export const uploadPolicyTriggerSchema = z.enum(["manual", "on_recording_cached"]);
 export const uploadPolicySchema = z.object({
   deleteCacheAfterUpload: z.boolean().default(false),
+  destinationId: z.string().min(1).optional(),
   enabled: z.boolean(),
   id: z.string().min(1),
   maxAttempts: z.number().int().positive().max(100),
   name: z.string().min(1),
-  provider: uploadProviderSchema,
-  target: z.string().min(1).optional(),
+  pathOverride: z.string().min(1).max(500).optional(),
   trigger: uploadPolicyTriggerSchema,
   updatedAt: isoDateTimeSchema,
 });
 export const uploadPolicyInputSchema = z.object({
   deleteCacheAfterUpload: z.boolean().default(false),
+  destinationId: z.string().trim().min(1).max(160).optional(),
   enabled: z.boolean().default(true),
   id: z.string().trim().min(1).max(160).optional(),
   maxAttempts: z.number().int().positive().max(100).default(5),
   name: z.string().trim().min(1).max(160),
-  provider: uploadProviderSchema.default("stub"),
-  target: z.string().trim().min(1).max(500).optional(),
+  pathOverride: z.string().trim().min(1).max(500).optional(),
   trigger: uploadPolicyTriggerSchema.default("manual"),
 });
 export const uploadPolicyUpdateSchema = z
   .object({
     deleteCacheAfterUpload: z.boolean().optional(),
+    destinationId: z.string().trim().min(1).max(160).optional(),
     enabled: z.boolean().optional(),
     maxAttempts: z.number().int().positive().max(100).optional(),
     name: z.string().trim().min(1).max(160).optional(),
-    provider: uploadProviderSchema.optional(),
-    target: z.string().trim().min(1).max(500).optional(),
+    pathOverride: z.string().trim().min(1).max(500).optional(),
     trigger: uploadPolicyTriggerSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one upload policy field is required");
@@ -870,8 +926,6 @@ export const defaultStubUploadPolicy = {
   id: "upload-policy-stub",
   maxAttempts: 5,
   name: "Stub Upload Queue",
-  provider: "stub",
-  target: "stub://queue-only",
   trigger: "manual",
   updatedAt: "1970-01-01T00:00:00.000Z",
 } satisfies UploadPolicy;
@@ -984,6 +1038,11 @@ export type UploadProviderConfig = z.infer<typeof uploadProviderConfigSchema>;
 export type UploadProviderConfigUpdate = z.infer<typeof uploadProviderConfigUpdateSchema>;
 export type UploadProviderRuntimeStatus = z.infer<typeof uploadProviderRuntimeStatusSchema>;
 export type UploadProviderStatus = z.infer<typeof uploadProviderStatusSchema>;
+export type UploadDestination = z.infer<typeof uploadDestinationSchema>;
+export type UploadDestinationInput = z.infer<typeof uploadDestinationInputSchema>;
+export type UploadDestinationKind = z.infer<typeof uploadDestinationKindSchema>;
+export type UploadDestinationRuntimeStatus = z.infer<typeof uploadDestinationRuntimeStatusSchema>;
+export type UploadDestinationUpdate = z.infer<typeof uploadDestinationUpdateSchema>;
 export type UploadPolicy = z.infer<typeof uploadPolicySchema>;
 export type UploadPolicyInput = z.infer<typeof uploadPolicyInputSchema>;
 export type UploadPolicyTrigger = z.infer<typeof uploadPolicyTriggerSchema>;

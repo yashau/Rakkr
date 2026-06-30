@@ -76,7 +76,7 @@ test("schedule create rejects hidden settings resources before persisting", asyn
       room: "Council Room",
       timezone: "UTC",
       titleTemplate: "{{date}}_{{time}}_{{schedule.name}}",
-      uploadPolicyId: defaultStubUploadPolicy.id,
+      uploadPolicyIds: [defaultStubUploadPolicy.id],
       watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
     });
     const [event] = await auditStore.list({ action: "schedules.create.failed" });
@@ -272,7 +272,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
     tags: ["council"],
     timezone: "UTC",
     titleTemplate: "{{date}} Council Meeting",
-    uploadPolicyId: defaultStubUploadPolicy.id,
+    uploadPolicyIds: [defaultStubUploadPolicy.id],
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
     ...input,
   };

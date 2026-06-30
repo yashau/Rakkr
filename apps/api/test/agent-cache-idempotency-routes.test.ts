@@ -43,12 +43,10 @@ test("duplicate cache attach after upload success reuses existing upload queue i
     id: `upload-policy-idempotent-cache-${randomUUID()}`,
     maxAttempts: 2,
     name: "Idempotent Cache Auto Stub",
-    provider: "stub",
-    target: "stub://idempotent-cache",
     trigger: "on_recording_cached",
   });
 
-  sourceRecording.uploadPolicyId = policy.id;
+  sourceRecording.uploadPolicyIds = [policy.id];
   const job = await createRecordingJob(sourceRecording);
   await claimRecordingJob(job.id, recorderNode.id);
 

@@ -9,7 +9,7 @@ import type { AuditEvent, CurrentUser, RecordingSummary } from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 
 const runnerRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-runner-"));
-process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(runnerRoot, "providers.json");
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(runnerRoot, "destinations.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(runnerRoot, "policies.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(runnerRoot, "queue.json");
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(runnerRoot, "cache");
@@ -17,7 +17,7 @@ process.env.RAKKR_RECORDING_CACHE_DIR = path.join(runnerRoot, "cache");
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
-const { createUploadProviderStore } = await import("../src/upload-providers.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 const { registerUploadRunnerRoutes } = await import("../src/upload-runner-routes.js");
 const { createUploadRunner } = await import("../src/upload-runner.js");
 const { enqueueRecordingUpload, listUploadQueueItems } = await import("../src/upload-queue.js");
@@ -28,8 +28,8 @@ test.after(async () => {
 
 test("upload runner processes queue items and records service audit events", async () => {
   const auditStore = createAuditStore("");
-  const providerStore = createUploadProviderStore();
-  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const destinationStore = createUploadDestinationStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, destinationStore });
 
   await enqueueRecordingUpload(recording(), {
     provider: "stub",
@@ -56,7 +56,7 @@ test("upload runner processes queue items and records service audit events", asy
 
 test("upload runner deletes local cache after confirmed upload when policy requests it", async () => {
   const auditStore = createAuditStore("");
-  const providerStore = createUploadProviderStore();
+  const destinationStore = createUploadDestinationStore();
   const contents = "archive-bytes";
   const cachedRecording = recording("rec_upload_retention_test", contents);
   const cachePath = await cacheRecording(cachedRecording.id, contents);
@@ -65,26 +65,28 @@ test("upload runner deletes local cache after confirmed upload when policy reque
   const runner = createUploadRunner({
     auditStore,
     limit: 5,
-    providerStore,
+    destinationStore,
     recordingStore,
     smbClientFactory: () => smb.client,
   });
 
-  await providerStore.update("smb", {
+  const destination = await destinationStore.create({
     displayName: "Retention Share",
     enabled: true,
+    kind: "smb",
     smb: { server: "files.example.lan", share: "recordings", username: "svc" },
     smbPassword: "s3cr3t",
   });
   const policy = await createUploadPolicy({
     deleteCacheAfterUpload: true,
+    destinationId: destination.id,
     enabled: true,
     maxAttempts: 1,
     name: "Archive then delete cache",
-    provider: "smb",
     trigger: "manual",
   });
   await enqueueRecordingUpload(cachedRecording, {
+    destinationId: destination.id,
     maxAttempts: 1,
     policyId: policy.id,
     provider: "smb",
@@ -92,6 +94,9 @@ test("upload runner deletes local cache after confirmed upload when policy reque
 
   const summary = await runner.runOnce();
   const updated = await recordingStore.find(cachedRecording.id);
+  const reconcileEvents = await auditStore.list({
+    action: "recordings.upload_queue.reconciled.succeeded",
+  });
   const itemEvents = await auditStore.list({
     action: "recordings.upload_queue.runner_item.succeeded",
   });
@@ -103,10 +108,12 @@ test("upload runner deletes local cache after confirmed upload when policy reque
   assert.equal(updated?.cachePath, undefined);
   assert.equal(updated?.checksum, cachedRecording.checksum);
   assert.equal(updated?.status, "uploaded");
-  assert.deepEqual(itemEvents[0]?.details.retention, {
+  // Cache deletion is reported on the recording-level reconciliation event.
+  assert.deepEqual(reconcileEvents[0]?.details.retention, {
     cacheDeleted: true,
     policyId: policy.id,
   });
+  assert.equal(reconcileEvents[0]?.details.status, "uploaded");
   assert.deepEqual(itemEvents[0]?.details.checksumVerification, {
     algorithm: "sha256",
     expected: sha256Prefixed(contents),
@@ -119,27 +126,29 @@ test("upload runner deletes local cache after confirmed upload when policy reque
 test("upload runner records health events for terminal upload failures", async () => {
   const auditStore = createAuditStore("");
   const healthEventStore = createHealthEventStore("");
-  const providerStore = createUploadProviderStore();
+  const destinationStore = createUploadDestinationStore();
   const failedRecording = recording("rec_upload_runner_terminal_failure");
   const recordingStore = memoryRecordingStore([failedRecording]);
   const runner = createUploadRunner({
     auditStore,
     healthEventStore,
     limit: 5,
-    providerStore,
+    destinationStore,
     recordingStore,
     smbClientFactory: () => {
       throw new Error("smb_connect_failed");
     },
   });
 
-  await providerStore.update("smb", {
+  const destination = await destinationStore.create({
     displayName: "Failure Share",
     enabled: true,
+    kind: "smb",
     smb: { server: "files.example.lan", share: "recordings", username: "svc" },
     smbPassword: "s3cr3t",
   });
   await enqueueRecordingUpload(failedRecording, {
+    destinationId: destination.id,
     maxAttempts: 1,
     provider: "smb",
   });
@@ -164,11 +173,69 @@ test("upload runner records health events for terminal upload failures", async (
   assert.equal(itemEvents[0]?.details.healthEventId, events[0]?.id);
 });
 
+test("upload runner marks recordings partial when one destination fails", async () => {
+  const auditStore = createAuditStore("");
+  const destinationStore = createUploadDestinationStore();
+  const contents = "partial-bytes";
+  const partialRecording = recording("rec_upload_partial", contents);
+  const cachePath = await cacheRecording(partialRecording.id, contents);
+  const recordingStore = memoryRecordingStore([partialRecording]);
+  const good = fakeSmbClient();
+  const runner = createUploadRunner({
+    auditStore,
+    destinationStore,
+    limit: 5,
+    recordingStore,
+    smbClientFactory: (config) =>
+      config.smb?.server === "good.example.lan" ? good.client : throwingSmbClient(),
+  });
+
+  const goodDestination = await destinationStore.create({
+    displayName: "Good Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "good.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const badDestination = await destinationStore.create({
+    displayName: "Bad Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "bad.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  await enqueueRecordingUpload(partialRecording, {
+    destinationId: goodDestination.id,
+    maxAttempts: 1,
+    provider: "smb",
+  });
+  await enqueueRecordingUpload(partialRecording, {
+    destinationId: badDestination.id,
+    maxAttempts: 1,
+    provider: "smb",
+  });
+
+  await runner.runOnce();
+  const updated = await recordingStore.find(partialRecording.id);
+  const reconcile = await auditStore.list({
+    action: "recordings.upload_queue.reconciled.partial",
+  });
+
+  // One destination succeeded, the other failed: the recording is partial, not
+  // failed, and the shared cache is retained because no policy deletes it.
+  assert.equal(updated?.status, "partial");
+  assert.equal(updated?.cached, true);
+  await assert.doesNotReject(readFile(cachePath));
+  assert.equal(reconcile[0]?.details.succeeded, 1);
+  assert.equal(reconcile[0]?.details.failed, 1);
+  assert.equal(reconcile[0]?.outcome, "partial");
+});
+
 test("upload runner routes expose status and run-now control", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
-  const providerStore = createUploadProviderStore();
-  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const destinationStore = createUploadDestinationStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, destinationStore });
 
   registerUploadRunnerRoutes({
     app,
@@ -221,8 +288,8 @@ test("upload runner routes expose status and run-now control", async () => {
 test("upload runner run route only processes queue items for scoped recordings", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
-  const providerStore = createUploadProviderStore();
-  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const destinationStore = createUploadDestinationStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, destinationStore });
   const visible = recording(`rec_upload_visible_${randomUUID()}`);
   const hidden = recording(`rec_upload_hidden_${randomUUID()}`);
   const visibleItem = await enqueueRecordingUpload(visible, {
@@ -273,8 +340,8 @@ test("upload runner run route only processes queue items for scoped recordings",
 test("upload runner status routes hide last-summary items outside scoped recordings", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
-  const providerStore = createUploadProviderStore();
-  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const destinationStore = createUploadDestinationStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, destinationStore });
   const visible = recording(`rec_upload_status_visible_${randomUUID()}`);
   const hidden = recording(`rec_upload_status_hidden_${randomUUID()}`);
 
@@ -332,8 +399,8 @@ test("upload runner status routes hide last-summary items outside scoped recordi
 test("upload runner routes deny users without required permissions", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
-  const providerStore = createUploadProviderStore();
-  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const destinationStore = createUploadDestinationStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, destinationStore });
 
   registerUploadRunnerRoutes({
     app,
@@ -373,8 +440,8 @@ test("upload runner routes deny users without required permissions", async () =>
 test("upload runner action summary reports missing control permission", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
-  const providerStore = createUploadProviderStore();
-  const runner = createUploadRunner({ auditStore, limit: 5, providerStore });
+  const destinationStore = createUploadDestinationStore();
+  const runner = createUploadRunner({ auditStore, limit: 5, destinationStore });
 
   registerUploadRunnerRoutes({
     app,
@@ -541,6 +608,20 @@ async function cacheRecording(id: string, contents: string) {
 
 function sha256Prefixed(contents: string) {
   return `sha256:${createHash("sha256").update(contents).digest("hex")}`;
+}
+
+function throwingSmbClient() {
+  return {
+    async close() {},
+    async connect() {
+      throw new Error("smb_connect_failed");
+    },
+    async mkdir() {},
+    async readFile() {
+      return Buffer.alloc(0);
+    },
+    async writeFile() {},
+  };
 }
 
 function fakeSmbClient() {

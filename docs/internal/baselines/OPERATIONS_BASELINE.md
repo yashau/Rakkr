@@ -24,7 +24,7 @@ Status: MVP baseline checked.
 | Settings page RBAC helpers                              | `apps/web/src/lib/settings-page-helpers.test.ts`                                                |
 | Audit filtering and CSV export                          | `apps/api/test/audit-routes.test.ts`                                                            |
 | Audit page RBAC helpers                                 | `apps/web/src/lib/audit-page-helpers.test.ts`                                                   |
-| Upload provider readiness                               | `apps/api/test/upload-providers.test.ts`                                                        |
+| Upload destination readiness                            | `apps/api/test/upload-destinations.test.ts`                                                     |
 | Upload policy templates                                 | `apps/api/test/upload-policies.test.ts`                                                         |
 | Upload runner and queue operations                      | `apps/api/test/upload-runner.test.ts` and `apps/api/test/recording-upload-queue-routes.test.ts` |
 | Upload runner UI RBAC                                   | `apps/web/src/lib/upload-runner-panel-helpers.test.ts`                                          |

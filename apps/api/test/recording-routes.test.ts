@@ -53,7 +53,7 @@ test("recording facets summarize visible library relationships", async () => {
         recordingProfileId: "profile_voice",
         tags: ["voice", "council"],
         trackGroupId: "track_1",
-        uploadPolicyId: "upload_a",
+        uploadPolicyIds: ["upload_a"],
       }),
       recording({
         folder: "Meetings/Council",
@@ -61,7 +61,7 @@ test("recording facets summarize visible library relationships", async () => {
         nodeId: "node_a",
         recordingProfileId: "profile_voice",
         tags: ["voice"],
-        uploadPolicyId: "upload_b",
+        uploadPolicyIds: ["upload_b"],
       }),
       recording({
         folder: "Meetings/Planning",
@@ -70,7 +70,7 @@ test("recording facets summarize visible library relationships", async () => {
         recordingProfileId: "profile_archive",
         tags: ["planning"],
         trackGroupId: "track_1",
-        uploadPolicyId: "upload_b",
+        uploadPolicyIds: ["upload_b"],
       }),
     ]),
   });
@@ -307,19 +307,19 @@ test("recording list filters by profile upload policy and track group", async ()
       recording({
         id: "rec_default",
         recordingProfileId: defaultVoiceRecordingProfile.id,
-        uploadPolicyId: "upload-policy-stub",
+        uploadPolicyIds: ["upload-policy-stub"],
       }),
       recording({
         id: "rec_archive",
         recordingProfileId: "profile_archive",
         trackGroupId: "track_group_archive",
-        uploadPolicyId: "upload-policy-archive",
+        uploadPolicyIds: ["upload-policy-archive"],
       }),
       recording({
         id: "rec_manual",
         recordingProfileId: "profile_archive",
         trackGroupId: "track_group_manual",
-        uploadPolicyId: "upload-policy-manual",
+        uploadPolicyIds: ["upload-policy-manual"],
       }),
     ]),
   });
@@ -704,7 +704,7 @@ test("ad hoc recording start audits missing dependencies", async () => {
     method: "POST",
   });
   const missingPolicy = await app.request("/api/v1/recordings", {
-    body: JSON.stringify({ nodeId: node.id, uploadPolicyId: "policy_missing" }),
+    body: JSON.stringify({ nodeId: node.id, uploadPolicyIds: ["policy_missing"] }),
     headers: { "content-type": "application/json" },
     method: "POST",
   });

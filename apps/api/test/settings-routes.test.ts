@@ -29,7 +29,7 @@ process.env.RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH = path.join(
 );
 process.env.RAKKR_RECORDING_PROFILE_STORE_PATH = path.join(settingsRoot, "profiles.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(settingsRoot, "upload-policies.json");
-process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(settingsRoot, "upload-providers.json");
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(settingsRoot, "upload-providers.json");
 process.env.RAKKR_WATCHDOG_POLICY_STORE_PATH = path.join(settingsRoot, "watchdog-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
@@ -38,7 +38,7 @@ const { createChannelMapAssignmentPlanStore } =
 const { registerSettingsRoutes } = await import("../src/settings-routes.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
-const { createUploadProviderStore } = await import("../src/upload-providers.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 
 test.after(async () => {
   await rm(settingsRoot, { force: true, recursive: true });
@@ -56,7 +56,7 @@ test("settings write routes deny users without settings manage", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyMissingPermission(auditStore, currentUser),
     settingsStore,
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const responses = await Promise.all([
@@ -66,15 +66,13 @@ test("settings write routes deny users without settings manage", async () => {
     requestJson(app, "/api/v1/settings/watchdog-policies/scheduled-voice-watchdog", "PATCH", {
       name: "Blocked Watchdog",
     }),
-    requestJson(app, "/api/v1/settings/upload-providers/stub", "PATCH", {
-      displayName: "Blocked Provider",
+    requestJson(app, "/api/v1/settings/upload-destinations/dest_blocked", "PATCH", {
+      displayName: "Blocked Destination",
     }),
     requestJson(app, "/api/v1/settings/upload-policies", "POST", {
       enabled: true,
       maxAttempts: 1,
       name: "Blocked Upload Policy",
-      provider: "stub",
-      target: "stub://blocked",
       trigger: "manual",
     }),
     requestJson(app, "/api/v1/settings/upload-policies/upload-policy-stub", "PATCH", {
@@ -139,9 +137,9 @@ test("settings write routes deny users without settings manage", async () => {
     "settings.channel_map_templates.update",
     "settings.recording_profiles.create",
     "settings.recording_profiles.update",
+    "settings.upload_destinations.update",
     "settings.upload_policies.create",
     "settings.upload_policies.update",
-    "settings.upload_providers.update",
     "settings.watchdog_policies.create",
     "settings.watchdog_policies.update",
   ]);
@@ -161,8 +159,9 @@ test("settings write routes deny users without settings manage", async () => {
     "channel_map_template",
   );
   assert.equal(
-    deniedEvents.find((event) => event.action === "settings.upload_providers.update")?.target.type,
-    "upload_provider",
+    deniedEvents.find((event) => event.action === "settings.upload_destinations.update")?.target
+      .type,
+    "upload_destination",
   );
   assert.equal(
     deniedEvents.find((event) => event.action === "settings.upload_policies.update")?.target.type,
@@ -181,8 +180,8 @@ test("settings write routes deny users without settings manage", async () => {
             "settings.channel_map_assignment_plans.apply",
             "settings.channel_map_templates.update",
             "settings.recording_profiles.update",
+            "settings.upload_destinations.update",
             "settings.upload_policies.update",
-            "settings.upload_providers.update",
             "settings.watchdog_policies.update",
           ].includes(event.action),
       )
@@ -201,7 +200,7 @@ test("settings read routes deny users without settings read", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyMissingPermission(auditStore, currentUser),
     settingsStore: createSettingsStore(),
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const responses = await Promise.all([
@@ -218,9 +217,9 @@ test("settings read routes deny users without settings read", async () => {
     app.request("/api/v1/settings/channel-map-assignment-plans"),
     app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing"),
     app.request("/api/v1/settings/channel-map-assignment-plans/plan_missing/actions"),
-    app.request("/api/v1/settings/upload-providers"),
-    app.request("/api/v1/settings/upload-providers/stub"),
-    app.request("/api/v1/settings/upload-providers/stub/actions"),
+    app.request("/api/v1/settings/upload-destinations"),
+    app.request("/api/v1/settings/upload-destinations/dest_x"),
+    app.request("/api/v1/settings/upload-destinations/dest_x/actions"),
     app.request("/api/v1/settings/upload-policies"),
     app.request("/api/v1/settings/upload-policies/upload-policy-stub"),
     app.request("/api/v1/settings/upload-policies/upload-policy-stub/actions"),
@@ -242,12 +241,12 @@ test("settings read routes deny users without settings read", async () => {
     "settings.recording_profiles.actions.read",
     "settings.recording_profiles.detail.read",
     "settings.recording_profiles.read",
+    "settings.upload_destinations.actions.read",
+    "settings.upload_destinations.detail.read",
+    "settings.upload_destinations.read",
     "settings.upload_policies.actions.read",
     "settings.upload_policies.detail.read",
     "settings.upload_policies.read",
-    "settings.upload_providers.actions.read",
-    "settings.upload_providers.detail.read",
-    "settings.upload_providers.read",
     "settings.watchdog_policies.actions.read",
     "settings.watchdog_policies.detail.read",
     "settings.watchdog_policies.read",
@@ -258,8 +257,8 @@ test("settings read routes deny users without settings read", async () => {
     "channel_map_template",
     "recording_profile",
     "settings",
+    "upload_destination",
     "upload_policy",
-    "upload_provider",
     "watchdog_policy",
   ]);
 });
@@ -280,7 +279,7 @@ test("recording profile routes honor resource-scope denies", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
     settingsStore,
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const listResponse = await app.request("/api/v1/settings/recording-profiles");
@@ -347,7 +346,7 @@ test("watchdog policy routes honor resource-scope denies", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
     settingsStore,
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const listResponse = await app.request("/api/v1/settings/watchdog-policies");
@@ -425,7 +424,7 @@ test("channel map template routes honor resource-scope denies", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
     settingsStore,
-    uploadProviderStore: createUploadProviderStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
   });
 
   const listResponse = await app.request("/api/v1/settings/channel-map-templates");
@@ -481,7 +480,7 @@ test("settings detail routes return individual settings resources", async () => 
   const currentUser = viewer(["settings:read"]);
   const settingsStore = createSettingsStore();
   const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
-  const uploadProviderStore = createUploadProviderStore();
+  const uploadDestinationStore = createUploadDestinationStore();
   const template = await settingsStore.createChannelMapTemplate({
     channelMode: "mono_to_stereo_mix",
     entries: [
@@ -505,9 +504,14 @@ test("settings detail routes return individual settings resources", async () => 
     id: `upload-policy-detail-${randomUUID()}`,
     maxAttempts: 3,
     name: "Detail Upload Policy",
-    provider: "stub",
-    target: "stub://detail",
     trigger: "manual",
+  });
+  const uploadDestination = await uploadDestinationStore.create({
+    displayName: "Detail Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
   });
 
   registerSettingsRoutes({
@@ -517,7 +521,7 @@ test("settings detail routes return individual settings resources", async () => 
     recordAuditEvent: recordAuditEvent(createAuditStore("")),
     requirePermission: allowPermission(),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
   const profile = await jsonData(app, "/api/v1/settings/recording-profiles/voice-mp3-vbr");
@@ -533,23 +537,28 @@ test("settings detail routes return individual settings resources", async () => 
     app,
     `/api/v1/settings/channel-map-assignment-plans/${plan.id}`,
   );
-  const provider = await jsonData(app, "/api/v1/settings/upload-providers/stub");
+  const destination = await jsonData(
+    app,
+    `/api/v1/settings/upload-destinations/${uploadDestination.id}`,
+  );
   const policy = await jsonData(app, `/api/v1/settings/upload-policies/${uploadPolicy.id}`);
   const missingProfile = await app.request("/api/v1/settings/recording-profiles/profile_missing");
   const missingTemplate = await app.request(
     "/api/v1/settings/channel-map-templates/template_missing",
   );
-  const missingProvider = await app.request("/api/v1/settings/upload-providers/not-a-provider");
+  const missingDestination = await app.request(
+    "/api/v1/settings/upload-destinations/destination_missing",
+  );
 
   assert.equal(profile.id, "voice-mp3-vbr");
   assert.equal(watchdog.id, "scheduled-voice-watchdog");
   assert.equal(templateDetail.id, template.id);
   assert.equal(planDetail.id, plan.id);
-  assert.equal(provider.provider, "stub");
+  assert.equal(destination.id, uploadDestination.id);
   assert.equal(policy.id, uploadPolicy.id);
   assert.equal(missingProfile.status, 404);
   assert.equal(missingTemplate.status, 404);
-  assert.equal(missingProvider.status, 404);
+  assert.equal(missingDestination.status, 404);
 });
 
 test("settings manage routes update operational templates and audit snapshots", async () => {
@@ -558,7 +567,7 @@ test("settings manage routes update operational templates and audit snapshots", 
   const currentUser = viewer(["settings:read", "settings:manage"]);
   const settingsStore = createSettingsStore();
   const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
-  const uploadProviderStore = createUploadProviderStore();
+  const uploadDestinationStore = createUploadDestinationStore();
   const primaryTemplateId = `channel_map_ops_${randomUUID()}`;
   const rollbackTemplateId = `channel_map_rollback_${randomUUID()}`;
   const uploadPolicyId = `upload-policy-ops-${randomUUID()}`;
@@ -570,7 +579,7 @@ test("settings manage routes update operational templates and audit snapshots", 
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
   const profileResponse = await requestJson(
@@ -606,23 +615,35 @@ test("settings manage routes update operational templates and audit snapshots", 
       staticScoreThreshold: 0.79,
     },
   );
-  const providerResponse = await requestJson(
+  const destinationCreateResponse = await requestJson(
     app,
-    "/api/v1/settings/upload-providers/stub",
+    "/api/v1/settings/upload-destinations",
+    "POST",
+    {
+      displayName: "Operations Destination",
+      enabled: true,
+      kind: "smb",
+      smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+      smbPassword: "s3cr3t",
+    },
+  );
+  const operationsDestinationId = (
+    (await destinationCreateResponse.json()) as { data: { id: string } }
+  ).data.id;
+  const destinationUpdateResponse = await requestJson(
+    app,
+    `/api/v1/settings/upload-destinations/${operationsDestinationId}`,
     "PATCH",
     {
-      displayName: "Operations Stub",
-      enabled: true,
-      target: "stub://operations",
+      displayName: "Operations Destination Rev 2",
     },
   );
   const uploadCreateResponse = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    destinationId: operationsDestinationId,
     enabled: true,
     id: uploadPolicyId,
     maxAttempts: 4,
     name: "Operations Upload",
-    provider: "stub",
-    target: "stub://operations",
     trigger: "manual",
   });
   const uploadUpdateResponse = await requestJson(
@@ -736,7 +757,8 @@ test("settings manage routes update operational templates and audit snapshots", 
 
   assert.equal(profileResponse.status, 200);
   assert.equal(watchdogResponse.status, 200);
-  assert.equal(providerResponse.status, 200);
+  assert.equal(destinationCreateResponse.status, 201);
+  assert.equal(destinationUpdateResponse.status, 200);
   assert.equal(uploadCreateResponse.status, 201);
   assert.equal(uploadUpdateResponse.status, 200);
   assert.equal(templateCreateResponse.status, 201);
@@ -802,9 +824,10 @@ test("settings manage routes update operational templates and audit snapshots", 
     "settings.channel_map_templates.update.succeeded",
     "settings.recording_profiles.create.succeeded",
     "settings.recording_profiles.update.succeeded",
+    "settings.upload_destinations.create.succeeded",
+    "settings.upload_destinations.update.succeeded",
     "settings.upload_policies.create.succeeded",
     "settings.upload_policies.update.succeeded",
-    "settings.upload_providers.update.succeeded",
     "settings.watchdog_policies.create.succeeded",
     "settings.watchdog_policies.update.succeeded",
   ]);

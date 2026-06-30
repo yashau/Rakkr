@@ -4,15 +4,15 @@ import type {
   ChannelMapTemplateAssignment,
   RecordingProfile,
   RetentionPolicy,
+  UploadDestinationRuntimeStatus,
   UploadPolicy,
-  UploadProviderRuntimeStatus,
   WatchdogPolicy,
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AuditTarget } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
-import type { UploadProviderStore } from "./upload-providers.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 
 export function profileSettingsTarget(profile: Pick<RecordingProfile, "id" | "name">) {
   return {
@@ -66,11 +66,11 @@ export function uniqueChannelMapAssignmentTargets(
   });
 }
 
-export function uploadProviderSettingsTarget(provider?: UploadProviderRuntimeStatus) {
+export function uploadDestinationSettingsTarget(destination?: UploadDestinationRuntimeStatus) {
   return {
-    id: provider?.provider,
-    name: provider?.displayName,
-    type: "upload_provider",
+    id: destination?.id,
+    name: destination?.displayName,
+    type: "upload_destination",
   };
 }
 
@@ -233,9 +233,9 @@ export async function scopedChannelMapAssignmentPlans(
   return visiblePlans;
 }
 
-export async function scopedUploadProviders(
+export async function scopedUploadDestinations(
   user: AuthResult["user"],
-  uploadProviderStore: UploadProviderStore,
+  uploadDestinationStore: UploadDestinationStore,
   hasResourceScope: (
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
@@ -245,15 +245,15 @@ export async function scopedUploadProviders(
     return [];
   }
 
-  const visibleProviders: UploadProviderRuntimeStatus[] = [];
+  const visibleDestinations: UploadDestinationRuntimeStatus[] = [];
 
-  for (const provider of await uploadProviderStore.listStatuses()) {
-    if (await hasResourceScope(user, uploadProviderSettingsTarget(provider))) {
-      visibleProviders.push(provider);
+  for (const destination of await uploadDestinationStore.list()) {
+    if (await hasResourceScope(user, uploadDestinationSettingsTarget(destination))) {
+      visibleDestinations.push(destination);
     }
   }
 
-  return visibleProviders;
+  return visibleDestinations;
 }
 
 export async function scopedUploadPolicies(

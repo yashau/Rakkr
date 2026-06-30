@@ -70,6 +70,16 @@ export function ScheduleFormDialog({
     queryFn: api.watchdogPolicies,
     queryKey: ["watchdog-policies"],
   });
+  const retentionPoliciesQuery = useQuery({
+    enabled: open,
+    queryFn: api.retentionPolicies,
+    queryKey: ["retention-policies"],
+  });
+  const uploadPoliciesQuery = useQuery({
+    enabled: open,
+    queryFn: api.uploadPolicies,
+    queryKey: ["upload-policies"],
+  });
   const recordingProfileOptions = withSelectedOption(
     recordingProfilesQuery.data?.data ?? [],
     draft.recordingProfileId,
@@ -78,6 +88,8 @@ export function ScheduleFormDialog({
     watchdogPoliciesQuery.data?.data ?? [],
     draft.watchdogPolicyId,
   );
+  const retentionPolicies = retentionPoliciesQuery.data?.data ?? [];
+  const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];
 
   // Reset the quick-recurrence helper whenever the dialog opens or closes so a
   // stale phrase never carries between schedules.
@@ -508,22 +520,49 @@ export function ScheduleFormDialog({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="schedule-upload-policy">Upload Policy</Label>
-              <Input
-                id="schedule-upload-policy"
-                onChange={(event) => updateDraft("uploadPolicyId", event.target.value)}
-                required
-                value={draft.uploadPolicyId}
-              />
-            </div>
-            <div className="grid gap-2">
               <Label htmlFor="schedule-retention-policy">Retention Policy</Label>
-              <Input
-                id="schedule-retention-policy"
-                onChange={(event) => updateDraft("retentionPolicyId", event.target.value)}
-                required
+              <Select
+                onValueChange={(value) => updateDraft("retentionPolicyId", value)}
                 value={draft.retentionPolicyId}
-              />
+              >
+                <SelectTrigger className={selectClass} id="schedule-retention-policy">
+                  <SelectValue placeholder="Select a retention policy" />
+                </SelectTrigger>
+                <SelectContent>
+                  {retentionPolicies.map((policy) => (
+                    <SelectItem key={policy.id} value={policy.id}>
+                      {policy.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Upload Policies</Label>
+              {uploadPolicies.length > 0 ? (
+                <ToggleGroup
+                  className="flex flex-wrap justify-start gap-2"
+                  onValueChange={(value) => updateDraft("uploadPolicyIds", value)}
+                  type="multiple"
+                  value={draft.uploadPolicyIds}
+                >
+                  {uploadPolicies.map((policy) => (
+                    <ToggleGroupItem
+                      className="rounded-md border border-input px-3 data-[state=on]:border-ring"
+                      key={policy.id}
+                      value={policy.id}
+                    >
+                      {policy.name}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              ) : (
+                <p className="text-sm text-muted-foreground">No upload policies are configured.</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Each selected policy uploads independently to its destination when a recording is
+                cached.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-tags">Tags</Label>

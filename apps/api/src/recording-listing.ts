@@ -130,7 +130,7 @@ export function filterRecordings(recordings: RecordingSummary[], filters: Record
       return false;
     }
 
-    if (filters.uploadPolicyId && recording.uploadPolicyId !== filters.uploadPolicyId) {
+    if (filters.uploadPolicyId && !recording.uploadPolicyIds?.includes(filters.uploadPolicyId)) {
       return false;
     }
 
@@ -156,7 +156,10 @@ export function recordingFacets(recordings: RecordingSummary[]) {
     incrementFacet(nodes, recording.nodeId);
     incrementFacet(recordingProfiles, recording.recordingProfileId);
     incrementFacet(trackGroups, recording.trackGroupId);
-    incrementFacet(uploadPolicies, recording.uploadPolicyId);
+
+    for (const uploadPolicyId of recording.uploadPolicyIds ?? []) {
+      incrementFacet(uploadPolicies, uploadPolicyId);
+    }
 
     for (const tag of recording.tags) {
       tags.set(tag, (tags.get(tag) ?? 0) + 1);
@@ -192,7 +195,7 @@ const recordingExportHeaders = [
   "nodeId",
   "scheduleId",
   "recordingProfileId",
-  "uploadPolicyId",
+  "uploadPolicyIds",
   "watchdogPolicyId",
   "trackGroupId",
   "trackIndex",
@@ -225,6 +228,10 @@ function recordingExportValue(
     return recording.transcriptSnippets?.join(" | ") ?? "";
   }
 
+  if (header === "uploadPolicyIds") {
+    return recording.uploadPolicyIds?.join(";") ?? "";
+  }
+
   return String(recording[header] ?? "");
 }
 
@@ -240,7 +247,7 @@ function recordingMatchesSearch(recording: RecordingSummary, search: string) {
     recording.source,
     recording.status,
     recording.trackGroupId,
-    recording.uploadPolicyId,
+    ...(recording.uploadPolicyIds ?? []),
     ...recording.tags,
     ...(recording.transcriptSnippets ?? []),
   ];

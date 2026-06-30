@@ -9,8 +9,8 @@ import { SettingsChannelMapsSection } from "@/components/settings-channel-maps-s
 import { Field } from "@/components/settings-fields";
 import { SettingsRecordingProfilesSection } from "@/components/settings-recording-profiles-section";
 import { SettingsRetentionPoliciesSection } from "@/components/settings-retention-policies-section";
+import { SettingsUploadDestinationsSection } from "@/components/settings-upload-destinations-section";
 import { SettingsUploadPoliciesSection } from "@/components/settings-upload-policies-section";
-import { SettingsUploadProvidersSection } from "@/components/settings-upload-providers-section";
 import { SettingsWatchdogPoliciesSection } from "@/components/settings-watchdog-policies-section";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,7 +79,7 @@ export function SettingsPage() {
         nodes={nodes}
       />
 
-      <SettingsUploadProvidersSection canManage={canManageSettings} canRead={canReadSettings} />
+      <SettingsUploadDestinationsSection canManage={canManageSettings} canRead={canReadSettings} />
 
       <SettingsUploadPoliciesSection canManage={canManageSettings} canRead={canReadSettings} />
 

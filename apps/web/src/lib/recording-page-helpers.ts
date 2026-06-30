@@ -128,6 +128,7 @@ export const recordingStatuses: Array<RecordingSummary["status"]> = [
   "failed",
   "cached",
   "uploaded",
+  "partial",
 ];
 export const recordingSortOptions: Array<{ label: string; value: RecordingSortBy }> = [
   { label: "Date", value: "recordedAt" },
@@ -369,12 +370,10 @@ export function recordingRelationshipBadges(
     items.push({ label: "profile", value: profile?.name ?? recording.recordingProfileId });
   }
 
-  if (recording.uploadPolicyId) {
-    const policy = references.uploadPolicies?.find(
-      (candidate) => candidate.id === recording.uploadPolicyId,
-    );
+  for (const uploadPolicyId of recording.uploadPolicyIds ?? []) {
+    const policy = references.uploadPolicies?.find((candidate) => candidate.id === uploadPolicyId);
 
-    items.push({ label: "upload", value: policy?.name ?? recording.uploadPolicyId });
+    items.push({ label: "upload", value: policy?.name ?? uploadPolicyId });
   }
 
   if (recording.trackIndex && recording.trackTotal) {

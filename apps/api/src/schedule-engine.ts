@@ -75,7 +75,7 @@ export function materializeScheduledRecording(
     trackGroupId: track.trackGroupId,
     trackIndex: track.trackIndex,
     trackTotal: track.trackTotal,
-    uploadPolicyId: schedule.uploadPolicyId,
+    uploadPolicyIds: schedule.uploadPolicyIds,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 }
@@ -157,7 +157,7 @@ export function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
     retentionPolicyId: schedule.retentionPolicyId,
     tags: schedule.tags,
     titleTemplate: schedule.titleTemplate,
-    uploadPolicyId: schedule.uploadPolicyId,
+    uploadPolicyIds: schedule.uploadPolicyIds,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 }
@@ -172,7 +172,7 @@ export function recordingMetadataSnapshot(recording: RecordingSummary) {
     trackGroupId: recording.trackGroupId,
     trackIndex: recording.trackIndex,
     trackTotal: recording.trackTotal,
-    uploadPolicyId: recording.uploadPolicyId,
+    uploadPolicyIds: recording.uploadPolicyIds,
     watchdogPolicyId: recording.watchdogPolicyId,
   };
 }

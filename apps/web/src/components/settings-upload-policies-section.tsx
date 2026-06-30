@@ -128,9 +128,11 @@ function uploadPolicyColumns({
       id: "name",
     },
     {
-      cell: ({ row }) => <span className="text-sm">{row.original.provider}</span>,
-      header: "Provider",
-      id: "provider",
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.destinationId ?? "queue only"}</span>
+      ),
+      header: "Destination",
+      id: "destination",
     },
     {
       cell: ({ row }) => <span className="text-sm">{row.original.trigger}</span>,

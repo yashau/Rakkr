@@ -18,7 +18,7 @@ test("recording start input trims optional metadata and deduplicates tags", () =
       nodeId: "node_room_101",
       recordingProfileId: " profile_voice ",
       tags: "Voice, ad-hoc, voice, council",
-      uploadPolicyId: " upload_stub ",
+      uploadPolicyIds: ["upload_stub"],
     }),
     {
       captureBackend: "jack",
@@ -28,7 +28,7 @@ test("recording start input trims optional metadata and deduplicates tags", () =
       nodeId: "node_room_101",
       recordingProfileId: "profile_voice",
       tags: ["Voice", "ad-hoc", "council"],
-      uploadPolicyId: "upload_stub",
+      uploadPolicyIds: ["upload_stub"],
     },
   );
 });
@@ -43,7 +43,7 @@ test("recording start input omits blank optional metadata", () => {
       nodeId: "node_room_101",
       recordingProfileId: " ",
       tags: "",
-      uploadPolicyId: " ",
+      uploadPolicyIds: [],
     }),
     {
       captureBackend: undefined,
@@ -53,7 +53,7 @@ test("recording start input omits blank optional metadata", () => {
       nodeId: "node_room_101",
       recordingProfileId: undefined,
       tags: [],
-      uploadPolicyId: undefined,
+      uploadPolicyIds: undefined,
     },
   );
 });

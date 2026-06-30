@@ -41,7 +41,7 @@ export interface ScheduleDraft {
   tags: string;
   timezone: string;
   titleTemplate: string;
-  uploadPolicyId: string;
+  uploadPolicyIds: string[];
   watchdogPolicyId: string;
 }
 
@@ -85,7 +85,7 @@ export function defaultDraft(node?: RecorderNode): ScheduleDraft {
     tags: "voice, scheduled",
     timezone: fallbackTimezone,
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
-    uploadPolicyId: defaultStubUploadPolicy.id,
+    uploadPolicyIds: [defaultStubUploadPolicy.id],
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   };
 }
@@ -106,7 +106,7 @@ export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
     tags: schedule.tags.join(", "),
     timezone: schedule.timezone,
     titleTemplate: schedule.titleTemplate,
-    uploadPolicyId: schedule.uploadPolicyId,
+    uploadPolicyIds: schedule.uploadPolicyIds,
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 
@@ -131,7 +131,7 @@ export function draftToInput(draft: ScheduleDraft): ScheduleInput {
     tags: uniqueTags(draft.tags),
     timezone: draft.timezone,
     titleTemplate: draft.titleTemplate,
-    uploadPolicyId: draft.uploadPolicyId,
+    uploadPolicyIds: draft.uploadPolicyIds,
     watchdogPolicyId: draft.watchdogPolicyId,
   };
 }

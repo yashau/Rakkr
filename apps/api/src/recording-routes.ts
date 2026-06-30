@@ -48,6 +48,7 @@ import {
   uniqueTags,
 } from "./recording-metadata.js";
 import { registerRecordingUploadQueueRoutes } from "./recording-upload-queue-routes.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 import type { RecordingStore } from "./recording-store.js";
 import { findRetentionPolicy } from "./retention-policies.js";
 import type { SettingsStore } from "./settings-store.js";
@@ -71,6 +72,7 @@ interface RecordingRouteDependencies {
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
   settingsStore: SettingsStore;
+  uploadDestinationStore: UploadDestinationStore;
 }
 
 const recordingStartRequestSchema = z
@@ -83,7 +85,7 @@ const recordingStartRequestSchema = z
     recordingProfileId: z.string().trim().min(1).max(160).optional(),
     retentionPolicyId: z.string().trim().min(1).max(160).optional(),
     tags: z.array(z.string().trim().min(1).max(48)).max(32).optional(),
-    uploadPolicyId: z.string().trim().min(1).max(160).optional(),
+    uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).max(16).optional(),
   })
   .strict();
 const recordingSelectedExportSchema = z
@@ -105,6 +107,7 @@ export function registerRecordingRoutes({
   scopedNodes,
   scopedRecordings,
   settingsStore,
+  uploadDestinationStore,
 }: RecordingRouteDependencies) {
   const recordingAudit = createRecordingRouteAudit({ currentAuth, recordAuditEvent });
 
@@ -307,6 +310,7 @@ export function registerRecordingRoutes({
     recordAuditEvent,
     requirePermission,
     scopedRecordings,
+    uploadDestinationStore,
   });
 
   app.post(
@@ -670,27 +674,33 @@ export function registerRecordingRoutes({
         return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
       }
 
-      const uploadPolicy = body.data.uploadPolicyId
-        ? await findUploadPolicy(body.data.uploadPolicyId)
-        : await uploadPolicyForQueue(undefined);
+      const requestedUploadPolicyIds = body.data.uploadPolicyIds ?? [];
+      const uploadPolicyIds: string[] = [];
 
-      if (!uploadPolicy) {
-        await recordRecordingStartFailure(c, "upload_policy_not_found", node.id, node.alias);
-        return c.json({ error: "Upload policy not found" }, 404);
-      }
+      if (requestedUploadPolicyIds.length === 0) {
+        uploadPolicyIds.push((await uploadPolicyForQueue(undefined)).id);
+      } else {
+        for (const requestedPolicyId of requestedUploadPolicyIds) {
+          const uploadPolicy = await findUploadPolicy(requestedPolicyId);
 
-      if (
-        body.data.uploadPolicyId &&
-        !(await hasResourceScope(currentUser(c), uploadPolicySettingsTarget(uploadPolicy)))
-      ) {
-        await recordRecordingStartFailure(
-          c,
-          "missing_resource_scope",
-          node.id,
-          node.alias,
-          uploadPolicySettingsTarget(uploadPolicy),
-        );
-        return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+          if (!uploadPolicy) {
+            await recordRecordingStartFailure(c, "upload_policy_not_found", node.id, node.alias);
+            return c.json({ error: "Upload policy not found" }, 404);
+          }
+
+          if (!(await hasResourceScope(currentUser(c), uploadPolicySettingsTarget(uploadPolicy)))) {
+            await recordRecordingStartFailure(
+              c,
+              "missing_resource_scope",
+              node.id,
+              node.alias,
+              uploadPolicySettingsTarget(uploadPolicy),
+            );
+            return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+          }
+
+          uploadPolicyIds.push(uploadPolicy.id);
+        }
       }
 
       const retentionPolicyId =
@@ -756,7 +766,7 @@ export function registerRecordingRoutes({
         source: "ad_hoc",
         status: "recording",
         tags: uniqueTags(body.data.tags ?? ["ad-hoc", "voice"]),
-        uploadPolicyId: uploadPolicy.id,
+        uploadPolicyIds,
       };
 
       await recordingStore.create(recording);
