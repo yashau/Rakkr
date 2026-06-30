@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { RecordingSummary, RecordingWaveformPreview } from "@rakkr/shared";
+import type { RecordingChunk, RecordingSummary, RecordingWaveformPreview } from "@rakkr/shared";
 
 export interface CachedRecordingFile {
   bytes: Buffer;
@@ -95,6 +95,121 @@ export function applyStoredRendition(
   recording.status = "cached";
   recording.waveformPreview = stored.waveformPreview;
   return false;
+}
+
+// --- Chunked recording renditions -------------------------------------------
+// Mirror the whole-recording rendition handling but scoped to one chunk. Each
+// chunk stores its renditions under a per-recording subfolder and uploads to
+// storage as its own object (`<name>_partNNNN.<ext>`).
+
+export async function storeRecordingChunkFile(
+  recording: RecordingSummary,
+  chunkIndex: number,
+  input: StoreRecordingFileInput,
+  rendition?: RecordingRendition,
+): Promise<StoredRecordingFile> {
+  const cachePath = chunkCachePathFor(recording, chunkIndex, input, rendition);
+  const filePath = resolvedCachePathFromRelative(cachePath);
+
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, input.bytes);
+  const analysis = await audioAnalysisFor(filePath, input);
+
+  return {
+    cachePath,
+    checksum: sha256(input.bytes),
+    durationSeconds: analysis.durationSeconds,
+    fileName: chunkObjectFileName(
+      recording,
+      chunkIndex,
+      extensionFor(input.fileName, input.mimeType),
+    ),
+    mimeType: mimeTypeFor(filePath),
+    size: input.bytes.byteLength,
+    waveformPreview: analysis.waveformPreview,
+  };
+}
+
+// Apply a freshly stored chunk rendition to the chunk's columns. Raw is
+// supplementary (links rawCachePath only); enhanced/legacy primary owns the
+// chunk's cachePath/checksum/duration and flips it to `cached`. Returns whether
+// the upload was supplementary.
+export function applyStoredChunkRendition(
+  chunk: RecordingChunk,
+  stored: StoredRecordingFile,
+  rendition: RecordingRendition | undefined,
+  durationSeconds: number | undefined,
+): boolean {
+  if (rendition === "raw") {
+    chunk.rawCachePath = stored.cachePath;
+    if (!chunk.cachePath) {
+      chunk.cachePath = stored.cachePath;
+    }
+    return true;
+  }
+
+  if (rendition === "enhanced") {
+    chunk.enhancedCachePath = stored.cachePath;
+  }
+  chunk.cachePath = stored.cachePath;
+  chunk.checksum = stored.checksum;
+  chunk.durationSeconds =
+    durationSeconds ?? stored.durationSeconds ?? Math.max(chunk.durationSeconds, 1);
+  chunk.sizeBytes = stored.size;
+  if (chunk.status !== "uploaded" && chunk.status !== "partial") {
+    chunk.status = "cached";
+  }
+  return false;
+}
+
+export async function deleteRecordingChunkCacheFile(chunk: RecordingChunk) {
+  const targets = new Set(
+    [chunk.cachePath, chunk.rawCachePath, chunk.enhancedCachePath].filter(
+      (value): value is string => Boolean(value),
+    ),
+  );
+  let deleted = false;
+
+  for (const target of targets) {
+    try {
+      await unlink(resolvedCachePathFromRelative(target));
+      deleted = true;
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+  }
+
+  return deleted;
+}
+
+function chunkCachePathFor(
+  recording: RecordingSummary,
+  chunkIndex: number,
+  input: StoreRecordingFileInput,
+  rendition?: RecordingRendition,
+) {
+  const folder = recording.source === "schedule" ? "scheduled" : "ad-hoc";
+  const extension = extensionFor(input.fileName, input.mimeType);
+  const suffix = rendition === "raw" ? ".raw" : "";
+
+  return path.posix.join(folder, recording.id, `${chunkPart(chunkIndex)}${suffix}${extension}`);
+}
+
+// Destination object name for a chunk, e.g. "Daily Standup_part0003.mp3".
+export function chunkObjectFileName(
+  recording: RecordingSummary,
+  chunkIndex: number,
+  extension: string,
+) {
+  const cleanedName = recording.name.replace(/[^\w .-]/g, "_").trim() || recording.id;
+
+  return `${cleanedName}_${chunkPart(chunkIndex)}${extension}`;
+}
+
+function chunkPart(chunkIndex: number) {
+  return `part${String(chunkIndex).padStart(4, "0")}`;
 }
 
 export async function recordingCacheFileSize(recording: RecordingSummary) {

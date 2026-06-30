@@ -47,7 +47,7 @@ export async function queueScheduledRecordings({
   settingsStore: SettingsStore;
 }): Promise<QueueScheduledRecordingsResult> {
   const profile = await settingsStore.findRecordingProfile(schedule.recordingProfileId);
-  const tracks = scheduleRecordingTrackPlans(schedule, profile);
+  const tracks = scheduleRecordingTrackPlans(schedule);
 
   const resolvedInterfaceId =
     schedule.captureInterfaceId ??

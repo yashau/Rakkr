@@ -11,7 +11,7 @@ Status: MVP baseline checked.
 - Start-early and stop-late buffers are part of recurrence data.
 - Skip-next and pause ranges are structured exceptions.
 - Scheduled recordings own filename, folder, tags, profile, node target, optional capture backend/interface selection, watchdog policy, upload policy, and retention policy.
-- Long scheduled windows split into ordered track jobs when the recording profile has a maximum track length.
+- Each occurrence creates one recording + one job; when the recording profile sets a chunk length, the continuous capture is segmented into chunks that upload as they record (pre-splitting into separate per-track recordings is retired).
 - Due schedule execution runs as `system:scheduler` and writes audit events.
 - Schedule list/detail/read/manage APIs are RBAC-gated and successful create, update, run-now, and skip-next actions are audited.
 

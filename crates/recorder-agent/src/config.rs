@@ -181,6 +181,11 @@ pub struct AgentConfig {
     #[arg(long, env = "RAKKR_CAPTURE_SECONDS", default_value_t = 60)]
     pub capture_seconds: u64,
 
+    /// Default chunk length (seconds) for chunked recordings when a job does not
+    /// carry its own `chunkSeconds`. Unset/0 keeps the single-file capture path.
+    #[arg(long, env = "RAKKR_CAPTURE_CHUNK_SECONDS")]
+    pub capture_chunk_seconds: Option<u64>,
+
     #[arg(long, env = "RAKKR_CAPTURE_SAMPLE_RATE", default_value_t = 48_000)]
     pub capture_sample_rate: u32,
 

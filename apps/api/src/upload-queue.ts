@@ -21,7 +21,14 @@ import { recordingFileName } from "./recording-cache.js";
 type UploadQueueItemRow = typeof uploadQueueItemsTable.$inferSelect;
 
 interface EnqueueUploadInput {
+  // Per-item file overrides. When uploading a chunk these point at the chunk's
+  // own cached object instead of the recording's primary file.
+  cachePath?: string;
+  checksum?: string;
+  chunkId?: string;
+  chunkIndex?: number;
   destinationId?: string;
+  fileName?: string;
   maxAttempts?: number;
   pathOverride?: string;
   policyId?: string;
@@ -65,11 +72,13 @@ class JsonUploadQueueStore implements UploadQueueStore {
     const now = new Date().toISOString();
     const item: UploadQueueItem = {
       attemptCount: 0,
-      cachePath: recording.cachePath,
-      checksum: recording.checksum,
+      cachePath: input.cachePath ?? recording.cachePath,
+      checksum: input.checksum ?? recording.checksum,
+      chunkId: input.chunkId,
+      chunkIndex: input.chunkIndex,
       createdAt: now,
       destinationId: input.destinationId,
-      fileName: recordingFileName(recording),
+      fileName: input.fileName ?? recordingFileName(recording),
       id: `upload_${randomUUID()}`,
       lastError: input.reason ?? "provider_not_configured",
       maxAttempts: input.maxAttempts ?? Number(process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS ?? 5),
@@ -234,11 +243,13 @@ class PostgresUploadQueueStore implements UploadQueueStore {
       const now = new Date().toISOString();
       const item = uploadQueueItemSchema.parse({
         attemptCount: 0,
-        cachePath: recording.cachePath,
-        checksum: recording.checksum,
+        cachePath: input.cachePath ?? recording.cachePath,
+        checksum: input.checksum ?? recording.checksum,
+        chunkId: input.chunkId,
+        chunkIndex: input.chunkIndex,
         createdAt: now,
         destinationId: input.destinationId,
-        fileName: recordingFileName(recording),
+        fileName: input.fileName ?? recordingFileName(recording),
         id: `upload_${randomUUID()}`,
         lastError: input.reason ?? "provider_not_configured",
         maxAttempts: input.maxAttempts ?? Number(process.env.RAKKR_UPLOAD_QUEUE_MAX_ATTEMPTS ?? 5),
@@ -450,6 +461,8 @@ class PostgresUploadQueueStore implements UploadQueueStore {
           attemptCount: item.attemptCount,
           cachePath: item.cachePath ?? null,
           checksum: item.checksum ?? null,
+          chunkId: item.chunkId ?? null,
+          chunkIndex: item.chunkIndex ?? null,
           destinationId: item.destinationId ?? null,
           fileName: item.fileName,
           lastError: item.lastError ?? null,
@@ -539,14 +552,19 @@ function reusableUploadQueueItem(
     return false;
   }
 
+  // Chunk items never collapse into one another or into the whole-recording item.
+  if (item.chunkId !== input.chunkId) {
+    return false;
+  }
+
   if (activeStatuses.has(item.status)) {
     return true;
   }
 
   return (
     item.status === "succeeded" &&
-    item.cachePath === recording.cachePath &&
-    item.checksum === recording.checksum &&
+    item.cachePath === (input.cachePath ?? recording.cachePath) &&
+    item.checksum === (input.checksum ?? recording.checksum) &&
     item.pathOverride === input.pathOverride &&
     item.target === input.target &&
     item.uploadPolicyId === input.policyId
@@ -582,6 +600,8 @@ function queueItemFromRow(row: UploadQueueItemRow): UploadQueueItem {
     attemptCount: row.attemptCount,
     cachePath: row.cachePath ?? undefined,
     checksum: row.checksum ?? undefined,
+    chunkId: row.chunkId ?? undefined,
+    chunkIndex: row.chunkIndex ?? undefined,
     createdAt: row.createdAt.toISOString(),
     destinationId: row.destinationId ?? undefined,
     fileName: row.fileName,
@@ -604,6 +624,8 @@ function queueItemToRow(item: UploadQueueItem) {
     attemptCount: item.attemptCount,
     cachePath: item.cachePath ?? null,
     checksum: item.checksum ?? null,
+    chunkId: item.chunkId ?? null,
+    chunkIndex: item.chunkIndex ?? null,
     createdAt: new Date(item.createdAt),
     destinationId: item.destinationId ?? null,
     fileName: item.fileName ?? path.basename(item.cachePath ?? `${item.recordingId}.mp3`),

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type {
-  RecordingProfile,
   RecordingSummary,
   ScheduleOccurrencePreview,
   ScheduleRecurrence,
@@ -80,31 +79,12 @@ export function materializeScheduledRecording(
   };
 }
 
-export function scheduleRecordingTrackPlans(
-  schedule: ScheduleSummary,
-  profile?: RecordingProfile,
-): ScheduledRecordingTrack[] {
-  const durationSeconds = scheduleRecordingDurationSeconds(schedule);
-  const maxTrackSeconds = profile?.maxTrackSeconds;
-
-  if (!durationSeconds || !maxTrackSeconds || durationSeconds <= maxTrackSeconds) {
-    return [{ durationSeconds, offsetSeconds: 0 }];
-  }
-
-  const trackTotal = Math.ceil(durationSeconds / maxTrackSeconds);
-  const trackGroupId = `track_${randomUUID()}`;
-
-  return Array.from({ length: trackTotal }, (_, index) => {
-    const offsetSeconds = index * maxTrackSeconds;
-
-    return {
-      durationSeconds: Math.min(maxTrackSeconds, durationSeconds - offsetSeconds),
-      offsetSeconds,
-      trackGroupId,
-      trackIndex: index + 1,
-      trackTotal,
-    };
-  });
+// A scheduled occurrence is always one recording + one job. Time-based
+// segmentation is handled by chunked recording (the profile's `chunkSeconds`,
+// threaded into the job command) on a single continuous capture — so the legacy
+// pre-split into N separate per-track recordings is retired.
+export function scheduleRecordingTrackPlans(schedule: ScheduleSummary): ScheduledRecordingTrack[] {
+  return [{ durationSeconds: scheduleRecordingDurationSeconds(schedule), offsetSeconds: 0 }];
 }
 
 export function scheduleRecordingDurationSeconds(schedule: ScheduleSummary) {

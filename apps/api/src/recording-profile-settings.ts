@@ -24,9 +24,14 @@ export function applyRecordingProfileUpdate(
   const next: RecordingProfile = {
     ...existing,
     ...update,
+    chunkSeconds: update.chunkSeconds ?? existing.chunkSeconds,
     id: profileId,
     maxTrackSeconds: update.maxTrackSeconds ?? existing.maxTrackSeconds,
   };
+
+  if (update.chunkSeconds === null) {
+    delete next.chunkSeconds;
+  }
 
   if (update.maxTrackSeconds === null) {
     delete next.maxTrackSeconds;
@@ -51,6 +56,10 @@ export function recordingProfileMaxTrackSeconds(value: unknown) {
 
 export function recordingProfileSettings(profile: RecordingProfile) {
   const settings: Record<string, unknown> = {};
+
+  if (profile.chunkSeconds) {
+    settings.chunkSeconds = profile.chunkSeconds;
+  }
 
   if (profile.maxTrackSeconds) {
     settings.maxTrackSeconds = profile.maxTrackSeconds;
@@ -83,6 +92,7 @@ export function recordingProfileFromRow(row: RecordingProfileRow): RecordingProf
   return recordingProfileSchema.parse({
     bitrateKbps: row.bitrateKbps,
     channelMode: row.channelMode,
+    chunkSeconds: recordingProfileMaxTrackSeconds(settings.chunkSeconds),
     codec: row.codec,
     enhancement: settings.enhancement,
     id: row.id,

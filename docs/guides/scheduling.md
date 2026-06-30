@@ -57,9 +57,9 @@ The controller's **schedule runner** (default every 30s) materializes due window
 
 1. Compute the next due occurrence in the schedule's timezone, honoring buffers,
    pauses, and exceptions.
-2. Create recording jobs under the `system:scheduler` service identity (audited),
-   splitting long windows into **ordered track jobs** when the profile sets a
-   maximum track length.
+2. Create one recording + one job per occurrence under the `system:scheduler`
+   service identity (audited). When the profile sets a **chunk length**, the
+   continuous capture is segmented into chunks that upload as they close.
 3. From there, jobs follow the normal [recording lifecycle](recording.md) —
    claimed by the node, captured, cached, health-synced, and upload-queued.
 

@@ -32,8 +32,9 @@ and splits it per recording.
 
 **Scheduled** — a [schedule](scheduling.md) creates jobs automatically at due
 times. Scheduled recordings inherit schedule-owned name, folder, tags, profile,
-watchdog policy, retention, and upload policy. Long windows are split into ordered
-track jobs when the profile sets a maximum track length.
+watchdog policy, retention, and upload policy. When the profile sets a chunk
+length, the continuous capture is segmented into N-minute chunks that transfer and
+upload to storage as each one closes.
 
 ## The job lifecycle
 

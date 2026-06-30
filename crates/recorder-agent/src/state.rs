@@ -31,6 +31,23 @@ pub struct AgentJobState {
     pub upload_duration_seconds: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upload_file_name: Option<String>,
+    /// Total chunk count for a chunked recording, known once capture finishes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_total: Option<u32>,
+    /// Chunks already accepted by the controller for a chunked recording.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uploaded_chunk_count: Option<u32>,
+    /// Chunks rendered locally but not yet uploaded (mirrors `recovered_segments`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_chunks: Vec<AgentPendingChunk>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentPendingChunk {
+    pub index: u32,
+    pub output_path: String,
+    pub raw_output_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -65,6 +82,9 @@ pub fn write_job_state(
             upload_content_type: None,
             upload_duration_seconds: None,
             upload_file_name: None,
+            chunk_total: None,
+            uploaded_chunk_count: None,
+            pending_chunks: Vec::new(),
         },
     )
 }
@@ -135,6 +155,13 @@ mod tests {
                 upload_content_type: Some("audio/wav".to_string()),
                 upload_duration_seconds: Some(30),
                 upload_file_name: Some("recovery.wav".to_string()),
+                chunk_total: Some(5),
+                uploaded_chunk_count: Some(2),
+                pending_chunks: vec![AgentPendingChunk {
+                    index: 3,
+                    output_path: "/tmp/recovery.chunk-0003.wav".to_string(),
+                    raw_output_path: "/tmp/recovery.chunk-0003.raw.wav".to_string(),
+                }],
             },
         )
         .expect("write state");
@@ -153,6 +180,14 @@ mod tests {
         assert_eq!(loaded.upload_content_type.as_deref(), Some("audio/wav"));
         assert_eq!(loaded.upload_duration_seconds, Some(30));
         assert_eq!(loaded.upload_file_name.as_deref(), Some("recovery.wav"));
+        assert_eq!(loaded.chunk_total, Some(5));
+        assert_eq!(loaded.uploaded_chunk_count, Some(2));
+        assert_eq!(loaded.pending_chunks.len(), 1);
+        assert_eq!(loaded.pending_chunks[0].index, 3);
+        assert_eq!(
+            loaded.pending_chunks[0].raw_output_path,
+            "/tmp/recovery.chunk-0003.raw.wav"
+        );
         assert!(!loaded.is_terminal());
 
         cleanup(&state_file);
@@ -192,6 +227,9 @@ mod tests {
         assert_eq!(loaded.upload_content_type, None);
         assert_eq!(loaded.upload_duration_seconds, None);
         assert_eq!(loaded.upload_file_name, None);
+        assert_eq!(loaded.chunk_total, None);
+        assert_eq!(loaded.uploaded_chunk_count, None);
+        assert!(loaded.pending_chunks.is_empty());
 
         cleanup(&state_file);
     }

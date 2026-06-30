@@ -4,6 +4,7 @@ mod bootstrap;
 mod cache_content_type;
 mod capture;
 mod channel_map;
+mod chunked_capture;
 mod command_template;
 mod config;
 mod controller;
@@ -17,6 +18,7 @@ mod meter_health;
 mod monitor_sync;
 mod node_config;
 mod recorder_cache_retention;
+mod recording_job_chunked;
 mod recording_job_disk;
 mod recording_job_recovery;
 mod recording_job_segments;
@@ -133,6 +135,8 @@ async fn main() -> anyhow::Result<()> {
                 .as_deref()
                 .context("missing --capture-recording-id")?,
             rendition: None,
+            chunk_index: None,
+            chunk_total: None,
             token,
         })
         .await?;

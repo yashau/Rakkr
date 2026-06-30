@@ -283,9 +283,15 @@ export const meterFrameSchema = z.object({
 export const recordingProfileSchema = z.object({
   bitrateKbps: z.number().int().positive(),
   channelMode: channelModeSchema,
+  // Length of each recording chunk in seconds. When set, the recording is
+  // captured continuously and emitted as sequential chunk files that transfer
+  // and upload as they close. Supersedes the deprecated `maxTrackSeconds`; read
+  // both through `effectiveChunkSeconds`.
+  chunkSeconds: z.number().int().positive().max(604_800).optional(),
   codec: z.enum(["mp3", "flac", "wav"]),
   enhancement: recordingEnhancementSchema.optional(),
   id: z.string().min(1),
+  /** @deprecated superseded by `chunkSeconds`; retained one release for backfill. */
   maxTrackSeconds: z.number().int().positive().max(604_800).optional(),
   name: z.string().min(1),
   silenceDetectionEnabled: z.boolean(),
@@ -296,6 +302,7 @@ export const recordingProfileUpdateSchema = z
   .object({
     bitrateKbps: z.number().int().positive().max(512).optional(),
     channelMode: channelModeSchema.optional(),
+    chunkSeconds: z.number().int().positive().max(604_800).nullable().optional(),
     codec: z.enum(["mp3", "flac", "wav"]).optional(),
     enhancement: recordingEnhancementSchema.optional(),
     maxTrackSeconds: z.number().int().positive().max(604_800).nullable().optional(),
@@ -305,6 +312,13 @@ export const recordingProfileUpdateSchema = z
     vbr: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one profile field is required");
+// Resolve the active chunk length for a profile, preferring the new
+// `chunkSeconds` knob and falling back to the deprecated `maxTrackSeconds`.
+// Returns undefined when neither is set (recording stays a single file).
+export function effectiveChunkSeconds(profile: RecordingProfile | undefined): number | undefined {
+  const value = profile?.chunkSeconds ?? profile?.maxTrackSeconds ?? undefined;
+  return typeof value === "number" && value > 0 ? value : undefined;
+}
 export const controllerSettingsSchema = z.object({
   controllerName: z.string().trim().min(1).max(160),
 });
@@ -596,10 +610,50 @@ export const scheduleOccurrencePreviewSchema = z.object({
   scheduledStartAt: isoDateTimeSchema.optional(),
 });
 
+export const recordingChunkStatusSchema = z.enum([
+  "capturing",
+  "cached",
+  "uploading",
+  "uploaded",
+  "partial",
+  "failed",
+]);
+// Per-destination upload state attached to a chunk for at-a-glance display.
+export const chunkUploadSummarySchema = z.object({
+  attemptCount: z.number().int().nonnegative().optional(),
+  destinationId: z.string().min(1).optional(),
+  lastError: z.string().min(1).optional(),
+  provider: uploadProviderSchema,
+  status: uploadQueueStatusSchema,
+  uploadPolicyId: z.string().min(1).optional(),
+});
+// One time-based segment of a recording. Many chunks roll up to one recording +
+// one job; `index` is 1-based, `total` is known only once capture stops.
+export const recordingChunkSchema = z.object({
+  cachedAt: isoDateTimeSchema.optional(),
+  cachePath: z.string().min(1).optional(),
+  checksum: z.string().min(1).optional(),
+  createdAt: isoDateTimeSchema,
+  durationSeconds: z.number().int().nonnegative(),
+  enhancedCachePath: z.string().min(1).optional(),
+  id: z.string().min(1),
+  index: z.number().int().positive(),
+  jobId: z.string().min(1),
+  offsetSeconds: z.number().int().nonnegative(),
+  rawCachePath: z.string().min(1).optional(),
+  recordingId: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative().optional(),
+  status: recordingChunkStatusSchema,
+  total: z.number().int().positive().optional(),
+  uploads: z.array(chunkUploadSummarySchema).optional(),
+});
 export const recordingSummarySchema = z.object({
   cached: z.boolean(),
   cachePath: z.string().min(1).optional(),
   checksum: z.string().min(1).optional(),
+  chunks: z.array(recordingChunkSchema).optional(),
+  chunkSeconds: z.number().int().positive().optional(),
+  chunkTotal: z.number().int().positive().optional(),
   durationSeconds: z.number().int().nonnegative(),
   enhancedCachePath: z.string().min(1).optional(),
   rawCachePath: z.string().min(1).optional(),
@@ -660,6 +714,7 @@ export const recordingJobSchema = z.object({
     captureInterfaceId: z.string().min(1).optional(),
     captureSampleRate: z.number().int().positive(),
     channelMap: recordingJobChannelMapSchema.optional(),
+    chunkSeconds: z.number().int().positive().optional(),
     durationSeconds: z.number().int().positive(),
     enhancement: recordingEnhancementSchema.optional(),
     outputBitrateKbps: z.number().int().positive().optional(),
@@ -680,6 +735,8 @@ export const recordingJobSchema = z.object({
     trackTotal: z.number().int().positive().optional(),
     type: z.literal("alsa_capture"),
   }),
+  chunks: z.array(recordingChunkSchema).optional(),
+  chunkTotal: z.number().int().positive().optional(),
   completedAt: isoDateTimeSchema.optional(),
   createdAt: isoDateTimeSchema,
   failureReason: z.string().optional(),
@@ -696,6 +753,10 @@ export const uploadQueueItemSchema = z.object({
   attemptCount: z.number().int().nonnegative(),
   cachePath: z.string().min(1).optional(),
   checksum: z.string().min(1).optional(),
+  // Set when this item uploads one recording chunk as its own object. NULL =
+  // legacy whole-recording item.
+  chunkId: z.string().min(1).optional(),
+  chunkIndex: z.number().int().positive().optional(),
   createdAt: isoDateTimeSchema,
   destinationId: z.string().min(1).optional(),
   fileName: z.string().min(1).optional(),
@@ -934,6 +995,9 @@ export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
 export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
 export type ControllerSettings = z.infer<typeof controllerSettingsSchema>;
 export type ControllerSettingsUpdate = z.infer<typeof controllerSettingsUpdateSchema>;
+export type ChunkUploadSummary = z.infer<typeof chunkUploadSummarySchema>;
+export type RecordingChunk = z.infer<typeof recordingChunkSchema>;
+export type RecordingChunkStatus = z.infer<typeof recordingChunkStatusSchema>;
 export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobChannelMap = z.infer<typeof recordingJobChannelMapSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;

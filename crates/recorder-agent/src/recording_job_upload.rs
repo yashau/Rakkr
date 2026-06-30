@@ -50,6 +50,9 @@ pub(crate) fn write_upload_checkpoint_state(
             upload_content_type: Some(checkpoint.content_type.to_string()),
             upload_duration_seconds: checkpoint.duration_seconds,
             upload_file_name: checkpoint.file_name.map(str::to_string),
+            chunk_total: None,
+            uploaded_chunk_count: None,
+            pending_chunks: Vec::new(),
         },
     )
 }
@@ -200,6 +203,10 @@ pub(crate) struct RenditionUploadInputs<'a> {
     pub file_name: &'a str,
     pub output_path: &'a Path,
     pub raw_output_path: &'a Path,
+    /// 1-based chunk index for chunked recordings; `None` for whole recordings.
+    pub chunk_index: Option<u32>,
+    /// Total chunk count, sent only on the FINAL chunk's primary upload.
+    pub chunk_total: Option<u32>,
 }
 
 /// Render the best-effort enhanced rendition and upload the recording's renditions:
@@ -220,6 +227,8 @@ pub(crate) async fn upload_recording_renditions(
         file_name,
         output_path,
         raw_output_path,
+        chunk_index,
+        chunk_total,
     } = inputs;
 
     let enhanced_path =
@@ -256,6 +265,9 @@ pub(crate) async fn upload_recording_renditions(
         job_id: Some(&job.id),
         recording_id: &job.recording_id,
         rendition: enhanced_path.as_ref().map(|_| "enhanced"),
+        chunk_index,
+        // chunkTotal rides the primary (job-completing) upload of the final chunk.
+        chunk_total,
         token,
     })
     .await;
@@ -273,6 +285,10 @@ pub(crate) async fn upload_recording_renditions(
             job_id: Some(&job.id),
             recording_id: &job.recording_id,
             rendition: Some("raw"),
+            chunk_index,
+            // The supplementary raw upload never carries chunkTotal; only the
+            // primary completes the chunked recording.
+            chunk_total: None,
             token,
         })
         .await;

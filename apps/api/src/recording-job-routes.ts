@@ -1,6 +1,11 @@
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import { recordingJobStatusSchema, type RecordingSummary } from "@rakkr/shared";
+import {
+  recordingJobStatusSchema,
+  type ChunkUploadSummary,
+  type RecordingChunk,
+  type RecordingSummary,
+} from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
@@ -15,6 +20,8 @@ import {
   retryRecordingJob,
   stopRecordingJobById,
 } from "./recording-jobs.js";
+import { listRecordingChunksForJob } from "./recording-chunks.js";
+import { listUploadQueueItems } from "./upload-queue.js";
 import { registerRecordingJobActionRoutes } from "./recording-job-action-routes.js";
 import { scopedRecordingJobs } from "./recording-job-scope.js";
 import { PAGE_POLICY, paginate, paginationQueryFields, parsePagination } from "./pagination.js";
@@ -277,6 +284,52 @@ export function registerRecordingJobRoutes({
       });
 
       return c.json({ data: job });
+    },
+  );
+
+  app.get(
+    "/api/v1/recording-jobs/:jobId/chunks",
+    requirePermission("recording:read", "recording_jobs.chunks.read", async (c) => {
+      const jobId = c.req.param("jobId") ?? "";
+      const job = await recordingJob(jobId);
+
+      return job
+        ? { id: job.recordingId, type: "recording" }
+        : { id: jobId, type: "recording_job" };
+    }),
+    async (c) => {
+      const jobId = c.req.param("jobId") ?? "";
+      const job = (await scopedJobs(currentUser(c))).find((candidate) => candidate.id === jobId);
+
+      if (!job) {
+        await recordJobReadFailure(
+          c,
+          "recording_jobs.chunks.read.failed",
+          "recording_job_not_found",
+          { jobId },
+        );
+        return c.json({ error: "Recording job not found" }, 404);
+      }
+
+      const chunks = await chunksWithUploads(jobId);
+
+      await recordAuditEvent(c, {
+        action: "recording_jobs.chunks.read.succeeded",
+        auth: currentAuth(c),
+        correlationIds: { recordingId: job.recordingId },
+        details: {
+          chunkCount: chunks.length,
+          recordingId: job.recordingId,
+        },
+        outcome: "succeeded",
+        permission: "recording:read",
+        target: {
+          id: job.id,
+          type: "recording_job",
+        },
+      });
+
+      return c.json({ data: chunks });
     },
   );
 
@@ -717,6 +770,38 @@ export function registerRecordingJobRoutes({
       },
     });
   }
+}
+
+// Attach each chunk's per-destination upload state (from the upload queue) so the
+// job card can show capture -> cache -> upload progress per chunk.
+async function chunksWithUploads(jobId: string): Promise<RecordingChunk[]> {
+  const chunks = await listRecordingChunksForJob(jobId);
+
+  if (chunks.length === 0) {
+    return chunks;
+  }
+
+  const byChunk = new Map<string, ChunkUploadSummary[]>();
+
+  for (const item of await listUploadQueueItems()) {
+    if (!item.chunkId) {
+      continue;
+    }
+
+    const list = byChunk.get(item.chunkId) ?? [];
+
+    list.push({
+      attemptCount: item.attemptCount,
+      destinationId: item.destinationId,
+      lastError: item.lastError,
+      provider: item.provider,
+      status: item.status,
+      uploadPolicyId: item.uploadPolicyId,
+    });
+    byChunk.set(item.chunkId, list);
+  }
+
+  return chunks.map((chunk) => ({ ...chunk, uploads: byChunk.get(chunk.id) ?? [] }));
 }
 
 function recordingForRetriedJob(recording: RecordingSummary, retriedAt: string) {
