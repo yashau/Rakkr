@@ -1,14 +1,17 @@
 import { z } from "zod";
 
+import { isoDateTimeSchema, uploadProviderSchema, uploadQueueStatusSchema } from "./base.js";
 import { captureChannelSelectionSchema, channelModeSchema } from "./channels.js";
 import { recordingEnhancementSchema } from "./enhancement.js";
+import { recordingChunkSchema } from "./recording-chunks.js";
+export * from "./base.js";
 export * from "./channels.js";
 export * from "./enhancement.js";
 export * from "./oidc.js";
 export * from "./pagination.js";
+export * from "./recording-chunks.js";
 export * from "./upload-providers.js";
 
-export const isoDateTimeSchema = z.string().min(1);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const dbfsSchema = z.number().min(-160).max(24);
 const audioCaptureBackendSchema = z.enum(["alsa", "jack", "pipewire"]);
@@ -28,14 +31,6 @@ export const recordingStatusSchema = z.enum([
   "cached",
   "uploaded",
   "partial",
-]);
-export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
-export const uploadQueueStatusSchema = z.enum([
-  "queued",
-  "retrying",
-  "failed",
-  "succeeded",
-  "cancelled",
 ]);
 export const recordingJobStatusSchema = z.enum([
   "queued",
@@ -610,43 +605,6 @@ export const scheduleOccurrencePreviewSchema = z.object({
   scheduledStartAt: isoDateTimeSchema.optional(),
 });
 
-export const recordingChunkStatusSchema = z.enum([
-  "capturing",
-  "cached",
-  "uploading",
-  "uploaded",
-  "partial",
-  "failed",
-]);
-// Per-destination upload state attached to a chunk for at-a-glance display.
-export const chunkUploadSummarySchema = z.object({
-  attemptCount: z.number().int().nonnegative().optional(),
-  destinationId: z.string().min(1).optional(),
-  lastError: z.string().min(1).optional(),
-  provider: uploadProviderSchema,
-  status: uploadQueueStatusSchema,
-  uploadPolicyId: z.string().min(1).optional(),
-});
-// One time-based segment of a recording. Many chunks roll up to one recording +
-// one job; `index` is 1-based, `total` is known only once capture stops.
-export const recordingChunkSchema = z.object({
-  cachedAt: isoDateTimeSchema.optional(),
-  cachePath: z.string().min(1).optional(),
-  checksum: z.string().min(1).optional(),
-  createdAt: isoDateTimeSchema,
-  durationSeconds: z.number().int().nonnegative(),
-  enhancedCachePath: z.string().min(1).optional(),
-  id: z.string().min(1),
-  index: z.number().int().positive(),
-  jobId: z.string().min(1),
-  offsetSeconds: z.number().int().nonnegative(),
-  rawCachePath: z.string().min(1).optional(),
-  recordingId: z.string().min(1),
-  sizeBytes: z.number().int().nonnegative().optional(),
-  status: recordingChunkStatusSchema,
-  total: z.number().int().positive().optional(),
-  uploads: z.array(chunkUploadSummarySchema).optional(),
-});
 export const recordingSummarySchema = z.object({
   cached: z.boolean(),
   cachePath: z.string().min(1).optional(),
@@ -995,9 +953,6 @@ export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
 export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
 export type ControllerSettings = z.infer<typeof controllerSettingsSchema>;
 export type ControllerSettingsUpdate = z.infer<typeof controllerSettingsUpdateSchema>;
-export type ChunkUploadSummary = z.infer<typeof chunkUploadSummarySchema>;
-export type RecordingChunk = z.infer<typeof recordingChunkSchema>;
-export type RecordingChunkStatus = z.infer<typeof recordingChunkStatusSchema>;
 export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobChannelMap = z.infer<typeof recordingJobChannelMapSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
