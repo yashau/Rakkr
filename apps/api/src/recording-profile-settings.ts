@@ -56,6 +56,10 @@ export function recordingProfileSettings(profile: RecordingProfile) {
     settings.maxTrackSeconds = profile.maxTrackSeconds;
   }
 
+  if (profile.enhancement) {
+    settings.enhancement = profile.enhancement;
+  }
+
   return settings;
 }
 
@@ -80,6 +84,7 @@ export function recordingProfileFromRow(row: RecordingProfileRow): RecordingProf
     bitrateKbps: row.bitrateKbps,
     channelMode: row.channelMode,
     codec: row.codec,
+    enhancement: settings.enhancement,
     id: row.id,
     maxTrackSeconds: recordingProfileMaxTrackSeconds(settings.maxTrackSeconds),
     name: row.name,
