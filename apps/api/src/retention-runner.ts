@@ -174,6 +174,14 @@ async function retentionCandidates(
       continue;
     }
 
+    // A partial recording still has failed-but-retryable upload destinations
+    // whose only source is this cache file. Never delete it, independent of
+    // deleteOnlyAfterUploaded — that flag governs cached-vs-uploaded retention,
+    // not the data-loss floor for in-flight uploads.
+    if (recording.status === "partial") {
+      continue;
+    }
+
     if (policy.deleteOnlyAfterUploaded && recording.status !== "uploaded") {
       continue;
     }

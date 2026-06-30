@@ -300,7 +300,14 @@ async function reconcileRecordingUpload(
   }
 
   const status: RecordingSummary["status"] = failed.length > 0 ? "partial" : "uploaded";
-  const retention = await resolveCacheDeletion(succeeded, recording);
+  // Only release the shared controller cache once EVERY destination is
+  // confirmed. A partial upload still has retryable failed destinations whose
+  // only source is this cache file, so deleting it now would strand them
+  // permanently (their retry would fail with cache_path_missing forever).
+  const retention =
+    failed.length > 0
+      ? ({ skipped: "upload_incomplete" } satisfies UploadRetentionResult)
+      : await resolveCacheDeletion(succeeded, recording);
   const cacheDeleted = retention.cacheDeleted === true;
 
   await recordingStore.save({

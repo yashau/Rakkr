@@ -1,4 +1,5 @@
 import type { ScheduleSummary } from "@rakkr/shared";
+import { neutralizeCsvFormula } from "./csv.js";
 
 export function schedulesCsv(schedules: ScheduleSummary[]) {
   return [
@@ -48,5 +49,5 @@ function csvRow(values: string[]) {
 }
 
 function csvCell(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
+  return `"${neutralizeCsvFormula(value).replaceAll('"', '""')}"`;
 }

@@ -1,4 +1,5 @@
 import { defaultNodeRecordingCapacity, type RecorderNode } from "@rakkr/shared";
+import { neutralizeCsvFormula } from "./csv.js";
 
 export function nodeInventoryCsv(nodes: RecorderNode[]) {
   return [
@@ -75,7 +76,7 @@ function csvRow(values: Array<number | string | undefined>) {
 }
 
 function csvCell(value: number | string | undefined) {
-  const text = value === undefined ? "" : String(value);
+  const text = neutralizeCsvFormula(value === undefined ? "" : String(value));
 
   return /[",\n\r]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }

@@ -231,6 +231,70 @@ test("upload runner marks recordings partial when one destination fails", async 
   assert.equal(reconcile[0]?.outcome, "partial");
 });
 
+test("upload runner keeps cache for partial uploads even when a succeeded policy deletes cache", async () => {
+  const auditStore = createAuditStore("");
+  const destinationStore = createUploadDestinationStore();
+  const contents = "partial-retain-bytes";
+  const partialRecording = recording("rec_upload_partial_retain", contents);
+  const cachePath = await cacheRecording(partialRecording.id, contents);
+  const recordingStore = memoryRecordingStore([partialRecording]);
+  const good = fakeSmbClient();
+  const runner = createUploadRunner({
+    auditStore,
+    destinationStore,
+    limit: 5,
+    recordingStore,
+    smbClientFactory: (config) =>
+      config.smb?.server === "good.example.lan" ? good.client : throwingSmbClient(),
+  });
+
+  const goodDestination = await destinationStore.create({
+    displayName: "Good Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "good.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const badDestination = await destinationStore.create({
+    displayName: "Bad Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "bad.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  // The succeeding destination's policy asks to delete the shared cache; the
+  // other destination fails and stays retryable. The shared cache is the only
+  // source for that retry, so it must be preserved until every destination is
+  // confirmed — deleting it on the strength of one success is data loss.
+  const deletePolicy = await createUploadPolicy({
+    deleteCacheAfterUpload: true,
+    destinationId: goodDestination.id,
+    enabled: true,
+    maxAttempts: 1,
+    name: "Archive then delete cache",
+    trigger: "manual",
+  });
+  await enqueueRecordingUpload(partialRecording, {
+    destinationId: goodDestination.id,
+    maxAttempts: 1,
+    policyId: deletePolicy.id,
+    provider: "smb",
+  });
+  await enqueueRecordingUpload(partialRecording, {
+    destinationId: badDestination.id,
+    maxAttempts: 1,
+    provider: "smb",
+  });
+
+  await runner.runOnce();
+  const updated = await recordingStore.find(partialRecording.id);
+
+  assert.equal(updated?.status, "partial");
+  assert.equal(updated?.cached, true);
+  assert.equal(updated?.cachePath, partialRecording.cachePath);
+  await assert.doesNotReject(readFile(cachePath));
+});
+
 test("upload runner routes expose status and run-now control", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");

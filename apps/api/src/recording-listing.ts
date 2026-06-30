@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { type RecordingSummary, recordingStatusSchema } from "@rakkr/shared";
 
+import { neutralizeCsvFormula } from "./csv.js";
 import { paginate } from "./pagination.js";
 
 const optionalTextFilterSchema = z.preprocess(
@@ -274,11 +275,13 @@ function includesText(value: string, search: string) {
 }
 
 function csvCell(value: string) {
-  if (/[",\n\r]/u.test(value)) {
-    return `"${value.replaceAll('"', '""')}"`;
+  const text = neutralizeCsvFormula(value);
+
+  if (/[",\n\r]/u.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
   }
 
-  return value;
+  return text;
 }
 
 function sortRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {

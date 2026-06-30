@@ -13,9 +13,12 @@ import {
 // Ansible SSH session, so one-way hashing does not apply). Public keys are
 // emitted in OpenSSH `authorized_keys` form so they can be installed on nodes.
 
+import { secretKeyRequired } from "./secret-box.js";
+
 const ENC_PREFIX = "enc.ssh.v1:";
 const DEV_FALLBACK_KEY = "rakkr-dev-insecure-ssh-master-key-change-me";
 const KEY_SALT = "rakkr-node-ssh-credential";
+const MIN_MASTER_KEY_LENGTH = 16;
 
 let cachedKey: { key: Buffer; source: string } | undefined;
 let warnedDevFallback = false;
@@ -31,7 +34,17 @@ export interface GeneratedSshKeyPair {
 // loud dev-only key so local development keeps working.
 function masterKey(): Buffer {
   const provided = process.env.RAKKR_NODE_SSH_MASTER_KEY || process.env.RAKKR_SECRET_KEY;
-  const source = provided && provided.length > 0 ? provided : DEV_FALLBACK_KEY;
+  const usable = provided && provided.length > 0 ? provided : undefined;
+
+  if (secretKeyRequired() && (!usable || usable.length < MIN_MASTER_KEY_LENGTH)) {
+    throw new Error(
+      usable
+        ? `RAKKR_NODE_SSH_MASTER_KEY is too short (min ${MIN_MASTER_KEY_LENGTH} chars); refusing to encrypt SSH private keys with a weak key.`
+        : "RAKKR_NODE_SSH_MASTER_KEY (or RAKKR_SECRET_KEY) is not set; refusing to use the insecure development key in production.",
+    );
+  }
+
+  const source = usable ?? DEV_FALLBACK_KEY;
 
   if (cachedKey?.source === source) {
     return cachedKey.key;

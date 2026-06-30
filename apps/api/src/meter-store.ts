@@ -1,6 +1,6 @@
 import type { MeterFrame } from "@rakkr/shared";
 
-interface StoredMeterFrame {
+export interface StoredMeterFrame {
   frame: MeterFrame;
   receivedAt: string;
 }
@@ -8,6 +8,10 @@ interface StoredMeterFrame {
 export interface MeterFrameStore {
   history(nodeId: string, limit?: number): Promise<MeterFrame[]>;
   latest(nodeId: string): Promise<MeterFrame | undefined>;
+  // Like `latest`, but exposes the controller-side `receivedAt` so callers can
+  // reject stale frames (the watchdog must not read a long-dead meter stream as
+  // if it were live).
+  latestStored(nodeId: string): Promise<StoredMeterFrame | undefined>;
   save(frame: MeterFrame): Promise<StoredMeterFrame>;
 }
 
@@ -25,6 +29,10 @@ class MemoryMeterFrameStore implements MeterFrameStore {
 
   async latest(nodeId: string) {
     return this.frames.get(nodeId)?.frame;
+  }
+
+  async latestStored(nodeId: string) {
+    return this.frames.get(nodeId);
   }
 
   async save(frame: MeterFrame) {

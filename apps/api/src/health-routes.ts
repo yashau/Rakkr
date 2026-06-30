@@ -9,6 +9,7 @@ import type {
   HealthEventLifecycleUpdate,
   HealthEventStore,
 } from "./health-store.js";
+import { neutralizeCsvFormula } from "./csv.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import { registerHealthActionRoutes } from "./health-action-routes.js";
 import { healthEventTargets, visibleHealthEvent } from "./health-visibility.js";
@@ -855,7 +856,7 @@ function csvRow(values: string[]) {
 }
 
 function csvCell(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
+  return `"${neutralizeCsvFormula(value).replaceAll('"', '""')}"`;
 }
 
 function jsonCell(value: unknown) {

@@ -9,6 +9,7 @@ import {
 
 import type { AuthResult } from "./auth-service.js";
 import { canReadAuditEvent } from "./audit-scope.js";
+import { neutralizeCsvFormula } from "./csv.js";
 import type { AuditEventFilters, AuditStore } from "./audit-store.js";
 import { buildPaginationMeta, PAGE_POLICY, paginate, parsePagination } from "./pagination.js";
 import type {
@@ -572,7 +573,7 @@ function csvRow(values: string[]) {
 }
 
 function csvCell(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
+  return `"${neutralizeCsvFormula(value).replaceAll('"', '""')}"`;
 }
 
 function jsonCell(value: unknown) {

@@ -57,7 +57,7 @@ export function createApiRunners({
     watchdogRunner: createWatchdogRunner({
       auditStore,
       healthEventStore,
-      meterFrameProvider: (nodeId) => watchdogMeterFrame(meterFrameStore, nodeId),
+      meterFrameProvider: (nodeId, now) => watchdogMeterFrame(meterFrameStore, nodeId, now),
       nodeStore,
       recordingStore,
     }),
@@ -92,11 +92,45 @@ export function startApiRunners({
   }
 }
 
-async function watchdogMeterFrame(meterFrameStore: MeterFrameStore, nodeId: string) {
-  const frame = await meterFrameStore.latest(nodeId);
+// Default freshness budget for watchdog meter frames. Meter frames arrive on a
+// sub-second cadence, so anything older than two minutes means the node's meter
+// stream has effectively stopped — even if its last frame looked healthy.
+const DEFAULT_WATCHDOG_METER_MAX_AGE_SECONDS = 120;
 
-  if (frame) {
-    return frame;
+export function watchdogMeterMaxAgeSeconds() {
+  const parsed = Number(process.env.RAKKR_WATCHDOG_METER_MAX_AGE_SECONDS);
+
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_WATCHDOG_METER_MAX_AGE_SECONDS;
+}
+
+export function meterFrameIsFresh(
+  receivedAt: string,
+  now: Date,
+  maxAgeSeconds = watchdogMeterMaxAgeSeconds(),
+) {
+  const receivedAtMs = Date.parse(receivedAt);
+
+  if (!Number.isFinite(receivedAtMs)) {
+    return false;
+  }
+
+  // Negative age (a frame stamped slightly ahead of `now`) is still live.
+  return now.getTime() - receivedAtMs <= maxAgeSeconds * 1_000;
+}
+
+export async function watchdogMeterFrame(
+  meterFrameStore: MeterFrameStore,
+  nodeId: string,
+  now: Date = new Date(),
+) {
+  const stored = await meterFrameStore.latestStored(nodeId);
+
+  if (stored) {
+    // A stale frame must be treated as "no frame" so the watchdog fails closed
+    // (flatline / low-signal) instead of re-reading a dead stream as healthy.
+    return meterFrameIsFresh(stored.receivedAt, now) ? stored.frame : undefined;
   }
 
   if (!demoMetersEnabled()) {

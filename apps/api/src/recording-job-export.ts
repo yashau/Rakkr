@@ -1,4 +1,5 @@
 import type { RecordingJob, RecordingJobStatus } from "@rakkr/shared";
+import { neutralizeCsvFormula } from "./csv.js";
 
 export interface RecordingJobExportFilters {
   captureBackend?: RecordingJob["command"]["captureBackend"];
@@ -141,9 +142,11 @@ function recordingJobSearchText(job: RecordingJob) {
 }
 
 function jobCsvCell(value: string) {
-  if (/[",\n\r]/u.test(value)) {
-    return `"${value.replaceAll('"', '""')}"`;
+  const text = neutralizeCsvFormula(value);
+
+  if (/[",\n\r]/u.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
   }
 
-  return value;
+  return text;
 }

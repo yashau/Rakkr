@@ -101,6 +101,38 @@ test("retention runner trims oldest uploaded cache when max bytes is exceeded", 
   assert.equal(newestUpdated?.cachePath, newest.cachePath);
 });
 
+test("retention runner never deletes a partial recording even when deleteOnlyAfterUploaded is off", async () => {
+  const auditStore = createAuditStore("");
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: false,
+    maxAgeDays: 1,
+    name: "Aggressive controller cache cleanup",
+    preserveTagged: false,
+    scope: "controller_cache",
+  });
+  const partialRecording = recording({
+    id: "rec_retention_partial",
+    recordedAt: "2026-05-01T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+    status: "partial",
+  });
+  const partialPath = await cacheRecording(partialRecording, "partial-bytes");
+  const recordingStore = memoryRecordingStore([partialRecording]);
+  const runner = createRetentionRunner({ auditStore, recordingStore });
+
+  const summary = await runner.runOnce(new Date("2026-06-19T12:00:00.000Z"));
+  const updated = await recordingStore.find(partialRecording.id);
+
+  // A partial recording still has failed-but-retryable upload destinations whose
+  // only source is this cache file; deleting it is permanent data loss. The
+  // deleteOnlyAfterUploaded flag governs cached-vs-uploaded, not this floor.
+  assert.equal(summary.deleted, 0);
+  await assert.doesNotReject(readFile(partialPath));
+  assert.equal(updated?.cached, true);
+  assert.equal(updated?.cachePath, partialRecording.cachePath);
+});
+
 function recording({
   id,
   recordedAt,
