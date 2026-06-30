@@ -297,7 +297,9 @@ try {
   console.log("Agent fake-controller smoke passed.");
 } finally {
   server.close();
-  await rm(smokeRoot, { force: true, recursive: true });
+  // Orphaned capture/render grandchildren may write into smokeRoot after the agent
+  // is killed; retry so the recursive rm backs off ENOTEMPTY/EBUSY/EPERM rather than throwing.
+  await rm(smokeRoot, { force: true, maxRetries: 10, recursive: true, retryDelay: 100 });
 }
 
 async function runScenario({ address, captureCommand, renderCommand, scenario }) {
