@@ -160,6 +160,71 @@ export function defaultCaptureGroupId(): string {
   return `cap_${randomUUID()}`;
 }
 
+export type AdHocCaptureDecision =
+  | { captureGroupId: string; ok: true }
+  | {
+      body: Record<string, unknown>;
+      ok: false;
+      reason: "capture_channels_busy" | "node_capture_capacity_reached";
+      target?: { id: string; type: "recording_job" };
+    };
+
+// Decide whether an ad-hoc start can proceed: rejects channel conflicts, then
+// bounds concurrent capture sessions, else resolves the capture group it joins.
+// Returns the HTTP body + audit reason for rejections so the route stays thin.
+export function evaluateAdHocCapture(
+  claims: CaptureClaim[],
+  request: CaptureClaimRequest,
+  maxConcurrentRecordings: number,
+): AdHocCaptureDecision {
+  const conflicts = detectChannelConflicts(claims, request);
+
+  if (conflicts.length > 0) {
+    const busyChannels = [...new Set(conflicts.flatMap((conflict) => conflict.channels))].sort(
+      (left, right) => left - right,
+    );
+    const conflictingClaim = conflicts[0].claim;
+
+    return {
+      body: {
+        busyChannels,
+        captureInterfaceId: request.captureInterfaceId,
+        conflictingJobId: conflictingClaim.jobId,
+        conflictingRecordingId: conflictingClaim.recordingId,
+        error:
+          busyChannels.length > 0
+            ? "Requested channels are already in use"
+            : "Capture interface is already in use",
+        reason: "capture_channels_busy",
+      },
+      ok: false,
+      reason: "capture_channels_busy",
+      target: { id: conflictingClaim.jobId, type: "recording_job" },
+    };
+  }
+
+  const activeSessionKeys = activeCaptureSessionKeys(claims, request.nodeId);
+  const requestSessionKey = interfaceKey(request.captureInterfaceId);
+
+  if (
+    !activeSessionKeys.has(requestSessionKey) &&
+    activeSessionKeys.size >= maxConcurrentRecordings
+  ) {
+    return {
+      body: {
+        activeSessionCount: activeSessionKeys.size,
+        error: "Recorder node is at capture capacity",
+        maxConcurrentRecordings,
+        reason: "node_capture_capacity_reached",
+      },
+      ok: false,
+      reason: "node_capture_capacity_reached",
+    };
+  }
+
+  return { captureGroupId: resolveCaptureGroupId(claims, request), ok: true };
+}
+
 function captureStartMs(job: RecordingJob, recording: RecordingSummary | undefined) {
   const candidate = job.startedAt ?? recording?.recordedAt ?? job.createdAt;
   const parsed = Date.parse(candidate);

@@ -1,3 +1,4 @@
+mod capture_group;
 mod types;
 use crate::cache_content_type::content_type_for_codec;
 use crate::capture::CaptureChild;
@@ -24,6 +25,9 @@ use crate::recording_job_upload::{
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 use anyhow::Context;
+use capture_group::{
+    claim_next_recording_group, finalize_secondary_members, session_capture_channels,
+};
 use reqwest::header::{CONTENT_TYPE, DATE, HeaderName, HeaderValue};
 use serde_json::json;
 use std::fs;
@@ -830,120 +834,6 @@ pub async fn sync_health_event(
     event: &AgentHealthEvent,
 ) -> anyhow::Result<()> {
     post_node_endpoint(config, token, "health-events", event, "health event").await?;
-
-    Ok(())
-}
-
-async fn claim_next_recording_group(
-    config: &AgentConfig,
-    token: &str,
-) -> anyhow::Result<Vec<ControllerRecordingJob>> {
-    let url = format!(
-        "{}/api/v1/nodes/{}/recording-jobs/claim-next-group",
-        config.controller_url.trim_end_matches('/'),
-        config.node_id
-    );
-    let response = controller_http_client(config)?
-        .post(&url)
-        .bearer_auth(token)
-        .header(AGENT_ID_HEADER, config.node_id.as_str())
-        .send()
-        .await
-        .context("claim next recording job group")?;
-    let status = response.status();
-
-    if status.as_u16() == 204 {
-        return Ok(Vec::new());
-    }
-
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-
-        anyhow::bail!("controller rejected next job group claim with {status}: {body}");
-    }
-
-    let envelope = response
-        .json::<DataEnvelope<Vec<ControllerRecordingJob>>>()
-        .await
-        .context("decode claimed recording job group")?;
-
-    Ok(envelope.data)
-}
-
-/// The number of source channels a shared capture must record so every group
-/// member can render its subset: the widest channel span across the primary and
-/// all secondaries.
-fn session_capture_channels(primary_channels: u16, secondaries: &[ControllerRecordingJob]) -> u16 {
-    secondaries.iter().fold(primary_channels, |widest, member| {
-        widest.max(member_channel_span(&member.command))
-    })
-}
-
-/// The highest 1-based source channel a job reads: from its channel map, else
-/// its explicit selection, else its raw channel count.
-fn member_channel_span(command: &ControllerCaptureCommand) -> u16 {
-    if let Some(map) = command.channel_map.as_ref() {
-        return map.source_channels;
-    }
-
-    command
-        .capture_channel_selection
-        .as_ref()
-        .and_then(|selection| selection.iter().copied().max())
-        .unwrap_or(command.capture_channels)
-}
-
-/// Render, enhance, and upload each shared-capture member from the single raw
-/// the primary captured. Each member finalizes independently; a failure on one
-/// member is recorded against that member and does not abort the others.
-async fn finalize_secondary_members(
-    config: &AgentConfig,
-    token: &str,
-    secondaries: &[ControllerRecordingJob],
-    session_raw_path: &std::path::Path,
-) {
-    for member in secondaries {
-        if let Err(error) = finalize_secondary_member(config, token, member, session_raw_path).await
-        {
-            let reason = error.to_string();
-
-            warn!(
-                error = %reason,
-                job_id = %member.id,
-                recording_id = %member.recording_id,
-                "failed to finalize shared-capture member"
-            );
-            let _ = mark_recording_job_failed(config, token, &member.id, &reason).await;
-            let _ = write_job_state(config, member, "failed", None, Some(&reason));
-        }
-    }
-}
-
-async fn finalize_secondary_member(
-    config: &AgentConfig,
-    token: &str,
-    member: &ControllerRecordingJob,
-    session_raw_path: &std::path::Path,
-) -> anyhow::Result<()> {
-    let plan = capture_plan_for_job(config, member, &[]);
-    let output_path = render_capture_output(&plan, session_raw_path)?;
-    let content_type = content_type_for_codec(member.command.output_codec.as_deref(), &output_path);
-    let file_name = member.command.output_file_name.clone();
-
-    write_job_state(config, member, "running", Some(&output_path), None)?;
-    upload_recording_renditions(RenditionUploadInputs {
-        capture_plan: &plan,
-        config,
-        content_type,
-        duration_seconds: member.command.duration_seconds,
-        file_name: &file_name,
-        job: member,
-        output_path: &output_path,
-        raw_output_path: session_raw_path,
-        token,
-    })
-    .await?;
-    write_job_state(config, member, "completed", Some(&output_path), None)?;
 
     Ok(())
 }
