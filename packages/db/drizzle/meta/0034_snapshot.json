@@ -1,6 +1,6 @@
 {
-  "id": "a5050493-cf8b-46de-8ce5-15e3de92f673",
-  "prevId": "46a7fb97-6898-4cf2-a493-ff1cff8e94be",
+  "id": "02cb5897-94d3-4106-8c59-a6b52cc06209",
+  "prevId": "a5050493-cf8b-46de-8ce5-15e3de92f673",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2134,9 +2134,22 @@
           "primaryKey": false,
           "notNull": false
         },
+        "capture_channel_selection": {
+          "name": "capture_channel_selection",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
         "capture_interface_id": {
           "name": "capture_interface_id",
           "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "channel_mode": {
+          "name": "channel_mode",
+          "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false
         },

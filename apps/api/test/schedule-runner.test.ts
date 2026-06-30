@@ -152,7 +152,7 @@ test("scheduled recording completes through agent cache attach and exposes sched
   const scheduled = schedule({
     id: `sched_lifecycle_${Date.now()}`,
     nodeId: scheduledNode.id,
-    uploadPolicyId: scheduledPolicy.id,
+    uploadPolicyIds: [scheduledPolicy.id],
   });
   const settingsStore = memorySettingsStore([splitProfile({ maxTrackSeconds: undefined })]);
 
@@ -240,7 +240,7 @@ test("scheduled recording completes through agent cache attach and exposes sched
   assert.equal(attachedBody.data.recording.retentionPolicyId, scheduled.retentionPolicyId);
   assert.equal(attachedBody.data.recording.source, "schedule");
   assert.deepEqual(attachedBody.data.recording.tags, ["voice"]);
-  assert.equal(attachedBody.data.recording.uploadPolicyId, scheduledPolicy.id);
+  assert.deepEqual(attachedBody.data.recording.uploadPolicyIds, [scheduledPolicy.id]);
   assert.equal(attachedBody.data.recording.watchdogPolicyId, "scheduled-voice-watchdog");
   assert.equal(attachedBody.data.uploadQueueItem?.uploadPolicyId, scheduledPolicy.id);
   assert.equal(playback.status, 202);
@@ -527,7 +527,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
     tags: ["voice"],
     timezone: "UTC",
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}",
-    uploadPolicyId: "upload-policy-stub",
+    uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
     ...input,
   };

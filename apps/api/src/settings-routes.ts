@@ -6,15 +6,14 @@ import {
   channelMapTemplateAssignmentRollbackInputSchema,
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
+  recordingProfileSchema,
   recordingProfileUpdateSchema,
-  uploadProviderConfigUpdateSchema,
-  uploadProviderSchema,
+  watchdogPolicySchema,
   watchdogPolicyUpdateSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
   type ChannelMapAssignmentPlan,
   type RecordingProfile,
-  type UploadProviderRuntimeStatus,
   type WatchdogPolicy,
 } from "@rakkr/shared";
 
@@ -34,20 +33,33 @@ import type {
   RequirePermission,
 } from "./http-types.js";
 import type { SettingsStore } from "./settings-store.js";
-import { createUploadProviderStore, type UploadProviderStore } from "./upload-providers.js";
+import {
+  createUploadDestinationStore,
+  type UploadDestinationStore,
+} from "./upload-destinations.js";
 import { registerSettingsActionRoutes } from "./settings-action-routes.js";
 import { registerSettingsControllerRoutes } from "./settings-controller-routes.js";
 import { registerSettingsDetailRoutes } from "./settings-detail-routes.js";
 import { registerSettingsReadRoutes } from "./settings-read-routes.js";
+import { registerSettingsUploadDestinationRoutes } from "./settings-upload-destination-routes.js";
 import { registerSettingsUploadPolicyRoutes } from "./settings-upload-policy-routes.js";
 import {
   channelMapTemplateSettingsTarget,
   firstHiddenChannelMapAssignmentTarget,
   profileSettingsTarget,
   uniqueChannelMapAssignmentTargets,
-  uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
+
+// Create bodies require only a name; the store fills the rest from the built-in template.
+const recordingProfileCreateSchema = recordingProfileSchema
+  .omit({ id: true })
+  .partial()
+  .required({ name: true });
+const watchdogPolicyCreateSchema = watchdogPolicySchema
+  .omit({ id: true })
+  .partial()
+  .required({ name: true });
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
@@ -58,7 +70,7 @@ interface SettingsRouteDependencies {
   settingsStore: SettingsStore;
   channelMapAssignmentPlanStore?: ChannelMapAssignmentPlanStore;
   controllerSettingsStore?: ControllerSettingsStore;
-  uploadProviderStore?: UploadProviderStore;
+  uploadDestinationStore?: UploadDestinationStore;
 }
 
 export function registerSettingsRoutes({
@@ -70,7 +82,7 @@ export function registerSettingsRoutes({
   recordAuditEvent,
   requirePermission,
   settingsStore,
-  uploadProviderStore = createUploadProviderStore(),
+  uploadDestinationStore = createUploadDestinationStore(),
 }: SettingsRouteDependencies) {
   registerSettingsControllerRoutes({
     app,
@@ -87,7 +99,7 @@ export function registerSettingsRoutes({
     recordAuditEvent,
     requirePermission,
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
   registerSettingsDetailRoutes({
     app,
@@ -97,7 +109,7 @@ export function registerSettingsRoutes({
     recordAuditEvent,
     requirePermission,
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
   registerSettingsActionRoutes({
     app,
@@ -107,7 +119,7 @@ export function registerSettingsRoutes({
     recordAuditEvent,
     requirePermission,
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
   registerSettingsUploadPolicyRoutes({
     app,
@@ -115,6 +127,44 @@ export function registerSettingsRoutes({
     recordAuditEvent,
     requirePermission,
   });
+  registerSettingsUploadDestinationRoutes({
+    app,
+    currentAuth,
+    recordAuditEvent,
+    requirePermission,
+    uploadDestinationStore,
+  });
+
+  app.post(
+    "/api/v1/settings/recording-profiles",
+    requirePermission("settings:manage", "settings.recording_profiles.create", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = recordingProfileCreateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.recording_profiles.create.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid recording profile", issues: body.error.issues }, 400);
+      }
+
+      const created = await settingsStore.createRecordingProfile(body.data);
+
+      await recordAuditEvent(c, {
+        action: "settings.recording_profiles.create.succeeded",
+        after: profileSnapshot(created),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: profileSettingsTarget(created),
+      });
+      return c.json({ data: created }, 201);
+    },
+  );
 
   app.patch(
     "/api/v1/settings/recording-profiles/:profileId",
@@ -176,6 +226,37 @@ export function registerSettingsRoutes({
     },
   );
 
+  app.post(
+    "/api/v1/settings/watchdog-policies",
+    requirePermission("settings:manage", "settings.watchdog_policies.create", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = watchdogPolicyCreateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.watchdog_policies.create.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid watchdog policy", issues: body.error.issues }, 400);
+      }
+
+      const created = await settingsStore.createWatchdogPolicy(body.data);
+
+      await recordAuditEvent(c, {
+        action: "settings.watchdog_policies.create.succeeded",
+        after: watchdogSnapshot(created),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: watchdogSettingsTarget(created),
+      });
+      return c.json({ data: created }, 201);
+    },
+  );
+
   app.patch(
     "/api/v1/settings/watchdog-policies/:policyId",
     requirePermission("settings:manage", "settings.watchdog_policies.update", async (c) => {
@@ -228,67 +309,6 @@ export function registerSettingsRoutes({
         outcome: "succeeded",
         permission: "settings:manage",
         target: watchdogSettingsTarget(updated),
-      });
-
-      return c.json({ data: updated });
-    },
-  );
-
-  app.patch(
-    "/api/v1/settings/upload-providers/:provider",
-    requirePermission("settings:manage", "settings.upload_providers.update", async (c) => {
-      const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
-
-      return provider.success
-        ? uploadProviderSettingsTarget(await uploadProviderStore.findStatus(provider.data))
-        : { id: c.req.param("provider"), type: "upload_provider" };
-    }),
-    async (c) => {
-      const provider = uploadProviderSchema.safeParse(c.req.param("provider"));
-
-      if (!provider.success) {
-        await recordSettingsFailure(
-          c,
-          "settings.upload_providers.update.failed",
-          "provider_not_found",
-          { id: c.req.param("provider"), type: "upload_provider" },
-        );
-        return c.json({ error: "Upload provider not found" }, 404);
-      }
-
-      const before = await uploadProviderStore.findStatus(provider.data);
-      const body = uploadProviderConfigUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
-
-      if (!body.success) {
-        await recordSettingsFailure(
-          c,
-          "settings.upload_providers.update.failed",
-          "invalid_request",
-          uploadProviderSettingsTarget(before),
-        );
-        return c.json({ error: "Invalid upload provider", issues: body.error.issues }, 400);
-      }
-
-      const updated = await uploadProviderStore.update(provider.data, body.data);
-
-      if (!updated) {
-        await recordSettingsFailure(
-          c,
-          "settings.upload_providers.update.failed",
-          "provider_not_found",
-          uploadProviderSettingsTarget(before),
-        );
-        return c.json({ error: "Upload provider not found" }, 404);
-      }
-
-      await recordAuditEvent(c, {
-        action: "settings.upload_providers.update.succeeded",
-        after: uploadProviderSnapshot(updated),
-        auth: currentAuth(c),
-        before: uploadProviderSnapshot(before),
-        outcome: "succeeded",
-        permission: "settings:manage",
-        target: uploadProviderSettingsTarget(updated),
       });
 
       return c.json({ data: updated });
@@ -867,26 +887,6 @@ function profileSnapshot(profile: RecordingProfile) {
     silenceDetectionEnabled: profile.silenceDetectionEnabled,
     silenceSkipEnabled: profile.silenceSkipEnabled,
     vbr: profile.vbr,
-  };
-}
-
-function uploadProviderSnapshot(provider: UploadProviderRuntimeStatus) {
-  // Built from the masked runtime status: the non-secret smb/s3 config plus
-  // hasSmbPassword/hasS3SecretAccessKey indicators. Secret values (SMB password,
-  // S3 secret access key) are never present here and must never be audited.
-  return {
-    configured: provider.configured,
-    displayName: provider.displayName,
-    enabled: provider.enabled,
-    hasS3SecretAccessKey: provider.hasS3SecretAccessKey,
-    hasSmbPassword: provider.hasSmbPassword,
-    implemented: provider.implemented,
-    missingFields: provider.missingFields,
-    provider: provider.provider,
-    s3: provider.s3,
-    smb: provider.smb,
-    status: provider.status,
-    target: provider.target,
   };
 }
 

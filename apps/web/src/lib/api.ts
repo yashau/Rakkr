@@ -39,9 +39,9 @@ import type {
   ScheduleOccurrencePreview,
   ScheduleSummary,
   ScheduleUpdate,
-  UploadProvider,
-  UploadProviderConfigUpdate,
-  UploadProviderRuntimeStatus,
+  UploadDestinationInput,
+  UploadDestinationRuntimeStatus,
+  UploadDestinationUpdate,
   UploadPolicy,
   UploadPolicyInput,
   UploadPolicyUpdate,
@@ -59,6 +59,7 @@ export type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 const authTokenKey = "rakkr.authToken";
+const jsonHeaders = { "Content-Type": "application/json" };
 
 export interface AuditEventFilters {
   action?: string;
@@ -154,13 +155,11 @@ export interface RecordingStartInput {
   nodeId: string;
   recordingProfileId?: string;
   tags?: string[];
-  uploadPolicyId?: string;
+  uploadPolicyIds?: string[];
 }
 
 export interface UploadQueueInput {
-  provider?: UploadProvider;
   reason?: string;
-  target?: string;
   uploadPolicyId?: string;
 }
 
@@ -613,8 +612,8 @@ export const api = {
     }),
   recordingProfiles: () =>
     fetchJson<{ data: RecordingProfile[] }>("/api/v1/settings/recording-profiles"),
-  uploadProviders: () =>
-    fetchJson<{ data: UploadProviderRuntimeStatus[] }>("/api/v1/settings/upload-providers"),
+  uploadDestinations: () =>
+    fetchJson<{ data: UploadDestinationRuntimeStatus[] }>("/api/v1/settings/upload-destinations"),
   uploadPolicies: () => fetchJson<{ data: UploadPolicy[] }>("/api/v1/settings/upload-policies"),
   retentionPolicies: () =>
     fetchJson<{ data: RetentionPolicy[] }>("/api/v1/settings/retention-policies"),
@@ -694,25 +693,33 @@ export const api = {
         method: "POST",
       },
     ),
+  createRecordingProfile: (input: Omit<RecordingProfile, "id">) =>
+    fetchJson<{ data: RecordingProfile }>("/api/v1/settings/recording-profiles", {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "POST",
+    }),
   updateRecordingProfile: (profileId: string, input: RecordingProfileUpdate) =>
     fetchJson<{ data: RecordingProfile }>(`/api/v1/settings/recording-profiles/${profileId}`, {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "PATCH",
     }),
-  updateUploadProvider: (provider: UploadProvider, input: UploadProviderConfigUpdate) =>
-    fetchJson<{ data: UploadProviderRuntimeStatus }>(
-      `/api/v1/settings/upload-providers/${provider}`,
-      {
-        body: JSON.stringify(input),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "PATCH",
-      },
+  createUploadDestination: (input: UploadDestinationInput) =>
+    fetchJson<{ data: UploadDestinationRuntimeStatus }>("/api/v1/settings/upload-destinations", {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "POST",
+    }),
+  updateUploadDestination: (id: string, input: UploadDestinationUpdate) =>
+    fetchJson<{ data: UploadDestinationRuntimeStatus }>(
+      `/api/v1/settings/upload-destinations/${id}`,
+      { body: JSON.stringify(input), headers: jsonHeaders, method: "PATCH" },
     ),
+  deleteUploadDestination: (id: string) =>
+    fetchJson<{ data: { id: string } }>(`/api/v1/settings/upload-destinations/${id}`, {
+      method: "DELETE",
+    }),
   createUploadPolicy: (input: UploadPolicyInput) =>
     fetchJson<{ data: UploadPolicy }>("/api/v1/settings/upload-policies", {
       body: JSON.stringify(input),
@@ -732,25 +739,25 @@ export const api = {
   createRetentionPolicy: (input: RetentionPolicyInput) =>
     fetchJson<{ data: RetentionPolicy }>("/api/v1/settings/retention-policies", {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "POST",
     }),
   updateRetentionPolicy: (policyId: string, input: RetentionPolicyUpdate) =>
     fetchJson<{ data: RetentionPolicy }>(`/api/v1/settings/retention-policies/${policyId}`, {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "PATCH",
+    }),
+  createWatchdogPolicy: (input: Omit<WatchdogPolicy, "id">) =>
+    fetchJson<{ data: WatchdogPolicy }>("/api/v1/settings/watchdog-policies", {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "POST",
     }),
   updateWatchdogPolicy: (policyId: string, input: WatchdogPolicyUpdate) =>
     fetchJson<{ data: WatchdogPolicy }>(`/api/v1/settings/watchdog-policies/${policyId}`, {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "PATCH",
     }),
   calibrateWatchdogPolicy: (policyId: string, input: WatchdogCalibrationInput) =>

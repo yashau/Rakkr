@@ -33,7 +33,7 @@ Two bearer-token schemes share the `Authorization: Bearer <token>` header:
 Handled by `LocalAuthService` (`auth-service.ts`):
 
 - `POST /api/v1/auth/login` validates `{ email, password }` against a
-  DB-persisted user (Argon2/bcrypt) or the env-configured local admin, then mints
+  DB-persisted user (scrypt) or the env-configured local admin, then mints
   a token `rakkr_<random>`, stores only its SHA-256 hash, and returns
   `{ token, expiresAt, sessionId, user }` with a 12-hour TTL.
 - `authenticate()` hashes the presented token and looks it up; disabled users and

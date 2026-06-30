@@ -44,7 +44,8 @@ chosen node, profile, and (optionally) capture backend/interface.
 
 **Schedule** — a rule that creates recording jobs automatically. Human-friendly
 recurrence (`manual`, `once`, `daily`, `weekly`, `monthly`, `always_on`), an
-explicit timezone, start-early/stop-late buffers, pause ranges, and exceptions.
+explicit timezone, start-early/stop-late buffers, and exceptions (skip a date or
+pause a range).
 Schedules _own_ the metadata of the recordings they create (name, folder, tags,
 profile, watchdog policy, retention, upload policy). No cron syntax is ever
 exposed.

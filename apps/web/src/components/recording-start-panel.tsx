@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 import {
   emptyRecordingStartDraft,
@@ -85,7 +86,6 @@ export function RecordingStartPanel({
   const selectedNodeId = fixedNode?.id || draft.nodeId || nodes[0]?.id || "";
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedRecordingProfileId = draft.recordingProfileId || recordingProfiles[0]?.id || "";
-  const selectedUploadPolicyId = draft.uploadPolicyId || uploadPolicies[0]?.id || "";
 
   return (
     <form
@@ -97,12 +97,11 @@ export function RecordingStartPanel({
             ...draft,
             nodeId: selectedNodeId,
             recordingProfileId: selectedRecordingProfileId,
-            uploadPolicyId: selectedUploadPolicyId,
           }),
         );
       }}
     >
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-8">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="grid min-w-0 gap-1.5">
           <Label htmlFor="recording-start-node">Node</Label>
           <Select
@@ -189,29 +188,8 @@ export function RecordingStartPanel({
             </SelectContent>
           </Select>
         </div>
-        <div className="grid min-w-0 gap-1.5">
-          <Label htmlFor="recording-start-profile">Profile</Label>
-          <Select
-            onValueChange={(value) =>
-              setDraft((current) => ({
-                ...current,
-                recordingProfileId: value,
-              }))
-            }
-            value={selectedRecordingProfileId}
-          >
-            <SelectTrigger className={selectClassName} id="recording-start-profile">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {recordingProfiles.map((profile) => (
-                <SelectItem key={profile.id} value={profile.id}>
-                  {profile.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="grid min-w-0 gap-1.5">
           <Label htmlFor="recording-start-name">Name</Label>
           <Input
@@ -238,28 +216,51 @@ export function RecordingStartPanel({
             value={draft.tags}
           />
         </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="grid min-w-0 gap-1.5">
-          <Label htmlFor="recording-start-upload-policy">Upload</Label>
+          <Label htmlFor="recording-start-profile">Profile</Label>
           <Select
             onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                uploadPolicyId: value,
+                recordingProfileId: value,
               }))
             }
-            value={selectedUploadPolicyId}
+            value={selectedRecordingProfileId}
           >
-            <SelectTrigger className={selectClassName} id="recording-start-upload-policy">
+            <SelectTrigger className={selectClassName} id="recording-start-profile">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {uploadPolicies.map((policy) => (
-                <SelectItem key={policy.id} value={policy.id}>
-                  {policy.name}
+              {recordingProfiles.map((profile) => (
+                <SelectItem key={profile.id} value={profile.id}>
+                  {profile.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="grid min-w-0 gap-1.5 xl:col-span-2">
+          <Label>Upload Policies</Label>
+          <ToggleGroup
+            className="flex flex-wrap justify-start gap-2"
+            onValueChange={(value) =>
+              setDraft((current) => ({ ...current, uploadPolicyIds: value }))
+            }
+            type="multiple"
+            value={draft.uploadPolicyIds}
+          >
+            {uploadPolicies.map((policy) => (
+              <ToggleGroupItem
+                className="rounded-md border border-input px-3 data-[state=on]:border-ring"
+                key={policy.id}
+                value={policy.id}
+              >
+                {policy.name}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         </div>
       </div>
       <ChannelSelectionField

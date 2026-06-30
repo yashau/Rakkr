@@ -23,9 +23,10 @@ flowchart LR
   room["Room audio"] --> agent["Recorder agent (Rust)"]
   agent -->|"capture / meters / health"| cache["Local cache"]
   agent <-->|"encrypted HTTP / WS"| api["Controller API (Hono)"]
+  cache -->|"upload raw + enhanced"| api
+  api -->|"upload runner · SMB/S3 fan-out"| storage["SMB / S3"]
   api <--> db["Postgres + Drizzle"]
   api --> ui["Operator console (React)"]
-  cache -->|"upload"| storage["SMB / S3"]
   api --> metrics["/metrics → Prometheus / Grafana"]
 ```
 

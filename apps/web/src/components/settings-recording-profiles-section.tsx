@@ -1,10 +1,15 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { RecordingProfile } from "@rakkr/shared";
-import { Pencil } from "lucide-react";
+import { Pencil, PlusCircle } from "lucide-react";
+import { toast } from "sonner";
 
-import { RecordingProfileSettingsCard } from "@/components/recording-profile-settings-card";
+import { HintButton } from "@/components/hint-button";
+import {
+  RecordingProfileSettingsCard,
+  defaultRecordingProfileInput,
+} from "@/components/recording-profile-settings-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -26,11 +31,24 @@ export function SettingsRecordingProfilesSection({
   canManage: boolean;
   canRead: boolean;
 }) {
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState<RecordingProfile>();
   const profilesQuery = useQuery({
     enabled: canRead,
     queryFn: api.recordingProfiles,
     queryKey: ["recording-profiles"],
+  });
+  const createMutation = useMutation({
+    mutationFn: () => api.createRecordingProfile(defaultRecordingProfileInput()),
+    onError: () =>
+      toast.error("Create failed", {
+        description: "The recording profile could not be created.",
+      }),
+    onSuccess: ({ data }) => {
+      toast.success("Recording profile created");
+      void queryClient.invalidateQueries({ queryKey: ["recording-profiles"] });
+      setEditing(data);
+    },
   });
   const profiles = profilesQuery.data?.data ?? [];
   const columns = recordingProfileColumns({ canManage, onEdit: setEditing });
@@ -42,9 +60,20 @@ export function SettingsRecordingProfilesSection({
           <h2 className="text-lg font-semibold">Recording Profiles</h2>
           <p className="text-sm text-muted-foreground">Central audio defaults and templates.</p>
         </div>
-        <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
-          {profiles.length} profiles
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
+            {profiles.length} profiles
+          </Badge>
+          <HintButton
+            disabled={createMutation.isPending || !canManage}
+            hint={canManage ? "Create recording profile" : "Requires settings manage"}
+            onClick={() => createMutation.mutate()}
+            variant="outline"
+          >
+            <PlusCircle className="size-4" />
+            New
+          </HintButton>
+        </div>
       </section>
 
       <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">

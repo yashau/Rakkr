@@ -29,18 +29,22 @@ import {
 } from "@rakkr/shared";
 import {
   applyRecordingProfileUpdate,
-  recordingProfileMaxTrackSeconds,
-  recordingProfileSettings,
+  recordingProfileFromInput,
+  recordingProfileFromRow,
+  recordingProfileToRow,
+  type RecordingProfileCreateInput,
 } from "./recording-profile-settings.js";
+import {
+  watchdogPolicyFromInput,
+  watchdogPolicyFromRow,
+  watchdogPolicyToRow,
+  type WatchdogPolicyCreateInput,
+} from "./watchdog-policy-settings.js";
 
-type RecordingProfileInsert = typeof recordingProfilesTable.$inferInsert;
-type RecordingProfileRow = typeof recordingProfilesTable.$inferSelect;
 type ChannelMapTemplateInsert = typeof channelMapTemplatesTable.$inferInsert;
 type ChannelMapTemplateRow = typeof channelMapTemplatesTable.$inferSelect;
 type TemplateAssignmentInsert = typeof templateAssignmentsTable.$inferInsert;
 type TemplateAssignmentRow = typeof templateAssignmentsTable.$inferSelect;
-type WatchdogPolicyInsert = typeof watchdogPoliciesTable.$inferInsert;
-type WatchdogPolicyRow = typeof watchdogPoliciesTable.$inferSelect;
 
 export interface SettingsStore {
   assignChannelMapTemplate(
@@ -48,6 +52,8 @@ export interface SettingsStore {
     actorUserId?: string,
   ): Promise<ChannelMapTemplateAssignment>;
   createChannelMapTemplate(input: ChannelMapTemplateInput): Promise<ChannelMapTemplate>;
+  createRecordingProfile(input: RecordingProfileCreateInput): Promise<RecordingProfile>;
+  createWatchdogPolicy(input: WatchdogPolicyCreateInput): Promise<WatchdogPolicy>;
   findChannelMapTemplate(templateId: string): Promise<ChannelMapTemplate | undefined>;
   findRecordingProfile(profileId: string): Promise<RecordingProfile | undefined>;
   findWatchdogPolicy(policyId: string): Promise<WatchdogPolicy | undefined>;
@@ -206,6 +212,20 @@ class JsonSettingsStore implements SettingsStore {
     persistSettings(channelMapAssignmentStorePath, "assignments", this.channelMapAssignments);
 
     return assignment;
+  }
+
+  async createRecordingProfile(input: RecordingProfileCreateInput) {
+    const profile = recordingProfileFromInput(input);
+    this.profiles.unshift(profile);
+    persistSettings(recordingProfileStorePath, "profiles", this.profiles);
+    return profile;
+  }
+
+  async createWatchdogPolicy(input: WatchdogPolicyCreateInput) {
+    const policy = watchdogPolicyFromInput(input);
+    this.watchdogPolicies.unshift(policy);
+    persistSettings(watchdogPolicyStorePath, "policies", this.watchdogPolicies);
+    return policy;
   }
 
   async findRecordingProfile(profileId: string) {
@@ -444,6 +464,38 @@ class PostgresSettingsStore implements SettingsStore {
     } catch (error) {
       await this.failover("channel map assignment rollback unavailable; using JSON store", error);
       return this.fallback.rollbackChannelMapAssignment(targetType, targetId, actorUserId);
+    }
+  }
+
+  async createRecordingProfile(input: RecordingProfileCreateInput) {
+    if (!this.dbAvailable) {
+      return this.fallback.createRecordingProfile(input);
+    }
+
+    try {
+      await this.seedProfilesIfEmpty();
+      const profile = recordingProfileFromInput(input);
+      await this.writeRecordingProfile(profile);
+      return profile;
+    } catch (error) {
+      await this.failover("recording profile creation unavailable; using JSON store", error);
+      return this.fallback.createRecordingProfile(input);
+    }
+  }
+
+  async createWatchdogPolicy(input: WatchdogPolicyCreateInput) {
+    if (!this.dbAvailable) {
+      return this.fallback.createWatchdogPolicy(input);
+    }
+
+    try {
+      await this.seedWatchdogPoliciesIfEmpty();
+      const policy = watchdogPolicyFromInput(input);
+      await this.writeWatchdogPolicy(policy);
+      return policy;
+    } catch (error) {
+      await this.failover("watchdog policy creation unavailable; using JSON store", error);
+      return this.fallback.createWatchdogPolicy(input);
     }
   }
 
@@ -881,57 +933,6 @@ function channelMapAssignmentFromRow(row: TemplateAssignmentRow): ChannelMapTemp
     targetId: row.targetId,
     targetType: row.targetType,
     templateId: row.templateId,
-  });
-}
-
-function recordingProfileToRow(profile: RecordingProfile): RecordingProfileInsert {
-  return {
-    bitrateKbps: profile.bitrateKbps,
-    channelMode: profile.channelMode,
-    codec: profile.codec,
-    id: profile.id,
-    name: profile.name,
-    settings: recordingProfileSettings(profile),
-    silenceDetectionEnabled: profile.silenceDetectionEnabled,
-    silenceSkipEnabled: profile.silenceSkipEnabled,
-    vbr: profile.vbr,
-  };
-}
-
-function watchdogPolicyToRow(policy: WatchdogPolicy): WatchdogPolicyInsert {
-  const { id, name, ...rules } = policy;
-
-  return {
-    id,
-    name,
-    rules,
-  };
-}
-
-function recordingProfileFromRow(row: RecordingProfileRow): RecordingProfile {
-  const settings = record(row.settings) ?? {};
-
-  return recordingProfileSchema.parse({
-    bitrateKbps: row.bitrateKbps,
-    channelMode: row.channelMode,
-    codec: row.codec,
-    id: row.id,
-    maxTrackSeconds: recordingProfileMaxTrackSeconds(settings.maxTrackSeconds),
-    name: row.name,
-    silenceDetectionEnabled: row.silenceDetectionEnabled,
-    silenceSkipEnabled: row.silenceSkipEnabled,
-    vbr: row.vbr,
-  });
-}
-
-function watchdogPolicyFromRow(row: WatchdogPolicyRow): WatchdogPolicy {
-  const rules = record(row.rules) ?? {};
-
-  return watchdogPolicySchema.parse({
-    ...defaultScheduledVoiceWatchdogPolicy,
-    ...rules,
-    id: row.id,
-    name: row.name,
   });
 }
 

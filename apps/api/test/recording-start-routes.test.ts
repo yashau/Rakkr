@@ -496,7 +496,7 @@ test("ad hoc recording start rejects upload policies outside scoped visibility",
   const response = await app.request("/api/v1/recordings", {
     body: JSON.stringify({
       nodeId: node.id,
-      uploadPolicyId: defaultStubUploadPolicy.id,
+      uploadPolicyIds: [defaultStubUploadPolicy.id],
     }),
     headers: { "content-type": "application/json" },
     method: "POST",

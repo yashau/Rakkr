@@ -37,6 +37,72 @@ export type S3ProviderPreset = z.infer<typeof s3ProviderPresetSchema>;
 export type SmbProviderConfig = z.infer<typeof smbProviderConfigSchema>;
 export type S3ProviderConfig = z.infer<typeof s3ProviderConfigSchema>;
 
+// Upload-target readiness states and the named SMB/S3 destinations that policies
+// select. `updatedAt` is an ISO-8601 string. Kept here (re-exported by the package
+// index) so the destination contracts live beside the smb/s3 connection config.
+export const uploadProviderStatusSchema = z.enum([
+  "disabled",
+  "not_configured",
+  "not_implemented",
+  "ready",
+]);
+export const uploadDestinationKindSchema = z.enum(["smb", "s3"]);
+export const uploadDestinationSchema = z.object({
+  displayName: z.string().trim().min(1).max(160),
+  enabled: z.boolean(),
+  id: z.string().min(1),
+  kind: uploadDestinationKindSchema,
+  s3: s3ProviderConfigSchema.optional(),
+  smb: smbProviderConfigSchema.optional(),
+  updatedAt: z.string().min(1),
+});
+// Secrets are write-only: not trimmed and cleared by passing an empty string.
+export const uploadDestinationInputSchema = z.object({
+  displayName: z.string().trim().min(1).max(160),
+  enabled: z.boolean().default(false),
+  id: z.string().trim().min(1).max(160).optional(),
+  kind: uploadDestinationKindSchema,
+  s3: s3ProviderConfigSchema.optional(),
+  s3SecretAccessKey: z.string().max(1024).optional(),
+  smb: smbProviderConfigSchema.optional(),
+  smbPassword: z.string().max(1024).optional(),
+});
+export const uploadDestinationUpdateSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(160).optional(),
+    enabled: z.boolean().optional(),
+    s3: s3ProviderConfigSchema.optional(),
+    s3SecretAccessKey: z.string().max(1024).optional(),
+    smb: smbProviderConfigSchema.optional(),
+    smbPassword: z.string().max(1024).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one destination field is required");
+export const uploadDestinationRuntimeStatusSchema = z.object({
+  configured: z.boolean(),
+  displayName: z.string(),
+  enabled: z.boolean(),
+  hasS3SecretAccessKey: z.boolean(),
+  hasSmbPassword: z.boolean(),
+  id: z.string().min(1),
+  implemented: z.boolean(),
+  kind: uploadDestinationKindSchema,
+  missingFields: z.array(z.string()),
+  reason: z.string().optional(),
+  requiredFields: z.array(z.string()),
+  s3: s3ProviderConfigSchema.optional(),
+  smb: smbProviderConfigSchema.optional(),
+  status: uploadProviderStatusSchema,
+  target: z.string().optional(),
+  updatedAt: z.string().min(1),
+});
+
+export type UploadProviderStatus = z.infer<typeof uploadProviderStatusSchema>;
+export type UploadDestination = z.infer<typeof uploadDestinationSchema>;
+export type UploadDestinationInput = z.infer<typeof uploadDestinationInputSchema>;
+export type UploadDestinationKind = z.infer<typeof uploadDestinationKindSchema>;
+export type UploadDestinationRuntimeStatus = z.infer<typeof uploadDestinationRuntimeStatusSchema>;
+export type UploadDestinationUpdate = z.infer<typeof uploadDestinationUpdateSchema>;
+
 export interface S3ProviderPresetInfo {
   defaultRegion?: string;
   endpointPlaceholder?: string;

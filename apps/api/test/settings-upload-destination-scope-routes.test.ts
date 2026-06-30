@@ -24,27 +24,34 @@ process.env.RAKKR_CHANNEL_MAP_TEMPLATE_STORE_PATH = path.join(
   "channel-map-templates.json",
 );
 process.env.RAKKR_RECORDING_PROFILE_STORE_PATH = path.join(scopeRoot, "profiles.json");
-process.env.RAKKR_UPLOAD_PROVIDER_STORE_PATH = path.join(scopeRoot, "upload-providers.json");
+process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(scopeRoot, "upload-providers.json");
 process.env.RAKKR_WATCHDOG_POLICY_STORE_PATH = path.join(scopeRoot, "watchdog-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createSettingsStore } = await import("../src/settings-store.js");
 const { registerSettingsRoutes } = await import("../src/settings-routes.js");
-const { createUploadProviderStore } = await import("../src/upload-providers.js");
+const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
 
 test.after(async () => {
   await rm(scopeRoot, { force: true, recursive: true });
 });
 
-test("upload provider routes honor resource-scope denies", async () => {
+test("upload destination routes honor resource-scope denies", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
   const currentUser = viewer();
   const settingsStore = createSettingsStore();
-  const uploadProviderStore = createUploadProviderStore();
-  const hiddenProviderId = "stub";
+  const uploadDestinationStore = createUploadDestinationStore();
+  const hidden = await uploadDestinationStore.create({
+    displayName: "Hidden Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const hiddenDestinationId = hidden.id;
   const isVisibleTarget = (target: AuditTarget) =>
-    !(target.type === "upload_provider" && target.id === hiddenProviderId);
+    !(target.type === "upload_destination" && target.id === hiddenDestinationId);
 
   registerSettingsRoutes({
     app,
@@ -53,49 +60,50 @@ test("upload provider routes honor resource-scope denies", async () => {
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
     settingsStore,
-    uploadProviderStore,
+    uploadDestinationStore,
   });
 
-  const listResponse = await app.request("/api/v1/settings/upload-providers");
-  const listBody = (await listResponse.json()) as { data: Array<{ provider: string }> };
-  const detailResponse = await app.request(`/api/v1/settings/upload-providers/${hiddenProviderId}`);
+  const listResponse = await app.request("/api/v1/settings/upload-destinations");
+  const listBody = (await listResponse.json()) as { data: Array<{ id: string }> };
+  const detailResponse = await app.request(
+    `/api/v1/settings/upload-destinations/${hiddenDestinationId}`,
+  );
   const actionsResponse = await app.request(
-    `/api/v1/settings/upload-providers/${hiddenProviderId}/actions`,
+    `/api/v1/settings/upload-destinations/${hiddenDestinationId}/actions`,
   );
   const updateResponse = await requestJson(
     app,
-    `/api/v1/settings/upload-providers/${hiddenProviderId}`,
+    `/api/v1/settings/upload-destinations/${hiddenDestinationId}`,
     "PATCH",
-    { displayName: "Hidden Provider Update", target: "stub://hidden" },
+    { displayName: "Hidden Destination Update" },
   );
   const deniedEvents = await auditStore.list({ outcome: "denied", permission: "settings:read" });
   const manageDeniedEvents = await auditStore.list({
     outcome: "denied",
     permission: "settings:manage",
   });
-  const storedProvider = await uploadProviderStore.findStatus(hiddenProviderId);
+  const storedDestination = await uploadDestinationStore.find(hiddenDestinationId);
 
   assert.equal(listResponse.status, 200);
   assert.equal(
-    listBody.data.some((provider) => provider.provider === hiddenProviderId),
+    listBody.data.some((destination) => destination.id === hiddenDestinationId),
     false,
   );
   assert.equal(detailResponse.status, 403);
   assert.equal(actionsResponse.status, 403);
   assert.equal(updateResponse.status, 403);
-  assert.equal(storedProvider.displayName, "Stub Queue Provider");
-  assert.equal(storedProvider.target, "stub://queue-only");
+  assert.equal(storedDestination?.displayName, "Hidden Share");
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
-    "settings.upload_providers.actions.read",
-    "settings.upload_providers.detail.read",
+    "settings.upload_destinations.actions.read",
+    "settings.upload_destinations.detail.read",
   ]);
-  assert.equal(manageDeniedEvents[0]?.action, "settings.upload_providers.update");
+  assert.equal(manageDeniedEvents[0]?.action, "settings.upload_destinations.update");
   assert.ok(
     [...deniedEvents, ...manageDeniedEvents].every(
       (event) =>
         event.reason === "access_policy_denied" &&
-        event.target.id === hiddenProviderId &&
-        event.target.type === "upload_provider",
+        event.target.id === hiddenDestinationId &&
+        event.target.type === "upload_destination",
     ),
   );
 });

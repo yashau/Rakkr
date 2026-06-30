@@ -62,10 +62,14 @@ controls in the Settings UI.
 
 The controller's **watchdog runner** (default every 30s) turns sustained problems
 into **health events** and resolves them on recovery. Events also come directly
-from the agent (capture/upload failures, device faults, disk/CPU pressure) and
-from controller runners (stale-heartbeat nodes, failed uploads). Each event has a
-type, severity (`info`/`warning`/`critical`), status, and is attached to a node,
-recording, and/or schedule.
+from the agent — not only capture/upload failures, device faults, and disk/CPU
+pressure, but also meter-quality state it scores locally (`agent.meter.low_signal`,
+`clipping`, `flatline`, `channel_correlation`, each with a `_recovered`
+counterpart) — and from controller runners (stale-heartbeat nodes, failed
+uploads). So low-signal, clipping, flatline, and correlation can be raised by both
+the agent (per-frame) and the controller watchdog (sustained, policy-tuned). Each
+event has a type, severity (`info`/`warning`/`critical`), status, and is attached
+to a node, recording, and/or schedule.
 
 Operators work events on the **Health** page (`health:read`):
 

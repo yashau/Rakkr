@@ -370,8 +370,6 @@ test("ad hoc recording completes through agent cache attach and exposes cached m
     id: `upload-policy-lifecycle-${randomUUID()}`,
     maxAttempts: 2,
     name: "Lifecycle Auto Stub",
-    provider: "stub",
-    target: "stub://lifecycle",
     trigger: "on_recording_cached",
   });
 
@@ -402,7 +400,7 @@ test("ad hoc recording completes through agent cache attach and exposes cached m
       name: "Lifecycle Recording",
       nodeId: lifecycleNode.id,
       tags: ["voice", "lifecycle"],
-      uploadPolicyId: policy.id,
+      uploadPolicyIds: [policy.id],
     }),
     headers: { "content-type": "application/json" },
     method: "POST",

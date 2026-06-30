@@ -45,7 +45,7 @@ import { registerSettingsRoutes } from "./settings-routes.js";
 import { createSettingsStore } from "./settings-store.js";
 import { registerStatusRoutes } from "./status-routes.js";
 import { apiListenConfig } from "./transport-security.js";
-import { createUploadProviderStore } from "./upload-providers.js";
+import { createUploadDestinationStore } from "./upload-destinations.js";
 import { registerUploadRunnerRoutes } from "./upload-runner-routes.js";
 import { registerWatchdogCalibrationRoutes } from "./watchdog-calibration-routes.js";
 
@@ -65,7 +65,7 @@ const bootstrapStore = createNodeBootstrapStore();
 const recordingStore = createRecordingStore(recordings);
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
-const uploadProviderStore = createUploadProviderStore();
+const uploadDestinationStore = createUploadDestinationStore();
 onRecordingJobLeaseExpired(async ({ job, terminalState }) => {
   const recording = await recordingStore.find(job.recordingId);
 
@@ -98,7 +98,7 @@ export const {
   recordingStore,
   scheduleStore,
   settingsStore,
-  uploadProviderStore,
+  uploadDestinationStore,
 });
 type NodeRecord = RecorderNode;
 type InterfaceRecord = NodeRecord["interfaces"][number];
@@ -559,7 +559,7 @@ registerSettingsRoutes({
   recordAuditEvent,
   requirePermission,
   settingsStore,
-  uploadProviderStore,
+  uploadDestinationStore,
 });
 registerWatchdogCalibrationRoutes({
   app,
@@ -767,6 +767,7 @@ registerAgentRoutes({
   recordingStore,
   scheduleStore,
   settingsStore,
+  uploadDestinationStore,
 });
 
 registerHealthRoutes({
@@ -793,6 +794,7 @@ registerRecordingRoutes({
   scopedNodes,
   scopedRecordings,
   settingsStore,
+  uploadDestinationStore,
 });
 
 registerUploadRunnerRoutes({

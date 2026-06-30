@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client, SmbError } from "smb3-client";
-import type { ResolvedUploadProviderConfig } from "./upload-providers.js";
+import type { ResolvedUploadDestinationConfig } from "./upload-destinations.js";
 
 // Minimal client surface the executor needs. The real `smb3-client` Client
 // satisfies this structurally; tests inject a fake to avoid a live server.
@@ -13,11 +13,12 @@ export interface SmbClientLike {
   writeFile(path: string, data: Buffer): Promise<void>;
 }
 
-export type SmbClientFactory = (config: ResolvedUploadProviderConfig) => SmbClientLike;
+export type SmbClientFactory = (config: ResolvedUploadDestinationConfig) => SmbClientLike;
 
 export interface SmbUploadInput {
-  config: ResolvedUploadProviderConfig;
+  config: ResolvedUploadDestinationConfig;
   fileName: string;
+  pathOverride?: string;
   sourceChecksumHex: string;
   sourcePath: string;
 }
@@ -56,7 +57,7 @@ export async function uploadViaSmb(
     throw new Error("smb_config_incomplete");
   }
 
-  const segments = smbPathSegments(smb.share, smb.path, input.fileName);
+  const segments = smbPathSegments(smb.share, smb.path, input.pathOverride, input.fileName);
   const remotePath = segments.join("/");
   const client = factory(input.config);
 
@@ -94,10 +95,15 @@ async function ensureDirectories(client: SmbClientLike, segments: string[]) {
   }
 }
 
-function smbPathSegments(share: string, uploadPath: string | undefined, fileName: string) {
+function smbPathSegments(
+  share: string,
+  uploadPath: string | undefined,
+  pathOverride: string | undefined,
+  fileName: string,
+) {
   const segments = [normalizeSegment(share)];
 
-  for (const part of (uploadPath ?? "").split(/[\\/]+/)) {
+  for (const part of `${uploadPath ?? ""}/${pathOverride ?? ""}`.split(/[\\/]+/)) {
     const normalized = normalizeSegment(part);
 
     if (normalized) {

@@ -14,12 +14,12 @@ import {
   scopedChannelMapAssignments,
   scopedChannelMapTemplates,
   scopedRecordingProfiles,
+  scopedUploadDestinations,
   scopedUploadPolicies,
-  scopedUploadProviders,
   scopedWatchdogPolicies,
 } from "./settings-scope.js";
 import { listUploadPolicies } from "./upload-policies.js";
-import type { UploadProviderStore } from "./upload-providers.js";
+import type { UploadDestinationStore } from "./upload-destinations.js";
 
 interface SettingsReadRouteDependencies {
   app: Hono<AppBindings>;
@@ -32,7 +32,7 @@ interface SettingsReadRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   settingsStore: SettingsStore;
-  uploadProviderStore: UploadProviderStore;
+  uploadDestinationStore: UploadDestinationStore;
 }
 
 export function registerSettingsReadRoutes({
@@ -43,7 +43,7 @@ export function registerSettingsReadRoutes({
   recordAuditEvent,
   requirePermission,
   settingsStore,
-  uploadProviderStore,
+  uploadDestinationStore,
 }: SettingsReadRouteDependencies) {
   app.get(
     "/api/v1/settings/recording-profiles",
@@ -142,16 +142,20 @@ export function registerSettingsReadRoutes({
   );
 
   app.get(
-    "/api/v1/settings/upload-providers",
-    requirePermission("settings:read", "settings.upload_providers.read", settingsReadTarget),
+    "/api/v1/settings/upload-destinations",
+    requirePermission("settings:read", "settings.upload_destinations.read", settingsReadTarget),
     async (c) => {
-      const data = await scopedUploadProviders(
+      const data = await scopedUploadDestinations(
         currentAuth(c).user,
-        uploadProviderStore,
+        uploadDestinationStore,
         hasResourceScope,
       );
 
-      await recordSettingsReadSuccess(c, "settings.upload_providers.read.succeeded", data.length);
+      await recordSettingsReadSuccess(
+        c,
+        "settings.upload_destinations.read.succeeded",
+        data.length,
+      );
 
       return c.json({ data });
     },

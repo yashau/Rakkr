@@ -310,7 +310,7 @@ function recordingFromRow(row: RecordingRow): RecordingSummary {
     trackGroupId: stringOrUndefined(metadata?.trackGroupId),
     trackIndex: positiveIntegerOrUndefined(metadata?.trackIndex),
     trackTotal: positiveIntegerOrUndefined(metadata?.trackTotal),
-    uploadPolicyId: stringOrUndefined(metadata?.uploadPolicyId),
+    uploadPolicyIds: uploadPolicyIdsFromMetadata(metadata),
     watchdogPolicyId: stringOrUndefined(metadata?.watchdogPolicyId),
     waveformPreview: waveformPreviewOrUndefined(metadata?.waveformPreview),
   };
@@ -326,7 +326,7 @@ function recordingMetadata(recording: RecordingSummary) {
     trackGroupId: recording.trackGroupId,
     trackIndex: recording.trackIndex,
     trackTotal: recording.trackTotal,
-    uploadPolicyId: recording.uploadPolicyId,
+    uploadPolicyIds: recording.uploadPolicyIds,
     watchdogPolicyId: recording.watchdogPolicyId,
     waveformPreview: recording.waveformPreview,
   };
@@ -371,6 +371,28 @@ function stringOrUndefined(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+// Reads the recording's upload policy ids from metadata, falling back to the
+// legacy singular `uploadPolicyId` for rows written before the multi-policy change.
+function uploadPolicyIdsFromMetadata(metadata: Record<string, unknown> | undefined) {
+  const ids = metadata?.uploadPolicyIds;
+
+  if (Array.isArray(ids)) {
+    const strings = stringArray(ids);
+
+    return strings.length > 0 ? strings : undefined;
+  }
+
+  const legacy = stringOrUndefined(metadata?.uploadPolicyId);
+
+  return legacy ? [legacy] : undefined;
+}
+
+function optionalStringArray(value: unknown) {
+  return (
+    value === undefined || (Array.isArray(value) && value.every((item) => typeof item === "string"))
+  );
+}
+
 function positiveIntegerOrUndefined(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
@@ -393,7 +415,7 @@ function isRecordingSummary(value: unknown): value is RecordingSummary {
     typeof value.cached === "boolean" &&
     optionalString(value.recordingProfileId) &&
     optionalString(value.retentionPolicyId) &&
-    optionalString(value.uploadPolicyId) &&
+    optionalStringArray(value.uploadPolicyIds) &&
     optionalString(value.watchdogPolicyId) &&
     healthStatus(value.healthStatus as string) === value.healthStatus &&
     (value.source === "ad_hoc" || value.source === "schedule") &&
@@ -402,7 +424,8 @@ function isRecordingSummary(value: unknown): value is RecordingSummary {
       value.status === "completed" ||
       value.status === "failed" ||
       value.status === "cached" ||
-      value.status === "uploaded") &&
+      value.status === "uploaded" ||
+      value.status === "partial") &&
     stringArray(value.tags).length === value.tags.length
   );
 }

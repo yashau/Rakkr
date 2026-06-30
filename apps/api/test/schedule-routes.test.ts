@@ -711,7 +711,7 @@ test("schedule routes create update run-now and skip-next with audit events", as
     tags: ["voice", "route", "voice"],
     timezone: "UTC",
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}",
-    uploadPolicyId: "upload-policy-stub",
+    uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
   });
   const createdBody = (await created.json()) as { data: ScheduleSummary };
@@ -986,7 +986,7 @@ function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
     tags: ["council"],
     timezone: "UTC",
     titleTemplate: "{{date}} Council Meeting",
-    uploadPolicyId: "upload-policy-stub",
+    uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
     ...input,
   };

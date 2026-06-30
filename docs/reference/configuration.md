@@ -23,6 +23,7 @@ separately in the [recorder agent CLI reference](recorder-agent.md).
 | `DATABASE_URL`              | —                       | Postgres connection string. Unset → fallback stores.                      |
 | `RAKKR_WEB_ORIGIN`          | `http://localhost:5173` | Allowed CORS / web origin.                                                |
 | `RAKKR_RECORDING_CACHE_DIR` | `data/recordings`       | Root directory for cached recording files.                                |
+| `RAKKR_API_VERSION`         | `0.0.0-dev`             | Controller version reported by `/healthz` and status routes (stamped at image build).        |
 | `RAKKR_API_NO_LISTEN`       | —                       | `1` skips binding a port (used by tests).                                 |
 | `RAKKR_SEED_DEMO_DATA`      | enabled                 | Set `0` to disable demo data seeding.                                     |
 | `RAKKR_DEMO_METERS`         | disabled                | `1` lets meter endpoints emit synthetic frames when no agent frame is stored (demonstration / screenshots / tests only). Off by default — real usage never fabricates meters; an absent feed reads as empty. |
@@ -115,7 +116,8 @@ Used when `DATABASE_URL` is unset; resolved relative to the working directory.
 | `RAKKR_RETENTION_POLICY_STORE_PATH`            | `data/retention-policies.json`           |
 | `RAKKR_UPLOAD_POLICY_STORE_PATH`               | `data/upload-policies.json`              |
 | `RAKKR_UPLOAD_QUEUE_STORE_PATH`                | `data/upload-queue.json`                 |
-| `RAKKR_UPLOAD_PROVIDER_STORE_PATH`             | `data/upload-providers.json`             |
+| `RAKKR_UPLOAD_DESTINATION_STORE_PATH`          | `data/upload-destinations.json`          |
+| `RAKKR_CONTROLLER_SETTINGS_STORE_PATH`         | `data/controller-settings.json`          |
 
 ## Background runners & leases
 
@@ -156,24 +158,25 @@ Used when `DATABASE_URL` is unset; resolved relative to the working directory.
 | `RAKKR_AGENT_CAPTURE_SECONDS`                            | `3600`               | Default capture duration for jobs.         |
 | `RAKKR_AGENT_CAPTURE_INTERFACE_ID`                       | —                    | Default capture interface for job targets. |
 
-## Upload provider credentials
+## Upload destination credentials
 
-All upload-provider connection details are configured in **Settings → Upload
-Providers** and stored by the controller — there are no `RAKKR_`-prefixed S3
-variables and no `AWS_*` environment dependency.
+All upload-destination connection details are configured in **Settings → Upload
+Destinations** and stored by the controller — there are no `RAKKR_`-prefixed S3
+variables and no `AWS_*` environment dependency. Many named destinations of each
+kind may exist; an upload policy references one by id.
 
-- **S3** is configured per provider: a provider preset (AWS, Cloudflare R2,
+- **S3** is configured per destination: a provider preset (AWS, Cloudflare R2,
   Backblaze B2, Wasabi, MinIO, DigitalOcean Spaces, custom), region and/or custom
   endpoint, bucket, upload path/prefix, access key, secret key, and path-style.
   Uploads go directly to the configured endpoint.
-- **SMB** is configured per provider: server, share, domain, username, password,
+- **SMB** is configured per destination: server, share, domain, username, password,
   upload path, and port. The controller speaks SMB 2.1/3.x directly over the
   network — no OS mount is required.
 - SMB passwords and S3 secret access keys are encrypted at rest with AES-256-GCM.
 
 | Variable           | Default                | Purpose                                                                                                                            |
 | ------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `RAKKR_SECRET_KEY` | dev fallback (insecure) | Master key used to encrypt/decrypt upload-provider secrets at rest. **Set this in production**; if unset, an insecure development key is used and a warning is logged. Rotating it makes previously stored secrets undecryptable (re-enter them). |
+| `RAKKR_SECRET_KEY` | dev fallback (insecure) | Master key used to encrypt/decrypt upload-destination secrets at rest. **Set this in production**; if unset, an insecure development key is used and a warning is logged. Rotating it makes previously stored secrets undecryptable (re-enter them). |
 
 ## Test-only
 

@@ -35,7 +35,7 @@ The Drizzle client (`packages/db/src/client.ts`) opens a small `postgres.js` poo
 
 ## Tables
 
-The schema (`packages/db/src/schema.ts`) defines ~24 tables plus Postgres enums
+The schema (`packages/db/src/schema.ts`) defines 31 tables plus Postgres enums
 (`node_status`, `health_severity`, `recording_status`, `recording_job_status`,
 `recording_source`, `audit_outcome`, `access_policy_effect`,
 `access_policy_subject_type`). Timestamps are `timestamptz`; structured columns
@@ -57,18 +57,20 @@ are `jsonb`.
 
 | Table              | Purpose                                                                                                       |
 | ------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `nodes`            | Recorder nodes: alias, hostname, agent version, status, last-seen, plus jsonb location/network/metadata/tags. |
-| `node_credentials` | Node enrollment tokens (stored as hashes) with prefix, last-used, revocation.                                 |
-| `audio_interfaces` | Capture devices per node: backend, channel count, hardware path, serial, sample rates.                        |
-| `audio_channels`   | Channels within an interface, with aliases.                                                                   |
+| `nodes`                 | Recorder nodes: alias, hostname, agent version, status, last-seen, plus jsonb location/network/metadata/tags.            |
+| `node_credentials`      | Node enrollment tokens (stored as hashes) with prefix, last-used, revocation.                                            |
+| `node_ssh_credentials`  | Per-node SSH keypairs for lifecycle: private key encrypted at rest, public half readable; the controller is the system of record. |
+| `node_bootstrap_tokens` | Single-use, short-TTL day-0 bootstrap tokens (stored as hashes) consumed atomically at first contact.                    |
+| `audio_interfaces`      | Capture devices per node: backend, channel count, hardware path, serial, sample rates.                                   |
+| `audio_channels`        | Channels within an interface, with aliases.                                                                              |
 
 ### Recordings, jobs & schedules
 
 | Table            | Purpose                                                                                                                                       |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `recordings`     | Recording records: name, folder, source, status, health status, duration, cache path, checksum, node/schedule relations, jsonb metadata/tags. |
+| `recordings`     | Recording records: name, folder, source, status, health status, duration, checksum, node/schedule relations, jsonb metadata/tags, plus the cache paths — `cachePath` (default-playback file) and the optional `rawCachePath`/`enhancedCachePath` rendition masters. |
 | `recording_jobs` | Capture job lifecycle with the jsonb capture `command` and lease/heartbeat fields; indexed for lease-based claiming.                          |
-| `schedules`      | Recurrence (jsonb), timezone, templates, capture overrides, and references to profile/retention/upload/watchdog policies.                     |
+| `schedules`      | Recurrence (jsonb), timezone, templates, capture overrides, and references to profile/retention/watchdog policies plus a `uploadPolicyIds` list for multi-destination fan-out (the singular `uploadPolicyId` is a retained-for-backfill legacy column). |
 
 ### Health & audit
 
@@ -79,12 +81,16 @@ are `jsonb`.
 
 ### Settings & uploads
 
-| Table                                                       | Purpose                                                                    |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `recording_profiles`                                        | Codec/bitrate/channel-mode presets.                                        |
-| `watchdog_policies`                                         | Watchdog rule sets (jsonb `rules`).                                        |
-| `channel_map_templates`, `template_assignments`             | Channel-map templates and their assignment to node/interface targets.      |
-| `upload_providers`, `upload_policies`, `upload_queue_items` | Upload destinations, policies, and the retry queue (indexed by due state). |
+| Table                                           | Purpose                                                                                                  |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `recording_profiles`                            | Codec/bitrate/channel-mode presets, plus the jsonb `settings` (including the voice-enhancement chain).   |
+| `controller_settings`                           | Singleton row for controller-wide settings (e.g. display name).                                          |
+| `watchdog_policies`                             | Watchdog rule sets (jsonb `rules`).                                                                      |
+| `channel_map_templates`, `template_assignments` | Channel-map templates and their assignment to node/interface targets.                                    |
+| `upload_destinations`                           | Named SMB/S3 upload targets — many per kind; each owns connection config and encrypted secrets.          |
+| `upload_policies`                               | Policies selecting a destination + optional subfolder, trigger, retry budget, and delete-after-upload.   |
+| `upload_queue_items`                            | The retry queue — one item per policy per recording, indexed by due state.                               |
+| `upload_providers`                              | Legacy one-row-per-kind provider config, superseded by `upload_destinations`; retained for backfill.     |
 
 > **Not tables:** retention policies and node-lifecycle jobs are modeled in the
 > fallback/seed layer (with a JSON store for lifecycle jobs) and audited via
@@ -93,7 +99,7 @@ are `jsonb`.
 ## Migrations
 
 Migration SQL lives in `packages/db/drizzle/*.sql` with snapshots under
-`drizzle/meta/`; **migrations are committed alongside schema changes** (~26 to
+`drizzle/meta/`; **migrations are committed alongside schema changes** (~34 to
 date). The workflow:
 
 ```powershell
