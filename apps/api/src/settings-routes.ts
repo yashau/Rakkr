@@ -6,9 +6,11 @@ import {
   channelMapTemplateAssignmentRollbackInputSchema,
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
+  recordingProfileSchema,
   recordingProfileUpdateSchema,
   uploadProviderConfigUpdateSchema,
   uploadProviderSchema,
+  watchdogPolicySchema,
   watchdogPolicyUpdateSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
@@ -48,6 +50,16 @@ import {
   uploadProviderSettingsTarget,
   watchdogSettingsTarget,
 } from "./settings-scope.js";
+
+// Create bodies require only a name; the store fills the rest from the built-in template.
+const recordingProfileCreateSchema = recordingProfileSchema
+  .omit({ id: true })
+  .partial()
+  .required({ name: true });
+const watchdogPolicyCreateSchema = watchdogPolicySchema
+  .omit({ id: true })
+  .partial()
+  .required({ name: true });
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
@@ -116,6 +128,37 @@ export function registerSettingsRoutes({
     requirePermission,
   });
 
+  app.post(
+    "/api/v1/settings/recording-profiles",
+    requirePermission("settings:manage", "settings.recording_profiles.create", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = recordingProfileCreateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.recording_profiles.create.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid recording profile", issues: body.error.issues }, 400);
+      }
+
+      const created = await settingsStore.createRecordingProfile(body.data);
+
+      await recordAuditEvent(c, {
+        action: "settings.recording_profiles.create.succeeded",
+        after: profileSnapshot(created),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: profileSettingsTarget(created),
+      });
+      return c.json({ data: created }, 201);
+    },
+  );
+
   app.patch(
     "/api/v1/settings/recording-profiles/:profileId",
     requirePermission("settings:manage", "settings.recording_profiles.update", async (c) => {
@@ -173,6 +216,37 @@ export function registerSettingsRoutes({
       });
 
       return c.json({ data: updated });
+    },
+  );
+
+  app.post(
+    "/api/v1/settings/watchdog-policies",
+    requirePermission("settings:manage", "settings.watchdog_policies.create", () => ({
+      type: "settings",
+    })),
+    async (c) => {
+      const body = watchdogPolicyCreateSchema.safeParse(await c.req.json().catch(() => ({})));
+
+      if (!body.success) {
+        await recordSettingsFailure(
+          c,
+          "settings.watchdog_policies.create.failed",
+          "invalid_request",
+        );
+        return c.json({ error: "Invalid watchdog policy", issues: body.error.issues }, 400);
+      }
+
+      const created = await settingsStore.createWatchdogPolicy(body.data);
+
+      await recordAuditEvent(c, {
+        action: "settings.watchdog_policies.create.succeeded",
+        after: watchdogSnapshot(created),
+        auth: currentAuth(c),
+        outcome: "succeeded",
+        permission: "settings:manage",
+        target: watchdogSettingsTarget(created),
+      });
+      return c.json({ data: created }, 201);
     },
   );
 

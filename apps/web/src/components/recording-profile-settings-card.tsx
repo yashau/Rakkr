@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   defaultRecordingEnhancement,
+  defaultVoiceRecordingProfile,
   type RecordingEnhancement,
   type RecordingProfile,
 } from "@rakkr/shared";
@@ -317,6 +318,15 @@ export function RecordingProfileSettingsCard({
       </div>
     </div>
   );
+}
+
+// Starting point for a newly created profile: the built-in voice template with
+// a placeholder name. The server assigns the id; the operator then refines the
+// rest in this editor.
+export function defaultRecordingProfileInput(): Omit<RecordingProfile, "id"> {
+  const { id: _unusedId, ...rest } = defaultVoiceRecordingProfile;
+
+  return { ...rest, name: "New Recording Profile" };
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {

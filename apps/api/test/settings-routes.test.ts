@@ -116,12 +116,18 @@ test("settings write routes deny users without settings manage", async () => {
       targetId: "node_blocked",
       targetType: "node",
     }),
+    requestJson(app, "/api/v1/settings/recording-profiles", "POST", {
+      name: "Blocked Recording Profile",
+    }),
+    requestJson(app, "/api/v1/settings/watchdog-policies", "POST", {
+      name: "Blocked Watchdog Policy",
+    }),
   ]);
   const deniedEvents = await auditStore.list({ outcome: "denied", permission: "settings:manage" });
 
   assert.deepEqual(
     responses.map((response) => response.status),
-    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
+    [403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403, 403],
   );
   assert.deepEqual(deniedEvents.map((event) => event.action).sort(), [
     "settings.channel_map_assignment_plans.apply",
@@ -131,10 +137,12 @@ test("settings write routes deny users without settings manage", async () => {
     "settings.channel_map_assignments.update",
     "settings.channel_map_templates.create",
     "settings.channel_map_templates.update",
+    "settings.recording_profiles.create",
     "settings.recording_profiles.update",
     "settings.upload_policies.create",
     "settings.upload_policies.update",
     "settings.upload_providers.update",
+    "settings.watchdog_policies.create",
     "settings.watchdog_policies.update",
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
@@ -718,6 +726,12 @@ test("settings manage routes update operational templates and audit snapshots", 
       targetType: "node",
     },
   );
+  await requestJson(app, "/api/v1/settings/recording-profiles", "POST", {
+    name: "Created Recording Profile",
+  });
+  await requestJson(app, "/api/v1/settings/watchdog-policies", "POST", {
+    name: "Created Watchdog Policy",
+  });
   const audits = await auditStore.list({ outcome: "succeeded", permission: "settings:manage" });
 
   assert.equal(profileResponse.status, 200);
@@ -786,10 +800,12 @@ test("settings manage routes update operational templates and audit snapshots", 
     "settings.channel_map_templates.create.succeeded",
     "settings.channel_map_templates.create.succeeded",
     "settings.channel_map_templates.update.succeeded",
+    "settings.recording_profiles.create.succeeded",
     "settings.recording_profiles.update.succeeded",
     "settings.upload_policies.create.succeeded",
     "settings.upload_policies.update.succeeded",
     "settings.upload_providers.update.succeeded",
+    "settings.watchdog_policies.create.succeeded",
     "settings.watchdog_policies.update.succeeded",
   ]);
 

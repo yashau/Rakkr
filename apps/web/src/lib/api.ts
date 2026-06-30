@@ -58,6 +58,7 @@ export type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 const authTokenKey = "rakkr.authToken";
+const jsonHeaders = { "Content-Type": "application/json" };
 
 export interface AuditEventFilters {
   action?: string;
@@ -691,12 +692,16 @@ export const api = {
         method: "POST",
       },
     ),
+  createRecordingProfile: (input: Omit<RecordingProfile, "id">) =>
+    fetchJson<{ data: RecordingProfile }>("/api/v1/settings/recording-profiles", {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "POST",
+    }),
   updateRecordingProfile: (profileId: string, input: RecordingProfileUpdate) =>
     fetchJson<{ data: RecordingProfile }>(`/api/v1/settings/recording-profiles/${profileId}`, {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "PATCH",
     }),
   updateUploadProvider: (provider: UploadProvider, input: UploadProviderConfigUpdate) =>
@@ -729,25 +734,25 @@ export const api = {
   createRetentionPolicy: (input: RetentionPolicyInput) =>
     fetchJson<{ data: RetentionPolicy }>("/api/v1/settings/retention-policies", {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "POST",
     }),
   updateRetentionPolicy: (policyId: string, input: RetentionPolicyUpdate) =>
     fetchJson<{ data: RetentionPolicy }>(`/api/v1/settings/retention-policies/${policyId}`, {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "PATCH",
+    }),
+  createWatchdogPolicy: (input: Omit<WatchdogPolicy, "id">) =>
+    fetchJson<{ data: WatchdogPolicy }>("/api/v1/settings/watchdog-policies", {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "POST",
     }),
   updateWatchdogPolicy: (policyId: string, input: WatchdogPolicyUpdate) =>
     fetchJson<{ data: WatchdogPolicy }>(`/api/v1/settings/watchdog-policies/${policyId}`, {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "PATCH",
     }),
   calibrateWatchdogPolicy: (policyId: string, input: WatchdogCalibrationInput) =>

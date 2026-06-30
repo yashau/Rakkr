@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { PlusCircle, Save, Sparkles, Trash2 } from "lucide-react";
 import { type AudioInterface, type RecorderNode, type ScheduleDayOfWeek } from "@rakkr/shared";
 
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { api } from "@/lib/api";
 import {
   addPauseRangeToDraft,
   applyNaturalLanguageSchedule,
@@ -58,6 +60,24 @@ export function ScheduleFormDialog({
   const [quickRecurrence, setQuickRecurrence] = useState("");
   const [quickRecurrenceError, setQuickRecurrenceError] = useState(false);
   const selectedNode = nodes.find((node) => node.id === draft.nodeId);
+  const recordingProfilesQuery = useQuery({
+    enabled: open,
+    queryFn: api.recordingProfiles,
+    queryKey: ["recording-profiles"],
+  });
+  const watchdogPoliciesQuery = useQuery({
+    enabled: open,
+    queryFn: api.watchdogPolicies,
+    queryKey: ["watchdog-policies"],
+  });
+  const recordingProfileOptions = withSelectedOption(
+    recordingProfilesQuery.data?.data ?? [],
+    draft.recordingProfileId,
+  );
+  const watchdogPolicyOptions = withSelectedOption(
+    watchdogPoliciesQuery.data?.data ?? [],
+    draft.watchdogPolicyId,
+  );
 
   // Reset the quick-recurrence helper whenever the dialog opens or closes so a
   // stale phrase never carries between schedules.
@@ -409,12 +429,21 @@ export function ScheduleFormDialog({
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="schedule-profile">Recording Profile</Label>
-              <Input
-                id="schedule-profile"
-                onChange={(event) => updateDraft("recordingProfileId", event.target.value)}
-                required
+              <Select
+                onValueChange={(value) => updateDraft("recordingProfileId", value)}
                 value={draft.recordingProfileId}
-              />
+              >
+                <SelectTrigger className={selectClass} id="schedule-profile">
+                  <SelectValue placeholder="Select a recording profile" />
+                </SelectTrigger>
+                <SelectContent>
+                  {recordingProfileOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-capture-backend">Backend</Label>
@@ -462,12 +491,21 @@ export function ScheduleFormDialog({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
-              <Input
-                id="schedule-watchdog"
-                onChange={(event) => updateDraft("watchdogPolicyId", event.target.value)}
-                required
+              <Select
+                onValueChange={(value) => updateDraft("watchdogPolicyId", value)}
                 value={draft.watchdogPolicyId}
-              />
+              >
+                <SelectTrigger className={selectClass} id="schedule-watchdog">
+                  <SelectValue placeholder="Select a watchdog policy" />
+                </SelectTrigger>
+                <SelectContent>
+                  {watchdogPolicyOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-upload-policy">Upload Policy</Label>
@@ -514,4 +552,20 @@ export function ScheduleFormDialog({
 
 function audioInterfaceLabel(audioInterface: AudioInterface) {
   return `${audioInterface.alias} / ${audioInterface.systemName} / ${audioInterface.backend}`;
+}
+
+// Render the fetched profiles/policies as dropdown options, but keep the
+// schedule's current selection visible even if it is missing from the list
+// (e.g. a renamed template, or settings:read is unavailable to this operator).
+function withSelectedOption<Item extends { id: string; name: string }>(
+  items: Item[],
+  selectedId: string,
+) {
+  const options = items.map((item) => ({ id: item.id, name: item.name }));
+
+  if (selectedId && !options.some((option) => option.id === selectedId)) {
+    return [{ id: selectedId, name: selectedId }, ...options];
+  }
+
+  return options;
 }

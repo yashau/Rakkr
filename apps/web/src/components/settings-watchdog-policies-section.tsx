@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { RecorderNode, WatchdogPolicy } from "@rakkr/shared";
-import { Pencil } from "lucide-react";
+import { Pencil, PlusCircle } from "lucide-react";
+import { toast } from "sonner";
 
-import { WatchdogPolicyCard } from "@/components/watchdog-policy-card";
+import { HintButton } from "@/components/hint-button";
+import { WatchdogPolicyCard, defaultWatchdogPolicyInput } from "@/components/watchdog-policy-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -30,11 +32,24 @@ export function SettingsWatchdogPoliciesSection({
   canReadNodes: boolean;
   nodes: RecorderNode[];
 }) {
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState<WatchdogPolicy>();
   const policiesQuery = useQuery({
     enabled: canRead,
     queryFn: api.watchdogPolicies,
     queryKey: ["watchdog-policies"],
+  });
+  const createMutation = useMutation({
+    mutationFn: () => api.createWatchdogPolicy(defaultWatchdogPolicyInput()),
+    onError: () =>
+      toast.error("Create failed", {
+        description: "The watchdog policy could not be created.",
+      }),
+    onSuccess: ({ data }) => {
+      toast.success("Watchdog policy created");
+      void queryClient.invalidateQueries({ queryKey: ["watchdog-policies"] });
+      setEditing(data);
+    },
   });
   const policies = policiesQuery.data?.data ?? [];
   const columns = watchdogPolicyColumns({ canManage, onEdit: setEditing });
@@ -46,9 +61,20 @@ export function SettingsWatchdogPoliciesSection({
           <h2 className="text-lg font-semibold">Watchdog Policies</h2>
           <p className="text-sm text-muted-foreground">Scheduled signal health thresholds.</p>
         </div>
-        <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
-          {policies.length} policies
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={cn(toneBadgeClass("neutral"), "w-fit")} variant="outline">
+            {policies.length} policies
+          </Badge>
+          <HintButton
+            disabled={createMutation.isPending || !canManage}
+            hint={canManage ? "Create watchdog policy" : "Requires settings manage"}
+            onClick={() => createMutation.mutate()}
+            variant="outline"
+          >
+            <PlusCircle className="size-4" />
+            New
+          </HintButton>
+        </div>
       </section>
 
       <section className="rounded-lg border border-border bg-panel p-2 shadow-sm">

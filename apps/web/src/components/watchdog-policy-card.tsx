@@ -1,6 +1,10 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { RecorderNode, WatchdogPolicy } from "@rakkr/shared";
+import {
+  defaultScheduledVoiceWatchdogPolicy,
+  type RecorderNode,
+  type WatchdogPolicy,
+} from "@rakkr/shared";
 import { Gauge, Save } from "lucide-react";
 import { toast } from "sonner";
 
@@ -493,4 +497,13 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
       {children}
     </label>
   );
+}
+
+// Starting point for a newly created policy: the built-in scheduled-voice
+// watchdog with a placeholder name. The server assigns the id; the operator then
+// tunes thresholds in this editor.
+export function defaultWatchdogPolicyInput(): Omit<WatchdogPolicy, "id"> {
+  const { id: _unusedId, ...rest } = defaultScheduledVoiceWatchdogPolicy;
+
+  return { ...rest, name: "New Watchdog Policy" };
 }
