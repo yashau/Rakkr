@@ -36,8 +36,9 @@ the unit you browse in the recording library.
 **Recording job** — the unit of _work_ that produces a recording. It carries the
 capture command (backend, device, format, rate, channels, codec) and a lifecycle:
 queued → claimed (leased by a node) → running (heartbeating) → completed /
-failed / cancelled. Jobs are how the controller and agent coordinate; one
-scheduled window may produce several jobs when split into tracks.
+failed / cancelled. Jobs are how the controller and agent coordinate; when the
+profile sets a chunk length, one job's capture is segmented into chunks that
+upload as they record.
 
 **Ad-hoc recording** — a recording started on demand from the console against a
 chosen node, profile, and (optionally) capture backend/interface.

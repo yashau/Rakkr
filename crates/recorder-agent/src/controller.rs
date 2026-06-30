@@ -1,12 +1,15 @@
+mod cache_upload;
 mod capture_group;
 mod types;
 use crate::cache_content_type::content_type_for_codec;
 use crate::capture::CaptureChild;
 use crate::channel_map::{capture_plan_for_job, channel_map_details, render_capture_output};
+use crate::chunked_capture;
 use crate::config::AgentConfig;
-use crate::controller_http::{controller_http_client, controller_http_client_with_ca};
+use crate::controller_http::controller_http_client;
 use crate::health_log::{self, AgentHealthEvent};
 use crate::inventory::NodeInventory;
+use crate::recording_job_chunked;
 use crate::recording_job_disk::{
     RuntimeCaptureDiskRecoveryEvidence, capture_disk_space_shortfall, ensure_capture_disk_space,
     recover_runtime_capture_disk_space, report_capture_disk_space_shortfall,
@@ -25,10 +28,11 @@ use crate::recording_job_upload::{
 use crate::state::write_job_state;
 use crate::telemetry::MeterFrame;
 use anyhow::Context;
+pub use cache_upload::upload_cache_file;
 use capture_group::{
     claim_next_recording_group, finalize_secondary_members, session_capture_channels,
 };
-use reqwest::header::{CONTENT_TYPE, DATE, HeaderName, HeaderValue};
+use reqwest::header::DATE;
 use serde_json::json;
 use std::fs;
 use std::time::Duration;
@@ -108,6 +112,8 @@ pub async fn attach_cache_file(config: &AgentConfig) -> anyhow::Result<()> {
         job_id: None,
         recording_id,
         rendition: None,
+        chunk_index: None,
+        chunk_total: None,
         token,
     })
     .await
@@ -230,7 +236,18 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         .await?;
     }
 
-    if let Err(error) = ensure_capture_disk_space(config, token, &job, &capture_plan).await {
+    // Chunked recordings: one gapless capture emits fixed-length chunk files that
+    // are each rendered + uploaded as they close. Only the lone-job path supports
+    // chunking; capture-once-split-many groups stay on the single-file flow. Decide
+    // before the disk preflight so chunked jobs are sized per-chunk, not full-duration.
+    let chunk_seconds = job.command.chunk_seconds.or(config.capture_chunk_seconds);
+    let chunked_plan = secondaries
+        .is_empty()
+        .then(|| chunked_capture::chunk_plan_for(&capture_plan, chunk_seconds))
+        .flatten();
+    let disk_plan = recording_job_chunked::chunked_disk_plan(&capture_plan, chunked_plan.as_ref());
+
+    if let Err(error) = ensure_capture_disk_space(config, token, &job, &disk_plan).await {
         write_job_state(config, &job, "failed", None, Some(&error.to_string()))?;
 
         return Err(error);
@@ -244,6 +261,27 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         None,
         &[],
     )?;
+
+    if let Some(chunk_plan) = chunked_plan {
+        return recording_job_chunked::run_chunked_recording_job(
+            config,
+            token,
+            &job,
+            &capture_plan,
+            &chunk_plan,
+        )
+        .await;
+    }
+
+    recording_job_chunked::report_chunked_fallback(
+        config,
+        token,
+        &job,
+        &capture_plan,
+        chunk_seconds,
+        !secondaries.is_empty(),
+    )
+    .await?;
 
     let mut capture =
         match spawn_capture_plan_with_recovery(config, token, &job, &capture_plan).await {
@@ -608,6 +646,8 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         job: &job,
         output_path: &output_path,
         raw_output_path: &raw_output_path,
+        chunk_index: None,
+        chunk_total: None,
         token,
     })
     .await;
@@ -694,74 +734,6 @@ async fn handle_terminal_controller_job(
     Ok(false)
 }
 
-pub async fn upload_cache_file(input: CacheFileUpload<'_>) -> anyhow::Result<()> {
-    crate::config::validate_controller_transport(
-        input.controller_url,
-        input.allow_insecure_controller,
-    )?;
-    let bytes = fs::read(input.file_path)
-        .with_context(|| format!("read recording cache file {}", input.file_path.display()))?;
-
-    if bytes.is_empty() {
-        anyhow::bail!(
-            "recording cache file is empty: {}",
-            input.file_path.display()
-        );
-    }
-
-    let mut url = recording_cache_url(input.controller_url, input.recording_id);
-    if let Some(rendition) = input.rendition {
-        url.push_str("?rendition=");
-        url.push_str(rendition);
-    }
-    let mut request = controller_http_client_with_ca(input.controller_ca_cert_path)?
-        .put(&url)
-        .bearer_auth(input.token)
-        .header(CONTENT_TYPE, input.content_type)
-        .body(bytes);
-
-    if let Some(duration_seconds) = input.duration_seconds {
-        request = request.header(
-            HeaderName::from_static(DURATION_HEADER),
-            HeaderValue::from_str(&duration_seconds.to_string()).context("duration header")?,
-        );
-    }
-
-    if let Some(file_name) = input.file_name {
-        request = request.header(
-            HeaderName::from_static(FILE_NAME_HEADER),
-            HeaderValue::from_str(&file_name).context("file name header")?,
-        );
-    }
-
-    if let Some(job_id) = input.job_id {
-        request = request.header(
-            HeaderName::from_static(JOB_ID_HEADER),
-            HeaderValue::from_str(job_id).context("job id header")?,
-        );
-    }
-
-    let response = request
-        .send()
-        .await
-        .context("send cache file to controller")?;
-    let status = response.status();
-
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-
-        anyhow::bail!("controller rejected cache file with {status}: {body}");
-    }
-
-    info!(
-        recording_id = input.recording_id,
-        url = url,
-        "attached recording cache file to controller"
-    );
-
-    Ok(())
-}
-
 // Shared POST to a node-scoped controller endpoint. Validates transport, posts
 // the JSON body, and bails on a non-success status (the `label` keeps the
 // failure messages that health evidence + smokes assert on). Returns the
@@ -838,7 +810,7 @@ pub async fn sync_health_event(
     Ok(())
 }
 
-async fn heartbeat_recording_job(
+pub(crate) async fn heartbeat_recording_job(
     config: &AgentConfig,
     token: &str,
     job_id: &str,
@@ -871,7 +843,7 @@ async fn heartbeat_recording_job(
     Ok(envelope.data)
 }
 
-async fn fetch_recording_job(
+pub(crate) async fn fetch_recording_job(
     config: &AgentConfig,
     token: &str,
     job_id: &str,
@@ -902,7 +874,7 @@ async fn fetch_recording_job(
     Ok(envelope.data)
 }
 
-async fn mark_recording_job_cancelled(
+pub(crate) async fn mark_recording_job_cancelled(
     config: &AgentConfig,
     token: &str,
     job_id: &str,
@@ -948,14 +920,6 @@ async fn mark_recording_job_terminal(
     }
 
     Ok(())
-}
-
-fn recording_cache_url(controller_url: &str, recording_id: &str) -> String {
-    format!(
-        "{}/api/v1/recordings/{}/cache-file",
-        controller_url.trim_end_matches('/'),
-        recording_id
-    )
 }
 
 fn controller_clock_skew_seconds(date_header: &str) -> Option<i64> {

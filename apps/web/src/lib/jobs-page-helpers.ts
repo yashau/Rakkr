@@ -248,6 +248,10 @@ export function recordingJobCaptureDetails(job: RecordingJob) {
     details.push({ label: "interface", value: job.command.captureInterfaceId });
   }
 
+  if (job.command.chunkSeconds) {
+    details.push({ label: "chunk", value: `${job.command.chunkSeconds}s` });
+  }
+
   if (job.command.channelMap) {
     const includedChannels = job.command.channelMap.entries
       .filter((entry) => entry.included)

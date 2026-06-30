@@ -65,7 +65,7 @@ This document is the **short** source of truth: product intent, non-negotiables,
 | Test rig | 🟨 | Debian rig + X32 X-USB stable-name ALSA capture; loopback + X32/PCH hardware job and meter/health smokes pass with fake-controller sync; long real-room validation remains |
 | Generic devices | 🟨 | Checked generic-device baseline: pinned ALSA probes, controller-managed defaults, ad-hoc/schedule backend+interface selection, PipeWire/JACK presets, loopback + generic/X32/PCH hardware jobs; broader physical-device coverage remains |
 | Settings/templates | ✅ | Profiles (incl. enhancement chain), watchdog policies, channel maps + staged rollout, retention, multi-policy assignment; checked baseline |
-| Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, track splitting, backend/interface/channel selection with channel-conflict defer; checked baseline |
+| Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, chunked recording, backend/interface/channel selection with channel-conflict defer; checked baseline |
 | Recording library | ✅ | Metadata, organization, playback (raw/enhanced), download, manifest, waveform, cache/upload status; checked baseline |
 | Health watchdog | 🟨 | Agent per-frame + controller sustained quality events (low-signal, clipping, flatline, correlation, speech/noise/SNR/intelligibility/hum/static/broadband), system/job/cache/connectivity evidence, central workbench, metrics, timelines; long real-room validation remains |
 | Audio enhancement | ✅ | In-process DeepFilterNet3/RNNoise, per-profile voice chain, dual raw+enhanced renditions, raw always preserved, raw/enhanced playback + on-demand live listen; documented in the audio-enhancement guide (no dedicated verifier script yet) |
@@ -136,7 +136,7 @@ Each area is summarized here; the linked baseline holds the checked detail.
 
 ### Recorder requirements
 
-Multiple nodes, multiple interfaces per node, and multiple simultaneous recordings per node. Configurable mono / stereo / grouped-channel / mono-to-stereo-mix output, realtime meters even while idle, central controls, ad-hoc and scheduled jobs, auto file-splitting by length, a local node cache, and a recording library (playback, download, metadata, tags, folders, search). Silence detection/skip is optional and disabled by default.
+Multiple nodes, multiple interfaces per node, and multiple simultaneous recordings per node. Configurable mono / stereo / grouped-channel / mono-to-stereo-mix output, realtime meters even while idle, central controls, ad-hoc and scheduled jobs, configurable time-based chunking (chunks transferred and uploaded as they record), a local node cache, and a recording library (playback, download, metadata, tags, folders, search). Silence detection/skip is optional and disabled by default.
 
 ### Settings and templates — `SETTINGS_TEMPLATES_BASELINE`
 
@@ -148,7 +148,7 @@ RBAC-gated node/interface/channel identity edits with audit history. Node-authen
 
 ### Scheduler — `SCHEDULER_BASELINE`
 
-Human-friendly recurrence (`manual` / `once` / `daily` / `weekly` / `monthly` / `always_on`) with explicit per-schedule timezone, start-early/stop-late buffers, and exceptions (`skip` a date or `pause` a range) — no cron language. The runner creates jobs under `system:scheduler`, audits outcomes, and splits long windows into ordered track jobs when profile limits require. Schedules own the metadata of the recordings they create (name, folder, tags, profile, targets, watchdog, retention, and a **list** of upload policies). Schedules can also pin a per-channel selection + output mode on their interface; a due run whose channels are already in use is deferred with a `schedule.capture_channels_busy` health alert instead of failing, leaving the in-progress recording untouched.
+Human-friendly recurrence (`manual` / `once` / `daily` / `weekly` / `monthly` / `always_on`) with explicit per-schedule timezone, start-early/stop-late buffers, and exceptions (`skip` a date or `pause` a range) — no cron language. The runner creates one recording + one job per occurrence under `system:scheduler` and audits outcomes; when the recording profile sets a chunk length, the continuous capture is segmented into chunks that transfer and upload to storage as they record. Schedules own the metadata of the recordings they create (name, folder, tags, profile, targets, watchdog, retention, and a **list** of upload policies). Schedules can also pin a per-channel selection + output mode on their interface; a due run whose channels are already in use is deferred with a `schedule.capture_channels_busy` health alert instead of failing, leaving the in-progress recording untouched.
 
 ### Health watchdog — `HEALTH_WATCHDOG_BASELINE`
 

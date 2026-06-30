@@ -103,19 +103,19 @@ export function RecordingProfileSettingsCard({
             value={draft.bitrateKbps}
           />
         </Field>
-        <Field label="Max Track Seconds">
+        <Field label="Chunk Length (seconds)">
           <Input
             disabled={!canManage}
             min={1}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
-                maxTrackSeconds: optionalPositiveNumber(event.target.value),
+                chunkSeconds: optionalPositiveNumber(event.target.value),
               }))
             }
-            placeholder="Disabled"
+            placeholder="Single file"
             type="number"
-            value={draft.maxTrackSeconds ?? ""}
+            value={draft.chunkSeconds ?? draft.maxTrackSeconds ?? ""}
           />
         </Field>
         <Field label="Channel Mode">

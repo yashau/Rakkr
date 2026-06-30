@@ -1,14 +1,17 @@
 import { z } from "zod";
 
+import { isoDateTimeSchema, uploadProviderSchema, uploadQueueStatusSchema } from "./base.js";
 import { captureChannelSelectionSchema, channelModeSchema } from "./channels.js";
 import { recordingEnhancementSchema } from "./enhancement.js";
+import { recordingChunkSchema } from "./recording-chunks.js";
+export * from "./base.js";
 export * from "./channels.js";
 export * from "./enhancement.js";
 export * from "./oidc.js";
 export * from "./pagination.js";
+export * from "./recording-chunks.js";
 export * from "./upload-providers.js";
 
-export const isoDateTimeSchema = z.string().min(1);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const dbfsSchema = z.number().min(-160).max(24);
 const audioCaptureBackendSchema = z.enum(["alsa", "jack", "pipewire"]);
@@ -28,14 +31,6 @@ export const recordingStatusSchema = z.enum([
   "cached",
   "uploaded",
   "partial",
-]);
-export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
-export const uploadQueueStatusSchema = z.enum([
-  "queued",
-  "retrying",
-  "failed",
-  "succeeded",
-  "cancelled",
 ]);
 export const recordingJobStatusSchema = z.enum([
   "queued",
@@ -283,9 +278,15 @@ export const meterFrameSchema = z.object({
 export const recordingProfileSchema = z.object({
   bitrateKbps: z.number().int().positive(),
   channelMode: channelModeSchema,
+  // Length of each recording chunk in seconds. When set, the recording is
+  // captured continuously and emitted as sequential chunk files that transfer
+  // and upload as they close. Supersedes the deprecated `maxTrackSeconds`; read
+  // both through `effectiveChunkSeconds`.
+  chunkSeconds: z.number().int().positive().max(604_800).optional(),
   codec: z.enum(["mp3", "flac", "wav"]),
   enhancement: recordingEnhancementSchema.optional(),
   id: z.string().min(1),
+  /** @deprecated superseded by `chunkSeconds`; retained one release for backfill. */
   maxTrackSeconds: z.number().int().positive().max(604_800).optional(),
   name: z.string().min(1),
   silenceDetectionEnabled: z.boolean(),
@@ -296,6 +297,7 @@ export const recordingProfileUpdateSchema = z
   .object({
     bitrateKbps: z.number().int().positive().max(512).optional(),
     channelMode: channelModeSchema.optional(),
+    chunkSeconds: z.number().int().positive().max(604_800).nullable().optional(),
     codec: z.enum(["mp3", "flac", "wav"]).optional(),
     enhancement: recordingEnhancementSchema.optional(),
     maxTrackSeconds: z.number().int().positive().max(604_800).nullable().optional(),
@@ -305,6 +307,13 @@ export const recordingProfileUpdateSchema = z
     vbr: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one profile field is required");
+// Resolve the active chunk length for a profile, preferring the new
+// `chunkSeconds` knob and falling back to the deprecated `maxTrackSeconds`.
+// Returns undefined when neither is set (recording stays a single file).
+export function effectiveChunkSeconds(profile: RecordingProfile | undefined): number | undefined {
+  const value = profile?.chunkSeconds ?? profile?.maxTrackSeconds ?? undefined;
+  return typeof value === "number" && value > 0 ? value : undefined;
+}
 export const controllerSettingsSchema = z.object({
   controllerName: z.string().trim().min(1).max(160),
 });
@@ -600,6 +609,9 @@ export const recordingSummarySchema = z.object({
   cached: z.boolean(),
   cachePath: z.string().min(1).optional(),
   checksum: z.string().min(1).optional(),
+  chunks: z.array(recordingChunkSchema).optional(),
+  chunkSeconds: z.number().int().positive().optional(),
+  chunkTotal: z.number().int().positive().optional(),
   durationSeconds: z.number().int().nonnegative(),
   enhancedCachePath: z.string().min(1).optional(),
   rawCachePath: z.string().min(1).optional(),
@@ -660,6 +672,7 @@ export const recordingJobSchema = z.object({
     captureInterfaceId: z.string().min(1).optional(),
     captureSampleRate: z.number().int().positive(),
     channelMap: recordingJobChannelMapSchema.optional(),
+    chunkSeconds: z.number().int().positive().optional(),
     durationSeconds: z.number().int().positive(),
     enhancement: recordingEnhancementSchema.optional(),
     outputBitrateKbps: z.number().int().positive().optional(),
@@ -680,6 +693,8 @@ export const recordingJobSchema = z.object({
     trackTotal: z.number().int().positive().optional(),
     type: z.literal("alsa_capture"),
   }),
+  chunks: z.array(recordingChunkSchema).optional(),
+  chunkTotal: z.number().int().positive().optional(),
   completedAt: isoDateTimeSchema.optional(),
   createdAt: isoDateTimeSchema,
   failureReason: z.string().optional(),
@@ -696,6 +711,10 @@ export const uploadQueueItemSchema = z.object({
   attemptCount: z.number().int().nonnegative(),
   cachePath: z.string().min(1).optional(),
   checksum: z.string().min(1).optional(),
+  // Set when this item uploads one recording chunk as its own object. NULL =
+  // legacy whole-recording item.
+  chunkId: z.string().min(1).optional(),
+  chunkIndex: z.number().int().positive().optional(),
   createdAt: isoDateTimeSchema,
   destinationId: z.string().min(1).optional(),
   fileName: z.string().min(1).optional(),

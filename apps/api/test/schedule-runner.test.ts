@@ -38,7 +38,7 @@ test.after(async () => {
   await rm(runnerRoot, { force: true, recursive: true });
 });
 
-test("due schedule creates ordered track jobs when profile has max track length", async () => {
+test("due schedule creates one chunked recording when the profile sets a chunk length", async () => {
   const recordingStore = memoryRecordingStore();
   const scheduleStore = memoryScheduleStore([schedule({ captureInterfaceId: "iface_jack_split" })]);
   const result = await runDueSchedules(
@@ -54,8 +54,11 @@ test("due schedule creates ordered track jobs when profile has max track length"
   const recordings = await recordingStore.list();
   const jobs = await listRecordingJobs();
 
-  assert.equal(result[0]?.segmentCount, 3);
-  assert.equal(recordings.length, 3);
+  // Long windows are no longer pre-split into separate per-track recordings: one
+  // occurrence is one recording + one job, and chunkSeconds (from the profile)
+  // segments the continuous capture on the agent.
+  assert.equal(result[0]?.segmentCount, 1);
+  assert.equal(recordings.length, 1);
   assert.deepEqual(
     recordings.map((recording) => ({
       durationSeconds: recording.durationSeconds,
@@ -66,68 +69,32 @@ test("due schedule creates ordered track jobs when profile has max track length"
     [
       {
         durationSeconds: 0,
-        name: "2026-06-18_1030_Council Meeting - Track 3 of 3",
-        trackIndex: 3,
-        trackTotal: 3,
-      },
-      {
-        durationSeconds: 0,
-        name: "2026-06-18_0945_Council Meeting - Track 2 of 3",
-        trackIndex: 2,
-        trackTotal: 3,
-      },
-      {
-        durationSeconds: 0,
-        name: "2026-06-18_0900_Council Meeting - Track 1 of 3",
-        trackIndex: 1,
-        trackTotal: 3,
+        name: "2026-06-18_0900_Council Meeting",
+        trackIndex: undefined,
+        trackTotal: undefined,
       },
     ],
   );
   assert.deepEqual(
-    jobs
-      .map((job) => job.command)
-      .sort((left, right) => (left.trackIndex ?? 0) - (right.trackIndex ?? 0))
-      .map((command) => ({
-        captureBackend: command.captureBackend,
-        captureDevice: command.captureDevice,
-        captureInterfaceId: command.captureInterfaceId,
-        durationSeconds: command.durationSeconds,
-        outputCodec: command.outputCodec,
-        trackIndex: command.trackIndex,
-        trackTotal: command.trackTotal,
-      })),
+    jobs.map((job) => ({
+      captureBackend: job.command.captureBackend,
+      captureDevice: job.command.captureDevice,
+      captureInterfaceId: job.command.captureInterfaceId,
+      chunkSeconds: job.command.chunkSeconds,
+      durationSeconds: job.command.durationSeconds,
+      outputCodec: job.command.outputCodec,
+    })),
     [
       {
         captureBackend: "jack",
         captureDevice: "jack:council",
         captureInterfaceId: "iface_jack_split",
-        durationSeconds: 2_700,
+        chunkSeconds: 2_700,
+        durationSeconds: 7_200,
         outputCodec: "mp3",
-        trackIndex: 1,
-        trackTotal: 3,
-      },
-      {
-        captureBackend: "jack",
-        captureDevice: "jack:council",
-        captureInterfaceId: "iface_jack_split",
-        durationSeconds: 2_700,
-        outputCodec: "mp3",
-        trackIndex: 2,
-        trackTotal: 3,
-      },
-      {
-        captureBackend: "jack",
-        captureDevice: "jack:council",
-        captureInterfaceId: "iface_jack_split",
-        durationSeconds: 1_800,
-        outputCodec: "mp3",
-        trackIndex: 3,
-        trackTotal: 3,
       },
     ],
   );
-  assert.equal(new Set(recordings.map((recording) => recording.trackGroupId)).size, 1);
 });
 
 test("scheduled recording completes through agent cache attach and exposes schedule-owned media", async () => {

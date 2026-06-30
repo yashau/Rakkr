@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import type { RecordingSummary, UploadPolicy, UploadQueueItem } from "@rakkr/shared";
+import type { RecordingSummary } from "@rakkr/shared";
 
 import {
   durationFromHeader,
@@ -34,14 +34,17 @@ import {
   recordingJob,
 } from "./recording-jobs.js";
 import { agentCacheFileJobScope, agentJobRecordingScope } from "./agent-job-recording-scope.js";
+import {
+  createAgentCacheUploads,
+  parseChunkIndex,
+  parseChunkTotal,
+} from "./agent-cache-uploads.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
 import { applyStoredRendition, storeRecordingFile } from "./recording-cache.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
-import { uploadPoliciesForCachedRecording, uploadQueueInputForPolicy } from "./upload-policies.js";
-import { enqueueRecordingUpload } from "./upload-queue.js";
 
 interface AgentRouteDependencies {
   app: Hono<AppBindings>;
@@ -76,6 +79,17 @@ export function registerAgentRoutes({
   settingsStore,
   uploadDestinationStore,
 }: AgentRouteDependencies) {
+  // Cache-file upload fan-out (whole-recording + chunked) lives in its own module
+  // to keep this file under the LOC guard; it closes over the stores plus the two
+  // audit/health helpers defined below.
+  const cacheUploads = createAgentCacheUploads({
+    healthEventStore,
+    recordAuditEvent,
+    recordingStore,
+    recordRecordingFileFailure,
+    syncAndFindRecording,
+    uploadDestinationStore,
+  });
   registerAgentNodeConfigRoute({
     app,
     listenSessionStore,
@@ -584,6 +598,39 @@ export function registerAgentRoutes({
     const renditionParam = c.req.query("rendition");
     const rendition =
       renditionParam === "raw" || renditionParam === "enhanced" ? renditionParam : undefined;
+
+    const chunkIndex = parseChunkIndex(c.req.query("chunk"));
+
+    if (chunkIndex === "invalid") {
+      await recordRecordingFileFailure(c, {
+        actor: auth.credential,
+        createHealthEvent: true,
+        jobId,
+        reason: "invalid_chunk_index",
+        recordingId,
+        severity: "warning",
+        targetName: recording.name,
+      });
+      return c.json({ error: "Invalid chunk query parameter" }, 400);
+    }
+
+    if (chunkIndex !== undefined) {
+      return cacheUploads.handleChunkUpload(c, {
+        actor: auth.credential,
+        bytes,
+        // Wire index is 0-based; chunk rows and storage use 1-based indices.
+        chunkIndex: chunkIndex + 1,
+        chunkTotal: parseChunkTotal(c.req.query("chunkTotal")),
+        durationSeconds,
+        fileName: c.req.header("x-rakkr-file-name"),
+        job: scopedJob.job,
+        jobId,
+        mimeType: c.req.header("content-type"),
+        recording,
+        rendition,
+      });
+    }
+
     const before = recordingFileSnapshot(recording);
     const stored = await storeRecordingFile(
       recording,
@@ -614,7 +661,7 @@ export function registerAgentRoutes({
         : undefined;
     const uploadQueueItems = supplementary
       ? []
-      : await queueCachedRecordingUpload(c, auth.credential, recording);
+      : await cacheUploads.queueCachedRecordingUpload(c, auth.credential, recording);
     const uploadQueueItem = uploadQueueItems[0];
     const syncedRecording = await syncAndFindRecording(recording);
 
@@ -871,100 +918,6 @@ export function registerAgentRoutes({
 
   // Fan out one independent upload-queue item per enabled on_recording_cached
   // policy attached to the recording; each is pinned to its own destination.
-  async function queueCachedRecordingUpload(
-    c: Context<AppBindings>,
-    actor: NodeCredentialAuth,
-    recording: RecordingSummary,
-  ) {
-    const policies = await uploadPoliciesForCachedRecording(recording);
-    const items: UploadQueueItem[] = [];
-
-    for (const policy of policies) {
-      const item = await queueCachedRecordingUploadForPolicy(c, actor, recording, policy);
-
-      if (item) {
-        items.push(item);
-      }
-    }
-
-    return items;
-  }
-
-  async function queueCachedRecordingUploadForPolicy(
-    c: Context<AppBindings>,
-    actor: NodeCredentialAuth,
-    recording: RecordingSummary,
-    policy: UploadPolicy,
-  ) {
-    try {
-      const item = await enqueueRecordingUpload(
-        recording,
-        await uploadQueueInputForPolicy(
-          policy,
-          uploadDestinationStore,
-          "policy_on_recording_cached",
-        ),
-      );
-
-      await recordAuditEvent(c, {
-        action: "recordings.upload_queue.auto_enqueue.succeeded",
-        actor: nodeActor(actor),
-        correlationIds: {
-          recordingId: recording.id,
-          uploadQueueItemId: item.id,
-        },
-        details: {
-          provider: item.provider,
-          target: item.target,
-          trigger: policy.trigger,
-          uploadPolicyId: policy.id,
-        },
-        outcome: "succeeded",
-        permission: "recording:control",
-        target: {
-          id: recording.id,
-          name: recording.name,
-          type: "recording",
-        },
-      });
-
-      return item;
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "upload_queue_auto_enqueue_failed";
-      const healthEvent = await healthEventStore.create({
-        details: {
-          reason,
-          source: "cache_file_attach",
-          uploadPolicyId: policy.id,
-        },
-        nodeId: actor.nodeId,
-        recordingId: recording.id,
-        severity: "warning",
-        type: "controller.recording.upload_queue_failed",
-      });
-
-      await syncRecordingHealth(healthEventStore, recordingStore, recording.id);
-      await recordAuditEvent(c, {
-        action: "recordings.upload_queue.auto_enqueue.failed",
-        actor: nodeActor(actor),
-        details: {
-          healthEventId: healthEvent.id,
-          uploadPolicyId: policy.id,
-        },
-        outcome: "failed",
-        permission: "recording:control",
-        reason,
-        target: {
-          id: recording.id,
-          name: recording.name,
-          type: "recording",
-        },
-      });
-
-      return undefined;
-    }
-  }
-
   async function recordNodeCredentialFailure(
     c: Context<AppBindings>,
     action: string,

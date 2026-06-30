@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -38,6 +39,14 @@ export const recordingJobStatusEnum = pgEnum("recording_job_status", [
   "stop_requested",
   "cancelled",
   "completed",
+  "failed",
+]);
+export const recordingChunkStatusEnum = pgEnum("recording_chunk_status", [
+  "capturing",
+  "cached",
+  "uploading",
+  "uploaded",
+  "partial",
   "failed",
 ]);
 
@@ -503,6 +512,9 @@ export const uploadQueueItems = pgTable(
     attemptCount: integer("attempt_count").notNull().default(0),
     cachePath: text("cache_path"),
     checksum: varchar("checksum", { length: 160 }),
+    // Chunk this upload item belongs to. NULL = legacy whole-recording item.
+    chunkId: varchar("chunk_id", { length: 160 }),
+    chunkIndex: integer("chunk_index"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     destinationId: varchar("destination_id", { length: 160 }),
     fileName: text("file_name").notNull(),
@@ -519,6 +531,7 @@ export const uploadQueueItems = pgTable(
     uploadPolicyId: varchar("upload_policy_id", { length: 160 }),
   },
   (table) => ({
+    chunkIdx: index("upload_queue_items_chunk_idx").on(table.chunkId),
     destinationStatusIdx: index("upload_queue_items_destination_status_idx").on(
       table.destinationId,
       table.status,
@@ -631,6 +644,40 @@ export const recordingJobs = pgTable(
     leaseIdx: index("recording_jobs_lease_idx").on(table.status, table.leaseExpiresAt),
     nodeStatusIdx: index("recording_jobs_node_status_idx").on(table.nodeId, table.status),
     recordingIdx: index("recording_jobs_recording_idx").on(table.recordingId),
+  }),
+);
+
+// One time-based segment of a recording. Many chunks belong to one recording +
+// one job (`recordingId`/`jobId`); `index` is 1-based and `total` is filled in
+// only once capture stops. Each chunk renders raw + enhanced and uploads as it
+// closes, then fans out to its own per-destination upload_queue_items.
+export const recordingChunks = pgTable(
+  "recording_chunks",
+  {
+    cachedAt: timestamp("cached_at", { withTimezone: true }),
+    cachePath: text("cache_path"),
+    checksum: varchar("checksum", { length: 160 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    durationSeconds: integer("duration_seconds").notNull().default(0),
+    enhancedCachePath: text("enhanced_cache_path"),
+    id: varchar("id", { length: 160 }).primaryKey(),
+    index: integer("index").notNull(),
+    jobId: varchar("job_id", { length: 160 }).notNull(),
+    offsetSeconds: integer("offset_seconds").notNull().default(0),
+    rawCachePath: text("raw_cache_path"),
+    recordingId: varchar("recording_id", { length: 160 }).notNull(),
+    sizeBytes: integer("size_bytes"),
+    status: recordingChunkStatusEnum("status").notNull(),
+    total: integer("total"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    jobIdx: index("recording_chunks_job_idx").on(table.jobId),
+    recordingIdx: index("recording_chunks_recording_idx").on(table.recordingId),
+    recordingIndexUnique: uniqueIndex("recording_chunks_recording_index_unique").on(
+      table.recordingId,
+      table.index,
+    ),
   }),
 );
 

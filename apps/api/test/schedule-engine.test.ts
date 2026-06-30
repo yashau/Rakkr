@@ -98,7 +98,7 @@ describe("schedule recurrence engine", () => {
     assert.equal(scheduleRecordingDurationSeconds(schedule), 3_600);
   });
 
-  it("splits scheduled recording windows by profile track length", () => {
+  it("keeps a scheduled recording window as a single track for chunked capture", () => {
     const schedule = scheduleFixture({
       recurrence: {
         endTime: "11:00",
@@ -108,32 +108,11 @@ describe("schedule recurrence engine", () => {
       },
     });
 
-    const tracks = scheduleRecordingTrackPlans(schedule, {
-      bitrateKbps: 128,
-      channelMode: "mono_to_stereo_mix",
-      codec: "mp3",
-      id: "voice-split",
-      maxTrackSeconds: 2_700,
-      name: "Voice Split",
-      silenceDetectionEnabled: false,
-      silenceSkipEnabled: false,
-      vbr: true,
-    });
+    // Pre-splitting into separate per-track recordings is retired; a window is one
+    // recording whose continuous capture is segmented by the profile's chunkSeconds.
+    const tracks = scheduleRecordingTrackPlans(schedule);
 
-    assert.deepEqual(
-      tracks.map((track) => ({
-        durationSeconds: track.durationSeconds,
-        offsetSeconds: track.offsetSeconds,
-        trackIndex: track.trackIndex,
-        trackTotal: track.trackTotal,
-      })),
-      [
-        { durationSeconds: 2_700, offsetSeconds: 0, trackIndex: 1, trackTotal: 3 },
-        { durationSeconds: 2_700, offsetSeconds: 2_700, trackIndex: 2, trackTotal: 3 },
-        { durationSeconds: 1_800, offsetSeconds: 5_400, trackIndex: 3, trackTotal: 3 },
-      ],
-    );
-    assert.equal(new Set(tracks.map((track) => track.trackGroupId)).size, 1);
+    assert.deepEqual(tracks, [{ durationSeconds: 7_200, offsetSeconds: 0 }]);
   });
 
   it("adds skip-next exceptions and advances to the next eligible occurrence", () => {

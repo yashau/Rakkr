@@ -119,6 +119,8 @@ async fn finalize_secondary_member(
         job: member,
         output_path: &output_path,
         raw_output_path: session_raw_path,
+        chunk_index: None,
+        chunk_total: None,
         token,
     })
     .await?;
@@ -158,6 +160,7 @@ mod tests {
                     template_name: "Template".to_string(),
                 }
             }),
+            chunk_seconds: None,
             duration_seconds: 60,
             enhancement: None,
             output_bitrate_kbps: None,

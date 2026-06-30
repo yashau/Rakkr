@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type {
   AuditEvent,
   HealthEvent,
+  RecordingChunk,
+  RecordingChunkStatus,
   RecordingSummary,
   UploadQueueItem,
   UploadQueueRunItem,
@@ -11,7 +13,8 @@ import type {
 import type { AuditStore } from "./audit-store.js";
 import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
-import { deleteRecordingCacheFile } from "./recording-cache.js";
+import { deleteRecordingCacheFile, deleteRecordingChunkCacheFile } from "./recording-cache.js";
+import { listRecordingChunksForRecording, upsertRecordingChunk } from "./recording-chunks.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
 import { runUploadQueueOnce } from "./upload-executor.js";
@@ -273,6 +276,15 @@ async function reconcileRecordingUpload(
     return;
   }
 
+  // Chunked recordings reconcile per chunk (each chunk uploads as its own object);
+  // the recording is promoted to uploaded/partial from the chunk states.
+  const chunkItems = items.filter((item) => item.chunkId);
+
+  if (chunkItems.length > 0) {
+    await reconcileChunkedRecordingUpload(recording, chunkItems, recordingStore, auditStore);
+    return;
+  }
+
   // Wait until every destination has reached a terminal state.
   if (items.some((item) => item.status !== "succeeded" && item.status !== "failed")) {
     return;
@@ -305,6 +317,121 @@ async function reconcileRecordingUpload(
     failed.length,
     retention,
   );
+}
+
+// Chunked reconciliation: settle each chunk independently (each is its own object
+// across destinations), running per-chunk cache deletion, then promote the
+// recording to uploaded/partial once every expected chunk has settled.
+async function reconcileChunkedRecordingUpload(
+  recording: RecordingSummary,
+  chunkItems: UploadQueueItem[],
+  recordingStore: RecordingStore,
+  auditStore: AuditStore,
+): Promise<void> {
+  const chunks = await listRecordingChunksForRecording(recording.id);
+
+  if (chunks.length === 0) {
+    return;
+  }
+
+  const itemsByChunk = new Map<string, UploadQueueItem[]>();
+
+  for (const item of chunkItems) {
+    if (!item.chunkId) {
+      continue;
+    }
+
+    const list = itemsByChunk.get(item.chunkId) ?? [];
+
+    list.push(item);
+    itemsByChunk.set(item.chunkId, list);
+  }
+
+  for (const chunk of chunks) {
+    const items = itemsByChunk.get(chunk.id) ?? [];
+
+    if (items.length === 0) {
+      continue;
+    }
+
+    const settled = items.every((item) => item.status === "succeeded" || item.status === "failed");
+    const succeeded = items.filter((item) => item.status === "succeeded");
+    const failed = items.filter((item) => item.status === "failed");
+    const nextStatus = chunkUploadStatus(settled, succeeded.length, failed.length);
+
+    if (settled && succeeded.length > 0) {
+      await deleteChunkCacheIfPolicyAllows(succeeded, chunk);
+    }
+
+    if (nextStatus !== chunk.status) {
+      chunk.status = nextStatus;
+      await upsertRecordingChunk(chunk);
+    }
+  }
+
+  // Only finalize once every expected chunk is present and has settled uploads.
+  const total = chunks.find((chunk) => chunk.total !== undefined)?.total;
+  const settledStatuses: RecordingChunkStatus[] = ["uploaded", "partial", "failed"];
+  const allPresent = total !== undefined && chunks.length >= total;
+  const allSettled = chunks.every((chunk) => settledStatuses.includes(chunk.status));
+
+  if (!allPresent || !allSettled) {
+    return;
+  }
+
+  const uploaded = chunks.filter((chunk) => chunk.status === "uploaded").length;
+  const degraded = chunks.filter(
+    (chunk) => chunk.status === "partial" || chunk.status === "failed",
+  ).length;
+
+  // Every chunk failed: leave the recording cached; failures are retryable.
+  if (uploaded === 0) {
+    return;
+  }
+
+  const status: RecordingSummary["status"] = degraded > 0 ? "partial" : "uploaded";
+
+  await recordingStore.save({ ...recording, status });
+  await appendReconcileAudit(auditStore, recording, status, uploaded, degraded, {
+    skipped: "chunked_per_chunk_retention",
+  });
+}
+
+function chunkUploadStatus(
+  settled: boolean,
+  succeeded: number,
+  failed: number,
+): RecordingChunkStatus {
+  if (!settled) {
+    return "uploading";
+  }
+
+  if (failed === 0) {
+    return "uploaded";
+  }
+
+  return succeeded > 0 ? "partial" : "failed";
+}
+
+// Per-chunk cache-deletion gate: delete a chunk's cached object only when a
+// succeeded destination's policy requests it, mirroring the whole-recording gate.
+async function deleteChunkCacheIfPolicyAllows(
+  succeededItems: UploadQueueItem[],
+  chunk: RecordingChunk,
+): Promise<void> {
+  for (const item of succeededItems) {
+    const policy = await uploadPolicyForQueue(item.uploadPolicyId);
+
+    if (policy.deleteCacheAfterUpload) {
+      try {
+        await deleteRecordingChunkCacheFile(chunk);
+      } catch (error) {
+        console.warn("chunk cache retention failed", error);
+      }
+
+      return;
+    }
+  }
 }
 
 // Cache-deletion gate: only delete the shared cache file when all items are

@@ -22,6 +22,7 @@ import type {
 
 import { ConfirmButton } from "@/components/confirm-button";
 import { QualityTimeline } from "@/components/quality-timeline";
+import { RecordingJobChunks } from "@/components/recording-job-chunks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -231,32 +232,34 @@ export function RecordingCard({
                 const captureDetails = recordingJobCaptureDetails(job);
 
                 return (
-                  <div
-                    className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-2 text-xs"
-                    key={job.id}
-                  >
-                    <Badge className={jobStatusClass(job.status)} variant="outline">
-                      {job.status}
-                    </Badge>
-                    <span className="font-mono break-all text-muted-foreground">{job.id}</span>
-                    <span className="text-muted-foreground">{job.claimedBy ?? job.nodeId}</span>
-                    {captureDetails.map((item) => (
-                      <Badge
-                        className="max-w-full gap-1 overflow-hidden bg-background"
-                        key={`${job.id}-${item.label}`}
-                        variant="outline"
-                      >
-                        <span className="text-muted-foreground">{item.label}</span>
-                        <span className="truncate font-mono">{item.value}</span>
+                  <div className="grid gap-2" key={job.id}>
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-2 text-xs">
+                      <Badge className={jobStatusClass(job.status)} variant="outline">
+                        {job.status}
                       </Badge>
-                    ))}
-                    {job.leaseExpiresAt ? (
-                      <span className="text-muted-foreground">
-                        Lease {formatDateTime(job.leaseExpiresAt)}
-                      </span>
-                    ) : null}
-                    {job.failureReason ? (
-                      <span className="text-destructive">{job.failureReason}</span>
+                      <span className="font-mono break-all text-muted-foreground">{job.id}</span>
+                      <span className="text-muted-foreground">{job.claimedBy ?? job.nodeId}</span>
+                      {captureDetails.map((item) => (
+                        <Badge
+                          className="max-w-full gap-1 overflow-hidden bg-background"
+                          key={`${job.id}-${item.label}`}
+                          variant="outline"
+                        >
+                          <span className="text-muted-foreground">{item.label}</span>
+                          <span className="truncate font-mono">{item.value}</span>
+                        </Badge>
+                      ))}
+                      {job.leaseExpiresAt ? (
+                        <span className="text-muted-foreground">
+                          Lease {formatDateTime(job.leaseExpiresAt)}
+                        </span>
+                      ) : null}
+                      {job.failureReason ? (
+                        <span className="text-destructive">{job.failureReason}</span>
+                      ) : null}
+                    </div>
+                    {job.command.chunkSeconds ? (
+                      <RecordingJobChunks enabled={expanded} jobId={job.id} />
                     ) : null}
                   </div>
                 );

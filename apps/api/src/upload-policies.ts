@@ -264,6 +264,13 @@ export async function uploadPoliciesForCachedRecording(recording: RecordingSumma
     return [];
   }
 
+  return uploadPoliciesForChunkedRecording(recording);
+}
+
+// Enabled `on_recording_cached` policies attached to a recording, regardless of
+// its current status. Chunked recordings enqueue uploads per chunk as each chunk
+// closes — before the recording itself is marked cached.
+export async function uploadPoliciesForChunkedRecording(recording: RecordingSummary) {
   const policies: UploadPolicy[] = [];
 
   for (const policyId of recording.uploadPolicyIds ?? []) {

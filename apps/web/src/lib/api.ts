@@ -25,6 +25,7 @@ import type {
   OidcPublicConfig,
   PaginatedResponse,
   Permission,
+  RecordingChunk,
   RecordingProfile,
   RecordingProfileUpdate,
   RecordingJob,
@@ -553,6 +554,8 @@ export const api = {
     fetchJson<{ data: RecordingDownloadTicket }>(`/api/v1/recordings/${recordingId}/download`, {
       method: "POST",
     }),
+  recordingJobChunks: (jobId: string) =>
+    fetchJson<{ data: RecordingChunk[] }>(`/api/v1/recording-jobs/${jobId}/chunks`),
   recordingJobs: (filters: RecordingJobFilters & { limit?: number; offset?: number } = {}) =>
     fetchJson<PaginatedResponse<RecordingJob>>(withQuery("/api/v1/recording-jobs", filters)),
   recordingJobsExport: (filters: RecordingJobFilters = {}) =>

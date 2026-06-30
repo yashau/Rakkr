@@ -35,6 +35,7 @@ pub struct CaptureChannelMap {
     pub template_name: String,
 }
 
+#[derive(Clone)]
 pub struct CapturePlan {
     pub args_template: Option<String>,
     pub backend: CaptureBackend,
@@ -55,6 +56,34 @@ pub struct CapturePlan {
     pub sample_rate: u32,
     pub seconds: u64,
     pub stalled_seconds: u64,
+}
+
+impl CapturePlan {
+    /// Derive a per-chunk capture plan for a closed segment file. `output_path`
+    /// points at the closed chunk wav (`<dir>/<stem>.chunk-NNNN.wav`); the
+    /// `final_output_path` gets a per-chunk-unique stem so the render and enhanced
+    /// intermediates (derived from that stem) never clobber or race across chunks.
+    pub(crate) fn chunk_plan(
+        &self,
+        dir: &Path,
+        stem: &str,
+        index: u32,
+        chunk_wav: &Path,
+    ) -> CapturePlan {
+        let chunk_stem = format!("{stem}.chunk-{index:04}");
+        let final_extension = match self.output_codec.as_str() {
+            "flac" => "flac",
+            "mp3" => "mp3",
+            _ => "wav",
+        };
+        let final_output_path = dir.join(format!("{chunk_stem}.{final_extension}"));
+
+        CapturePlan {
+            final_output_path,
+            output_path: chunk_wav.to_path_buf(),
+            ..self.clone()
+        }
+    }
 }
 
 pub fn capture_plan_from_config(config: &AgentConfig) -> anyhow::Result<CapturePlan> {
@@ -296,7 +325,18 @@ pub fn estimated_capture_bytes(plan: &CapturePlan) -> u64 {
         .saturating_add(WAV_HEADER_SAFETY_BYTES)
 }
 
-fn sample_format_bytes(format: &str) -> u64 {
+/// Effective duration to size a chunked job's disk preflight on: at most one open
+/// chunk plus its raw + rendered (+ enhanced) working copies coexist on disk, so a
+/// few chunk lengths of headroom — not the whole recording duration — is required.
+pub fn chunk_disk_estimate_seconds(chunk_seconds: u64) -> u64 {
+    const CHUNK_WORKING_COPY_FACTOR: u64 = 4;
+
+    chunk_seconds
+        .max(1)
+        .saturating_mul(CHUNK_WORKING_COPY_FACTOR)
+}
+
+pub(crate) fn sample_format_bytes(format: &str) -> u64 {
     match format {
         "S8" | "U8" => 1,
         "S24_LE" | "S24_BE" | "U24_LE" | "U24_BE" => 3,
@@ -425,7 +465,7 @@ impl fmt::Display for CaptureGrowthError {
 impl std::error::Error for CaptureGrowthError {}
 
 #[derive(Debug)]
-struct CaptureGrowthMonitor {
+pub(crate) struct CaptureGrowthMonitor {
     grace_period: Duration,
     last_growth_at: Instant,
     last_size_bytes: Option<u64>,
@@ -434,7 +474,7 @@ struct CaptureGrowthMonitor {
 }
 
 impl CaptureGrowthMonitor {
-    fn new(grace_seconds: u64, stalled_seconds: u64, started_at: Instant) -> Self {
+    pub(crate) fn new(grace_seconds: u64, stalled_seconds: u64, started_at: Instant) -> Self {
         Self {
             grace_period: Duration::from_secs(grace_seconds),
             last_growth_at: started_at,
@@ -444,7 +484,7 @@ impl CaptureGrowthMonitor {
         }
     }
 
-    fn observe(
+    pub(crate) fn observe(
         &mut self,
         size_bytes: Option<u64>,
         now: Instant,
@@ -600,6 +640,7 @@ mod tests {
             capture_recording_id: Some("rec_123".to_string()),
             capture_sample_rate: 48_000,
             capture_seconds: 15,
+            capture_chunk_seconds: None,
             capture_stalled_seconds: 30,
             controller_ca_cert_path: None,
             controller_token: Some("token".to_string()),
@@ -751,6 +792,28 @@ mod tests {
                 "/tmp/rec.wav",
             ]
         );
+    }
+
+    #[test]
+    fn chunk_disk_estimate_uses_working_copy_headroom() {
+        // Four chunk-lengths of headroom for the open chunk + raw/rendered/enhanced
+        // working copies, and at least one second even for a zero input.
+        assert_eq!(chunk_disk_estimate_seconds(5), 20);
+        assert_eq!(chunk_disk_estimate_seconds(0), 4);
+    }
+
+    #[test]
+    fn chunk_plan_clone_gives_per_chunk_unique_final_stem() {
+        let plan = capture_plan_from_config(&config()).unwrap();
+        let dir = Path::new("/tmp/chunks");
+        let chunk_wav = dir.join("rec.chunk-0003.wav");
+        let chunk_plan = plan.chunk_plan(dir, "rec", 3, &chunk_wav);
+
+        assert_eq!(chunk_plan.output_path, chunk_wav);
+        assert!(chunk_plan.final_output_path.ends_with("rec.chunk-0003.wav"));
+        // The clone preserves capture parameters.
+        assert_eq!(chunk_plan.sample_rate, plan.sample_rate);
+        assert_eq!(chunk_plan.channels, plan.channels);
     }
 
     #[test]

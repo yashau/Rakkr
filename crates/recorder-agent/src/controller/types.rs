@@ -16,6 +16,12 @@ pub struct CacheFileUpload<'a> {
     /// Optional rendition marker forwarded as `?rendition=raw|enhanced`. `None`
     /// uploads the primary (legacy) recording file.
     pub rendition: Option<&'a str>,
+    /// 1-based chunk index forwarded as `?chunk=<index>` for chunked recordings.
+    /// `None` for whole-recording uploads (older controllers ignore the param).
+    pub chunk_index: Option<u32>,
+    /// Total chunk count forwarded as `?chunkTotal=<n>` on the FINAL chunk upload
+    /// only, signalling the controller the chunked recording is complete.
+    pub chunk_total: Option<u32>,
     pub token: &'a str,
 }
 
@@ -50,6 +56,11 @@ pub struct ControllerCaptureCommand {
     pub capture_interface_id: Option<String>,
     pub capture_sample_rate: u32,
     pub channel_map: Option<ControllerRecordingJobChannelMap>,
+    /// When set (and > 0), the job records one gapless capture but emits and
+    /// uploads fixed-length chunk files of this many seconds each. Absent/0 keeps
+    /// the single-file path. Falls back to the agent's `capture_chunk_seconds`.
+    #[serde(default)]
+    pub chunk_seconds: Option<u64>,
     pub duration_seconds: u64,
     pub enhancement: Option<ControllerRecordingEnhancement>,
     pub output_bitrate_kbps: Option<u32>,

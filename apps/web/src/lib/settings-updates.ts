@@ -9,6 +9,7 @@ export function recordingProfileUpdate(profile: RecordingProfile): RecordingProf
   return {
     bitrateKbps: profile.bitrateKbps,
     channelMode: profile.channelMode,
+    chunkSeconds: profile.chunkSeconds ?? null,
     codec: profile.codec,
     enhancement: profile.enhancement,
     maxTrackSeconds: profile.maxTrackSeconds ?? null,

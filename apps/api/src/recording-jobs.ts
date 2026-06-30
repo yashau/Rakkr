@@ -4,6 +4,7 @@ import path from "node:path";
 import { createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
 import {
   defaultVoiceRecordingProfile,
+  effectiveChunkSeconds,
   recordingEnhancementSchema,
   type RetentionPolicy,
   type RecordingJob,
@@ -26,6 +27,7 @@ interface RecordingJobOptions {
   captureInterfaceId?: string;
   captureSampleRate?: number;
   channelMap?: RecordingJobCommand["channelMap"];
+  chunkSeconds?: number;
   durationSeconds?: number;
   profile?: RecordingProfile;
 }
@@ -89,6 +91,7 @@ export async function createRecordingJob(
         options.captureSampleRate ??
         positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SAMPLE_RATE, 48_000),
       channelMap: options.channelMap,
+      chunkSeconds: options.chunkSeconds ?? effectiveChunkSeconds(profile),
       durationSeconds:
         options.durationSeconds ?? positiveInteger(process.env.RAKKR_AGENT_CAPTURE_SECONDS, 3_600),
       enhancement: profile.enhancement,
@@ -683,6 +686,7 @@ function commandFromValue(value: unknown): RecordingJobCommand {
     captureInterfaceId: stringOrUndefined(value.captureInterfaceId),
     captureSampleRate: positiveIntegerFromUnknown(value.captureSampleRate, 48_000),
     channelMap: channelMapFromValue(value.channelMap),
+    chunkSeconds: optionalPositiveInteger(value.chunkSeconds),
     durationSeconds: positiveIntegerFromUnknown(value.durationSeconds, 3_600),
     enhancement: enhancementFromValue(value.enhancement),
     outputBitrateKbps: optionalPositiveInteger(value.outputBitrateKbps),
