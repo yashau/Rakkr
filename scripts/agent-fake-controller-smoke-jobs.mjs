@@ -56,7 +56,7 @@ export async function runClaimNextFailureScenario({
   invariant(localEvent.severity === "warning", "claim-next failure was not warning");
   invariant(syncedEvent, "agent did not sync claim-next failure health event");
   invariant(
-    String(syncedEvent.details?.error).includes("controller rejected next job claim with 503"),
+    String(syncedEvent.details?.error).includes("controller rejected next job group claim with 503"),
     "claim-next health event did not preserve controller rejection",
   );
   setActiveScenario(undefined);

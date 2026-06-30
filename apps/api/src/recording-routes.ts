@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import {
+  captureChannelSelectionSchema,
+  channelModeSchema,
   defaultKeepControllerCacheRetentionPolicy,
   defaultVoiceRecordingProfile,
   type RecorderNode,
@@ -9,6 +11,14 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
+import {
+  activeCaptureSessionKeys,
+  buildCaptureClaims,
+  detectChannelConflicts,
+  interfaceKey,
+  resolveCaptureGroupId,
+} from "./channel-conflicts.js";
+import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
 import type { HealthEventStore } from "./health-store.js";
 import type {
   AppBindings,
@@ -78,7 +88,9 @@ interface RecordingRouteDependencies {
 const recordingStartRequestSchema = z
   .object({
     captureBackend: z.enum(["alsa", "jack", "pipewire"]).optional(),
+    captureChannelSelection: captureChannelSelectionSchema.optional(),
     captureInterfaceId: z.string().trim().min(1).max(160).optional(),
+    channelMode: channelModeSchema.optional(),
     folder: z.string().trim().min(1).max(240).optional(),
     name: z.string().trim().min(1).max(240).optional(),
     nodeId: z.string().trim().min(1).max(160),
@@ -93,7 +105,15 @@ const recordingSelectedExportSchema = z
     recordingIds: z.array(z.string().trim().min(1).max(160)).min(1).max(200),
   })
   .strict();
-const capacityReservedRecordingJobStatuses = new Set(["queued", "running", "stop_requested"]);
+
+// Upper bound used to project an ad-hoc capture window for channel-conflict
+// detection (ad-hoc recordings are open-ended but bounded by this cap, matching
+// the recorder job duration default).
+function adHocCaptureSeconds() {
+  const parsed = Number(process.env.RAKKR_AGENT_CAPTURE_SECONDS);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 3_600;
+}
 
 export function registerRecordingRoutes({
   app,
@@ -652,6 +672,43 @@ export function registerRecordingRoutes({
         return c.json({ error: "Recording interface not found" }, 409);
       }
 
+      const resolvedCaptureInterfaceId =
+        body.data.captureInterfaceId ??
+        process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
+        node.interfaces[0]?.id;
+      const captureInterface = node.interfaces.find(
+        (candidate) => candidate.id === resolvedCaptureInterfaceId,
+      );
+      const channelSelection =
+        body.data.captureChannelSelection && body.data.captureChannelSelection.length > 0
+          ? body.data.captureChannelSelection
+          : undefined;
+      let channelMode = body.data.channelMode;
+
+      if (channelSelection) {
+        if (!captureInterface) {
+          await recordRecordingStartFailure(
+            c,
+            "recording_interface_not_found",
+            node.id,
+            node.alias,
+          );
+          return c.json({ error: "Recording interface not found" }, 409);
+        }
+
+        channelMode = resolveChannelMode(channelMode, channelSelection.length);
+        const validation = validateChannelSelection(
+          captureInterface,
+          channelSelection,
+          channelMode,
+        );
+
+        if (!validation.ok) {
+          await recordRecordingStartFailure(c, validation.reason, node.id, node.alias);
+          return c.json({ error: "Invalid channel selection", reason: validation.reason }, 400);
+        }
+      }
+
       const recordingProfileId = body.data.recordingProfileId ?? defaultVoiceRecordingProfile.id;
       const profile = await settingsStore.findRecordingProfile(recordingProfileId);
 
@@ -728,29 +785,68 @@ export function registerRecordingRoutes({
         return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
       }
 
-      const capacityReservedJobs = (await listRecordingJobs()).filter(
-        (job) => job.nodeId === node.id && capacityReservedRecordingJobStatuses.has(job.status),
+      const activeJobs = await listRecordingJobs();
+      const recordingsById = new Map(
+        (await recordingStore.list()).map((entry) => [entry.id, entry]),
       );
-      const maxConcurrentRecordings = node.recordingCapacity?.maxConcurrentRecordings ?? 1;
+      const captureClaims = buildCaptureClaims(activeJobs, recordingsById);
+      const captureWindowStartMs = now.getTime();
+      const captureRequest = {
+        captureInterfaceId: resolvedCaptureInterfaceId,
+        channels: (channelSelection ?? "all") as number[] | "all",
+        endMs: captureWindowStartMs + adHocCaptureSeconds() * 1_000,
+        nodeId: node.id,
+        startMs: captureWindowStartMs,
+      };
+      const channelConflicts = detectChannelConflicts(captureClaims, captureRequest);
 
-      if (capacityReservedJobs.length >= maxConcurrentRecordings) {
-        const activeJob = capacityReservedJobs[0];
+      if (channelConflicts.length > 0) {
+        const busyChannels = [
+          ...new Set(channelConflicts.flatMap((conflict) => conflict.channels)),
+        ].sort((left, right) => left - right);
+        const conflictingClaim = channelConflicts[0].claim;
 
-        await recordRecordingStartFailure(c, "active_recording_job_exists", node.id, node.alias, {
-          id: activeJob?.id,
+        await recordRecordingStartFailure(c, "capture_channels_busy", node.id, node.alias, {
+          id: conflictingClaim.jobId,
           type: "recording_job",
         });
         return c.json(
           {
-            error: "Recorder node already has an active recording job",
-            activeJobCount: capacityReservedJobs.length,
-            jobId: activeJob?.id,
-            maxConcurrentRecordings,
-            reason: "active_recording_job_exists",
+            busyChannels,
+            captureInterfaceId: resolvedCaptureInterfaceId,
+            conflictingJobId: conflictingClaim.jobId,
+            conflictingRecordingId: conflictingClaim.recordingId,
+            error:
+              busyChannels.length > 0
+                ? "Requested channels are already in use"
+                : "Capture interface is already in use",
+            reason: "capture_channels_busy",
           },
           409,
         );
       }
+
+      const activeSessionKeys = activeCaptureSessionKeys(captureClaims, node.id);
+      const maxConcurrentRecordings = node.recordingCapacity?.maxConcurrentRecordings ?? 1;
+      const requestSessionKey = interfaceKey(resolvedCaptureInterfaceId);
+
+      if (
+        !activeSessionKeys.has(requestSessionKey) &&
+        activeSessionKeys.size >= maxConcurrentRecordings
+      ) {
+        await recordRecordingStartFailure(c, "node_capture_capacity_reached", node.id, node.alias);
+        return c.json(
+          {
+            activeSessionCount: activeSessionKeys.size,
+            error: "Recorder node is at capture capacity",
+            maxConcurrentRecordings,
+            reason: "node_capture_capacity_reached",
+          },
+          409,
+        );
+      }
+
+      const captureGroupId = resolveCaptureGroupId(captureClaims, captureRequest);
 
       const recording: RecordingSummary = {
         cached: false,
@@ -774,7 +870,10 @@ export function registerRecordingRoutes({
         recording,
         await recordingJobTargetOptions({
           captureBackend: body.data.captureBackend,
+          captureChannelSelection: channelSelection,
+          captureGroupId,
           captureInterfaceId: body.data.captureInterfaceId,
+          channelMode,
           node,
           recordingProfileId: recording.recordingProfileId,
           settingsStore,
@@ -790,7 +889,10 @@ export function registerRecordingRoutes({
         },
         details: {
           captureBackend: body.data.captureBackend,
+          captureChannelSelection: channelSelection,
+          captureGroupId,
           captureInterfaceId: body.data.captureInterfaceId,
+          channelMode,
           jobCommand: job.command,
           jobStatus: job.status,
           profileId: recordingProfileId,

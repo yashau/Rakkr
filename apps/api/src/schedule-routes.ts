@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   scheduleInputSchema,
   scheduleUpdateSchema,
+  type ChannelMode,
   type RecorderNode,
   type ScheduleRecurrence,
   type ScheduleInput,
@@ -12,6 +13,7 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
+import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -318,6 +320,21 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule interface not found" }, 409);
       }
 
+      const createChannelFailure = scheduleChannelSelectionFailure(
+        node,
+        body.data.captureInterfaceId,
+        body.data.captureChannelSelection,
+        body.data.channelMode,
+      );
+
+      if (createChannelFailure) {
+        await recordScheduleWriteFailure(c, "schedules.create.failed", createChannelFailure);
+        return c.json(
+          { error: "Invalid channel selection", reason: createChannelFailure },
+          createChannelFailure === "schedule_interface_not_found" ? 409 : 400,
+        );
+      }
+
       const settingsFailure = await recordScheduleSettingsFailure(
         c,
         "schedules.create.failed",
@@ -421,6 +438,32 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule interface not found" }, 409);
       }
 
+      const targetSelection =
+        "captureChannelSelection" in body.data
+          ? body.data.captureChannelSelection
+          : before.captureChannelSelection;
+      const targetChannelMode =
+        "channelMode" in body.data ? body.data.channelMode : before.channelMode;
+      const updateChannelFailure = scheduleChannelSelectionFailure(
+        targetNode,
+        targetInterfaceId,
+        targetSelection,
+        targetChannelMode,
+      );
+
+      if (updateChannelFailure) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.update.failed",
+          updateChannelFailure,
+          before,
+        );
+        return c.json(
+          { error: "Invalid channel selection", reason: updateChannelFailure },
+          updateChannelFailure === "schedule_interface_not_found" ? 409 : 400,
+        );
+      }
+
       const settingsFailure = await recordScheduleSettingsFailure(
         c,
         "schedules.update.failed",
@@ -492,14 +535,34 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule node not found" }, 409);
       }
 
-      const queued = await queueScheduledRecordings({
+      const result = await queueScheduledRecordings({
         node,
         recordingStore,
         schedule,
         settingsStore,
       });
-      const first = queued[0];
       const before = scheduleExecutionSnapshot(schedule);
+
+      if (result.status === "deferred") {
+        await recordScheduleRunFailure(c, scheduleId, "capture_channels_busy", schedule.name);
+        return c.json(
+          {
+            busyChannels: result.conflict.busyChannels,
+            captureInterfaceId: result.conflict.captureInterfaceId,
+            conflictingJobId: result.conflict.conflictingJobId,
+            conflictingRecordingId: result.conflict.conflictingRecordingId,
+            error:
+              result.conflict.busyChannels.length > 0
+                ? "Requested channels are already in use"
+                : "Capture interface is already in use",
+            reason: "capture_channels_busy",
+          },
+          409,
+        );
+      }
+
+      const queued = result.queued;
+      const first = queued[0];
 
       if (!first) {
         await recordScheduleRunFailure(c, scheduleId, "schedule_run_created_no_recordings");
@@ -862,7 +925,9 @@ function buildSchedule(input: ScheduleInput): ScheduleSummary {
 
   return {
     captureBackend: input.captureBackend ?? undefined,
+    captureChannelSelection: input.captureChannelSelection ?? undefined,
     captureInterfaceId: input.captureInterfaceId ?? undefined,
+    channelMode: input.channelMode ?? undefined,
     enabled: input.enabled,
     folderTemplate: input.folderTemplate,
     id: input.id ?? `sched_${randomUUID()}`,
@@ -885,15 +950,24 @@ function sanitizeScheduleUpdate(
   input: ScheduleUpdate,
   before: ScheduleSummary,
 ): Partial<Omit<ScheduleSummary, "id">> {
-  const { captureBackend, captureInterfaceId, ...rest } = input;
+  const { captureBackend, captureChannelSelection, captureInterfaceId, channelMode, ...rest } =
+    input;
   const updates: Partial<Omit<ScheduleSummary, "id">> = { ...rest };
 
   if ("captureBackend" in input) {
     updates.captureBackend = captureBackend ?? undefined;
   }
 
+  if ("captureChannelSelection" in input) {
+    updates.captureChannelSelection = captureChannelSelection ?? undefined;
+  }
+
   if ("captureInterfaceId" in input) {
     updates.captureInterfaceId = captureInterfaceId ?? undefined;
+  }
+
+  if ("channelMode" in input) {
+    updates.channelMode = channelMode ?? undefined;
   }
 
   if (input.recurrence || input.timezone) {
@@ -934,6 +1008,35 @@ function scheduleInterfaceIsValid(
   return (
     !captureInterfaceId || node.interfaces.some((candidate) => candidate.id === captureInterfaceId)
   );
+}
+
+// Validates a schedule's channel selection against the (possibly node-default)
+// capture interface. Returns the failure reason, or undefined when the schedule
+// pins no channel selection or the selection is valid.
+function scheduleChannelSelectionFailure(
+  node: RecorderNode,
+  captureInterfaceId: string | null | undefined,
+  selection: number[] | null | undefined,
+  mode: ChannelMode | null | undefined,
+): string | undefined {
+  if (!selection || selection.length === 0) {
+    return undefined;
+  }
+
+  const interfaceId = captureInterfaceId ?? node.interfaces[0]?.id;
+  const captureInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
+
+  if (!captureInterface) {
+    return "schedule_interface_not_found";
+  }
+
+  const validation = validateChannelSelection(
+    captureInterface,
+    selection,
+    resolveChannelMode(mode, selection.length),
+  );
+
+  return validation.ok ? undefined : validation.reason;
 }
 
 function occurrenceLimit(value: string | undefined) {

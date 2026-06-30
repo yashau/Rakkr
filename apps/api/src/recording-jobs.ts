@@ -18,9 +18,11 @@ type RecordingJobInsert = typeof recordingJobsTable.$inferInsert;
 type RecordingJobRow = typeof recordingJobsTable.$inferSelect;
 interface RecordingJobOptions {
   captureBackend?: "alsa" | "jack" | "pipewire";
+  captureChannelSelection?: number[];
   captureDevice?: string;
   captureChannels?: number;
   captureFormat?: string;
+  captureGroupId?: string;
   captureInterfaceId?: string;
   captureSampleRate?: number;
   channelMap?: RecordingJobCommand["channelMap"];
@@ -75,8 +77,13 @@ export async function createRecordingJob(
         options.channelMap?.sourceChannels ??
         options.captureChannels ??
         positiveInteger(process.env.RAKKR_AGENT_CAPTURE_CHANNELS, 2),
+      captureChannelSelection:
+        options.captureChannelSelection && options.captureChannelSelection.length > 0
+          ? options.captureChannelSelection
+          : undefined,
       captureDevice: options.captureDevice ?? process.env.RAKKR_AGENT_CAPTURE_DEVICE ?? "default",
       captureFormat: options.captureFormat ?? process.env.RAKKR_AGENT_CAPTURE_FORMAT ?? "S16_LE",
+      captureGroupId: options.captureGroupId,
       captureInterfaceId: options.captureInterfaceId,
       captureSampleRate:
         options.captureSampleRate ??
@@ -158,6 +165,45 @@ export async function claimNextRecordingJob(nodeId: string, claimedBy?: string) 
   }
 
   return undefined;
+}
+
+// Claims the next queued job plus every queued sibling that shares its
+// captureGroupId, so the agent can capture the device once and split it into
+// each job's channel subset. Jobs without a group claim alone (legacy behavior).
+export async function claimNextRecordingGroup(
+  nodeId: string,
+  claimedBy?: string,
+): Promise<RecordingJob[]> {
+  const jobs = await expireRecordingJobLeases();
+  const queued = jobs
+    .filter((job) => job.nodeId === nodeId && job.status === "queued")
+    .sort((left, right) => {
+      const createdOrder = left.createdAt.localeCompare(right.createdAt);
+
+      return createdOrder || trackOrder(left.command, right.command);
+    });
+
+  const primary = queued[0];
+
+  if (!primary) {
+    return [];
+  }
+
+  const groupId = primary.command.captureGroupId;
+  const members = groupId
+    ? queued.filter((job) => job.command.captureGroupId === groupId)
+    : [primary];
+  const claimed: RecordingJob[] = [];
+
+  for (const member of members) {
+    const job = await claimRecordingJob(member.id, claimedBy);
+
+    if (job) {
+      claimed.push(job);
+    }
+  }
+
+  return claimed;
 }
 
 export async function stopRecordingJob(recordingId: string) {
@@ -630,8 +676,10 @@ function commandFromValue(value: unknown): RecordingJobCommand {
   return {
     captureChannels: positiveIntegerFromUnknown(value.captureChannels, 2),
     captureBackend: captureBackendFromUnknown(value.captureBackend),
+    captureChannelSelection: channelSelectionFromUnknown(value.captureChannelSelection),
     captureDevice: stringFromUnknown(value.captureDevice, "default"),
     captureFormat: stringFromUnknown(value.captureFormat, "S16_LE"),
+    captureGroupId: stringOrUndefined(value.captureGroupId),
     captureInterfaceId: stringOrUndefined(value.captureInterfaceId),
     captureSampleRate: positiveIntegerFromUnknown(value.captureSampleRate, 48_000),
     channelMap: channelMapFromValue(value.channelMap),
@@ -663,6 +711,19 @@ function positiveIntegerFromUnknown(value: unknown, fallback: number) {
 
 function optionalPositiveInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function channelSelectionFromUnknown(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const channels = value.filter(
+    (channel): channel is number =>
+      typeof channel === "number" && Number.isInteger(channel) && channel > 0,
+  );
+
+  return channels.length > 0 ? channels : undefined;
 }
 
 function stringFromUnknown(value: unknown, fallback: string) {

@@ -115,8 +115,8 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         .controller_token
         .as_deref()
         .context("missing --controller-token or RAKKR_CONTROLLER_TOKEN")?;
-    let Some(job) = (match claim_next_recording_job(config, token).await {
-        Ok(job) => job,
+    let mut group = match claim_next_recording_group(config, token).await {
+        Ok(group) => group,
         Err(error) => {
             let reason = error.to_string();
             let event = health_log::append_health_event(
@@ -131,10 +131,18 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
 
             return Err(error);
         }
-    }) else {
+    };
+
+    if group.is_empty() {
         info!(node_id = %config.node_id, "no queued recording job for node");
         return Ok(());
-    };
+    }
+
+    // The first claimed job is the capture-session primary; any remaining jobs
+    // share its single device capture and render their own channel subsets from
+    // the same raw (capture-once, split-many).
+    let job = group.remove(0);
+    let secondaries = group;
     write_job_state(config, &job, "running", None, None)?;
     info!(
         job_id = %job.id,
@@ -173,6 +181,19 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     };
     let mut capture_plan = capture_plan_for_job(config, &job, &channel_maps);
     refresh_capture_device_from_inventory(config, token, &job, &mut capture_plan).await?;
+
+    if !secondaries.is_empty() {
+        // Capture the full channel span the whole group needs in one pass; each
+        // member renders its own subset from this shared raw afterwards.
+        capture_plan.channels = session_capture_channels(capture_plan.channels, &secondaries);
+        info!(
+            job_id = %job.id,
+            capture_group_id = ?job.command.capture_group_id,
+            members = secondaries.len() + 1,
+            session_channels = capture_plan.channels,
+            "capturing shared session for recording job group"
+        );
+    }
 
     if let Some(channel_map) = &capture_plan.channel_map {
         info!(
@@ -409,6 +430,16 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
             }
         }
 
+        for secondary in &secondaries {
+            if let Err(error) = heartbeat_recording_job(config, token, &secondary.id).await {
+                warn!(
+                    error = %error,
+                    job_id = %secondary.id,
+                    "failed to heartbeat shared-capture member; lease may expire"
+                );
+            }
+        }
+
         if let Err(error) = heartbeat_recording_job(config, token, &job.id).await {
             control_plane_sync_failed = report_control_plane_sync_failure(
                 config,
@@ -580,6 +611,9 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
     match upload_result {
         Ok(()) => {
             write_upload_checkpoint_state(config, &job, "uploaded", &upload_checkpoint, None)?;
+            // Render and upload every shared-capture member from the same raw
+            // before the primary's retention can reclaim it.
+            finalize_secondary_members(config, token, &secondaries, &raw_output_path).await;
             apply_recorder_cache_retention(config, token, &job, &raw_output_path, &output_path)
                 .await?;
             write_job_state(config, &job, "completed", Some(&output_path), None)?;
@@ -800,12 +834,12 @@ pub async fn sync_health_event(
     Ok(())
 }
 
-async fn claim_next_recording_job(
+async fn claim_next_recording_group(
     config: &AgentConfig,
     token: &str,
-) -> anyhow::Result<Option<ControllerRecordingJob>> {
+) -> anyhow::Result<Vec<ControllerRecordingJob>> {
     let url = format!(
-        "{}/api/v1/nodes/{}/recording-jobs/claim-next",
+        "{}/api/v1/nodes/{}/recording-jobs/claim-next-group",
         config.controller_url.trim_end_matches('/'),
         config.node_id
     );
@@ -815,25 +849,103 @@ async fn claim_next_recording_job(
         .header(AGENT_ID_HEADER, config.node_id.as_str())
         .send()
         .await
-        .context("claim next recording job")?;
+        .context("claim next recording job group")?;
     let status = response.status();
 
     if status.as_u16() == 204 {
-        return Ok(None);
+        return Ok(Vec::new());
     }
 
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
 
-        anyhow::bail!("controller rejected next job claim with {status}: {body}");
+        anyhow::bail!("controller rejected next job group claim with {status}: {body}");
     }
 
     let envelope = response
-        .json::<DataEnvelope<ControllerRecordingJob>>()
+        .json::<DataEnvelope<Vec<ControllerRecordingJob>>>()
         .await
-        .context("decode claimed next recording job")?;
+        .context("decode claimed recording job group")?;
 
-    Ok(Some(envelope.data))
+    Ok(envelope.data)
+}
+
+/// The number of source channels a shared capture must record so every group
+/// member can render its subset: the widest channel span across the primary and
+/// all secondaries.
+fn session_capture_channels(primary_channels: u16, secondaries: &[ControllerRecordingJob]) -> u16 {
+    secondaries.iter().fold(primary_channels, |widest, member| {
+        widest.max(member_channel_span(&member.command))
+    })
+}
+
+/// The highest 1-based source channel a job reads: from its channel map, else
+/// its explicit selection, else its raw channel count.
+fn member_channel_span(command: &ControllerCaptureCommand) -> u16 {
+    if let Some(map) = command.channel_map.as_ref() {
+        return map.source_channels;
+    }
+
+    command
+        .capture_channel_selection
+        .as_ref()
+        .and_then(|selection| selection.iter().copied().max())
+        .unwrap_or(command.capture_channels)
+}
+
+/// Render, enhance, and upload each shared-capture member from the single raw
+/// the primary captured. Each member finalizes independently; a failure on one
+/// member is recorded against that member and does not abort the others.
+async fn finalize_secondary_members(
+    config: &AgentConfig,
+    token: &str,
+    secondaries: &[ControllerRecordingJob],
+    session_raw_path: &std::path::Path,
+) {
+    for member in secondaries {
+        if let Err(error) = finalize_secondary_member(config, token, member, session_raw_path).await
+        {
+            let reason = error.to_string();
+
+            warn!(
+                error = %reason,
+                job_id = %member.id,
+                recording_id = %member.recording_id,
+                "failed to finalize shared-capture member"
+            );
+            let _ = mark_recording_job_failed(config, token, &member.id, &reason).await;
+            let _ = write_job_state(config, member, "failed", None, Some(&reason));
+        }
+    }
+}
+
+async fn finalize_secondary_member(
+    config: &AgentConfig,
+    token: &str,
+    member: &ControllerRecordingJob,
+    session_raw_path: &std::path::Path,
+) -> anyhow::Result<()> {
+    let plan = capture_plan_for_job(config, member, &[]);
+    let output_path = render_capture_output(&plan, session_raw_path)?;
+    let content_type = content_type_for_codec(member.command.output_codec.as_deref(), &output_path);
+    let file_name = member.command.output_file_name.clone();
+
+    write_job_state(config, member, "running", Some(&output_path), None)?;
+    upload_recording_renditions(RenditionUploadInputs {
+        capture_plan: &plan,
+        config,
+        content_type,
+        duration_seconds: member.command.duration_seconds,
+        file_name: &file_name,
+        job: member,
+        output_path: &output_path,
+        raw_output_path: session_raw_path,
+        token,
+    })
+    .await?;
+    write_job_state(config, member, "completed", Some(&output_path), None)?;
+
+    Ok(())
 }
 
 async fn heartbeat_recording_job(

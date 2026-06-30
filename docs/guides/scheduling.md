@@ -44,6 +44,13 @@ templates, tags, recording profile, capture backend/interface (or node defaults)
 watchdog policy, retention policy, and upload policy. This keeps a room's
 recordings consistent without per-run configuration.
 
+A schedule can also pin a **channel selection** and output mode on its interface
+(the same picker as ad-hoc starts), so different schedules can own different channel
+pairs of one device. When a due run's channels are already in use by another
+recording on that interface, the scheduler **defers** that occurrence and opens a
+`schedule.capture_channels_busy` health alert rather than failing — the recording
+already holding the channels keeps running.
+
 ## How due runs become recordings
 
 The controller's **schedule runner** (default every 30s) materializes due windows:

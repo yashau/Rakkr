@@ -1,6 +1,7 @@
 import type {
   AuditEvent,
   AuditOutcome,
+  ChannelMode,
   ChannelMapTemplate,
   ChannelMapAssignmentPlan,
   ChannelMapAssignmentPlanInput,
@@ -146,7 +147,9 @@ export interface RecordingBulkUploadQueueInput extends UploadQueueInput {
 
 export interface RecordingStartInput {
   captureBackend?: NonNullable<RecordingJob["command"]["captureBackend"]>;
+  captureChannelSelection?: number[];
   captureInterfaceId?: string;
+  channelMode?: ChannelMode;
   folder?: string;
   name?: string;
   nodeId: string;

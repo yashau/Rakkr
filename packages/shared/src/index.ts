@@ -47,6 +47,42 @@ export const recordingJobStatusSchema = z.enum([
 export const channelModeSchema = z.enum(["mono", "stereo", "mono_to_stereo_mix", "multichannel"]);
 export const templateAssignmentTargetSchema = z.enum(["interface", "node"]);
 
+// An explicit, ordered set of 1-based source channel indices selected from an
+// audio interface for a single recording/schedule. Order is meaningful (e.g.
+// stereo: [left, right]); duplicates are rejected. An empty/absent selection
+// means "capture the whole interface" (legacy behavior).
+export const captureChannelSelectionSchema = z
+  .array(z.number().int().positive().max(512))
+  .min(1)
+  .max(512)
+  .superRefine((channels, ctx) => {
+    if (new Set(channels).size !== channels.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Channel selection must not list a channel more than once",
+      });
+    }
+  });
+
+// Minimum number of selected channels each output mode requires. Used by the
+// controller to validate a selection against the chosen mode before building
+// the job channel map.
+export const channelModeMinChannels: Record<z.infer<typeof channelModeSchema>, number> = {
+  mono: 1,
+  mono_to_stereo_mix: 1,
+  multichannel: 1,
+  stereo: 2,
+};
+
+// Maximum selected channels a mode accepts (stereo is a fixed L/R pair); null
+// means no upper bound beyond the schema cap.
+export const channelModeMaxChannels: Record<z.infer<typeof channelModeSchema>, number | null> = {
+  mono: null,
+  mono_to_stereo_mix: null,
+  multichannel: null,
+  stereo: 2,
+};
+
 export const permissions = [
   "audit:read",
   "auth:manage",
@@ -527,7 +563,9 @@ export const watchdogPolicyUpdateSchema = z
 
 export const scheduleSummarySchema = z.object({
   captureBackend: audioCaptureBackendSchema.optional(),
+  captureChannelSelection: captureChannelSelectionSchema.optional(),
   captureInterfaceId: z.string().min(1).optional(),
+  channelMode: channelModeSchema.optional(),
   enabled: z.boolean(),
   folderTemplate: z.string().min(1),
   id: z.string().min(1),
@@ -546,7 +584,9 @@ export const scheduleSummarySchema = z.object({
 });
 export const scheduleInputSchema = z.object({
   captureBackend: audioCaptureBackendSchema.nullable().optional(),
+  captureChannelSelection: captureChannelSelectionSchema.nullable().optional(),
   captureInterfaceId: z.string().trim().min(1).max(160).nullable().optional(),
+  channelMode: channelModeSchema.nullable().optional(),
   enabled: z.boolean().default(true),
   folderTemplate: z.string().trim().min(1).max(500),
   id: z.string().trim().min(1).max(160).optional(),
@@ -566,7 +606,9 @@ export const scheduleInputSchema = z.object({
 export const scheduleUpdateSchema = z
   .object({
     captureBackend: audioCaptureBackendSchema.nullable().optional(),
+    captureChannelSelection: captureChannelSelectionSchema.nullable().optional(),
     captureInterfaceId: z.string().trim().min(1).max(160).nullable().optional(),
+    channelMode: channelModeSchema.nullable().optional(),
     enabled: z.boolean().optional(),
     folderTemplate: z.string().trim().min(1).max(500).optional(),
     name: z.string().trim().min(1).max(160).optional(),
@@ -641,8 +683,15 @@ export const recordingJobSchema = z.object({
   command: z.object({
     captureBackend: audioCaptureBackendSchema.optional(),
     captureChannels: z.number().int().positive(),
+    // Resolved 1-based source channels this job owns on the interface. Absent =
+    // whole interface (legacy). Drives both the channel map and the controller's
+    // per-channel conflict detection.
+    captureChannelSelection: captureChannelSelectionSchema.optional(),
     captureDevice: z.string().min(1),
     captureFormat: z.string().min(1),
+    // Jobs sharing an interface + capture window carry the same group id so the
+    // agent can capture the device once and split it into per-job renditions.
+    captureGroupId: z.string().min(1).optional(),
     captureInterfaceId: z.string().min(1).optional(),
     captureSampleRate: z.number().int().positive(),
     channelMap: recordingJobChannelMapSchema.optional(),
@@ -877,6 +926,8 @@ export const defaultScheduledVoiceWatchdogPolicy = {
 } satisfies WatchdogPolicy;
 
 export type AudioChannel = z.infer<typeof audioChannelSchema>;
+export type CaptureChannelSelection = z.infer<typeof captureChannelSelectionSchema>;
+export type ChannelMode = z.infer<typeof channelModeSchema>;
 export type ChannelMapAssignmentHistory = z.infer<typeof channelMapAssignmentHistorySchema>;
 export type ChannelMapEntry = z.infer<typeof channelMapEntrySchema>;
 export type ChannelMapTemplate = z.infer<typeof channelMapTemplateSchema>;

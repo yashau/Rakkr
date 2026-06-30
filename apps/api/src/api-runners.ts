@@ -38,6 +38,7 @@ export function createApiRunners({
     recordingJobLeaseRunner: createRecordingJobLeaseRunner(),
     scheduleRunner: createScheduleRunner({
       auditStore,
+      healthEventStore,
       nodeStore,
       recordingStore,
       scheduleStore,

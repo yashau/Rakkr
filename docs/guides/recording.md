@@ -20,6 +20,16 @@ profile, an optional upload policy, and optionally pin a capture backend and
 interface; you can set name, folder, and tags up front. Ad-hoc starts only target
 nodes you're scoped to, and respect node recording capacity.
 
+When you pin a specific interface you can also pick **channels**: select a subset
+of that interface's channels and an output mode (stereo pair, mono, mono-to-stereo
+mix, or multichannel) instead of recording the whole device. Selecting no channels
+records the whole interface, as before. This lets several recordings share one
+device — for example 16 separate stereo recordings, each on its own channel pair of
+a 32-channel interface. The controller rejects a start whose channels are already in
+use by another recording on that interface ("channels busy"); recordings on
+**disjoint** channels run at the same time and the recorder captures the device once
+and splits it per recording.
+
 **Scheduled** — a [schedule](scheduling.md) creates jobs automatically at due
 times. Scheduled recordings inherit schedule-owned name, folder, tags, profile,
 watchdog policy, retention, and upload policy. Long windows are split into ordered

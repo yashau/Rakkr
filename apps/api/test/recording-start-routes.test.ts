@@ -203,7 +203,7 @@ test("ad hoc recording start normalizes prefixed ALSA system refs", async () => 
   assert.equal(body.job.command.captureDevice, "hw:CARD=XUSB,DEV=0");
 });
 
-test("ad hoc recording start rejects active jobs on the requested node", async () => {
+test("ad hoc recording start rejects a recording whose interface channels are busy", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();
   const node = recorderNode({ id: `node_active_start_${randomUUID()}` });
@@ -211,7 +211,10 @@ test("ad hoc recording start rejects active jobs on the requested node", async (
     id: `rec_active_start_${randomUUID()}`,
     nodeId: node.id,
   });
-  const activeJob = await createRecordingJob(activeRecording);
+  // Active capture owns the whole interface, so any overlapping request collides.
+  const activeJob = await createRecordingJob(activeRecording, {
+    captureInterfaceId: "iface_usb_1",
+  });
   await claimRecordingJob(activeJob.id, node.id);
   const app = recordingApp({
     auditStore,
@@ -222,19 +225,114 @@ test("ad hoc recording start rejects active jobs on the requested node", async (
   });
 
   const response = await app.request("/api/v1/recordings", {
-    body: JSON.stringify({ nodeId: node.id }),
+    body: JSON.stringify({ captureInterfaceId: "iface_usb_1", nodeId: node.id }),
     headers: { "content-type": "application/json" },
     method: "POST",
   });
-  const body = (await response.json()) as { reason: string };
+  const body = (await response.json()) as { conflictingJobId: string; reason: string };
   const [event] = await auditStore.list({ action: "recordings.start.failed" });
   const recordings = await recordingStore.list();
 
   assert.equal(response.status, 409);
-  assert.equal(body.reason, "active_recording_job_exists");
-  assert.equal(event?.reason, "active_recording_job_exists");
+  assert.equal(body.reason, "capture_channels_busy");
+  assert.equal(body.conflictingJobId, activeJob.id);
+  assert.equal(event?.reason, "capture_channels_busy");
   assert.equal(event?.target.type, "recording_job");
   assert.equal(recordings.length, 0);
+});
+
+test("ad hoc recording start allows disjoint channel selections on one interface", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode({ id: `node_disjoint_${randomUUID()}` });
+  const activeRecording = recordingSummary({
+    id: `rec_disjoint_active_${randomUUID()}`,
+    nodeId: node.id,
+  });
+  // ch1 is held by an in-progress capture session; the new request asks only
+  // for ch2 on the same interface and should join that session.
+  const activeJob = await createRecordingJob(activeRecording, {
+    captureChannelSelection: [1],
+    captureGroupId: "cap_existing_session",
+    captureInterfaceId: "iface_usb_1",
+  });
+  await claimRecordingJob(activeJob.id, node.id);
+  const app = recordingApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      captureChannelSelection: [2],
+      captureInterfaceId: "iface_usb_1",
+      channelMode: "mono",
+      nodeId: node.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { job: { command: Record<string, unknown> } };
+
+  assert.equal(response.status, 202);
+  assert.deepEqual(body.job.command.captureChannelSelection, [2]);
+  // Joins the in-progress capture session on the interface.
+  assert.equal(body.job.command.captureGroupId, "cap_existing_session");
+});
+
+test("ad hoc recording start rejects a stereo selection with one channel", async () => {
+  const node = recorderNode({ id: `node_arity_${randomUUID()}` });
+  const app = recordingApp({
+    auditStore: createAuditStore(""),
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore(),
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      captureChannelSelection: [1],
+      captureInterfaceId: "iface_usb_1",
+      channelMode: "stereo",
+      nodeId: node.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { reason: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.reason, "channel_selection_mode_arity");
+});
+
+test("ad hoc recording start rejects a channel outside the interface range", async () => {
+  const node = recorderNode({ id: `node_range_${randomUUID()}` });
+  const app = recordingApp({
+    auditStore: createAuditStore(""),
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore: memoryRecordingStore(),
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      captureChannelSelection: [5],
+      captureInterfaceId: "iface_usb_1",
+      channelMode: "mono",
+      nodeId: node.id,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { reason: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.reason, "channel_selection_out_of_range");
 });
 
 test("ad hoc recording start allows another job when node capacity has room", async () => {
@@ -274,23 +372,21 @@ test("ad hoc recording start allows another job when node capacity has room", as
   assert.equal(recordings.length, 1);
 });
 
-test("ad hoc recording start rejects queued and running jobs once node capacity is full", async () => {
+test("ad hoc recording start rejects a new interface once node capture capacity is full", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();
+  // Capacity 1 = one physical capture session (device) at a time on this node.
   const node = recorderNode({
     id: `node_capacity_full_${randomUUID()}`,
-    recordingCapacity: { maxConcurrentRecordings: 2 },
-  });
-  const queuedRecording = recordingSummary({
-    id: `rec_capacity_queued_${randomUUID()}`,
-    nodeId: node.id,
+    recordingCapacity: { maxConcurrentRecordings: 1 },
   });
   const runningRecording = recordingSummary({
     id: `rec_capacity_running_${randomUUID()}`,
     nodeId: node.id,
   });
-  await createRecordingJob(queuedRecording);
-  const runningJob = await createRecordingJob(runningRecording);
+  const runningJob = await createRecordingJob(runningRecording, {
+    captureInterfaceId: "iface_usb_1",
+  });
   await claimRecordingJob(runningJob.id, node.id);
   const app = recordingApp({
     auditStore,
@@ -300,13 +396,14 @@ test("ad hoc recording start rejects queued and running jobs once node capacity 
     recordingStore,
   });
 
+  // A second, different interface would be a second concurrent capture session.
   const response = await app.request("/api/v1/recordings", {
-    body: JSON.stringify({ nodeId: node.id }),
+    body: JSON.stringify({ captureInterfaceId: "iface_jack_manual", nodeId: node.id }),
     headers: { "content-type": "application/json" },
     method: "POST",
   });
   const body = (await response.json()) as {
-    activeJobCount: number;
+    activeSessionCount: number;
     maxConcurrentRecordings: number;
     reason: string;
   };
@@ -314,11 +411,10 @@ test("ad hoc recording start rejects queued and running jobs once node capacity 
   const recordings = await recordingStore.list();
 
   assert.equal(response.status, 409);
-  assert.equal(body.reason, "active_recording_job_exists");
-  assert.equal(body.activeJobCount, 2);
-  assert.equal(body.maxConcurrentRecordings, 2);
-  assert.equal(event?.reason, "active_recording_job_exists");
-  assert.equal(event?.target.type, "recording_job");
+  assert.equal(body.reason, "node_capture_capacity_reached");
+  assert.equal(body.activeSessionCount, 1);
+  assert.equal(body.maxConcurrentRecordings, 1);
+  assert.equal(event?.reason, "node_capture_capacity_reached");
   assert.equal(recordings.length, 0);
 });
 

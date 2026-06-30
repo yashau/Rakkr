@@ -12,11 +12,13 @@ process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(jobRoot, "jobs.json");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(jobRoot, "retention-policies.json");
 
 const {
+  claimNextRecordingGroup,
   claimRecordingJob,
   createRecordingJob,
   expireRecordingJobLeases,
   failRecordingJob,
   onRecordingJobLeaseExpired,
+  recordingJob,
   retryRecordingJob,
 } = await import("../src/recording-jobs.js");
 
@@ -109,7 +111,34 @@ test("recording job lease expiry notifies terminal listeners", async () => {
   }
 });
 
-function recording(): RecordingSummary {
+test("claim next recording group claims same-group siblings and leaves other groups queued", async () => {
+  const nodeId = `node_group_${randomUUID()}`;
+  const groupId = `cap_${randomUUID()}`;
+  const jobA = await createRecordingJob(recording({ id: `rec_a_${randomUUID()}`, nodeId }), {
+    captureChannelSelection: [1, 2],
+    captureGroupId: groupId,
+    captureInterfaceId: "iface_group",
+  });
+  const jobB = await createRecordingJob(recording({ id: `rec_b_${randomUUID()}`, nodeId }), {
+    captureChannelSelection: [3, 4],
+    captureGroupId: groupId,
+    captureInterfaceId: "iface_group",
+  });
+  const jobOther = await createRecordingJob(recording({ id: `rec_c_${randomUUID()}`, nodeId }), {
+    captureGroupId: `cap_other_${randomUUID()}`,
+    captureInterfaceId: "iface_group",
+  });
+
+  const claimed = await claimNextRecordingGroup(nodeId, nodeId);
+
+  // The shared-group siblings are claimed together for one capture session.
+  assert.deepEqual(new Set(claimed.map((job) => job.id)), new Set([jobA.id, jobB.id]));
+  assert.ok(claimed.every((job) => job.status === "running"));
+  // The unrelated group stays queued for a later capture session.
+  assert.equal((await recordingJob(jobOther.id))?.status, "queued");
+});
+
+function recording(overrides: Partial<RecordingSummary> = {}): RecordingSummary {
   return {
     cached: false,
     durationSeconds: 0,
@@ -122,5 +151,6 @@ function recording(): RecordingSummary {
     source: "ad_hoc",
     status: "recording",
     tags: ["voice"],
+    ...overrides,
   };
 }

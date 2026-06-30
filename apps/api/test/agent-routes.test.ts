@@ -494,6 +494,23 @@ test("claim-next lets one node claim multiple queued recordings independently", 
     ...node(),
     alias: "Concurrent Lifecycle Recorder",
     id: `node_concurrent_lifecycle_${randomUUID()}`,
+    interfaces: [
+      {
+        alias: "Concurrent X32",
+        backend: "alsa" as const,
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1 },
+          { alias: "Ch 2", index: 2 },
+          { alias: "Ch 3", index: 3 },
+          { alias: "Ch 4", index: 4 },
+        ],
+        id: "iface_concurrent_x32",
+        sampleRates: [48_000],
+        systemName: "Concurrent X32",
+        systemRef: "hw:CARD=X32,DEV=0",
+      },
+    ],
     recordingCapacity: { maxConcurrentRecordings: 2 },
   };
   const nodeStore = memoryNodeStore([lifecycleNode]);
@@ -523,6 +540,9 @@ test("claim-next lets one node claim multiple queued recordings independently", 
 
   const firstStarted = await app.request("/api/v1/recordings", {
     body: JSON.stringify({
+      captureChannelSelection: [1, 2],
+      captureInterfaceId: "iface_concurrent_x32",
+      channelMode: "stereo",
       name: "Concurrent Recording A",
       nodeId: lifecycleNode.id,
       tags: ["voice", "concurrent"],
@@ -532,6 +552,9 @@ test("claim-next lets one node claim multiple queued recordings independently", 
   });
   const secondStarted = await app.request("/api/v1/recordings", {
     body: JSON.stringify({
+      captureChannelSelection: [3, 4],
+      captureInterfaceId: "iface_concurrent_x32",
+      channelMode: "stereo",
       name: "Concurrent Recording B",
       nodeId: lifecycleNode.id,
       tags: ["voice", "concurrent"],

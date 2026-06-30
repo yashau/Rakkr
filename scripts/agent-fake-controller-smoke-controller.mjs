@@ -74,6 +74,38 @@ export function createFakeControllerHandler({
     }
 
     if (
+      request.method === "POST" &&
+      url.pathname === `/api/v1/nodes/${nodeId}/recording-jobs/claim-next-group`
+    ) {
+      observed.claimNextReads += 1;
+      if (scenario.claimNextFailuresRemaining > 0) {
+        scenario.claimNextFailuresRemaining -= 1;
+        observed.claimNextReadFailures += 1;
+        return json(response, 503, { error: "simulated claim-next failure" });
+      }
+
+      const primary = nextQueuedJob(jobs);
+
+      if (!primary) {
+        return empty(response);
+      }
+
+      // Claim the primary plus every queued sibling sharing its capture group so
+      // the agent captures the shared device once and splits it per job.
+      const groupId = primary.command?.captureGroupId;
+      const members = groupId
+        ? jobs.filter((job) => job.status === "queued" && job.command?.captureGroupId === groupId)
+        : [primary];
+
+      for (const member of members) {
+        observed.claims += 1;
+        member.status = "running";
+      }
+      rememberRunningJobs(observed, jobs);
+      return json(response, 200, { data: members });
+    }
+
+    if (
       request.method === "GET" &&
       url.pathname === `/api/v1/nodes/${nodeId}/channel-map-assignments`
     ) {

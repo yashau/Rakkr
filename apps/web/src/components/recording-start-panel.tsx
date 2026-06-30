@@ -3,6 +3,7 @@ import { Radio } from "lucide-react";
 import { useState } from "react";
 import type { AudioInterface, RecorderNode, RecordingProfile, UploadPolicy } from "@rakkr/shared";
 
+import { ChannelSelectionField } from "@/components/channel-selection-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,15 +109,19 @@ export function RecordingStartPanel({
             onValueChange={(value) => {
               const nextNode = nodes.find((node) => node.id === value);
 
-              setDraft((current) => ({
-                ...current,
-                captureInterfaceId: nextNode?.interfaces.some(
+              setDraft((current) => {
+                const keepsInterface = nextNode?.interfaces.some(
                   (candidate) => candidate.id === current.captureInterfaceId,
-                )
-                  ? current.captureInterfaceId
-                  : "",
-                nodeId: value,
-              }));
+                );
+
+                return {
+                  ...current,
+                  captureChannels: keepsInterface ? current.captureChannels : [],
+                  captureInterfaceId: keepsInterface ? current.captureInterfaceId : "",
+                  channelMode: keepsInterface ? current.channelMode : "",
+                  nodeId: value,
+                };
+              });
             }}
             value={selectedNodeId}
           >
@@ -163,7 +168,9 @@ export function RecordingStartPanel({
             onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
+                captureChannels: [],
                 captureInterfaceId: value === "__all__" ? "" : value,
+                channelMode: "",
               }))
             }
             value={draft.captureInterfaceId || "__all__"}
@@ -256,6 +263,20 @@ export function RecordingStartPanel({
           </ToggleGroup>
         </div>
       </div>
+      <ChannelSelectionField
+        audioInterface={selectedNode?.interfaces.find(
+          (candidate) => candidate.id === draft.captureInterfaceId,
+        )}
+        idPrefix="recording-start"
+        onChange={(value) =>
+          setDraft((current) => ({
+            ...current,
+            captureChannels: value.channels,
+            channelMode: value.mode,
+          }))
+        }
+        value={{ channels: draft.captureChannels, mode: draft.channelMode }}
+      />
       <div className="flex justify-end">
         <Button
           disabled={

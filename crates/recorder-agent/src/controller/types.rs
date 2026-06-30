@@ -35,8 +35,18 @@ pub struct ControllerRecordingJob {
 pub struct ControllerCaptureCommand {
     pub capture_backend: Option<CaptureBackend>,
     pub capture_channels: u16,
+    /// Resolved 1-based source channels this job owns on the interface. Absent =
+    /// whole interface. Drives the inline channel map and identifies the job's
+    /// channels within a shared capture session.
+    #[serde(default)]
+    pub capture_channel_selection: Option<Vec<u16>>,
     pub capture_device: String,
     pub capture_format: String,
+    /// Jobs sharing an interface + capture window carry the same group id; the
+    /// agent captures the device once for the group and renders each job's
+    /// channel subset from that single capture.
+    #[serde(default)]
+    pub capture_group_id: Option<String>,
     pub capture_interface_id: Option<String>,
     pub capture_sample_rate: u32,
     pub channel_map: Option<ControllerRecordingJobChannelMap>,

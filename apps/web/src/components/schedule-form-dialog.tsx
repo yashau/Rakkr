@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PlusCircle, Save, Sparkles, Trash2 } from "lucide-react";
 import { type AudioInterface, type RecorderNode, type ScheduleDayOfWeek } from "@rakkr/shared";
 
+import { ChannelSelectionField } from "@/components/channel-selection-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
@@ -104,14 +105,15 @@ export function ScheduleFormDialog({
 
   function selectNode(nodeId: string) {
     const node = nodes.find((candidate) => candidate.id === nodeId);
+    const keepsInterface = node?.interfaces.some(
+      (candidate) => candidate.id === draft.captureInterfaceId,
+    );
 
     onDraftChange({
       ...draft,
-      captureInterfaceId: node?.interfaces.some(
-        (candidate) => candidate.id === draft.captureInterfaceId,
-      )
-        ? draft.captureInterfaceId
-        : "",
+      captureChannels: keepsInterface ? draft.captureChannels : [],
+      captureInterfaceId: keepsInterface ? draft.captureInterfaceId : "",
+      channelMode: keepsInterface ? draft.channelMode : "",
       nodeId,
       room: node?.location.room ?? draft.room,
     });
@@ -484,7 +486,12 @@ export function ScheduleFormDialog({
               <Label htmlFor="schedule-capture-interface">Interface</Label>
               <Select
                 onValueChange={(value) =>
-                  updateDraft("captureInterfaceId", value === "__all__" ? "" : value)
+                  onDraftChange({
+                    ...draft,
+                    captureChannels: [],
+                    captureInterfaceId: value === "__all__" ? "" : value,
+                    channelMode: "",
+                  })
                 }
                 value={draft.captureInterfaceId || "__all__"}
               >
@@ -500,6 +507,22 @@ export function ScheduleFormDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="md:col-span-2">
+              <ChannelSelectionField
+                audioInterface={selectedNode?.interfaces.find(
+                  (candidate) => candidate.id === draft.captureInterfaceId,
+                )}
+                idPrefix="schedule-capture"
+                onChange={(value) =>
+                  onDraftChange({
+                    ...draft,
+                    captureChannels: value.channels,
+                    channelMode: value.mode,
+                  })
+                }
+                value={{ channels: draft.captureChannels, mode: draft.channelMode }}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AuditEvent, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
+import type { HealthEventStore } from "./health-store.js";
 import type { NodeStore } from "./node-store.js";
 import type { RecordingStore } from "./recording-store.js";
 import {
@@ -22,6 +23,7 @@ import type { SettingsStore } from "./settings-store.js";
 
 interface ScheduleRunnerDependencies {
   auditStore: AuditStore;
+  healthEventStore?: HealthEventStore;
   nodeStore: NodeStore;
   recordingStore: RecordingStore;
   scheduleStore: ScheduleStore;
@@ -29,9 +31,10 @@ interface ScheduleRunnerDependencies {
 }
 
 export interface DueScheduleRun {
+  busyChannels?: number[];
   jobId?: string;
   jobIds?: string[];
-  outcome: "failed" | "skipped" | "succeeded";
+  outcome: "deferred" | "failed" | "skipped" | "succeeded";
   recordingId?: string;
   recordingIds?: string[];
   reason?: string;
@@ -83,6 +86,7 @@ export function createScheduleRunner(dependencies: ScheduleRunnerDependencies) {
 export async function runDueSchedules(
   {
     auditStore,
+    healthEventStore,
     nodeStore,
     recordingStore,
     scheduleStore,
@@ -145,13 +149,66 @@ export async function runDueSchedules(
     }
 
     try {
-      const queued = await queueScheduledRecordings({
+      const result = await queueScheduledRecordings({
         node,
         now,
         recordingStore,
         schedule,
         settingsStore,
       });
+
+      if (result.status === "deferred") {
+        const updates = advanceScheduleAfterRun(schedule, now);
+        const updated = await scheduleStore.update(schedule.id, updates);
+
+        if (healthEventStore) {
+          await healthEventStore.create({
+            details: {
+              busyChannels: result.conflict.busyChannels,
+              captureInterfaceId: result.conflict.captureInterfaceId,
+              conflictingJobId: result.conflict.conflictingJobId,
+              conflictingRecordingId: result.conflict.conflictingRecordingId,
+              nodeId: node.id,
+              scheduleName: schedule.name,
+            },
+            nodeId: node.id,
+            openedAt: now,
+            scheduleId: schedule.id,
+            severity: "warning",
+            type: "schedule.capture_channels_busy",
+          });
+        }
+
+        await appendScheduleAudit(auditStore, {
+          action: "schedules.due_run.deferred",
+          after: {
+            conflict: result.conflict,
+            nextSchedule: updated ? scheduleExecutionSnapshot(updated) : updates,
+          },
+          before,
+          correlationIds: {
+            conflictingRecordingId: result.conflict.conflictingRecordingId,
+            scheduleId: schedule.id,
+          },
+          details: {
+            busyChannels: result.conflict.busyChannels,
+            captureInterfaceId: result.conflict.captureInterfaceId,
+            nodeId: node.id,
+          },
+          outcome: "partial",
+          reason: "capture_channels_busy",
+          schedule,
+        });
+        results.push({
+          busyChannels: result.conflict.busyChannels,
+          outcome: "deferred",
+          reason: "capture_channels_busy",
+          scheduleId: schedule.id,
+        });
+        continue;
+      }
+
+      const queued = result.queued;
       const first = queued[0];
       const updates = advanceScheduleAfterRun(schedule, now);
       const updated = await scheduleStore.update(schedule.id, updates);
