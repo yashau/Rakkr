@@ -705,21 +705,13 @@ export const api = {
   createUploadDestination: (input: UploadDestinationInput) =>
     fetchJson<{ data: UploadDestinationRuntimeStatus }>("/api/v1/settings/upload-destinations", {
       body: JSON.stringify(input),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: jsonHeaders,
       method: "POST",
     }),
   updateUploadDestination: (id: string, input: UploadDestinationUpdate) =>
     fetchJson<{ data: UploadDestinationRuntimeStatus }>(
       `/api/v1/settings/upload-destinations/${id}`,
-      {
-        body: JSON.stringify(input),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "PATCH",
-      },
+      { body: JSON.stringify(input), headers: jsonHeaders, method: "PATCH" },
     ),
   deleteUploadDestination: (id: string) =>
     fetchJson<{ data: { id: string } }>(`/api/v1/settings/upload-destinations/${id}`, {

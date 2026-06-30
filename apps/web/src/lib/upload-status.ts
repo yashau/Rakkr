@@ -1,8 +1,8 @@
-import type { UploadProviderRuntimeStatus } from "@rakkr/shared";
+import type { UploadProviderStatus } from "@rakkr/shared";
 
 import { toneBadgeClass } from "@/lib/status-colors";
 
-export function uploadProviderStatusClass(status: UploadProviderRuntimeStatus["status"]) {
+export function uploadProviderStatusClass(status: UploadProviderStatus) {
   if (status === "ready") {
     return toneBadgeClass("healthy");
   }

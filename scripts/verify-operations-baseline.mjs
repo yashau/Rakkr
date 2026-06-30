@@ -14,6 +14,7 @@ const sourceFiles = [
   "apps/api/src/settings-store.ts",
   "apps/api/src/upload-policies.ts",
   "apps/api/src/upload-destinations.ts",
+  "apps/api/src/settings-upload-destination-routes.ts",
   "apps/api/src/upload-runner.ts",
   "apps/api/src/recording-upload-queue-routes.ts",
   "apps/web/src/pages/audit.tsx",

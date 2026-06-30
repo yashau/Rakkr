@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import { recordingEnhancementSchema } from "./enhancement.js";
-import { s3ProviderConfigSchema, smbProviderConfigSchema } from "./upload-providers.js";
 export * from "./enhancement.js";
 export * from "./oidc.js";
 export * from "./pagination.js";
@@ -29,12 +28,6 @@ export const recordingStatusSchema = z.enum([
   "partial",
 ]);
 export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
-export const uploadProviderStatusSchema = z.enum([
-  "disabled",
-  "not_configured",
-  "not_implemented",
-  "ready",
-]);
 export const uploadQueueStatusSchema = z.enum([
   "queued",
   "retrying",
@@ -734,94 +727,6 @@ export const uploadRunnerStatusSchema = z.object({
   running: z.boolean(),
   started: z.boolean(),
 });
-export const uploadProviderConfigSchema = z.object({
-  displayName: z.string().trim().min(1).max(160),
-  enabled: z.boolean(),
-  provider: uploadProviderSchema,
-  s3: s3ProviderConfigSchema.optional(),
-  smb: smbProviderConfigSchema.optional(),
-  updatedAt: isoDateTimeSchema,
-});
-// Secrets are not trimmed and may be cleared by passing an empty string.
-export const uploadProviderConfigUpdateSchema = z
-  .object({
-    displayName: z.string().trim().min(1).max(160).optional(),
-    enabled: z.boolean().optional(),
-    s3: s3ProviderConfigSchema.optional(),
-    s3SecretAccessKey: z.string().max(1024).optional(),
-    smb: smbProviderConfigSchema.optional(),
-    smbPassword: z.string().max(1024).optional(),
-  })
-  .refine((value) => Object.keys(value).length > 0, "At least one provider field is required");
-export const uploadProviderRuntimeStatusSchema = z.object({
-  configured: z.boolean(),
-  displayName: z.string(),
-  enabled: z.boolean(),
-  hasS3SecretAccessKey: z.boolean(),
-  hasSmbPassword: z.boolean(),
-  implemented: z.boolean(),
-  missingFields: z.array(z.string()),
-  provider: uploadProviderSchema,
-  reason: z.string().optional(),
-  requiredFields: z.array(z.string()),
-  s3: s3ProviderConfigSchema.optional(),
-  smb: smbProviderConfigSchema.optional(),
-  status: uploadProviderStatusSchema,
-  target: z.string().optional(),
-  updatedAt: isoDateTimeSchema,
-});
-
-// A named SMB or S3 upload target. Many destinations of each kind may exist; the
-// `stub` queue-only provider is a built-in and is never a destination row.
-export const uploadDestinationKindSchema = z.enum(["smb", "s3"]);
-export const uploadDestinationSchema = z.object({
-  displayName: z.string().trim().min(1).max(160),
-  enabled: z.boolean(),
-  id: z.string().min(1),
-  kind: uploadDestinationKindSchema,
-  s3: s3ProviderConfigSchema.optional(),
-  smb: smbProviderConfigSchema.optional(),
-  updatedAt: isoDateTimeSchema,
-});
-// Secrets are write-only: not trimmed and cleared by passing an empty string.
-export const uploadDestinationInputSchema = z.object({
-  displayName: z.string().trim().min(1).max(160),
-  enabled: z.boolean().default(false),
-  id: z.string().trim().min(1).max(160).optional(),
-  kind: uploadDestinationKindSchema,
-  s3: s3ProviderConfigSchema.optional(),
-  s3SecretAccessKey: z.string().max(1024).optional(),
-  smb: smbProviderConfigSchema.optional(),
-  smbPassword: z.string().max(1024).optional(),
-});
-export const uploadDestinationUpdateSchema = z
-  .object({
-    displayName: z.string().trim().min(1).max(160).optional(),
-    enabled: z.boolean().optional(),
-    s3: s3ProviderConfigSchema.optional(),
-    s3SecretAccessKey: z.string().max(1024).optional(),
-    smb: smbProviderConfigSchema.optional(),
-    smbPassword: z.string().max(1024).optional(),
-  })
-  .refine((value) => Object.keys(value).length > 0, "At least one destination field is required");
-export const uploadDestinationRuntimeStatusSchema = z.object({
-  configured: z.boolean(),
-  displayName: z.string(),
-  enabled: z.boolean(),
-  hasS3SecretAccessKey: z.boolean(),
-  hasSmbPassword: z.boolean(),
-  id: z.string().min(1),
-  implemented: z.boolean(),
-  kind: uploadDestinationKindSchema,
-  missingFields: z.array(z.string()),
-  reason: z.string().optional(),
-  requiredFields: z.array(z.string()),
-  s3: s3ProviderConfigSchema.optional(),
-  smb: smbProviderConfigSchema.optional(),
-  status: uploadProviderStatusSchema,
-  target: z.string().optional(),
-  updatedAt: isoDateTimeSchema,
-});
 
 export const uploadPolicyTriggerSchema = z.enum(["manual", "on_recording_cached"]);
 export const uploadPolicySchema = z.object({
@@ -1034,15 +939,6 @@ export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 export type ScheduleSummary = z.infer<typeof scheduleSummarySchema>;
 export type ScheduleUpdate = z.infer<typeof scheduleUpdateSchema>;
 export type UploadProvider = z.infer<typeof uploadProviderSchema>;
-export type UploadProviderConfig = z.infer<typeof uploadProviderConfigSchema>;
-export type UploadProviderConfigUpdate = z.infer<typeof uploadProviderConfigUpdateSchema>;
-export type UploadProviderRuntimeStatus = z.infer<typeof uploadProviderRuntimeStatusSchema>;
-export type UploadProviderStatus = z.infer<typeof uploadProviderStatusSchema>;
-export type UploadDestination = z.infer<typeof uploadDestinationSchema>;
-export type UploadDestinationInput = z.infer<typeof uploadDestinationInputSchema>;
-export type UploadDestinationKind = z.infer<typeof uploadDestinationKindSchema>;
-export type UploadDestinationRuntimeStatus = z.infer<typeof uploadDestinationRuntimeStatusSchema>;
-export type UploadDestinationUpdate = z.infer<typeof uploadDestinationUpdateSchema>;
 export type UploadPolicy = z.infer<typeof uploadPolicySchema>;
 export type UploadPolicyInput = z.infer<typeof uploadPolicyInputSchema>;
 export type UploadPolicyTrigger = z.infer<typeof uploadPolicyTriggerSchema>;

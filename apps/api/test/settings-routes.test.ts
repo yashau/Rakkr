@@ -615,31 +615,7 @@ test("settings manage routes update operational templates and audit snapshots", 
       staticScoreThreshold: 0.79,
     },
   );
-  const destinationCreateResponse = await requestJson(
-    app,
-    "/api/v1/settings/upload-destinations",
-    "POST",
-    {
-      displayName: "Operations Destination",
-      enabled: true,
-      kind: "smb",
-      smb: { server: "files.example.lan", share: "recordings", username: "svc" },
-      smbPassword: "s3cr3t",
-    },
-  );
-  const operationsDestinationId = (
-    (await destinationCreateResponse.json()) as { data: { id: string } }
-  ).data.id;
-  const destinationUpdateResponse = await requestJson(
-    app,
-    `/api/v1/settings/upload-destinations/${operationsDestinationId}`,
-    "PATCH",
-    {
-      displayName: "Operations Destination Rev 2",
-    },
-  );
   const uploadCreateResponse = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
-    destinationId: operationsDestinationId,
     enabled: true,
     id: uploadPolicyId,
     maxAttempts: 4,
@@ -757,8 +733,6 @@ test("settings manage routes update operational templates and audit snapshots", 
 
   assert.equal(profileResponse.status, 200);
   assert.equal(watchdogResponse.status, 200);
-  assert.equal(destinationCreateResponse.status, 201);
-  assert.equal(destinationUpdateResponse.status, 200);
   assert.equal(uploadCreateResponse.status, 201);
   assert.equal(uploadUpdateResponse.status, 200);
   assert.equal(templateCreateResponse.status, 201);
@@ -824,8 +798,6 @@ test("settings manage routes update operational templates and audit snapshots", 
     "settings.channel_map_templates.update.succeeded",
     "settings.recording_profiles.create.succeeded",
     "settings.recording_profiles.update.succeeded",
-    "settings.upload_destinations.create.succeeded",
-    "settings.upload_destinations.update.succeeded",
     "settings.upload_policies.create.succeeded",
     "settings.upload_policies.update.succeeded",
     "settings.watchdog_policies.create.succeeded",
