@@ -12,7 +12,9 @@ test("recording start input trims optional metadata and deduplicates tags", () =
   assert.deepEqual(
     startInputFromDraft({
       captureBackend: "jack",
+      captureChannels: [],
       captureInterfaceId: " iface_jack ",
+      channelMode: "",
       folder: " meetings/voice ",
       name: " Council Room ",
       nodeId: "node_room_101",
@@ -22,7 +24,9 @@ test("recording start input trims optional metadata and deduplicates tags", () =
     }),
     {
       captureBackend: "jack",
+      captureChannelSelection: undefined,
       captureInterfaceId: "iface_jack",
+      channelMode: undefined,
       folder: "meetings/voice",
       name: "Council Room",
       nodeId: "node_room_101",
@@ -33,11 +37,60 @@ test("recording start input trims optional metadata and deduplicates tags", () =
   );
 });
 
+test("recording start input pins a sorted channel selection and mode for an interface", () => {
+  assert.deepEqual(
+    startInputFromDraft({
+      captureBackend: "",
+      captureChannels: [4, 3],
+      captureInterfaceId: "iface_x32",
+      channelMode: "stereo",
+      folder: "",
+      name: "",
+      nodeId: "node_room_101",
+      recordingProfileId: "profile_voice",
+      tags: "",
+      uploadPolicyId: "",
+    }),
+    {
+      captureBackend: undefined,
+      captureChannelSelection: [3, 4],
+      captureInterfaceId: "iface_x32",
+      channelMode: "stereo",
+      folder: undefined,
+      name: undefined,
+      nodeId: "node_room_101",
+      recordingProfileId: "profile_voice",
+      tags: [],
+      uploadPolicyId: undefined,
+    },
+  );
+});
+
+test("recording start input drops channel selection without a pinned interface", () => {
+  const input = startInputFromDraft({
+    captureBackend: "",
+    captureChannels: [1, 2],
+    captureInterfaceId: "",
+    channelMode: "stereo",
+    folder: "",
+    name: "",
+    nodeId: "node_room_101",
+    recordingProfileId: "profile_voice",
+    tags: "",
+    uploadPolicyId: "",
+  });
+
+  assert.equal(input.captureChannelSelection, undefined);
+  assert.equal(input.channelMode, undefined);
+});
+
 test("recording start input omits blank optional metadata", () => {
   assert.deepEqual(
     startInputFromDraft({
       captureBackend: "",
+      captureChannels: [],
       captureInterfaceId: " ",
+      channelMode: "",
       folder: " ",
       name: "",
       nodeId: "node_room_101",
@@ -47,7 +100,9 @@ test("recording start input omits blank optional metadata", () => {
     }),
     {
       captureBackend: undefined,
+      captureChannelSelection: undefined,
       captureInterfaceId: undefined,
+      channelMode: undefined,
       folder: undefined,
       name: undefined,
       nodeId: "node_room_101",

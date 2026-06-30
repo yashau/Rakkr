@@ -1,10 +1,12 @@
-import type { RecorderNode } from "@rakkr/shared";
+import type { ChannelMode, RecorderNode } from "@rakkr/shared";
 
 import type { RecordingStartInput } from "@/lib/api";
 
 export interface RecordingStartDraft {
   captureBackend: "" | NonNullable<RecordingStartInput["captureBackend"]>;
+  captureChannels: number[];
   captureInterfaceId: string;
+  channelMode: "" | ChannelMode;
   folder: string;
   name: string;
   nodeId: string;
@@ -15,7 +17,9 @@ export interface RecordingStartDraft {
 
 export const emptyRecordingStartDraft: RecordingStartDraft = {
   captureBackend: "",
+  captureChannels: [],
   captureInterfaceId: "",
+  channelMode: "",
   folder: "",
   name: "",
   nodeId: "",
@@ -25,9 +29,15 @@ export const emptyRecordingStartDraft: RecordingStartDraft = {
 };
 
 export function startInputFromDraft(draft: RecordingStartDraft): RecordingStartInput {
+  // Channel selection only applies when a specific interface is pinned; an empty
+  // selection records the whole interface (legacy behavior).
+  const channels = draft.captureInterfaceId ? sortedChannels(draft.captureChannels) : [];
+
   return {
     captureBackend: draft.captureBackend || undefined,
+    captureChannelSelection: channels.length > 0 ? channels : undefined,
     captureInterfaceId: textOrUndefined(draft.captureInterfaceId),
+    channelMode: channels.length > 0 && draft.channelMode ? draft.channelMode : undefined,
     folder: textOrUndefined(draft.folder),
     name: textOrUndefined(draft.name),
     nodeId: draft.nodeId,
@@ -35,6 +45,10 @@ export function startInputFromDraft(draft: RecordingStartDraft): RecordingStartI
     tags: tagsFromText(draft.tags),
     uploadPolicyId: textOrUndefined(draft.uploadPolicyId),
   };
+}
+
+export function sortedChannels(channels: number[]): number[] {
+  return [...new Set(channels)].sort((left, right) => left - right);
 }
 
 export function recordingStartNodeLabel(

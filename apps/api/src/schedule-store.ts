@@ -276,7 +276,9 @@ class PostgresScheduleStore implements ScheduleStore {
       .onConflictDoUpdate({
         set: {
           captureBackend: row.captureBackend,
+          captureChannelSelection: row.captureChannelSelection,
           captureInterfaceId: row.captureInterfaceId,
+          channelMode: row.channelMode,
           enabled: row.enabled,
           folderTemplate: row.folderTemplate,
           name: row.name,
@@ -318,7 +320,9 @@ function loadSchedules(seedSchedules: ScheduleSummary[]) {
 function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
   return {
     captureBackend: schedule.captureBackend ?? null,
+    captureChannelSelection: schedule.captureChannelSelection ?? [],
     captureInterfaceId: schedule.captureInterfaceId ?? null,
+    channelMode: schedule.channelMode ?? null,
     enabled: schedule.enabled,
     folderTemplate: schedule.folderTemplate,
     id: schedule.id,
@@ -342,7 +346,9 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
 
   return {
     captureBackend: captureBackendFromValue(row.captureBackend),
+    captureChannelSelection: channelSelectionFromValue(row.captureChannelSelection),
     captureInterfaceId: stringOrUndefined(row.captureInterfaceId),
+    channelMode: channelModeFromValue(row.channelMode),
     enabled: row.enabled,
     folderTemplate: row.folderTemplate,
     id: row.id,
@@ -431,6 +437,28 @@ function stringOrUndefined(value: unknown) {
 
 function captureBackendFromValue(value: unknown): ScheduleSummary["captureBackend"] {
   return value === "alsa" || value === "jack" || value === "pipewire" ? value : undefined;
+}
+
+function channelSelectionFromValue(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const channels = value.filter(
+    (channel): channel is number =>
+      typeof channel === "number" && Number.isInteger(channel) && channel > 0,
+  );
+
+  return channels.length > 0 ? channels : undefined;
+}
+
+function channelModeFromValue(value: unknown): ScheduleSummary["channelMode"] {
+  return value === "mono" ||
+    value === "stereo" ||
+    value === "mono_to_stereo_mix" ||
+    value === "multichannel"
+    ? value
+    : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

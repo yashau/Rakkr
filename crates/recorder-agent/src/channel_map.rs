@@ -530,8 +530,10 @@ mod tests {
         ControllerCaptureCommand {
             capture_backend: None,
             capture_channels: 2,
+            capture_channel_selection: None,
             capture_device: "default".to_string(),
             capture_format: "S16_LE".to_string(),
+            capture_group_id: None,
             capture_interface_id: Some("interface_1".to_string()),
             capture_sample_rate: 48_000,
             enhancement: None,

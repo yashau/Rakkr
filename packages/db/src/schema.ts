@@ -507,7 +507,14 @@ export const schedules = pgTable(
   "schedules",
   {
     captureBackend: varchar("capture_backend", { length: 32 }),
+    // Ordered 1-based source channel indices selected from the capture
+    // interface. Empty array = capture the whole interface (legacy behavior).
+    captureChannelSelection: jsonb("capture_channel_selection")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     captureInterfaceId: varchar("capture_interface_id", { length: 160 }),
+    // Output mode applied to the selected channels (mono/stereo/etc).
+    channelMode: varchar("channel_mode", { length: 32 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     enabled: boolean("enabled").notNull().default(true),
     folderTemplate: text("folder_template").notNull(),

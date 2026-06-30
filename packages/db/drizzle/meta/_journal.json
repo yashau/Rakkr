@@ -232,6 +232,13 @@
       "when": 1782761458808,
       "tag": "0032_fearless_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1782836188022,
+      "tag": "0033_useful_jigsaw",
+      "breakpoints": true
     }
   ]
 }

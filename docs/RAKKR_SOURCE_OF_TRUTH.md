@@ -213,6 +213,9 @@ Current partial implementation:
 - Agent capture and meter sampling can use operator-provided argument templates for non-`arecord` commands while preserving the default `arecord` path.
 - Nodes UI and API can persist per-node audio command defaults, and node config sends those defaults to agents for queued captures and idle metering.
 - Ad-hoc recording starts can pin capture backend and target audio interface, or inherit node defaults.
+- Ad-hoc starts and schedules can pin a per-channel selection (an ordered subset of the interface's channels) plus an output mode; the controller validates it against the interface and renders it into the job channel map. An empty selection records the whole interface.
+- The controller detects channel-level capture conflicts: an ad-hoc start whose channels overlap an active capture on the same interface is rejected (`capture_channels_busy`), and node capacity bounds concurrent capture sessions per node (distinct interfaces), so an extra interface beyond capacity is rejected (`node_capture_capacity_reached`).
+- Disjoint jobs that share an interface and capture window form one capture group; the agent claims the whole group (`claim-next-group`), captures the device once at the group's full channel span, and renders each job's channel subset from that single raw (capture-once, split-many) — letting many recordings (e.g. 16 stereo pairs from a 32-channel device) run from one device without contention.
 - Fake-controller agent smoke coverage exercises template-driven capture and meter arguments without audio hardware.
 - Agent meter targeting maps numeric, named, and `CARD=`/`DEV=` ALSA `hw:`/`plughw:` capture devices to collected inventory interfaces when possible.
 - Agent runtime inventory reports detected PipeWire and JACK command availability, both have managed capture/meter backend presets, and ALSA metering supports both `S16_LE` and `S32_LE` PCM, including repeated X32 X-USB 32-channel S32 meter frames.
@@ -258,6 +261,7 @@ Current implementation baseline:
 - Runner creates jobs under `system:scheduler` and audits outcomes.
 - Scheduled run-now and due runs split long windows into ordered track jobs when profile limits require it.
 - Schedules can pin ALSA, JACK, or PipeWire capture backend selection and target audio interfaces for run-now and due-run jobs, or inherit node defaults.
+- Schedules can pin a per-channel selection and output mode; a due run whose channels are already in use on the interface is deferred with a `schedule.capture_channels_busy` health alert instead of failing, leaving the in-progress recording untouched.
 - Schedule list API and UI filter visible schedules by search, enabled state, node, backend, and interface with removable active chips.
 - Schedule detail, occurrence preview, and lifecycle control APIs operate only on scoped visible schedules.
 - Schedule create, update, and run-now APIs operate only on scoped visible nodes.

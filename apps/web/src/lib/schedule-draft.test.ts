@@ -86,7 +86,9 @@ test("schedule backend draft round trips pinned and default values", () => {
   const draft = scheduleToDraft({
     ...pinnedInput,
     captureBackend: "pipewire",
+    captureChannelSelection: [1, 2],
     captureInterfaceId: "iface_pipewire",
+    channelMode: "stereo",
     id: "sched_backend_test",
     nextRunAt: "2026-06-18T09:00:00.000Z",
     recurrence: { mode: "manual" },
@@ -99,4 +101,30 @@ test("schedule backend draft round trips pinned and default values", () => {
   assert.equal(defaultInput.captureInterfaceId, null);
   assert.equal(draft.captureBackend, "pipewire");
   assert.equal(draft.captureInterfaceId, "iface_pipewire");
+  assert.deepEqual(draft.captureChannels, [1, 2]);
+  assert.equal(draft.channelMode, "stereo");
+});
+
+test("schedule draft pins a sorted channel selection only with an interface", () => {
+  const withInterface = draftToInput({
+    ...defaultDraft(),
+    captureChannels: [6, 5],
+    captureInterfaceId: "iface_x32",
+    channelMode: "stereo",
+    name: "Stereo Pair Capture",
+    nodeId: "node_channel_test",
+  });
+  const withoutInterface = draftToInput({
+    ...defaultDraft(),
+    captureChannels: [1, 2],
+    captureInterfaceId: "",
+    channelMode: "stereo",
+    name: "No Interface Capture",
+    nodeId: "node_channel_test",
+  });
+
+  assert.deepEqual(withInterface.captureChannelSelection, [5, 6]);
+  assert.equal(withInterface.channelMode, "stereo");
+  assert.equal(withoutInterface.captureChannelSelection, null);
+  assert.equal(withoutInterface.channelMode, null);
 });

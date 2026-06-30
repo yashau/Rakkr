@@ -1,18 +1,24 @@
 import type {
   AudioInterface,
+  CaptureChannelSelection,
   ChannelMapTemplate,
   ChannelMapTemplateAssignment,
+  ChannelMode,
   NodeAudioCommandDefaults,
   RecorderNode,
   RecordingJobChannelMap,
   RecordingProfile,
 } from "@rakkr/shared";
 
+import { channelMapFromSelection, resolveChannelMode } from "./channel-selection.js";
 import type { SettingsStore } from "./settings-store.js";
 
 interface RecordingJobTargetInput {
   captureBackend?: NodeAudioCommandDefaults["captureBackend"];
+  captureChannelSelection?: CaptureChannelSelection;
+  captureGroupId?: string;
   captureInterfaceId?: string;
+  channelMode?: ChannelMode | null;
   durationSeconds?: number;
   node?: RecorderNode;
   profile?: RecordingProfile;
@@ -22,7 +28,10 @@ interface RecordingJobTargetInput {
 
 export async function recordingJobTargetOptions({
   captureBackend,
+  captureChannelSelection,
+  captureGroupId,
   captureInterfaceId: requestedCaptureInterfaceId,
+  channelMode,
   durationSeconds,
   node,
   profile: providedProfile,
@@ -39,13 +48,24 @@ export async function recordingJobTargetOptions({
   const profile =
     providedProfile ??
     (recordingProfileId ? await settingsStore.findRecordingProfile(recordingProfileId) : undefined);
-  const channelMap = node
-    ? await activeChannelMapSelection({
-        captureInterfaceId,
-        nodeId: node.id,
-        settingsStore,
-      })
-    : undefined;
+  const selection =
+    captureChannelSelection && captureChannelSelection.length > 0
+      ? captureChannelSelection
+      : undefined;
+  // An explicit channel selection pins an inline channel map for the job and
+  // takes precedence over any interface/node channel-map assignment.
+  const resolvedMode =
+    selection && captureInterface ? resolveChannelMode(channelMode, selection.length) : undefined;
+  const channelMap =
+    selection && captureInterface && resolvedMode
+      ? channelMapFromSelection(captureInterface, selection, resolvedMode)
+      : node
+        ? await activeChannelMapSelection({
+            captureInterfaceId,
+            nodeId: node.id,
+            settingsStore,
+          })
+        : undefined;
 
   return {
     captureBackend:
@@ -53,8 +73,10 @@ export async function recordingJobTargetOptions({
       knownCaptureBackend(captureInterface) ??
       node?.audioDefaults?.captureBackend,
     captureChannels: node?.audioDefaults?.captureChannels,
+    captureChannelSelection: selection,
     captureDevice: captureDeviceTarget(captureInterface) ?? node?.audioDefaults?.captureDevice,
     captureFormat: node?.audioDefaults?.captureFormat,
+    captureGroupId,
     captureInterfaceId,
     captureSampleRate: node?.audioDefaults?.captureSampleRate,
     channelMap,

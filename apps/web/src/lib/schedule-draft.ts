@@ -4,6 +4,7 @@ import {
   defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
   type AuditEvent,
+  type ChannelMode,
   type RecorderNode,
   type ScheduleDayOfWeek,
   type ScheduleInput,
@@ -16,7 +17,9 @@ import { formatDateTime, isoFromLocalDateTime, localDateTimeInput } from "./date
 
 export interface ScheduleDraft {
   captureBackend: "" | NonNullable<ScheduleSummary["captureBackend"]>;
+  captureChannels: number[];
   captureInterfaceId: string;
+  channelMode: "" | ChannelMode;
   dayOfMonth: number;
   daysOfWeek: ScheduleDayOfWeek[];
   enabled: boolean;
@@ -60,7 +63,9 @@ const weekdayDays: ScheduleDayOfWeek[] = ["monday", "tuesday", "wednesday", "thu
 export function defaultDraft(node?: RecorderNode): ScheduleDraft {
   return {
     captureBackend: "",
+    captureChannels: [],
     captureInterfaceId: "",
+    channelMode: "",
     dayOfMonth: 1,
     daysOfWeek: ["monday"],
     enabled: true,
@@ -94,7 +99,9 @@ export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
   const draft: ScheduleDraft = {
     ...defaultDraft(),
     captureBackend: schedule.captureBackend ?? "",
+    captureChannels: schedule.captureChannelSelection ?? [],
     captureInterfaceId: schedule.captureInterfaceId ?? "",
+    channelMode: schedule.channelMode ?? "",
     enabled: schedule.enabled,
     folderTemplate: schedule.folderTemplate,
     name: schedule.name,
@@ -115,10 +122,16 @@ export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
 
 export function draftToInput(draft: ScheduleDraft): ScheduleInput {
   const recurrence = recurrenceFromDraft(draft);
+  // Channel selection only applies when a specific interface is pinned.
+  const channels = draft.captureInterfaceId
+    ? [...new Set(draft.captureChannels)].sort((left, right) => left - right)
+    : [];
 
   return {
     captureBackend: draft.captureBackend || null,
+    captureChannelSelection: channels.length > 0 ? channels : null,
     captureInterfaceId: draft.captureInterfaceId || null,
+    channelMode: channels.length > 0 && draft.channelMode ? draft.channelMode : null,
     enabled: draft.enabled,
     folderTemplate: draft.folderTemplate,
     name: draft.name,

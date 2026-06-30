@@ -5,9 +5,12 @@ Status: MVP baseline checked.
 ## Behavior
 
 - Ad-hoc recording start accepts node, profile, upload policy, folder, name, tags, and optional capture backend/interface targeting, then creates a node job with profile-driven output settings while honoring node recording capacity for repeated start commands.
+- Ad-hoc starts and schedules can pin a per-channel selection (an ordered subset of the interface's channels) plus an output mode (mono/stereo/mono-to-stereo-mix/multichannel); the controller validates the selection against the interface and renders it into the job channel map. An empty selection records the whole interface (legacy behavior).
+- The controller enforces channel-level conflict detection: a request whose channels overlap an active capture on the same interface is rejected for ad-hoc starts (`capture_channels_busy`) and deferred with a health alert (`schedule.capture_channels_busy`) for due runs, while disjoint selections coexist on one interface. Node capacity now bounds concurrent capture sessions (distinct interfaces), so a second interface beyond capacity is rejected (`node_capture_capacity_reached`).
 - Scheduled due runs create schedule-owned recordings and jobs with schedule-owned name, folder, tags, profile, watchdog policy, and upload policy.
 - Recorder nodes can claim jobs, heartbeat running jobs, attach cached audio, complete jobs, and auto-queue cached recordings for upload.
 - Long-running recorder agents can claim-next and run bounded simultaneous jobs from controller node capacity, with `RAKKR_MAX_CONCURRENT_RECORDINGS` as the local fallback.
+- Disjoint jobs that share an interface and capture window carry one capture group id; the agent claims the whole group via `claim-next-group`, captures the shared device once at the group's full channel span, and renders each job's channel subset from that single raw (capture-once, split-many), heartbeating every member for the duration.
 - Direct recorder-agent captures can request MP3/FLAC/WAV output with bitrate/VBR options; encoded direct captures use a raw WAV intermediate, the shared renderer, and codec-aware upload content types.
 - Cached recordings store checksum, duration, waveform preview, content type, file name, and cache path.
 - Cached media supports playback sessions, download preparation, inline stream, and attachment file responses.
