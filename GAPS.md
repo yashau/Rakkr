@@ -332,6 +332,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 8 | `8a11b629` | trust-boundary + Zod-bounds + broad adversary (3 hunters) | 7 confirmed (G47-G53) | **4 fixed** (G47, G48, G49, G51); G50/G52/G53 remain | green (API 373/0) | **no** | 0 |
 | 9 | `8a11b629` | adversary-on-fixes + lifecycle state-machine + fresh-sweep (3 hunters) | 9 confirmed (G47b, G54, G55, G56, G57, G48b, G58, G50b, G51b) | **all 9 fixed** | green (API 385/0) | **no** | 0 |
 | 10 | `8a11b629` | adversary-on-fixes + Rust deep-dive + recording-status sweep (3 hunters) | 10 confirmed (G59-G66, G55-d) + 2 areas uncovered | **6 fixed** (G59, G60, G63, G64, G66, G55-d); G61/G62/G65 deferred | green (API 388/0, Rust 152/0) | **no** | 0 |
+| 11 | `8a11b629` | DB layer + health/watchdog (coverage gap) + adversary-on-fixes (3 hunters) | 8 confirmed (G59b, G67-G73) | **7 fixed** (G59b, G67, G68, G69, G71, G72, G73); G70 catalogued | green (API 393/0, Rust 152/0) | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -940,3 +941,53 @@ highest-leverage remaining item.
   migration replay, nullable-read-as-non-null.
 - **Health / watchdog** - flatline thresholds, event dedup/never-resolve,
   liveness staleness. To be covered in Run 11.
+
+
+---
+
+## Run 11 findings (DB layer + health/watchdog coverage + adversary-on-fixes)
+
+Run 11 closed Run 10's coverage gap (DB + health/watchdog, never audited) and
+re-verified Run 10's fixes. The adversary found Run 10's fixes SOUND except G59
+(incomplete -> G59b). DB layer: migrations/enum-parity/single-use-atomicity
+confirmed solid; two real orphan/CAS gaps found. Health/watchdog: meter freshness,
+node liveness, windowing confirmed solid; one HIGH (config inert) + several
+Med/Low. Seven fixed with red->green tests; full API 393/0, Rust 152/0, gates
+green; main current.
+
+### Fixed
+- **G69** (`8b86ae0e`, High) - the production watchdog runner never loaded
+  operator policies (custom policies unmonitored; edits to the default inert).
+  Thread the settings store in and load policies per pass.
+- **G67** (`c1b0dfc6`, Med/High) - deleting a recording orphaned its recording_jobs
+  and upload_queue_items rows (no FK cascade, no app sweep) — the runner then
+  retried the orphaned items forever. Sweep both in deleteRecordingData (like G49).
+- **G59b** (`b04abb28`, Med) - completes G59: the recovery chunkTotal marker still
+  missed when uploaded dominated a low-index pending set. Derive
+  max(highest+1, uploaded+pending.len()) and stamp the total on every recovered chunk.
+- **G68** (`ed5fd6fa`, Low-Med) - the Postgres upload-queue start() was a
+  non-atomic find-then-write (double upload under >1 replica); now a conditional
+  UPDATE...WHERE status IN (due) RETURNING, mirroring the job CAS.
+- **G71** (`75484767`, Low-Med) - watchdog active-event lookups filtered type in
+  memory over a 500-row cap, so a busy recording could dup open events; push the
+  type filter into the query.
+- **G72** (`23c7815d`, Low) - an indefinitely-suppressed alert (suppressedUntil
+  null) kept repeating; treat it as never-repeat across the three reconcilers.
+- **G73** (`7668cfe2`, Low) - agent health events could forge controller-/watchdog-
+  reserved type prefixes; reject them at the schema boundary.
+
+### Catalogued
+- **G70** (Med, observability) - the Prometheus active-alert gauges compute from
+  the newest 500 health events (RBAC-filtered in memory), so once total events
+  exceed 500 older-but-open alerts drop out and the gauges undercount. Correct fix
+  needs scoped unresolved counting in the health store (loading all events per
+  scrape would regress the per-event RBAC cost); a store-level change, not a patch.
+- DB hardening notes (Low): no DB unique index backing the upload-dedup logical
+  key (concurrent enqueue can double-insert); 16 stores each open a 3-conn pool
+  (~48 conns/process) — a capacity concern at replicaCount > 2.
+
+### Still open (tracked)
+- **Recording-status CAS** (systemic) - still the top item; G54/G55/G63/G64 use
+  per-writer re-reads, G65 is blocked on it, and health-sync's field write remains.
+- **G62 / G59-residual** (Rust) - decoupled chunked-finalize signal; needs Linux
+  integration testing. **G61** - per-job agent state files (config-gated).
