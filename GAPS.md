@@ -14,13 +14,15 @@ UTC/DST core were checked and found **correct**. The gaps cluster where behaviou
 only be proven against real hardware/Postgres/time, exactly as the source-of-truth doc
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
-**Landed (each with a test):** G1, G1b, G2, G3, G4, G5, G6, G7, G10, G11, G12, G13, G19, G21,
-G24, G25 (17 confirmed findings); G26 mostly-fixed via G25.
-**Open:** G9 (keepRaw wording — product call); coverage G14/G16; G4 follow-up for
-`auth-service`/`oidc-login`.
-**Suspected / by-design:** G17, G18, G20, G22, G23.
-**Iteration loop:** Run 1 dirty (surfaced G24/G25/G26). All decided items now fixed (incl. G4).
-Streak 0/5 — a fresh Run 2 (incl. adversarial review of the G4 change) is the next step.
+**Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G5, G6, G7, G10, G11, G12, G13, G19,
+G21, G24, G25 (18 confirmed findings); G26 mostly-fixed via G25.
+**Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
+(live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
+(auth-service/oidc-login).
+**Suspected / low:** G17, G18, G20, G22, G23, G30, G4-2, G24-1.
+**Iteration loop:** Run 1 & Run 2 both dirty. Run 2's adversary caught + fixed a HIGH regression
+in G4 itself (G4-1). Streak 0/5 — the loop keeps surfacing real pre-existing findings (G27 is the
+notable one); reaching 5 clean is a multi-run horizon. Run log at the end.
 Rebased onto `origin/main` (`844f6a8e`); **G1b is a fresh-on-main catch** — PR #14 reintroduced
 the G1 data-loss pattern in its new chunked-upload path, which this audit caught on rebase.
 
@@ -321,6 +323,60 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | Run | main @ | Focus | Findings (Conf/Cov/Susp) | Fixes | Gates | Clean? | Streak |
 | --- | ------ | ----- | ------------------------ | ----- | ----- | ------ | ------ |
 | 1 | `8a11b629` | branch-diff adversary + fresh correctness/authz + chunked | 3 / 0 / 1 (G24, G25, G26) | — surfaced; need decisions | green | **no** | 0 |
+| 2 | `8a11b629` | adversary on G4/G24/G25 + fresh sweep (live-listen, node-lifecycle, metrics, scheduler) | 3 / 1 / 3 (G4-1, G27, G28; G29; G30, G4-2, G24-1) | **G4-1** (fixed) | green | **no** | 0 |
+
+**Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
+`failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
+rejection → process crash (bigger blast radius than the bug G4 fixed). **Fixed** — every runner's
+scheduled/startup `void tick()` now `.catch`es via `reportRunnerTickError` (skip tick on
+DB-unavailable, retry next interval); request-path `runOnce()` still 503s. The fresh sweep found
+two pre-existing bugs (**G27** one-time-schedule data loss on channel-conflict defer; **G28**
+live-listen session-store leak) + coverage/low items (**G29/G30/G4-2/G24-1**), catalogued below.
+Full gates re-green: API **353 / 0 / 2-skip**, agent 147/0, clippy/oxlint/fmt clean. Streak resets
+to **0** (G4-1 changed files).
+
+### G4-1 — Background-runner tick crashes the process on DB-unavailable · `FIXED`
+`upload/schedule/retention/recording-job-lease/watchdog-runner.ts`. After G4, a store `list()`/
+`save()` in a runner tick throws `DatabaseUnavailableError`; `setInterval(() => void tick())`
+discarded the rejection → unhandled → crash. **Fix:** `reportRunnerTickError` + `.catch` on both
+`void tick()` sites per runner (scheduled path degrades; `runOnce()` still propagates → 503).
+**Test:** `runner-tick.test.ts` (handler never rethrows).
+
+### G27 — One-time schedule permanently disabled when its only occurrence hits a channel conflict · `NEW · CATALOGUED`
+`schedule-runner.ts:160-208` + `schedule-engine.ts:201-206`. On a channel-conflict deferral the
+runner calls `advanceScheduleAfterRun` unconditionally; for `mode: "once"` that returns
+`{ enabled: false, nextRunAt: undefined }` — identical to a *successful* completion. So a one-time
+schedule whose sole occurrence is transiently deferred is disabled forever and **never records**
+(only a `capture_channels_busy` warning). Real recording-loss. **Fix:** in the deferred branch,
+reschedule `once`/`always_on` via `retryScheduleAfterFailure(now)` instead of advancing as if
+completed. (Deferral branch has no test — see G29.) **Severity: Medium.**
+
+### G28 — Live-listen `MemoryListenSessionStore` never evicts abandoned sessions · `NEW · CATALOGUED`
+`listen-session-store.ts:30-84`. Sessions are added in `start()`, removed only in `stop()`; an
+operator closing the tab / dropping network without `DELETE /listen/:id` leaves the record
+forever — unbounded process-lifetime memory growth. (`nodeWantsEnhanced` filters stale demand by
+`lastSeenAt`, but the records are never freed.) **Fix:** evict on read by max-age (reuse the
+monitor freshness window) or a periodic sweep / per-node cap. **Severity: Low-Medium.**
+
+### G29 — Scheduler deferral path + channel-conflict matrix untested · `NEW · COVERAGE`
+`schedule-runner.test.ts` has zero defer/busy/conflict coverage; there is no `channel-conflicts.test.ts`.
+This is why G27 slipped through. **Fix:** unit-test the overlap matrix (`"all"` vs list, list vs
+list) and drive the deferred branch end to end.
+
+### G30 — `node:read` can read lifecycle-run stdout/stderr; audit omits stdout/stderr vs AGENTS.md · `NEW · SUSPECTED`
+`node-lifecycle-routes.ts:39-67,100-115`. Reading lifecycle jobs (incl. raw Ansible `stdout`/
+`stderr`) needs only `node:read` while running needs `node:manage` — a read-vs-manage asymmetry
+(no confirmed secret in output today, but one careless `debug:`/`-vvv` from leaking). Separately,
+the success audit omits `stdout`/`stderr` though AGENTS.md says lifecycle runs are audited with
+them — a doc/code divergence to reconcile. **Severity: Low / informational.**
+
+### G4-2 & G24-1 — low-severity metric consequences · `NEW · SUSPECTED`
+**G4-2:** `/metrics` reads `recordingStore.list()`/`listUploadQueueItems()`, so during a DB blip it
+now 503s — observability disappears exactly when needed. Consider catching in the metrics route +
+emitting a `database_unavailable` gauge. **G24-1:** `rakkr_upload_failures_total` is a `counter`
+computed from live `attemptCount` of currently-`failed` items; G24's retry (→ attemptCount 0,
+status retrying) makes the value *decrease* (a counter reset that `rate()` over-counts). Pre-existing
+mis-modeling, newly triggerable — model failures as a true monotonic counter incremented in `fail()`.
 
 **Post-run-1 fixes (your decisions):** G24 (retry resets budget), G25 (chunked terminal →
 `partial`) landed with tests; G26 resolved for the stuck-status symptom via G25. G4 decided as
