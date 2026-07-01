@@ -9,6 +9,7 @@ use anyhow::Context;
 use serde::Serialize;
 use tracing::info;
 
+use crate::capture_naming::{safe_file_name, safe_file_stem};
 use crate::command_template::{CommandTemplateValues, command_template_args};
 use crate::config::{AgentConfig, CaptureBackend};
 use crate::controller::ControllerRecordingEnhancement;
@@ -572,47 +573,6 @@ pub fn pipewire_sample_format(format: &str) -> &str {
         "S32_LE" => "s32",
         "FLOAT_LE" | "F32_LE" => "f32",
         _ => "s16",
-    }
-}
-
-fn safe_file_stem(value: &str) -> String {
-    let cleaned = value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-
-    if cleaned.is_empty() {
-        "recording".to_string()
-    } else {
-        cleaned
-    }
-}
-
-pub fn safe_file_name(value: &str) -> String {
-    let base_name = value.rsplit(['/', '\\']).next().unwrap_or(value);
-    let cleaned = base_name
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('.')
-        .to_string();
-
-    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
-        "recording.wav".to_string()
-    } else {
-        cleaned
     }
 }
 

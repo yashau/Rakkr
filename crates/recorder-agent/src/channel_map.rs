@@ -6,9 +6,8 @@ use std::process::Command;
 
 use anyhow::Context;
 
-use crate::capture::{
-    CaptureChannelMap, CaptureChannelMapEntry, CapturePlan, local_capture_path, safe_file_name,
-};
+use crate::capture::{CaptureChannelMap, CaptureChannelMapEntry, CapturePlan, local_capture_path};
+use crate::capture_naming::safe_file_name;
 use crate::config::AgentConfig;
 use crate::controller::{
     ControllerCaptureCommand, ControllerChannelMapBundle, ControllerRecordingJob,
