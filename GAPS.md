@@ -250,192 +250,27 @@ per-chunk retention.
 
 ---
 
-## Run 3 findings (web console + Rust agent internals)
+## Archived Runs 3–7 (G31–G46, compacted — full detail in git history)
 
-The web operator console was **healthy**: RBAC UI boundaries all gated through tested
-helpers (no control leaks), no XSS sinks, dates correctly browser-local. One resilience bug
-(G34, fixed). Rust internals surfaced two confirmed bugs (G31/G32, fixed) + one narrow edge.
+Runs 3–7 hardened bootstrap/enhance (Rust), web auth-gate, infra/ansible, RBAC/IDOR,
+and chunked-recording finalization. All settled; one line each.
 
-### G31 — Day-0 bootstrap leaves the SSH private key on disk on most error paths · `FIXED`
-`crates/recorder-agent/src/bootstrap.rs`. `run_bootstrap` only wiped the generated key on 2 of
-5 exit paths (success + non-2xx); an install / transport / decode / env-write failure returned
-via `?` leaving a live private key at a predictable temp path. **Fix:** RAII — `Drop for
-GeneratedKey` wipes on every path; plus cleanup if the key reads fail before the guard exists.
-**Test:** dropping `GeneratedKey` wipes the key file. **Severity: High (credential-at-rest).**
-
-### G32 — Enhanced-render intermediates leak on every error path · `FIXED`
-`crates/recorder-agent/src/enhanced_render.rs`. The `.enh-mono.wav`/`.enh-denoised.wav`
-intermediates were removed only on success; a failed denoise/Pass B left them, and on a chunked
-recording that is two leaked WAVs per chunk while the job still reports success. **Fix:** RAII
-`IntermediateCleanup` guard sweeps on every exit path. **Test:** guard removes files on drop.
-
-### G33 — Zero-audio chunked recording never signals completion to the controller · `CATALOGUED (SUSPECTED)`
-`crates/recorder-agent/src/recording_job_chunked.rs:313-430`. Chunked completion is signalled
-only by `chunkTotal` on the final chunk's upload. If `capture.finish()` returns an empty
-`trailing` (device produced zero PCM on a very short window), no upload — and no `chunkTotal` —
-is ever sent, yet local state is written `completed`; the controller job can dangle open.
-**Fix:** if `finish()` yields no chunks and `uploaded_chunks == 0`, route to
-`finish_partial_after_failure` / `mark_recording_job_failed` with a "no audio captured" reason.
-Narrow edge; left catalogued.
-
-### G34 — Web: any `/auth/me` error forces re-login and leaves a stale token · `FIXED`
-`apps/web/src/main.tsx`, `lib/api.ts`, new `lib/api-error.ts` + `lib/auth-gate.ts`. Every non-2xx
-was an untyped Error and the query treated any error as unauthenticated, so a transient 5xx/
-network blip bounced a valid operator to login and a real 401 left a dead token in localStorage.
-**Fix:** typed `ApiError` (carries status) + pure `authGateState` — 401/403 → clear token + login;
-5xx/network → keep session, show a retry screen. **Test:** `auth-gate.test.ts`. **Severity: Low-Med.**
-
-### G35 — Web: no dedicated 503 `database_unavailable` UX · `CATALOGUED (coverage)`
-`apps/web/src/lib/api.ts`. Mutations surface a generic "failed" toast; a 503 during a DB outage
-is indistinguishable from a validation/permission failure. Not a correctness bug (writes throw,
-not swallowed). **Fix:** parse status in the fetch helpers and show a distinct "temporarily
-unavailable, retry" message for 503.
-
-
----
-
-## Run 4 findings (infra/deploy + broad residual re-sweep)
-
-**Convergence signal:** the broad residual re-sweep of the core controller/agent/web (fresh
-angles: audit/RBAC invariants, runner concurrency/ordering, numeric/boundary, Zod gaps, Rust
-panics) found **no new confirmed correctness or security bug** — the areas checked
-(pagination meta, upload-runner reentrancy, retention/chunk ordering, watchdog auto-resolve,
-scheduler DST/boundary math, metrics escaping, OIDC PKCE, CSV neutralization, agent scope
-checks, Rust hot paths) are all solid. The one dirty item this run was in **infra**.
-
-### G36 — Ansible runner `/runs` had no authentication · `FIXED`
-`deploy/ansible/runner.py`. The controller sent `RAKKR_ANSIBLE_RUNNER_TOKEN` as a Bearer header
-but the runner never validated it, so anything reaching port 8790 could run lifecycle actions
-(arbitrary agent-binary deploy / systemd changes over SSH) and exfiltrate controller tokens —
-bypassing controller RBAC/scoping/audit. **Fix:** validate the shared token (constant-time)
-on `/runs`; unset = unauthenticated dev mode with a loud startup warning. **Test:**
-`runner_test.py` (7 auth checks). **Severity: High.**
-
-### G37 — SMB upload path traversal via `pathOverride`/destination path · `FIXED`
-`apps/api/src/upload-smb.ts`. `smbPathSegments` only trimmed slashes, so a `../../x` path kept
-its `..` segments and escaped the configured share/path on the SMB server. **Fix:** drop
-`.`/`..` segments (and guard the filename). **Test:** `upload-smb-path.test.ts`. Defense-in-depth
-(settings:manage-gated, operator-against-own-target).
-
-### G38 — Migration verifier only replays; never checks schema↔migration drift · `CATALOGUED (coverage)`
-`packages/db/scripts/verify-migrations.mjs`. `db:verify` replays migrations but never diffs them
-against `schema.ts`, so a forgotten `db:generate` (schema changed, migration missing) passes the
-gate. No live drift today. **Fix:** add a `drizzle-kit check` (or generate-is-noop) step to the
-gate. Left catalogued — the exact drizzle-kit drift command is version-specific and shouldn't be
-wired into the gate without validating it won't false-positive.
-
-### G39 — Secrets passed as process arguments (runner extra-vars, agent.sh bootstrap token) · `CATALOGUED (SUSPECTED, low)`
-`deploy/ansible/runner.py` (`-e` extra-vars incl. controller/github tokens) and
-`deploy/bootstrap/agent.sh` (`--bootstrap-token` on argv) expose secrets via `ps`/`/proc/<pid>/cmdline`
-to a local user during a run; no `no_log:` in the ansible tree. Low severity (dedicated runner
-container, single-use short-lived bootstrap token, rotating controller tokens). **Fix:** pass
-secret extra-vars via `--extra-vars @file` (0600) / env / stdin; add `no_log: true` on
-key/token tasks.
-
-
----
-
-## Run 5 findings (adversary on newest fixes + 2nd broad re-sweep)
-
-The adversary re-verified the five newest fixes (G31/G32/G34/G36/G37) — **no regressions**
-(ran the runner auth test 7/7, an SMB-traversal harness, Python auth semantics; confirmed no
-web refetch loop, no bootstrap double-wipe, guard removes only intermediates). The 2nd broad
-core re-sweep confirmed convergence except one contained finding.
-
-### G40 — Upload-queue retry route missing server-side status guard · `FIXED`
-`apps/api/src/recording-upload-queue-routes.ts`. `POST /upload-queue/:id/retry` checked only
-existence + visibility; the `retryableUploadQueueStatuses` set was enforced only in the UI
-action-state layer. A `recording:control` operator could POST retry on a `succeeded` item →
-`retryUploadQueueItem` reset it → the re-attempt read the released cache → `cache_path_missing`
-→ the recording was demoted `uploaded`→`partial` with a spurious failure event. The sibling
-`retryRecordingJob` already guards server-side — this was an inconsistency and a
-"UI visibility ≠ API enforcement" violation. **Fix:** reject non-retryable statuses with 409
-server-side. **Test:** retry on a `succeeded` item → 409, item stays `succeeded`. (Amplified by
-G24's unconditional reset; both now correct.)
-
-### G41 — `always_on` schedules never re-arm after the job terminates · `CATALOGUED (SUSPECTED, likely by-design)`
-`schedule-engine.ts:208-210,244-246`. `always_on` sets `nextRunAt = undefined` after the first
-run and nothing re-arms it when the continuous recording's job ends; also its channel-conflict
-claim window is only `RAKKR_AGENT_CAPTURE_SECONDS` wide. Consistent with "one long continuous
-recording" intent — flagged only in case `always_on` is meant to auto-restart on job end.
-
-### G42 — Recording read-modify-write `save` is last-write-wins under concurrency · `CATALOGUED (SUSPECTED, low)`
-`health-sync.ts:15-31`, `reconcileRecordingUpload`, `markRecordingCachedFromChunks` each do a
-full-row read-modify-write `save`; concurrent requests on the same recording could resurrect a
-just-cleared `cachePath` or revert `uploaded`→`cached` (Postgres upsert is last-write-wins). The
-runner calls these sequentially today, so it's a latent smell, not a demonstrated defect. Fix
-would mirror G5's atomic conditional write for recording status/cache fields.
-
-
----
-
-## Run 6 findings (deep RBAC/IDOR + state-machine/concurrency)
-
-**Strong convergence signal on security:** the deep authorization pass confirmed the RBAC core
-is **sound** — multi-user grant/scope isolation (G14) verified *correct* (not just asserted),
-scope-cascade deny-precedence holds, list/detail/action use the same scope fn, mutating routes
-re-check the referenced resource (no body-id IDOR), token-auth routes are node-bound/single-use/
-timing-safe. Two false-positive "CRITICAL IDOR" flags were traced and rejected. The G40
-regression check was also clean. Two real (but slice-worthy) items surfaced:
-
-### G43 — Chunk render failure silently drops a middle chunk → recording stranded in `cached` + audio loss · `FIXED (controller-side)`
-**Fixed (stuck-recording resolved):** `reconcileChunkedRecordingUpload` now finalizes a chunked recording once its owning job is terminal (capture done) even when `chunks.length < total`, marking it `partial` on a gap instead of hanging in `cached`. Decision extracted into a pure, unit-tested `chunkedRecordingFinalization` helper (gap+captureDone → partial; gap+running → wait; unsettled → wait). **Residual (agent-side, still open):** the render-failed chunk's audio is lost and later chunks' offsets drift — a deeper agent fix would retain/re-render the dropped chunk rather than `return Ok(())`. Original analysis:
-`crates/recorder-agent/src/recording_job_chunked.rs:457-479` + controller finalization
-`apps/api/src/upload-runner.ts:385-392`. Unlike the upload path (retry + push to `pending` →
-`partial`), the render-failure branch logs a warning and `return Ok(())` — no retry, no pending,
-capture continues. That drops the chunk's audio AND leaves an index gap; the final chunk's
-`chunkTotal` then overcounts the present rows, so the controller's `chunks.length >= total` gate
-never holds and the recording is stuck `cached` forever (offset drift too). Distinct from G26
-(`total` never arrives) and G33 (zero-audio). **Fix (dual, needs a careful slice):** agent —
-don't silently drop; ensure the job finishes `partial` (signal the loss) rather than clean
-`completed`; controller — finalize a chunked recording as `partial` once its owning job is
-terminal even if present-chunks < total (resolves the delayed-vs-dropped ambiguity via the
-job-terminal signal). Regression risk to the lightly-tested chunked flow → reviewed slice.
-Controller-side has a deterministic test path (upsert rows with a gap + total); agent-side needs
-the render seam injectable.
-
-### G44 — Bulk/collection routes over-deny scoped non-admin operators (fail-closed) · `CATALOGUED (CONFIRMED, Low)`
-`apps/api/src/index.ts:237-281` (`resourceScopeDecision`) + collection routes in
-`recording-routes.ts`, `recording-job-routes.ts`, `recording-upload-queue-routes.ts`. The
-synthetic `{id:"recording_collection", type:"recording_collection"}` middleware target matches no
-cascade/policy/grant, so a scoped **operator** (grants, not owner/admin) gets 403 on
-`bulk-delete`/`bulk-metadata`/`bulk-retry`/`bulk-stop`/`bulk-upload-queue` even for their own
-in-scope recordings — while the single-item routes work. **Fail-closed (over-denies; no
-escalation).** Verified the handlers already filter per-item via `scopedRecordings` (e.g.
-`recording-routes.ts:462-471`), so the per-item filter is the real gate. **Fix (security-sensitive
-slice):** early-return `allowed:true` from `resourceScopeDecision` for synthetic `*_collection`
-target types, delegating to the handlers' per-item filtering — **after** auditing that *every*
-collection route filters (recording/job/upload-queue confirmed; schedule/node/channel-map to
-verify), plus a test wiring the REAL middleware to a collection route for a scoped operator
-(the suite only ever stubs `requirePermission`). Weigh vs the audit-label tradeoff of the
-alternative (pass `{type:"controller"}`).
-
-
----
-
-## Run 7 findings (adversary on G43 + broad sweep)
-
-The G43 controller finalization change was re-verified **sound** — no premature finalize (gated on
-`allSettled`), the `recordingJob` lookup degrades via the runner-tick `.catch` (not a crash), no
-regression to the all-present path or the G1b per-chunk gate; full API suite 366/0. The broad
-sweep found two narrow trust-boundary input-validation edges (agent-supplied data) — consistent
-with a strongly-converged core ("the easy correctness bugs are gone").
-
-### G45 — Orphan chunk upload persists an empty `jobId`, crashing the chunk store on read · `FIXED`
-`apps/api/src/agent-cache-uploads.ts`. A chunk cache-file upload with no job header for a recording
-with no job row persisted `jobId:""`, violating the read schema (`jobId.min(1)`) → ZodError on the
-next chunk-store load (JSON store crash on boot / Postgres reconcile break). Write never validated;
-read always did. **Fix:** reject the orphaned upload with 409 before storing. **Test:** jobless
-chunk upload → 409, no row persisted. **Severity: Medium.**
-
-### G46 — Unbounded meter `levels` array wedges the watchdog · `FIXED`
-`packages/shared/src/index.ts`. An authenticated node could POST a meter frame with a huge `levels`
-array; the watchdog's `Math.max(...frame.levels)` spread then threw `RangeError`, and since the
-poison frame stayed `latest`, every subsequent watchdog pass for that node re-threw — the
-fail-closed signal-loss watchdog silently disabled for that node via one request. **Fix:**
-`meterFrameSchema.levels.max(512)` (X32 = 32 channels). **Test:** 512 ok / 513 rejected.
-**Severity: Medium.**
-
+- **G31** `FIXED` (High) — bootstrap left the SSH private key on disk on most error paths -> RAII `Drop` wipe.
+- **G32** `FIXED` — enhanced-render intermediates leaked on error paths -> RAII `IntermediateCleanup`.
+- **G33** `CATALOGUED` — zero-audio chunked recording never signals completion (agent, narrow edge).
+- **G34** `FIXED` — web: any `/auth/me` error forced re-login + left a stale token -> typed `ApiError` + `authGate`.
+- **G35** `CATALOGUED (coverage)` — web: no distinct 503 database-unavailable UX.
+- **G36** `FIXED` (High) — ansible runner `/runs` had no auth -> constant-time token check (`runner_test.py`).
+- **G37** `FIXED` — SMB upload path traversal via `pathOverride` -> drop `.`/`..` segments.
+- **G38** `CATALOGUED (coverage)` — migration verifier replays but never checks schema<->migration drift.
+- **G39** `CATALOGUED (Low)` — secrets passed as process args (runner extra-vars, agent.sh token).
+- **G40** `FIXED` — upload-queue retry route lacked a server-side status guard -> 409 on non-retryable.
+- **G41** `CATALOGUED (likely by-design)` — `always_on` schedules never re-arm after the job ends.
+- **G42** `CATALOGUED -> RESOLVED` — recording read-modify-write last-write-wins; closed by the recording-status CAS (G65/R13-2/R13-8).
+- **G43** `FIXED (controller) / agent residual` — chunk render failure stranded a recording in `cached`; controller now finalizes `partial` when the job is terminal (`chunkedRecordingFinalization`). Agent drop-and-lose residual tracked with RS1/Rust-C2.
+- **G44** `CATALOGUED (Low, fail-closed)` — bulk/collection routes over-deny scoped non-admin operators; the per-item scoped filter is the real gate.
+- **G45** `FIXED` — orphan chunk upload persisted empty `jobId`, crashing the chunk store -> reject with 409.
+- **G46** `FIXED` — unbounded meter `levels` array wedged the watchdog -> `levels.max(512)`.
 
 ---
 
