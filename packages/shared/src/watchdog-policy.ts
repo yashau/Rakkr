@@ -1,0 +1,95 @@
+import { z } from "zod";
+
+import { dbfsSchema, healthSeveritySchema } from "./base.js";
+
+export const watchdogPolicySchema = z.object({
+  activeDuring: z.enum(["always", "scheduled_recording", "recording"]),
+  broadbandNoiseScoreThreshold: z.number().min(0).max(1).optional(),
+  channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
+  channelCorrelationThreshold: z.number().min(0).max(1).optional(),
+  clippingMode: z.enum(["off", "alert_on_clipping"]).optional(),
+  flatlineMode: z.enum(["off", "alert_on_flatline"]).optional(),
+  flatlineThresholdDbfs: dbfsSchema.optional(),
+  // Duration fields share the update schema's 86_400s (24h) ceiling so a policy
+  // that is valid to create is also valid to update (the two schemas drifted).
+  graceSeconds: z.number().int().nonnegative().max(86_400),
+  humScoreThreshold: z.number().min(0).max(1).optional(),
+  id: z.string().min(1),
+  metric: z.enum(["peak", "rms", "percentile_95"]),
+  minCumulativeChannelCorrelationSeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeClippingSeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeFlatlineSeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeQualitySeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400),
+  minCumulativeSpeechSeconds: z.number().nonnegative().max(86_400).optional(),
+  minSpeechScore: z.number().min(0).max(1).optional(),
+  name: z.string().min(1),
+  noiseScoreThreshold: z.number().min(0).max(1).optional(),
+  qualityAlertMode: z.enum(["off", "alert_on_noise_hum_static"]).optional(),
+  qualityMode: z.enum(["signal_only", "speech_required"]).optional(),
+  repeatEverySeconds: z.number().int().positive().max(86_400),
+  severity: healthSeveritySchema,
+  staticScoreThreshold: z.number().min(0).max(1).optional(),
+  thresholdDbfs: dbfsSchema,
+  windowSeconds: z.number().int().positive().max(86_400),
+});
+export const watchdogPolicyUpdateSchema = z
+  .object({
+    activeDuring: z.enum(["always", "scheduled_recording", "recording"]).optional(),
+    broadbandNoiseScoreThreshold: z.number().min(0).max(1).optional(),
+    channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
+    channelCorrelationThreshold: z.number().min(0).max(1).optional(),
+    clippingMode: z.enum(["off", "alert_on_clipping"]).optional(),
+    flatlineMode: z.enum(["off", "alert_on_flatline"]).optional(),
+    flatlineThresholdDbfs: dbfsSchema.optional(),
+    graceSeconds: z.number().int().nonnegative().max(86_400).optional(),
+    humScoreThreshold: z.number().min(0).max(1).optional(),
+    metric: z.enum(["peak", "rms", "percentile_95"]).optional(),
+    minCumulativeChannelCorrelationSeconds: z.number().nonnegative().max(86_400).optional(),
+    minCumulativeClippingSeconds: z.number().nonnegative().max(86_400).optional(),
+    minCumulativeFlatlineSeconds: z.number().nonnegative().max(86_400).optional(),
+    minCumulativeQualitySeconds: z.number().nonnegative().max(86_400).optional(),
+    minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400).optional(),
+    minCumulativeSpeechSeconds: z.number().nonnegative().max(86_400).optional(),
+    minSpeechScore: z.number().min(0).max(1).optional(),
+    name: z.string().trim().min(1).max(160).optional(),
+    noiseScoreThreshold: z.number().min(0).max(1).optional(),
+    qualityAlertMode: z.enum(["off", "alert_on_noise_hum_static"]).optional(),
+    qualityMode: z.enum(["signal_only", "speech_required"]).optional(),
+    repeatEverySeconds: z.number().int().positive().max(86_400).optional(),
+    severity: healthSeveritySchema.optional(),
+    staticScoreThreshold: z.number().min(0).max(1).optional(),
+    thresholdDbfs: dbfsSchema.optional(),
+    windowSeconds: z.number().int().positive().max(86_400).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one watchdog field is required");
+
+export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;
+export type WatchdogPolicyUpdate = z.infer<typeof watchdogPolicyUpdateSchema>;
+
+export const defaultScheduledVoiceWatchdogPolicy = {
+  activeDuring: "scheduled_recording",
+  broadbandNoiseScoreThreshold: 0.85,
+  channelCorrelationMode: "alert_on_high",
+  channelCorrelationThreshold: 0.98,
+  clippingMode: "alert_on_clipping",
+  flatlineMode: "alert_on_flatline",
+  flatlineThresholdDbfs: -100,
+  graceSeconds: 300,
+  humScoreThreshold: 0.8,
+  id: "scheduled-voice-watchdog",
+  metric: "rms",
+  minCumulativeChannelCorrelationSeconds: 10,
+  minCumulativeClippingSeconds: 1,
+  minCumulativeFlatlineSeconds: 10,
+  minCumulativeQualitySeconds: 10,
+  minCumulativeSecondsAboveThreshold: 10,
+  name: "Scheduled Voice Watchdog",
+  noiseScoreThreshold: 0.9,
+  qualityAlertMode: "alert_on_noise_hum_static",
+  repeatEverySeconds: 900,
+  severity: "critical",
+  staticScoreThreshold: 0.8,
+  thresholdDbfs: -45,
+  windowSeconds: 900,
+} satisfies WatchdogPolicy;

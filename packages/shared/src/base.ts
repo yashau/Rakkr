@@ -32,6 +32,9 @@ export const ianaTimeZoneSchema = z
   .min(1)
   .max(80)
   .refine(isValidTimeZone, { message: "must be a valid IANA time zone" });
+// Decibels relative to full scale (peak/RMS meter levels, watchdog thresholds).
+export const dbfsSchema = z.number().min(-160).max(24);
+export const healthSeveritySchema = z.enum(["info", "warning", "critical"]);
 export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
 export const uploadQueueStatusSchema = z.enum([
   "queued",
