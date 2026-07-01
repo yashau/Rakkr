@@ -220,6 +220,25 @@ export function createAgentCacheUploads(deps: AgentCacheUploadDeps) {
   async function handleChunkUpload(c: Context<AppBindings>, input: ChunkUploadInput) {
     const { actor, recording } = input;
     const before = recordingFileSnapshot(recording);
+
+    // A chunk row must carry a non-empty owning jobId (the read schema enforces
+    // `jobId.min(1)`). Reject an orphaned chunk upload (no job header + no job
+    // row for the recording) up front rather than persisting `jobId: ""`, which
+    // would throw a ZodError on the next chunk-store load and break the store.
+    const jobIdForChunk = input.job?.id ?? input.jobId;
+
+    if (!jobIdForChunk) {
+      await recordRecordingFileFailure(c, {
+        actor,
+        createHealthEvent: false,
+        reason: "chunk_upload_missing_job",
+        recordingId: recording.id,
+        targetName: recording.name,
+      });
+
+      return c.json({ error: "Chunk upload requires an owning recording job" }, 409);
+    }
+
     const stored = await storeRecordingChunkFile(
       recording,
       input.chunkIndex,
@@ -238,22 +257,19 @@ export function createAgentCacheUploads(deps: AgentCacheUploadDeps) {
       throw error;
     });
 
-    const jobIdForChunk = input.job?.id ?? input.jobId;
     const existing = await findRecordingChunk(recording.id, input.chunkIndex);
     const chunk: RecordingChunk = existing ?? {
       createdAt: new Date().toISOString(),
       durationSeconds: 0,
       id: recordingChunkId(recording.id, input.chunkIndex),
       index: input.chunkIndex,
-      jobId: jobIdForChunk ?? "",
+      jobId: jobIdForChunk,
       offsetSeconds: 0,
       recordingId: recording.id,
       status: "capturing",
     };
 
-    if (jobIdForChunk) {
-      chunk.jobId = jobIdForChunk;
-    }
+    chunk.jobId = jobIdForChunk;
     chunk.offsetSeconds = await chunkOffsetSeconds(recording.id, input.chunkIndex);
     const supplementary = applyStoredChunkRendition(
       chunk,

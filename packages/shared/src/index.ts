@@ -271,7 +271,11 @@ export const audioLevelSchema = z.object({
 export const meterFrameSchema = z.object({
   capturedAt: isoDateTimeSchema,
   interfaceId: z.string().min(1),
-  levels: z.array(audioLevelSchema),
+  // Real interfaces have at most a few dozen channels (X32 = 32). Cap the array
+  // so a malformed/hostile node frame cannot wedge the watchdog's
+  // `Math.max(...levels)` spread with a RangeError — which would poison the
+  // stored `latest` frame and silently disable that node's watchdog.
+  levels: z.array(audioLevelSchema).max(512),
   nodeId: z.string().min(1),
 });
 

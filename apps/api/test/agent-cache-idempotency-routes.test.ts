@@ -19,11 +19,13 @@ process.env.RAKKR_RECORDING_CACHE_DIR = path.join(cacheRoot, "cache");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(cacheRoot, "retention-policies.json");
 process.env.RAKKR_UPLOAD_POLICY_STORE_PATH = path.join(cacheRoot, "upload-policies.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(cacheRoot, "upload-queue.json");
+process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(cacheRoot, "chunks.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAgentRoutes } = await import("../src/agent-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
 const { claimRecordingJob, createRecordingJob } = await import("../src/recording-jobs.js");
+const { listRecordingChunksForRecording } = await import("../src/recording-chunks.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
 const { listUploadQueueItems, succeedUploadQueueItem } = await import("../src/upload-queue.js");
 
@@ -96,6 +98,46 @@ test("duplicate cache attach after upload success reuses existing upload queue i
   assert.equal(duplicateBody.data.uploadQueueItem?.id, firstBody.data.uploadQueueItem?.id);
   assert.equal(duplicateBody.data.uploadQueueItem?.status, "succeeded");
   assert.equal(uploadItems.length, 1);
+});
+
+test("chunk upload without an owning job is rejected instead of persisting an empty jobId", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const recorderNode = node();
+  const recordingStore = memoryRecordingStore([recording(recorderNode.id)]);
+  const [joblessRecording] = await recordingStore.list();
+  // Deliberately create NO recording job for this recording.
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(recorderNode),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(
+    `/api/v1/recordings/${joblessRecording.id}/cache-file?chunk=0`,
+    {
+      body: wavFile([0, 1000, -1000, 500]),
+      headers: {
+        authorization: "Bearer node-token",
+        "content-type": "audio/wav",
+        "x-rakkr-duration-seconds": "2",
+        "x-rakkr-file-name": "orphan-chunk.wav",
+        // No x-rakkr-recording-job-id, and the recording has no job row.
+      },
+      method: "PUT",
+    },
+  );
+  const chunks = await listRecordingChunksForRecording(joblessRecording.id);
+
+  // Pre-fix this persisted a chunk row with jobId:"" that then failed the read
+  // schema (jobId.min(1)) and broke the chunk store on the next load.
+  assert.equal(response.status, 409);
+  assert.equal(chunks.length, 0);
 });
 
 function memoryNodeStore(recorderNode: RecorderNode): NodeStore {
