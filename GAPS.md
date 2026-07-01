@@ -15,7 +15,7 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
-G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40 (26 confirmed findings); G26 mostly-fixed via G25.
+G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43 (27 confirmed findings, G43 controller-side); G26 mostly-fixed via G25.
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -587,7 +587,8 @@ re-check the referenced resource (no body-id IDOR), token-auth routes are node-b
 timing-safe. Two false-positive "CRITICAL IDOR" flags were traced and rejected. The G40
 regression check was also clean. Two real (but slice-worthy) items surfaced:
 
-### G43 — Chunk render failure silently drops a middle chunk → recording stranded in `cached` + audio loss · `CATALOGUED (CONFIRMED, Medium-High)`
+### G43 — Chunk render failure silently drops a middle chunk → recording stranded in `cached` + audio loss · `FIXED (controller-side)`
+**Fixed (stuck-recording resolved):** `reconcileChunkedRecordingUpload` now finalizes a chunked recording once its owning job is terminal (capture done) even when `chunks.length < total`, marking it `partial` on a gap instead of hanging in `cached`. Decision extracted into a pure, unit-tested `chunkedRecordingFinalization` helper (gap+captureDone → partial; gap+running → wait; unsettled → wait). **Residual (agent-side, still open):** the render-failed chunk's audio is lost and later chunks' offsets drift — a deeper agent fix would retain/re-render the dropped chunk rather than `return Ok(())`. Original analysis:
 `crates/recorder-agent/src/recording_job_chunked.rs:457-479` + controller finalization
 `apps/api/src/upload-runner.ts:385-392`. Unlike the upload path (retry + push to `pending` →
 `partial`), the render-failure branch logs a warning and `return Ok(())` — no retry, no pending,
