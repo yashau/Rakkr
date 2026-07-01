@@ -1,5 +1,6 @@
 import type { RecorderNode, RecordingJob, RecordingSummary, ScheduleSummary } from "@rakkr/shared";
 
+import { withCaptureStartLock } from "./capture-start-lock.js";
 import {
   buildCaptureClaims,
   detectChannelConflicts,
@@ -58,81 +59,87 @@ export async function queueScheduledRecordings({
       ? schedule.captureChannelSelection
       : "all";
 
-  const activeJobs = await listRecordingJobs();
-  const recordingsById = new Map((await recordingStore.list()).map((entry) => [entry.id, entry]));
-  const captureClaims = buildCaptureClaims(activeJobs, recordingsById);
-  const startMs = now.getTime();
-  const occurrenceEndOffsetSeconds = Math.max(
-    ...tracks.map(
-      (track) => track.offsetSeconds + (track.durationSeconds ?? defaultCaptureSeconds()),
-    ),
-  );
-
-  // Defer the whole occurrence if any requested channel is busy at any point in
-  // its window; the recording that already holds the channels keeps running.
-  const conflicts = detectChannelConflicts(captureClaims, {
-    captureInterfaceId: resolvedInterfaceId,
-    channels,
-    endMs: startMs + occurrenceEndOffsetSeconds * 1_000,
-    nodeId: node.id,
-    startMs,
-  });
-
-  if (conflicts.length > 0) {
-    const busyChannels = [...new Set(conflicts.flatMap((conflict) => conflict.channels))].sort(
-      (left, right) => left - right,
+  // Serialize the conflict check -> create per node (shared with the ad-hoc
+  // start route) so a scheduled occurrence and a concurrent ad-hoc/scheduled
+  // start can't both pass the channel-conflict guard against a pre-create
+  // snapshot and double-create on the same interface.
+  return withCaptureStartLock(node.id, async () => {
+    const activeJobs = await listRecordingJobs();
+    const recordingsById = new Map((await recordingStore.list()).map((entry) => [entry.id, entry]));
+    const captureClaims = buildCaptureClaims(activeJobs, recordingsById);
+    const startMs = now.getTime();
+    const occurrenceEndOffsetSeconds = Math.max(
+      ...tracks.map(
+        (track) => track.offsetSeconds + (track.durationSeconds ?? defaultCaptureSeconds()),
+      ),
     );
-    const conflictingClaim = conflicts[0].claim;
 
-    return {
-      conflict: {
-        busyChannels,
-        captureInterfaceId: resolvedInterfaceId,
-        conflictingJobId: conflictingClaim.jobId,
-        conflictingRecordingId: conflictingClaim.recordingId,
-      },
-      status: "deferred",
-    };
-  }
-
-  const queued: QueuedScheduledRecording[] = [];
-
-  for (const track of tracks) {
-    const recording = materializeScheduledRecording(schedule, node, now, track);
-    const trackStartMs = startMs + track.offsetSeconds * 1_000;
-    // Each track joins an overlapping capture session on the interface (so
-    // disjoint-channel schedules share one device capture) or opens a new one.
-    const captureGroupId = resolveCaptureGroupId(captureClaims, {
+    // Defer the whole occurrence if any requested channel is busy at any point in
+    // its window; the recording that already holds the channels keeps running.
+    const conflicts = detectChannelConflicts(captureClaims, {
       captureInterfaceId: resolvedInterfaceId,
       channels,
-      endMs: trackStartMs + (track.durationSeconds ?? defaultCaptureSeconds()) * 1_000,
+      endMs: startMs + occurrenceEndOffsetSeconds * 1_000,
       nodeId: node.id,
-      startMs: trackStartMs,
+      startMs,
     });
 
-    await recordingStore.create(recording);
-    queued.push({
-      job: await createRecordingJob(
+    if (conflicts.length > 0) {
+      const busyChannels = [...new Set(conflicts.flatMap((conflict) => conflict.channels))].sort(
+        (left, right) => left - right,
+      );
+      const conflictingClaim = conflicts[0].claim;
+
+      return {
+        conflict: {
+          busyChannels,
+          captureInterfaceId: resolvedInterfaceId,
+          conflictingJobId: conflictingClaim.jobId,
+          conflictingRecordingId: conflictingClaim.recordingId,
+        },
+        status: "deferred",
+      };
+    }
+
+    const queued: QueuedScheduledRecording[] = [];
+
+    for (const track of tracks) {
+      const recording = materializeScheduledRecording(schedule, node, now, track);
+      const trackStartMs = startMs + track.offsetSeconds * 1_000;
+      // Each track joins an overlapping capture session on the interface (so
+      // disjoint-channel schedules share one device capture) or opens a new one.
+      const captureGroupId = resolveCaptureGroupId(captureClaims, {
+        captureInterfaceId: resolvedInterfaceId,
+        channels,
+        endMs: trackStartMs + (track.durationSeconds ?? defaultCaptureSeconds()) * 1_000,
+        nodeId: node.id,
+        startMs: trackStartMs,
+      });
+
+      await recordingStore.create(recording);
+      queued.push({
+        job: await createRecordingJob(
+          recording,
+          await recordingJobTargetOptions({
+            captureBackend: schedule.captureBackend,
+            captureChannelSelection: schedule.captureChannelSelection ?? undefined,
+            captureGroupId,
+            captureInterfaceId: schedule.captureInterfaceId,
+            channelMode: schedule.channelMode ?? undefined,
+            durationSeconds: track.durationSeconds,
+            node,
+            profile,
+            recordingProfileId: recording.recordingProfileId,
+            settingsStore,
+          }),
+        ),
         recording,
-        await recordingJobTargetOptions({
-          captureBackend: schedule.captureBackend,
-          captureChannelSelection: schedule.captureChannelSelection ?? undefined,
-          captureGroupId,
-          captureInterfaceId: schedule.captureInterfaceId,
-          channelMode: schedule.channelMode ?? undefined,
-          durationSeconds: track.durationSeconds,
-          node,
-          profile,
-          recordingProfileId: recording.recordingProfileId,
-          settingsStore,
-        }),
-      ),
-      recording,
-      track,
-    });
-  }
+        track,
+      });
+    }
 
-  return { queued, status: "queued" };
+    return { queued, status: "queued" };
+  });
 }
 
 export function scheduledRecordingSegmentSnapshot(queued: QueuedScheduledRecording) {

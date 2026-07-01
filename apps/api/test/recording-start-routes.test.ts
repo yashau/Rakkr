@@ -241,6 +241,36 @@ test("ad hoc recording start rejects a recording whose interface channels are bu
   assert.equal(recordings.length, 0);
 });
 
+test("GH-START-1: concurrent ad-hoc starts on one node don't both pass the conflict guard", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  const node = recorderNode({ id: `node_concurrent_start_${randomUUID()}` });
+  const app = recordingApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    profiles: [defaultVoiceRecordingProfile],
+    recordingStore,
+  });
+  const start = () =>
+    app.request("/api/v1/recordings", {
+      body: JSON.stringify({ captureInterfaceId: "iface_usb_1", nodeId: node.id }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+  // Both requests race the check->create region for the same node/interface.
+  const [first, second] = await Promise.all([start(), start()]);
+  const statuses = [first.status, second.status].sort((left, right) => left - right);
+  const recordings = await recordingStore.list();
+
+  // Pre-fix both read the pre-create snapshot, both passed the channel-conflict
+  // guard, and both created -> [202, 202] / 2 recordings. The per-node capture
+  // lock serializes the check->create so exactly one wins.
+  assert.deepEqual(statuses, [202, 409]);
+  assert.equal(recordings.length, 1);
+});
+
 test("ad hoc recording start allows disjoint channel selections on one interface", async () => {
   const auditStore = createAuditStore("");
   const recordingStore = memoryRecordingStore();

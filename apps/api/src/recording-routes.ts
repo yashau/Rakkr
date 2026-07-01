@@ -8,6 +8,7 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
+import { withCaptureStartLock } from "./capture-start-lock.js";
 import { buildCaptureClaims, evaluateAdHocCapture } from "./channel-conflicts.js";
 import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
 import {
@@ -616,68 +617,84 @@ export function registerRecordingRoutes({
         return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
       }
 
-      const activeJobs = await listRecordingJobs();
-      const recordingsById = new Map(
-        (await recordingStore.list()).map((entry) => [entry.id, entry]),
-      );
-      const captureClaims = buildCaptureClaims(activeJobs, recordingsById);
-      const captureWindowStartMs = now.getTime();
-      const captureDecision = evaluateAdHocCapture(
-        captureClaims,
-        {
-          captureInterfaceId: resolvedCaptureInterfaceId,
-          channels: (channelSelection ?? "all") as number[] | "all",
-          endMs: captureWindowStartMs + adHocCaptureSeconds() * 1_000,
-          nodeId: node.id,
-          startMs: captureWindowStartMs,
-        },
-        node.recordingCapacity?.maxConcurrentRecordings ?? 1,
-      );
+      // Serialize the conflict/capacity check -> create per node so two
+      // concurrent starts can't both pass against a pre-create snapshot and
+      // double-create (channel-conflict / maxConcurrentRecordings TOCTOU).
+      const startOutcome = await withCaptureStartLock(node.id, async () => {
+        const activeJobs = await listRecordingJobs();
+        const recordingsById = new Map(
+          (await recordingStore.list()).map((entry) => [entry.id, entry]),
+        );
+        const captureClaims = buildCaptureClaims(activeJobs, recordingsById);
+        const captureWindowStartMs = now.getTime();
+        const captureDecision = evaluateAdHocCapture(
+          captureClaims,
+          {
+            captureInterfaceId: resolvedCaptureInterfaceId,
+            channels: (channelSelection ?? "all") as number[] | "all",
+            endMs: captureWindowStartMs + adHocCaptureSeconds() * 1_000,
+            nodeId: node.id,
+            startMs: captureWindowStartMs,
+          },
+          node.recordingCapacity?.maxConcurrentRecordings ?? 1,
+        );
 
-      if (!captureDecision.ok) {
+        if (!captureDecision.ok) {
+          return { decision: captureDecision, ok: false as const };
+        }
+
+        const recording: RecordingSummary = {
+          cached: false,
+          durationSeconds: 0,
+          folder: body.data.folder ?? defaultAdHocFolder(now, node),
+          healthStatus: "unknown",
+          id: `rec_${randomUUID()}`,
+          name: body.data.name ?? defaultAdHocName(now, node),
+          nodeId: node.id,
+          recordedAt: now.toISOString(),
+          recordingProfileId,
+          retentionPolicyId,
+          source: "ad_hoc",
+          status: "recording",
+          tags: uniqueTags(body.data.tags ?? ["ad-hoc", "voice"]),
+          uploadPolicyIds,
+        };
+
+        await recordingStore.create(recording);
+        const job = await createRecordingJob(
+          recording,
+          await recordingJobTargetOptions({
+            captureBackend: body.data.captureBackend,
+            captureChannelSelection: channelSelection,
+            captureGroupId: captureDecision.captureGroupId,
+            captureInterfaceId: body.data.captureInterfaceId,
+            channelMode,
+            node,
+            recordingProfileId: recording.recordingProfileId,
+            settingsStore,
+          }),
+        );
+
+        return {
+          captureGroupId: captureDecision.captureGroupId,
+          job,
+          ok: true as const,
+          recording,
+        };
+      });
+
+      if (!startOutcome.ok) {
         await recordRecordingStartFailure(
           c,
-          captureDecision.reason,
+          startOutcome.decision.reason,
           node.id,
           node.alias,
-          captureDecision.target,
+          startOutcome.decision.target,
         );
-        return c.json(captureDecision.body, 409);
+        return c.json(startOutcome.decision.body, 409);
       }
 
-      const captureGroupId = captureDecision.captureGroupId;
-
-      const recording: RecordingSummary = {
-        cached: false,
-        durationSeconds: 0,
-        folder: body.data.folder ?? defaultAdHocFolder(now, node),
-        healthStatus: "unknown",
-        id: `rec_${randomUUID()}`,
-        name: body.data.name ?? defaultAdHocName(now, node),
-        nodeId: node.id,
-        recordedAt: now.toISOString(),
-        recordingProfileId,
-        retentionPolicyId,
-        source: "ad_hoc",
-        status: "recording",
-        tags: uniqueTags(body.data.tags ?? ["ad-hoc", "voice"]),
-        uploadPolicyIds,
-      };
-
-      await recordingStore.create(recording);
-      const job = await createRecordingJob(
-        recording,
-        await recordingJobTargetOptions({
-          captureBackend: body.data.captureBackend,
-          captureChannelSelection: channelSelection,
-          captureGroupId,
-          captureInterfaceId: body.data.captureInterfaceId,
-          channelMode,
-          node,
-          recordingProfileId: recording.recordingProfileId,
-          settingsStore,
-        }),
-      );
+      const { captureGroupId, job, recording } = startOutcome;
 
       await recordAuditEvent(c, {
         action: "recordings.start.succeeded",
