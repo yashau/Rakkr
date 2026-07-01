@@ -313,7 +313,26 @@ pub(crate) async fn upload_recording_renditions(
         RawUploadOutcome::NotAttempted
     };
 
-    resolve_rendition_upload(result, raw_outcome)
+    let outcome = resolve_rendition_upload(result, raw_outcome);
+
+    // The enhanced rendition is a transient working file: once its upload has
+    // been attempted it lives in the controller cache (on success) or is
+    // re-rendered from the raw on the next retry (on failure), so remove it
+    // either way. The raw/output cleanup paths (delete_chunk_working_files /
+    // recorder-cache retention) never covered it, so it accumulated on the
+    // recorder node — one leaked file per chunk for chunked recordings.
+    cleanup_enhanced_rendition(enhanced_path.as_deref());
+
+    outcome
+}
+
+/// Remove the transient enhanced rendition after its upload attempt. Best-effort
+/// (`let _`) — a missing file or a permission blip must not fail the job, and a
+/// `None` path (raw-as-primary, no enhanced rendition) is a no-op.
+fn cleanup_enhanced_rendition(enhanced_path: Option<&Path>) {
+    if let Some(path) = enhanced_path {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// The outcome of the supplementary raw-master upload.
@@ -430,5 +449,27 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // touches the real filesystem
+    fn cleanup_removes_the_enhanced_rendition() {
+        let dir = std::env::temp_dir().join(format!("rakkr-enh-upload-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let enhanced = dir.join("clip.enhanced.mp3");
+        std::fs::write(&enhanced, b"enhanced").unwrap();
+
+        // Pre-fix nothing removed the enhanced rendition after upload; it leaked
+        // one file per chunk on the recorder node.
+        cleanup_enhanced_rendition(Some(enhanced.as_path()));
+        assert!(
+            !enhanced.exists(),
+            "enhanced rendition must be removed after its upload attempt"
+        );
+
+        // None (raw-as-primary, no enhanced rendition) is a safe no-op.
+        cleanup_enhanced_rendition(None);
+
+        let _ = std::fs::remove_dir(&dir);
     }
 }
