@@ -18,7 +18,12 @@ export async function syncRecordingHealth(
     return;
   }
 
-  const activeEvents = (await healthEventStore.list({ limit: 500, recordingId })).filter(
+  // Aggregate over EVERY non-resolved event for the recording, not the newest
+  // 500 of all statuses (`list` caps at 500). A long-open critical event with an
+  // early openedAt would otherwise be pushed out of that window by later
+  // flapping/resolved churn, silently dropping the recording's critical badge.
+  // Open events are few; the resolved churn is what the cap truncated.
+  const activeEvents = (await healthEventStore.listAll({ recordingId })).filter(
     (event) => event.status !== "resolved",
   );
   const nextHealth = recordingHealthStatus(activeEvents);
