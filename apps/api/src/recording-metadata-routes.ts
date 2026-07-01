@@ -24,6 +24,53 @@ interface RecordingMetadataRouteDependencies {
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
 }
 
+const METADATA_COMMIT_ATTEMPTS = 5;
+
+/**
+ * Persist a metadata edit without making a status/cache decision. Overlay the
+ * edited fields onto the freshly-read canonical row and commit through the
+ * status compare-and-set, so a concurrent writer that secured the recording
+ * (status/cachePath/checksum) between our read and write neither loses its
+ * change nor has it reverted by this request's stale snapshot. A plain
+ * `find` + `save` only narrows that window — `save` is an unconditional
+ * full-column upsert, so a secure landing between the read and the write is
+ * still clobbered. If the CAS is lost (status moved under us), re-read and
+ * re-overlay: a metadata edit must still land regardless of the new status.
+ */
+async function commitRecordingMetadata(
+  recordingStore: RecordingStore,
+  recordingId: string,
+  overlay: (current: RecordingSummary) => RecordingSummary,
+  fallback: RecordingSummary,
+): Promise<RecordingSummary> {
+  for (let attempt = 0; attempt < METADATA_COMMIT_ATTEMPTS; attempt += 1) {
+    const current = await recordingStore.find(recordingId);
+
+    if (!current) {
+      // No canonical row (unpersisted/in-memory-only recording): the scoped
+      // snapshot is all we have.
+      await recordingStore.save(fallback);
+      return fallback;
+    }
+
+    const persisted = overlay(current);
+    const committed = await recordingStore.transition(persisted, [current.status]);
+
+    if (committed) {
+      return committed;
+    }
+  }
+
+  // Pathological contention (every CAS round lost to a concurrent status
+  // change): re-read once more and overlay as a best effort rather than
+  // spinning forever.
+  const current = await recordingStore.find(recordingId);
+  const persisted = current ? overlay(current) : fallback;
+  await recordingStore.save(persisted);
+
+  return persisted;
+}
+
 export function registerRecordingMetadataRoutes({
   app,
   currentAuth,
@@ -92,17 +139,17 @@ export function registerRecordingMetadataRoutes({
       for (const recordingId of recordingIds) {
         const recording = visibleRecordingMap.get(recordingId)!;
         const updated = applyRecordingBulkMetadataUpdate(recording, body.data);
-        // Overlay only the edited metadata (folder/tags) onto the freshly-read
-        // canonical row so a concurrent upload's status/cache isn't clobbered
-        // (see the single route); scoped context still drives folder/tags.
-        const current = await recordingStore.find(recordingId);
-        const persisted = current
-          ? { ...current, folder: updated.folder, tags: updated.tags }
-          : updated;
 
         before.push({ id: recording.id, ...recordingMetadataSnapshot(recording) });
         after.push({ id: updated.id, ...recordingMetadataSnapshot(updated) });
-        await recordingStore.save(persisted);
+        // Commit through the status CAS so a concurrent upload's status/cache
+        // isn't clobbered (see the single route); scoped context drives folder/tags.
+        const persisted = await commitRecordingMetadata(
+          recordingStore,
+          recordingId,
+          (current) => ({ ...current, folder: updated.folder, tags: updated.tags }),
+          updated,
+        );
         updates.push(persisted);
       }
 
@@ -177,24 +224,22 @@ export function registerRecordingMetadataRoutes({
 
       const before = recordingMetadataSnapshot(recording);
       const updated = applyRecordingMetadataUpdate(recording, body.data);
-      // A metadata edit must never carry a status/cache decision: overlay only
-      // the edited metadata fields onto the freshly-read canonical row, so a
-      // concurrent upload that just secured the recording (status/cachePath/
-      // checksum) isn't reverted by this request's stale snapshot. Scoped context
+      // Commit through the status CAS so a concurrent upload that secured the
+      // recording between our read and write isn't reverted; scoped context
       // still drives the metadata values + audit.
-      const current = await recordingStore.find(recording.id);
-      const persisted = current
-        ? {
-            ...current,
-            folder: updated.folder,
-            name: updated.name,
-            notes: updated.notes,
-            tags: updated.tags,
-            transcriptSnippets: updated.transcriptSnippets,
-          }
-        : updated;
-
-      await recordingStore.save(persisted);
+      const persisted = await commitRecordingMetadata(
+        recordingStore,
+        recording.id,
+        (current) => ({
+          ...current,
+          folder: updated.folder,
+          name: updated.name,
+          notes: updated.notes,
+          tags: updated.tags,
+          transcriptSnippets: updated.transcriptSnippets,
+        }),
+        updated,
+      );
 
       await recordAuditEvent(c, {
         action: "recordings.metadata.update.succeeded",

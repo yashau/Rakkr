@@ -123,6 +123,83 @@ test("G79: metadata edit does not revert a recording secured by a concurrent upl
   assert.equal(stored?.cachePath, "scheduled/rec_meta_race.mp3");
 });
 
+test("G79: a concurrent secure landing mid-request is not clobbered (status CAS)", async () => {
+  const auditStore = createAuditStore("");
+  // The stored row starts un-secured ("recording"). The FIRST find returns that
+  // pre-secure snapshot but simulates a concurrent cache-secure landing right
+  // after our read (mutating the stored row to "cached"). A plain find+save
+  // would write the stale snapshot back and clobber the secure; the CAS must
+  // detect the changed status, retry, and preserve status + cachePath.
+  const secured = recording({
+    cached: true,
+    cachePath: "scheduled/rec_cas_race.mp3",
+    checksum: "sha256:secured",
+    id: "rec_cas_race",
+    name: "Original",
+    status: "cached",
+  });
+  const preSecure = recording({ id: "rec_cas_race", name: "Original", status: "recording" });
+  let stored: RecordingSummary = preSecure;
+  let findCalls = 0;
+  const recordingStore: RecordingStore = {
+    async create() {},
+    async delete() {
+      return undefined;
+    },
+    async find() {
+      findCalls += 1;
+      const snapshot = { ...stored };
+
+      if (findCalls === 1) {
+        stored = { ...secured };
+      }
+
+      return snapshot;
+    },
+    async list() {
+      return [stored];
+    },
+    async save(recording) {
+      stored = recording;
+    },
+    async transition(recording, allowedFrom) {
+      if (!allowedFrom.includes(stored.status)) {
+        return undefined;
+      }
+
+      stored = recording;
+
+      return recording;
+    },
+  };
+  const app = new Hono<AppBindings>();
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser() }),
+    currentUser,
+    nodeStore: {},
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission([]),
+    scopedNodes: async () => [],
+    scopedRecordings: async () => [preSecure],
+    settingsStore: {},
+  });
+
+  const response = await app.request("/api/v1/recordings/rec_cas_race/metadata", {
+    body: JSON.stringify({ name: "Renamed" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+
+  assert.equal(response.status, 200);
+  assert.ok(findCalls >= 2, "the CAS must retry after losing to the concurrent secure");
+  assert.equal(stored.name, "Renamed");
+  assert.equal(stored.status, "cached");
+  assert.equal(stored.cachePath, "scheduled/rec_cas_race.mp3");
+});
+
 test("recording metadata update saves and clears transcript snippets with audit snapshots", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];
@@ -332,6 +409,18 @@ function memoryRecordingStore(recordings: RecordingSummary[]): RecordingStore {
       if (index >= 0) {
         recordings[index] = recording;
       }
+    },
+    async transition(recording, allowedFrom) {
+      const index = recordings.findIndex((candidate) => candidate.id === recording.id);
+      const current = recordings[index];
+
+      if (!current || !allowedFrom.includes(current.status)) {
+        return undefined;
+      }
+
+      recordings[index] = recording;
+
+      return recording;
     },
   };
 }

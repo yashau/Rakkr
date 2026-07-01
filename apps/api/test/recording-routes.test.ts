@@ -864,6 +864,18 @@ function memoryRecordingStore(recordings: RecordingSummary[] = []): RecordingSto
         recordings[index] = recording;
       }
     },
+    async transition(recording, allowedFrom) {
+      const index = recordings.findIndex((candidate) => candidate.id === recording.id);
+      const current = recordings[index];
+
+      if (!current || !allowedFrom.includes(current.status)) {
+        return undefined;
+      }
+
+      recordings[index] = recording;
+
+      return recording;
+    },
   };
 }
 
