@@ -15,7 +15,7 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
-G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43, G45-G58 incl. G47b/G48b/G50b/G51b (45 confirmed findings landed, G43 controller-side); G26 mostly-fixed via G25.
+G19-G66 broadly incl. G47b/G48b/G50b/G51b/G55-d (51 confirmed findings landed); G26 mostly-fixed via G25. Systemic recording-status CAS + a few Rust/agent items remain (see Run 10).
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -331,6 +331,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 7 | `8a11b629` | adversary on G43 + broad sweep | 2 / 0 / 0 (G45, G46) | G45, G46 (fixed) | green | **no** | 0 |
 | 8 | `8a11b629` | trust-boundary + Zod-bounds + broad adversary (3 hunters) | 7 confirmed (G47-G53) | **4 fixed** (G47, G48, G49, G51); G50/G52/G53 remain | green (API 373/0) | **no** | 0 |
 | 9 | `8a11b629` | adversary-on-fixes + lifecycle state-machine + fresh-sweep (3 hunters) | 9 confirmed (G47b, G54, G55, G56, G57, G48b, G58, G50b, G51b) | **all 9 fixed** | green (API 385/0) | **no** | 0 |
+| 10 | `8a11b629` | adversary-on-fixes + Rust deep-dive + recording-status sweep (3 hunters) | 10 confirmed (G59-G66, G55-d) + 2 areas uncovered | **6 fixed** (G59, G60, G63, G64, G66, G55-d); G61/G62/G65 deferred | green (API 388/0, Rust 152/0) | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -878,3 +879,64 @@ through `transition()` (CAS on source status) and re-list for post-expiry truth.
 - **Recording-status CAS** - the deeper structural fix behind G54/G55: recording
   status has no compare-and-set, so the re-read guards narrow rather than fully
   close the sub-tick window. A recording-store CAS is the eventual fix.
+
+
+---
+
+## Run 10 findings (adversary-on-fixes + Rust agent deep-dive + recording-status sweep)
+
+Run 10's adversary pass confirmed all nine Run 9 fixes **SOUND** (one new low edge,
+G55-d). The Rust deep-dive opened the chunked-capture/recovery path (2 High), and
+the recording-status sweep confirmed the systemic root — **recording status has no
+compare-and-set**, so ~8 writers blind-overwrite it (G54/G55 fixed, G63/G64 fixed,
+G65 + A5-A8 remain). Six fixed with red->green tests; full API 388/0, Rust 152/0,
+all gates green; main current.
+
+### Fixed
+- **G60** (`1e657f9b`, High) - chunked wav render corrupted the file in place with
+  a channel map (final path == raw path); render to a distinct `.rendered.wav`.
+- **G59** (`ae9223ef`, High) - chunked crash-recovery never sent chunkTotal so the
+  recording never completed; derive it from the highest known chunk index.
+- **G64** (`e5d6d50a`, High) - lease-expiry terminal write downgraded a
+  concurrently-secured recording; re-read + preserve cached/uploaded/partial.
+- **G63** (`e5d6d50a`, High) - retention reverted a concurrently-promoted recording
+  (cached->uploaded) to completed; re-read + skip/preserve.
+- **G66** (`a17dd537`, Medium) - unstable pagination for equal recordedAt; add an
+  `id` tiebreaker to the store order + the default in-memory sort.
+- **G55-d** (`44047e9c`, Low) - chunked reconcile deleted a re-captured chunk's
+  cache before the recording guard; hoist the re-read to the top of the pass.
+- Module split (`b8494e6b`) - extracted `capture_naming.rs` +
+  `recording_job_recovery_chunk_total.rs` to keep both files under the LOC guard.
+
+### Deferred (with precise fix + reason)
+- **G65** (Medium) - the stop routes (single + bulk) blind-write `completed`,
+  downgrading a concurrently-secured recording. A store re-read conflicts with the
+  **scoped-context authorization** design (the routes operate on the operator's
+  scoped view, not the canonical record; re-reading the store would break that
+  guarantee and its test). Correct fix is the recording-status CAS applied to the
+  canonical record while preserving scoped context. Reverted the naive attempt.
+- **G62** (Medium) + **G59-residual** - chunkTotal transmission is coupled to a
+  chunk-file upload existing (graceful finish with empty `trailing`, or all chunks
+  uploaded pre-crash). Needs a decoupled agent->controller finalize signal;
+  requires Linux fake-controller integration testing, not shippable as untested
+  hot-path code here.
+- **G61** (Medium) - concurrent recording-job workers share one `agent_state_file`,
+  corrupting crash-recovery state when `max_concurrent_recordings > 1` (non-default).
+  Needs per-job state files + a recovery directory scan; deferred as a scoped
+  refactor gated behind a non-default config.
+
+### Systemic residual (the leverage point)
+**Recording-status compare-and-set.** `RecordingStore.save` is an unconditional
+blind write; ~8 writers (claim, terminal, stop, retention, reconcile, health-sync,
+metadata edit) race on `recording.status` from stale snapshots. G54/G55/G63/G64
+are patched with per-writer re-reads (which narrow but don't close the sub-tick
+window, and don't fix the whole-object field clobber), and G65 is blocked on it.
+The durable fix is a `RecordingStore.transition(next, allowedFrom)` mirroring the
+job store's CAS, routing every status write through it. This is the single
+highest-leverage remaining item.
+
+### Not yet audited (Run 10 sub-agents did not return)
+- **DB layer / migrations** - FK `onDelete` behavior, indexes/constraints,
+  migration replay, nullable-read-as-non-null.
+- **Health / watchdog** - flatline thresholds, event dedup/never-resolve,
+  liveness staleness. To be covered in Run 11.
