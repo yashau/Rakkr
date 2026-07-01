@@ -45,6 +45,12 @@ services:
       NODE_ENV: production
       PORT: 8787
       DATABASE_URL: postgres://rakkr:rakkr@postgres:5432/rakkr
+      # NODE_ENV=production makes the crypto refuse the insecure dev fallback, so
+      # the encryption keys MUST be supplied or every secret write (upload
+      # destination credentials, node SSH keys) throws at runtime. Provide a
+      # length-valid local default the operator overrides via .env for real deploys.
+      RAKKR_SECRET_KEY: ${RAKKR_SECRET_KEY:-rakkr-local-dev-compose-secret-change-me}
+      RAKKR_NODE_SSH_MASTER_KEY: ${RAKKR_NODE_SSH_MASTER_KEY:-rakkr-local-dev-compose-ssh-master-change-me}
       RAKKR_WEB_ORIGIN: ${RAKKR_WEB_ORIGIN:-http://localhost:5173}
       RAKKR_LOCAL_ADMIN_EMAIL: ${RAKKR_LOCAL_ADMIN_EMAIL:-admin@rakkr.local}
       RAKKR_LOCAL_ADMIN_ID: ${RAKKR_LOCAL_ADMIN_ID:-00000000-0000-4000-8000-000000000001}

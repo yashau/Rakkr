@@ -49,6 +49,19 @@ $env:RAKKR_WEB_ORIGIN = "http://localhost:5173"
 docker compose up --build
 ```
 
+The stack runs `NODE_ENV=production`, so the encryption crypto refuses the
+insecure dev fallback: `RAKKR_SECRET_KEY` (upload-destination secrets) and
+`RAKKR_NODE_SSH_MASTER_KEY` (node SSH private keys) must be set, or every secret
+write throws at runtime. Compose supplies length-valid local defaults so the
+stack works out of the box — **set your own strong values via `.env` for any
+real deployment**, since the defaults are published in this repo:
+
+```powershell
+$env:RAKKR_SECRET_KEY = "replace-with-a-strong-32+-char-secret"
+$env:RAKKR_NODE_SSH_MASTER_KEY = "replace-with-a-distinct-strong-secret"
+docker compose up --build
+```
+
 Stop, or remove volumes:
 
 ```powershell
