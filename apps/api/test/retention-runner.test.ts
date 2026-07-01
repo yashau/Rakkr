@@ -14,7 +14,8 @@ process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(runnerRoot, "upload-queue.
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createRetentionPolicy } = await import("../src/retention-policies.js");
 const { createRetentionRunner } = await import("../src/retention-runner.js");
-const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
+const { enqueueRecordingUpload, failUploadQueueItem, startUploadQueueItem } =
+  await import("../src/upload-queue.js");
 const { listRecordingChunksForRecording, recordingChunkId, upsertRecordingChunk } =
   await import("../src/recording-chunks.js");
 
@@ -98,6 +99,41 @@ test("R13-3: retention keeps a cached recording that still has in-flight uploads
   assert.equal(await readFile(pendingPath, "utf8"), "pending-bytes");
   assert.equal(stored?.cached, true);
   assert.equal(stored?.status, "cached");
+});
+
+test("R14: retention keeps a cached recording whose only upload permanently failed", async () => {
+  const auditStore = createAuditStore("");
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: false,
+    maxAgeDays: 14,
+    name: "Delete stale cache (failed-upload guard)",
+    preserveTagged: false,
+    scope: "controller_cache",
+  });
+  const failedUpload = recording({
+    id: "rec_retention_failed_upload",
+    recordedAt: "2026-05-01T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+  });
+  const failedPath = await cacheRecording(failedUpload, "failed-bytes");
+  // Drive the only upload item to terminal `failed` (maxAttempts 1): the
+  // recording stays `cached` (all destinations failed), so the `partial` floor
+  // misses it — but a failed item is operator-retryable off this cache.
+  const item = await enqueueRecordingUpload(failedUpload, { maxAttempts: 1, provider: "smb" });
+  await startUploadQueueItem(item.id);
+  await failUploadQueueItem(item.id, "smb_upload_failed");
+  const recordingStore = memoryRecordingStore([failedUpload]);
+  const runner = createRetentionRunner({ auditStore, recordingStore });
+
+  const summary = await runner.runOnce(new Date("2026-06-20T12:00:00.000Z"));
+  const stored = await recordingStore.find(failedUpload.id);
+
+  // Pre-Adv-C1-fix the floor only covered queued/retrying, so this was deleted
+  // (deleted == 1) and the operator's retry stranded with cache_path_missing.
+  assert.equal(summary.deleted, 0);
+  assert.equal(await readFile(failedPath, "utf8"), "failed-bytes");
+  assert.equal(stored?.cached, true);
 });
 
 test("G63: retention does not downgrade a recording promoted to uploaded mid-pass", async () => {

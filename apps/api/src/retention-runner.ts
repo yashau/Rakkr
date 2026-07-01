@@ -15,18 +15,22 @@ import type { RecordingStore } from "./recording-store.js";
 import { listRetentionPolicies } from "./retention-policies.js";
 import { listUploadQueueItems } from "./upload-queue.js";
 
-// Upload-queue statuses that still intend to read the cache file. `partial`
-// recordings are already floored by status, but a `cached` recording whose
-// uploads are queued/retrying (not yet attempted, or mid-backoff) would have
-// its only source deleted and every upload then fail with cache_path_missing.
-const IN_FLIGHT_UPLOAD_STATUSES = new Set(["queued", "retrying"]);
+// Upload-queue statuses whose only source is still this cache file. `partial`
+// recordings are floored by status, but a `cached` recording with unsettled
+// uploads would have its cache deleted out from under them. This includes
+// `failed`: a failed item is operator-retryable (retry resets it to retrying),
+// and when EVERY destination fails the recording stays `cached` (not `partial`),
+// so it escapes the status floor. Only `succeeded` (done) and `cancelled`
+// (operator gave up — reclaim intended) are settled; everything else keeps the
+// cache. Deleting it strands every retry with cache_path_missing = lost audio.
+const UNSETTLED_UPLOAD_STATUSES = new Set(["queued", "retrying", "failed"]);
 
-async function recordingIdsWithInFlightUploads(): Promise<Set<string>> {
+async function recordingIdsWithUnsettledUploads(): Promise<Set<string>> {
   const items = await listUploadQueueItems();
 
   return new Set(
     items
-      .filter((item) => IN_FLIGHT_UPLOAD_STATUSES.has(item.status))
+      .filter((item) => UNSETTLED_UPLOAD_STATUSES.has(item.status))
       .map((item) => item.recordingId),
   );
 }
@@ -127,7 +131,7 @@ export async function runRetentionPass(
 ) {
   const policies = (await listRetentionPolicies()).filter(executableControllerCachePolicy);
   const recordings = await recordingStore.list();
-  const recordingsWithInFlightUploads = await recordingIdsWithInFlightUploads();
+  const recordingsWithUnsettledUploads = await recordingIdsWithUnsettledUploads();
   const summary: RetentionRunSummary = {
     attemptedPolicies: policies.length,
     deleted: 0,
@@ -146,7 +150,7 @@ export async function runRetentionPass(
       recordings,
       policy,
       deletedRecordingIds,
-      recordingsWithInFlightUploads,
+      recordingsWithUnsettledUploads,
     );
     const deletionReasons = deletionPlan(candidates, policy, now);
 
@@ -197,7 +201,7 @@ async function retentionCandidates(
   recordings: RecordingSummary[],
   policy: RetentionPolicy,
   deletedRecordingIds: Set<string>,
-  recordingsWithInFlightUploads: Set<string>,
+  recordingsWithUnsettledUploads: Set<string>,
 ) {
   const candidates: RetentionCandidate[] = [];
 
@@ -214,10 +218,10 @@ async function retentionCandidates(
       continue;
     }
 
-    // Same floor for a `cached` recording whose uploads are still queued or
-    // retrying (not yet attempted, or mid-backoff): deleting the cache now
-    // strands every pending upload with cache_path_missing and loses the audio.
-    if (recordingsWithInFlightUploads.has(recording.id)) {
+    // Same floor for a `cached` recording whose uploads are unsettled
+    // (queued/retrying/failed): deleting the cache now strands every pending or
+    // operator-retryable upload with cache_path_missing and loses the audio.
+    if (recordingsWithUnsettledUploads.has(recording.id)) {
       continue;
     }
 
