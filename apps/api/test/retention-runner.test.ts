@@ -9,10 +9,12 @@ const runnerRoot = await mkdtemp(path.join(tmpdir(), "rakkr-retention-runner-"))
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(runnerRoot, "cache");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(runnerRoot, "policies.json");
 process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(runnerRoot, "chunks.json");
+process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(runnerRoot, "upload-queue.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createRetentionPolicy } = await import("../src/retention-policies.js");
 const { createRetentionRunner } = await import("../src/retention-runner.js");
+const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
 const { listRecordingChunksForRecording, recordingChunkId, upsertRecordingChunk } =
   await import("../src/recording-chunks.js");
 
@@ -62,6 +64,40 @@ test("retention runner deletes stale controller cache and audits the lifecycle",
   assert.equal(itemEvents[0]?.actor.id, "system:retention-runner");
   assert.equal(itemEvents[0]?.details.reason, "max_age");
   assert.equal(runEvents[0]?.details.deleted, 1);
+});
+
+test("R13-3: retention keeps a cached recording that still has in-flight uploads", async () => {
+  const auditStore = createAuditStore("");
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: false,
+    maxAgeDays: 14,
+    name: "Delete stale cache regardless of upload state",
+    preserveTagged: false,
+    scope: "controller_cache",
+  });
+  const pendingUpload = recording({
+    id: "rec_retention_pending_upload",
+    recordedAt: "2026-05-01T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+  });
+  const pendingPath = await cacheRecording(pendingUpload, "pending-bytes");
+  // An upload for this recording is queued but not yet attempted (in-flight):
+  // the cache is its only source.
+  await enqueueRecordingUpload(pendingUpload, { provider: "smb" });
+  const recordingStore = memoryRecordingStore([pendingUpload]);
+  const runner = createRetentionRunner({ auditStore, recordingStore });
+
+  const summary = await runner.runOnce(new Date("2026-06-20T12:00:00.000Z"));
+  const stored = await recordingStore.find(pendingUpload.id);
+
+  // Stale enough to delete, but the in-flight-upload floor must keep it —
+  // pre-fix: deleted == 1, the pending upload then strands with
+  // cache_path_missing and the recorded audio is lost.
+  assert.equal(summary.deleted, 0);
+  assert.equal(await readFile(pendingPath, "utf8"), "pending-bytes");
+  assert.equal(stored?.cached, true);
+  assert.equal(stored?.status, "cached");
 });
 
 test("G63: retention does not downgrade a recording promoted to uploaded mid-pass", async () => {
