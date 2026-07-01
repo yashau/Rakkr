@@ -188,6 +188,51 @@ test("uploads S3 queue items with explicit credentials, bucket, key, and metadat
   assert.equal(input?.Metadata?.recording_id, "rec_s3_ready_upload");
 });
 
+test("G-NEW: S3 object key strips pathOverride traversal so it cannot escape the prefix", async () => {
+  const destinationStore = createUploadDestinationStore();
+  const sentCommands = [];
+  const contents = "s3-escape-bytes";
+
+  await cacheRecording("rec_s3_escape", contents);
+  const destination = await destinationStore.create({
+    displayName: "Archive S3",
+    enabled: true,
+    kind: "s3",
+    s3: {
+      accessKeyId: "AKIAEXAMPLE",
+      bucket: "rakkr-archive",
+      prefix: "meetings",
+      region: "us-east-1",
+    },
+    s3SecretAccessKey: "s3-secret",
+  });
+  const queued = await enqueueRecordingUpload(recording("rec_s3_escape", contents), {
+    destinationId: destination.id,
+    maxAttempts: 1,
+    pathOverride: "../../escape",
+    provider: "s3",
+  });
+  const result = await runUploadQueueOnce({
+    destinationStore,
+    s3Client: {
+      async send(command) {
+        sentCommands.push(command);
+      },
+    },
+  });
+  const item = (await listUploadQueueItems()).find((candidate) => candidate.id === queued.id);
+  const input = sentCommands[0]?.input;
+
+  assert.equal(result.succeeded, 1);
+  assert.equal(item?.status, "succeeded");
+  // Pre-fix `path.posix.join` resolved `..` -> "../escape/Council Meeting.mp3",
+  // escaping the configured prefix; traversal segments are now dropped so the
+  // key stays contained under the prefix.
+  assert.equal(input?.Key, "meetings/escape/Council Meeting.mp3");
+  assert.ok(!input?.Key.includes(".."));
+  assert.ok(input?.Key.startsWith("meetings/"));
+});
+
 test("G58: S3 upload to a custom endpoint reports provider_declared, not provider_validated", async () => {
   const destinationStore = createUploadDestinationStore();
   const contents = "s3-endpoint-bytes";

@@ -231,11 +231,17 @@ function buildS3Client(config: ResolvedUploadDestinationConfig): S3Client {
 }
 
 function s3Key(prefix: string | undefined, pathOverride: string | undefined, fileName: string) {
-  const parts = [prefix, pathOverride]
-    .map((value) => (value ?? "").replace(/^\/+|\/+$/g, ""))
-    .filter((value) => value.length > 0);
+  // Split into segments and drop empty/`.`/`..` rather than `path.posix.join`,
+  // which RESOLVES `..` — an operator-set pathOverride (or prefix) like
+  // `../../x` would otherwise escape the configured prefix, nullify it (write to
+  // the bucket root), or collide with a different pathOverride that resolves to
+  // the same key (silent overwrite). Mirrors the SMB hardening (G37).
+  const segments = [prefix, pathOverride, fileName]
+    .flatMap((value) => (value ?? "").split(/[\\/]+/))
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 
-  return parts.length > 0 ? path.posix.join(...parts, fileName) : fileName;
+  return segments.join("/");
 }
 
 interface FileSha256 {
