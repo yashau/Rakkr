@@ -139,7 +139,7 @@ const testSnippets = [
   "upload runner routes deny users without required permissions",
   "reports upload destination configuration readiness",
   "creates and updates upload policy templates",
-  "queues cached recordings and retries failed stub uploads",
+  "operator retry resets a terminally-failed stub upload to a fresh retrying attempt",
   "leases started upload queue items until crash recovery makes them due again",
   "reuses succeeded upload queue item for the same cached artifact",
   "skips in-flight upload items until their recovery lease expires",
