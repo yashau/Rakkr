@@ -856,6 +856,26 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 21 — DIRTY (agent trust-boundary + upload-executor SMB/S3 deep pass)
+
+Trust-boundary hunter: **CLEAN** — every agent-facing route enumerated
+(heartbeat/meter-frame/health-events/inventory/cache-file/job-claim/bootstrap/
+listen-chunk); schemas match downstream use, G45/G46/G19/G48/G73 intact, no
+new poison-payload/allocation/traversal gap. (One informational SUSPECTED: the
+cache-file PUT reads the body with no size cap — by-design for large-audio
+uploads, own-recording scope; not actionable.)
+
+### G80 (Med, FIXED `ccfd14c9`) — S3 object-key traversal (twin of the SMB G37)
+`s3Key` used `path.posix.join`, which RESOLVES `..`, so an operator's
+`uploadPolicy.pathOverride` with `..` escaped the destination's `s3.prefix`,
+nullified it (bucket root), or silently collided two policies on one key (slips
+past the R13-7 raw-string enqueue dedup -> false redundancy / silent overwrite).
+SMB got this guard in G37; S3 never did. Fixed: split into segments, drop
+empty/`.`/`..` (mirrors smbPathSegments). Test: pathOverride "../../escape" ->
+contained "meetings/escape/...". This is a REAL bug a prior upload-focused run
+(Run 14) missed — the surface is well-hardened but deep targeted passes still
+surface genuine gaps. Run DIRTY; streak stays 0/5.
+
 ## Run 20 — DIRTY (deep Rust capture/recovery core + scheduler/time/resilience)
 
 Scheduler/time/resilience hunter: **CLEAN** (DST/recurrence executed against real
