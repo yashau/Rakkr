@@ -28,246 +28,32 @@ the G1 data-loss pattern in its new chunked-upload path, which this audit caught
 
 ---
 
-## CRITICAL
+## Archived findings G1–G16 (compacted — full detail in git history / commit messages)
 
-### G1 — Partial upload deletes the shared cache, stranding a retryable destination · `FIXED`
-`apps/api/src/upload-runner.ts:291` (`reconcileRecordingUpload`).
-When one destination succeeds under a `deleteCacheAfterUpload` policy and another
-fails, the recording goes `partial` but `resolveCacheDeletion` still deletes the shared
-cache file — the only source for the failed destination's retry, which then fails with
-`cache_path_missing` forever. A comment at `:310` even claims this is safe. Data loss in
-normal multi-destination operation.
-**Fix:** gate cache release on `failed.length === 0`. **Test:** `upload-runner.test.ts` →
-"keeps cache for partial uploads even when a succeeded policy deletes cache".
+Early runs; all resolved or catalogued with locations recorded. One line each.
 
-### G1b — Chunked uploads delete a chunk's cache on partial success (same bug, in code merged today) · `FIXED`
-`apps/api/src/upload-runner.ts:369` (`reconcileChunkedRecordingUpload`).
-Found during rebase: PR #14 ("configurable time-based chunked recording", merged to
-`main` after this audit began) added a per-chunk reconciliation path that deletes a
-chunk's cached object whenever `settled && succeeded.length > 0` — ignoring
-`failed.length`. A `partial` chunk (one destination failed, still retryable) loses its
-only source, identical to G1 but at the chunk level. The chunked reconciliation path had
-**zero test coverage**, which is how it shipped.
-**Fix:** gate on `settled && failed.length === 0 && succeeded.length > 0`. **Test:**
-`upload-runner.test.ts` → "keeps a chunk's cache when one destination fails (chunked
-recordings)" — verified red (ENOENT/data loss) against #14's gate, green after the fix.
+**CRITICAL**
+- **G1** `FIXED` — Partial upload deletes shared cache, stranding a retryable destination. `upload-runner.ts` `reconcileRecordingUpload`; gate cache release on `failed.length===0`; test in `upload-runner.test.ts`.
+- **G1b** `FIXED` — Chunked path (PR #14) deletes a chunk's cache on partial success (G1 at chunk level). Gate on `settled && failed.length===0 && succeeded.length>0`.
+- **G2** `FIXED` — Raw master lost despite `keepRaw` when supplementary raw upload fails. `upload_recording_renditions` now returns `Err`; pure `resolve_rendition_upload`; retention skips deleting local raw when raw not secured. Tests in `recording_job_upload::tests`.
+- **G3** `FIXED` — CSV formula injection in all six exporters. Shared `csvCell()` prefixes `'` + always quote-wraps.
 
-### G2 — Raw master permanently lost despite `keepRaw` when the supplementary raw upload fails · `FIXED`
-**Fixed:** `upload_recording_renditions` no longer swallows a required raw-upload failure —
-it returns `Err`, which routes every caller down its existing safe path: the whole-recording
-job stays `upload_pending` (retention skipped, local raw preserved, retried), a capture-group
-secondary is not marked completed, and a chunk is preserved + retried (its `Ok`-only cache
-delete is skipped). The decision is extracted into a pure `resolve_rendition_upload(primary,
-raw_outcome)` so it is unit-tested without ffmpeg/HTTP. **Test:**
-`recording_job_upload::tests` (required-raw failure ⇒ Err; succeeded/not-attempted keep the
-primary Ok; primary failure dominates). Original analysis:
-`crates/recorder-agent/src/recording_job_upload.rs:264-292`, `controller.rs:615-624`,
-`recording_job_recovery.rs:484-532`, `recorder_cache_retention.rs:90-111`.
-With enhancement on, `keepRaw=true` (default), and recorder-cache retention
-`deleteAfterUpload=true`: the enhanced (primary) upload succeeds and the raw
-(supplementary) upload fails → the failure is only logged as a warning and the primary
-`Ok` is returned. The caller then marks `uploaded`, runs retention (deletes the local
-raw), and completes the job. The raw never reached the controller and the local copy is
-gone — only the DNN-denoised rendition survives, violating "raw is ALWAYS preserved".
-**Re-verified against current `main` (post-#14):** still present — `recording_job_upload.rs:296-308`
-swallows the raw-upload `Err` as a warning and returns the primary's `Ok`. (#14's chunked
-path inherits the same shape per chunk.)
-**Fix (refined — DON'T just propagate the error):** naively returning `Err` would block the
-job from ever completing on a non-transient raw-upload failure, which contradicts the
-design ("enhanced is the primary that completes the job; raw is supplementary"). The
-surgical fix: surface whether the raw was secured (uploaded, or not required) from
-`upload_recording_renditions`, and have the retention step **skip deleting the local raw**
-(`apply_recorder_cache_retention` / `delete_recorder_cache_files`) whenever `keepRaw` is set
-and the raw upload did not succeed — the local copy is then the preservation of record and
-can be re-uploaded later. This keeps the invariant without stalling completion.
-**Why left CATALOGUED:** correct fix changes the rendition-upload return contract + caller
-retention logic, and a unit test needs the `upload_cache_file`/`render_enhanced_output`
-seam made injectable (today they're free functions hitting HTTP + ffmpeg). That's its own
-reviewed slice — happy to implement on request. This is the highest-severity item still open.
+**HIGH**
+- **G4** `FIXED (503)` — Silent permanent failover to in-memory store on any DB error. `DatabaseUnavailableError` + `app.onError`→503; 9 DB-authoritative stores throw; in-memory-primary stores (audit/health/meter/node/auth) left resilient. Tests: `database-unavailable.test.ts` + gated integration.
+- **G5** `FIXED` — Non-atomic recording-job claim → double-claim. Atomic `claim(job, expectedStatus)` (conditional UPDATE / JSON check-and-set). Postgres test `recording-job-claim-atomic.test.ts`.
+- **G6** `FIXED` — Crypto fails open (dev key used when `RAKKR_SECRET_KEY` unset in prod). Fail closed in prod (missing/short key throws); mirrored to SSH master key.
+- **G7** `FIXED` — Watchdog reads stale meter frames as live. Treat frame older than freshness bound as missing → fail-closed flatline.
+- **G8** `CATALOGUED` — `localDateTimeInput` drifts −1h across the fall-back DST hour (`apps/web/src/lib/dates.ts:65-74`). Fix via `Intl.DateTimeFormat(...).formatToParts`. Needs web/vitest TZ harness.
+- **G9** `CATALOGUED` — `keepRaw=false` + enhancement drops raw vs "always preserved" invariant. Product decision (forbid vs reword doc).
 
-### G3 — CSV formula injection in all six exporters · `FIXED`
-`recording-listing.ts`, `recording-job-export.ts`, `schedule-export.ts`,
-`audit-routes.ts`, `health-routes.ts`, `node-inventory-export.ts`.
-Cell encoders handle RFC-4180 quoting but none neutralise spreadsheet formula triggers
-(`= + - @ \t \r`). A low-privilege user who can name a recording/schedule `=HYPERLINK(...)`
-or `@SUM(...)*cmd` plants a payload that executes when a higher-privileged operator
-exports and opens the CSV (exfiltration / DDE). Three exporters quote-wrap only
-conditionally, so a bare `=…` is written unquoted.
-**Fix:** shared `csvCell()` that prefixes `'` to formula-leading values and always
-quote-wraps; all six exporters routed through it. **Test:** regression that a recording
-named `=1+1` is neutralised.
-
----
-
-## HIGH
-
-### G4 — Permanent silent failover to a divergent in-memory store on any transient DB error · `FIXED (503)`
-**Fixed:** added `DatabaseUnavailableError` + an `app.onError` boundary in `index.ts` that maps
-it to **503**. The 9 DB-authoritative operator-data/config stores — recordings, recording-jobs,
-recording-chunks, schedules, settings, controller-settings, upload-destinations (encrypted
-secrets), upload-policies, upload-queue — now **throw** it on a DB error (their `failover()`
-throws instead of latching `dbAvailable=false` and serving the boot-time fallback). So a caller
-gets a 503 and retries against the real DB rather than writing to a throwaway store.
-**Intentionally left resilient (not converted):** `audit-store`, `health-store`, `meter-store`
-(in-memory is a *legitimate* primary — they must not 503 every audited action); `node-store`
-(already refuses writes with `NodeStoreError` when the DB is down and only *reads* fall back to
-seed nodes — not silent write loss); `auth-service`/`oidc-login` (login critical path with an
-env-based local admin — a scoped follow-up so a DB blip can't lock out local admin).
-**Tests:** `database-unavailable.test.ts` (boundary: DB error → 503, other → 500; deterministic)
-+ gated `database-failover-integration.test.ts` (unreachable Postgres → store throws
-`DatabaseUnavailableError`; `RAKKR_API_TEST_DB_FAILOVER=1`, `--test-force-exit`). Full suite
-(DATABASE_URL unset) unaffected — the Postgres wrappers aren't instantiated in dev/test.
-Original analysis:
-One transient Postgres error latches `dbAvailable=false` for the whole process lifetime
-(one `console.warn`, no metric/health signal). Every subsequent read/write silently
-serves the boot-time JSON fallback; routes still return 200. Operator writes land only in
-`data/*.json` and vanish on the next restart when Postgres reconnects. Spans recordings,
-jobs, settings, encrypted secrets.
-**Decision:** fail the request (**503**) so the caller retries against the real DB, rather
-than silently diverging.
-**Why deferred (not landed):** this is genuinely large and higher-risk than the other fixes,
-and I would not rush it at the tail of this pass:
-- **No API error boundary exists** — `index.ts` has no `app.onError`; a thrown DB error would
-  currently surface as a 500 (or crash a runner), so a `DatabaseUnavailableError` + a Hono
-  `onError`/middleware mapping to 503 must be added first.
-- **14 stores, heterogeneous failover** — some use a `failover()` helper + `this.fallback.x()`,
-  others latch `dbAvailable=false` inline in every `catch`.
-- **Some stores use the in-memory store as a *legitimate* primary** (e.g. `audit-store`,
-  `health-store`, `meter-store` are designed to run without a DB) — those must **not** throw,
-  or normal operation breaks. So this needs per-store classification (DB-authoritative →
-  throw/503; in-memory-primary → keep), not a blanket change.
-Recommend implementing as its own reviewed slice: add the error boundary, convert the
-DB-authoritative stores to propagate `DatabaseUnavailableError`, leave the in-memory-primary
-stores as-is, and add a metric/health signal + a test that a DB error yields 503 (and that
-dev-without-`DATABASE_URL` is unaffected).
-
-### G5 — Non-atomic recording-job claim (read-modify-write) → double-claim / double-capture · `FIXED`
-**Fixed:** added an atomic `claim(job, expectedStatus)` to the job store — a conditional
-`UPDATE … WHERE id=$ AND status='queued' RETURNING` on Postgres and a no-`await`
-check-and-set in the JSON store — and routed `claimRecordingJob` through it.
-**Test (Postgres, opt-in via `RAKKR_API_TEST_DATABASE_URL`):**
-`recording-job-claim-atomic.test.ts` fires 16 concurrent claims and asserts exactly one
-wins. Verified **red on the old `save` path: 14 of 16 "won"**; green after the fix. Skips
-cleanly (no pool) in the default fallback-store suite. Original analysis:
-`apps/api/src/recording-jobs.ts:129-147` (`claimRecordingJob`), backed by the
-unconditional upsert at `:557-573`. *(Found independently by two hunters.)*
-The claim reads the job, checks `status === "queued"` in app memory, then `save()`s an
-`INSERT … ON CONFLICT DO UPDATE SET status='running'` with **no** `WHERE status='queued'`
-guard. Two concurrent agent polls can both observe `queued` and both win — the same job
-(or capture group) claimed twice, defeating capture-once/split-many.
-**Fix:** make the claim atomic — a single conditional `UPDATE … SET status='running',
-claimed_by=$1, lease_expires_at=$2 WHERE id=$3 AND status='queued' RETURNING *`, treating
-zero rows as "already claimed" (the bootstrap-token `consume` at `node-bootstrap-store.ts`
-is the in-repo model). The JSON store re-checks status inside the same call.
-**Why left CATALOGUED:** the race only manifests with real concurrent DB round-trips; the
-in-memory test store serialises the read-modify-write within one tick, so a faithful
-**failing** test needs `RAKKR_API_TEST_DATABASE_URL` (Postgres). Shipping the store
-refactor without a red→green proof would violate this audit's own discipline — flagged for
-a DB-backed slice. (`33f50ae5` "Make claim-next-group test deterministic" already hints at
-known nondeterminism here.)
-
-### G6 — Crypto fails open: dev key silently used when `RAKKR_SECRET_KEY` unset in prod · `FIXED`
-`apps/api/src/secret-box.ts:9-34`, `node-ssh-credential-crypto.ts:32-51`.
-AES-256-GCM construction is correct (random IV, verified tag). But if the key env is
-unset/empty the code derives from a hard-coded repo constant
-(`"rakkr-dev-insecure-secret-key-change-me"`) and only warns. A prod deploy that forgot
-the env var encrypts every SMB/S3 secret with a publicly known key. No key-length check
-either (`RAKKR_SECRET_KEY=x` accepted).
-**Fix:** fail closed in production (missing/short key throws on startup); mirror to the
-SSH master key. **Test:** production + missing/short key throws; dev still falls back.
-
-### G7 — Watchdog reads stale meter frames as if live → silent low-signal blindness · `FIXED`
-`apps/api/src/api-runners.ts:95-109`, `meter-store.ts:26-28`, `watchdog-runner.ts:153`.
-`latest()` returns the last frame regardless of age; the runner never checks
-`capturedAt`/`receivedAt`. If a node's meter stream dies on a healthy frame, the watchdog
-re-samples that good frame every tick and the node looks perpetually healthy — the exact
-"bad recording in progress" case the watchdog exists to catch. Node-liveness doesn't
-cover it (separate heartbeat channel).
-**Fix:** treat a frame older than a freshness bound as missing; `signalSample` already
-fail-closes (`flatline`) on a missing frame. **Test:** a stale good frame eventually
-raises low-signal.
-
-### G8 — `localDateTimeInput` drifts −1h across the fall-back DST hour, corrupting edited schedules · `CATALOGUED`
-`apps/web/src/lib/dates.ts:65-74`, consumed by `schedule-draft.ts`.
-Classic `getTimezoneOffset()` round-trip anti-pattern: offset sampled at the source
-instant, re-parsed at the displayed wall-clock time. In the repeated 01:00–01:59 fall-back
-band the offsets differ by 60 min, so opening an existing schedule with a start in that
-hour and saving walks the stored start back an hour. (Server-side `localDateTimeToUtc` is
-correct — only the web form helper is wrong.)
-**Fix:** build the display string via `Intl.DateTimeFormat(...).formatToParts` (as
-`dates.ts:1-12` already does elsewhere). CATALOGUED — web (vitest) test harness + TZ
-control; landing here after the API-side fixes.
-
-### G9 — `keepRaw=false` + enhancement silently drops the raw master vs the "always preserved" invariant · `CATALOGUED`
-`crates/recorder-agent/src/recording_job_upload.rs:240-293`.
-With `keepRaw=false`, the raw is never uploaded; with retention `deleteAfterUpload=true`
-the local raw is then deleted — only the denoised rendition survives. This may be
-"working as configured", but it directly contradicts the absolute "raw is always
-preserved" language in AGENTS.md and the audio-enhancement guide.
-**Fix (product decision):** either forbid `keepRaw=false` when it would leave no surviving
-raw, or remove the absolute "always preserved" claim. CATALOGUED — needs your call, not a
-silent code change.
-
----
-
-## MEDIUM
-
-### G10 — Retention deletes cache for `partial`/never-uploaded recordings when `deleteOnlyAfterUploaded=false` · `FIXED`
-`apps/api/src/retention-runner.ts:177`.
-The only upload-state gate is `if (deleteOnlyAfterUploaded && status !== "uploaded")`.
-With the flag off (a supported value), the runner deletes the controller cache regardless
-of upload state — including `partial` (failed-but-retryable destinations) and `cached`
-(never uploaded). Same permanent `cache_path_missing` as G1, via the time/size path.
-**Fix:** add an unconditional floor — never delete while a recording is `partial` or has a
-non-terminal/failed-retryable queue item, independent of the flag. **Test:** a `partial`
-recording past its age limit is retained with the flag off.
-
-### G11 — Agent meter-health events flap on a single transient frame · `FIXED`
-`crates/recorder-agent/src/meter_health.rs`. Was edge-triggered on plain booleans with no
-debounce — one noisy frame emitted a warning+recovery pair, polluting the JSONL evidence
-stream. **Fix:** a debounced `MeterHealthState` (per-condition `MeterConditionState`) where a
-condition must persist for `METER_HEALTH_MIN_CONSECUTIVE_FRAMES` (3) before its warning
-fires and clear for the same before recovery; a single transient frame no longer flaps.
-Threaded through the meter loop in `main.rs`. **Test:** `meter_health::tests` (single frame
-doesn't flap; sustained raises/recovers once; interrupted streak resets) + the updated
-`meter_health_logs_low_signal_and_recovery` integration test.
-
-### G12 — `auth/groups` & `auth/users` bypass pagination clamping · `FIXED`
-`apps/api/src/auth-management-routes.ts:94,121`. These privileged routes read `limit`/
-`offset` via `numberFromQuery` (no bounds) and skipped `parsePagination(PAGE_POLICY)`. An
-omitted `limit` returned the **entire** table (`paginate` returns all rows when limit is
-undefined); `limit=0` produced a garbled empty page.
-**Fix:** route both through `parsePagination(…, PAGE_POLICY.default)` like every other list
-route. **Test:** `auth-management-routes.test.ts` → "clamp pagination to the page policy"
-(omitted→50, 99999→200, 0→1).
-
-### G13 — Unbounded response when `limit` omitted on `paginate()`-direct routes · `FIXED`
-`recording-upload-queue-routes.ts` omitting `limit` returned every scoped row (`paginate`
-returns all rows when limit is undefined). **Fix:** route through
-`parsePagination(query.data, PAGE_POLICY.default)`. **Test:**
-`recording-upload-queue-routes.test.ts` → "bounds the page size when no limit is given"
-(meta.limit defaults to 50).
-
-### G14 — Multi-user IDOR / grant isolation is effectively untested · `CATALOGUED (coverage)`
-`apps/api/src/index.ts:236-280` (`resourceScopeDecision`/`allowedByGrant`).
-All access-control tests run as the single owner with `everyone`-deny policies; the
-positive path (user A's grant must not leak user B's resource) and `subjectType:"user"`/
-`"group"` matching are unverified (harness has one user, `DATABASE_URL=""`). Authz logic
-was read and looks correct — this is a missing characterisation test, not a known bug.
-**Fix:** two-user grant-isolation tests (detail/action/list 404 + list exclusion).
-
-### G15 — Date/time verifier is string-presence only; no DST behavioural test · `CATALOGUED (coverage)`
-`scripts/verify-date-time-baseline.mjs`; `schedule-engine.test.ts` uses `timezone:"UTC"`
-throughout, so the offset/DST code never runs under test. The gate stays green even if
-`localDateTimeToUtc` were replaced by naive `+24h`. **Fix:** NY recurrence across both DST
-transitions + a fall-back-instant round-trip identity test (would currently fail per G8).
-
-### G16 — `render_enhanced_output` / `upload_recording_renditions` have zero tests · `CATALOGUED (coverage)`
-`crates/recorder-agent/src/enhanced_render.rs` (no `#[cfg(test)]`), `recording_job_upload.rs`.
-The entire two-rendition upload + `keepRaw` gating + raw-failure handling (the G2 path),
-denoise-failure fallback, ffmpeg pass failures, and temp-file cleanup on error are
-unverified. Engine tests in `enhance.rs` are Miri-excluded and only check
-length/energy.
+**MEDIUM**
+- **G10** `FIXED` — Retention deletes cache for `partial`/never-uploaded when `deleteOnlyAfterUploaded=false`. Unconditional floor: never delete while `partial`/retryable-queued.
+- **G11** `FIXED` — Agent meter-health events flap on a single transient frame. Debounced `MeterHealthState` (3-frame persistence).
+- **G12** `FIXED` — `auth/groups`/`auth/users` bypass pagination clamping. Route through `parsePagination(PAGE_POLICY.default)`.
+- **G13** `FIXED` — Unbounded response when `limit` omitted on `paginate()`-direct routes. Same `parsePagination` fix.
+- **G14** `CATALOGUED (coverage)` — Multi-user IDOR/grant isolation untested (`index.ts` `resourceScopeDecision`). Needs two-user grant-isolation tests.
+- **G15** `CATALOGUED (coverage)` — Date/time verifier is string-presence only; no DST behavioural test.
+- **G16** `CATALOGUED (coverage)` — `render_enhanced_output`/`upload_recording_renditions` have zero tests.
 
 ---
 
@@ -996,8 +782,52 @@ and could be upgraded to this CAS to fully close their sub-tick window — a saf
 follow-up refinement, not a new-finding risk (all recording-status *writers* are
 now guarded).
 
+## Run 12 findings (web console: RBAC affordances, pagination staleness)
+
+Fresh sweep of the operator console for UI/API mismatches introduced or exposed
+by the server-side pagination migration. All fixed with red->green helper/route
+tests except the health half of G74 (catalogued).
+
+### Fixed
+- **G79** (`4d88e0b3`, Med) - the last unguarded recording-status writer:
+  PATCH `/recordings/:id/metadata` and `/recordings/bulk-metadata` blind-wrote
+  the whole scoped snapshot (status/cachePath), reverting a recording a
+  concurrent upload had secured. Now overlay only the edited metadata onto a
+  freshly-read canonical row; scoped context still drives values + audit.
+  (Metadata routes extracted to `recording-metadata-routes.ts` for the LOC guard.)
+- **G75** (`6ccbe6e8`, Med) - the access screen offered "Reset password" for
+  OIDC users, which the API refuses (`non_local_user_password_unavailable`).
+  Gate the button on `canResetUserPassword` (provider === "local"); drop the
+  "local user" wording from the delete confirmation.
+- **G76** (`b0ca680a`, Med) - seven node pickers/label lookups called
+  `api.nodes()` with no limit -> server default 50, dropping the 51st+ node from
+  dropdowns. Route them through `nodePickerFilters()` (limit 200 = API max).
+  >200 nodes still needs a paginated picker (tracked).
+- **G78** (`b0ca680a`, Low) - single upload enqueue + retry are audited but
+  invalidated only `["upload-queue"]`, leaving the audit view stale (bulk enqueue
+  refreshed both). Shared `auditedUploadActionQueryKeys` now drives all three.
+- **G74 (jobs)** (`f7f683e8`, Med) - the jobs-workbench summary tiles counted
+  over the paginated page, undercounting once matches exceeded the page size.
+  The list route now returns a status `summary` over the full filtered set
+  (`recordingJobStatusSummarySchema`); tiles consume it.
+- **G77** (`ece292b4`, Low-Med) - the recordings page grouped recording jobs +
+  upload items onto cards from a default 50-row global fetch (health-events
+  already fetched 500), so a recording's entries fell off once >50 existed. Bump
+  both to `recordingCrossReferenceLimit` (200); widen `api.uploadQueue` to accept
+  limit/offset.
+
+### Catalogued
+- **G74 (health)** (Med) - the health-workbench summary tiles have the same
+  page-scoped undercount, but the fix needs a store-level status aggregate across
+  two RBAC read paths (unrestricted DB group-by + scope-restricted in-memory
+  tally) - a store change, not a route patch. Sibling of G70.
+- **G76/G77 residual** (Low) - the node picker (200) and recording-card
+  cross-reference (200, global page) are still bounded and not scoped to the
+  visible set; a complete fix needs recording-/scope-scoped list filters.
+
 ### Still open (tracked)
-- **Recording-status CAS** (systemic) - still the top item; G54/G55/G63/G64 use
-  per-writer re-reads, G65 is blocked on it, and health-sync's field write remains.
+- **Recording-status CAS** (systemic) - G54/G55/G63/G64 use per-writer re-reads;
+  health-sync's field write remains. G65 + G79 now closed via the CAS/overlay, so
+  all recording-status *writers* are guarded.
 - **G62 / G59-residual** (Rust) - decoupled chunked-finalize signal; needs Linux
   integration testing. **G61** - per-job agent state files (config-gated).
