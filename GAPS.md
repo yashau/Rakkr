@@ -14,11 +14,13 @@ UTC/DST core were checked and found **correct**. The gaps cluster where behaviou
 only be proven against real hardware/Postgres/time, exactly as the source-of-truth doc
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
-**Landed (each with a test):** G1, G1b, G2, G3, G5, G6, G7, G10, G11, G12, G13, G19, G21.
-**Open — need a decision/steer:** G4 (DB-failover architecture), G9 (keepRaw wording),
-G24 (retry semantics + partial-cache reclaim), G25/G26 (chunked lease/finalization); coverage G14/G16.
+**Landed (each with a test):** G1, G1b, G2, G3, G5, G6, G7, G10, G11, G12, G13, G19, G21,
+G24, G25 (16 confirmed findings); G26 mostly-fixed via G25.
+**Open:** G4 (decided → 503; deferred as a focused slice — no API error boundary yet + 14
+heterogeneous stores), G9 (keepRaw wording — product call); coverage G14/G16.
 **Suspected / by-design:** G17, G18, G20, G22, G23.
-**Iteration loop:** Run 1 dirty (surfaced G24/G25/G26). Streak 0/5. See the run log at the end.
+**Iteration loop:** Run 1 dirty (surfaced G24/G25/G26, now fixed except the G26 residual and
+G4). Streak 0/5 — cannot reach clean until G4 lands. See the run log at the end.
 Rebased onto `origin/main` (`844f6a8e`); **G1b is a fresh-on-main catch** — PR #14 reintroduced
 the G1 data-loss pattern in its new chunked-upload path, which this audit caught on rebase.
 
@@ -97,7 +99,7 @@ named `=1+1` is neutralised.
 
 ## HIGH
 
-### G4 — Permanent silent failover to a divergent in-memory store on any transient DB error · `CATALOGUED`
+### G4 — Permanent silent failover to a divergent in-memory store on any transient DB error · `DECIDED (503) — deferred as a focused slice`
 `recording-store.ts:180-197`, `recording-jobs.ts:540-549`, `upload-destinations.ts:335`,
 `settings-store.ts:720`, and sibling Postgres wrappers.
 One transient Postgres error latches `dbAvailable=false` for the whole process lifetime
@@ -105,10 +107,23 @@ One transient Postgres error latches `dbAvailable=false` for the whole process l
 serves the boot-time JSON fallback; routes still return 200. Operator writes land only in
 `data/*.json` and vanish on the next restart when Postgres reconnects. Spans recordings,
 jobs, settings, encrypted secrets.
-**Fix (needs your call — broad blast radius):** don't latch permanently — fail the
-request (503) so the caller retries, or make `dbAvailable` a re-probing circuit breaker;
-surface the degraded state via `/metrics` + a health event. Left CATALOGUED because the
-right semantics is an architectural decision, not a one-line fix.
+**Decision:** fail the request (**503**) so the caller retries against the real DB, rather
+than silently diverging.
+**Why deferred (not landed):** this is genuinely large and higher-risk than the other fixes,
+and I would not rush it at the tail of this pass:
+- **No API error boundary exists** — `index.ts` has no `app.onError`; a thrown DB error would
+  currently surface as a 500 (or crash a runner), so a `DatabaseUnavailableError` + a Hono
+  `onError`/middleware mapping to 503 must be added first.
+- **14 stores, heterogeneous failover** — some use a `failover()` helper + `this.fallback.x()`,
+  others latch `dbAvailable=false` inline in every `catch`.
+- **Some stores use the in-memory store as a *legitimate* primary** (e.g. `audit-store`,
+  `health-store`, `meter-store` are designed to run without a DB) — those must **not** throw,
+  or normal operation breaks. So this needs per-store classification (DB-authoritative →
+  throw/503; in-memory-primary → keep), not a blanket change.
+Recommend implementing as its own reviewed slice: add the error boundary, convert the
+DB-authoritative stores to propagate `DatabaseUnavailableError`, leave the in-memory-primary
+stores as-is, and add a metric/health signal + a test that a DB error yields 503 (and that
+dev-without-`DATABASE_URL` is unaffected).
 
 ### G5 — Non-atomic recording-job claim (read-modify-write) → double-claim / double-capture · `FIXED`
 **Fixed:** added an atomic `claim(job, expectedStatus)` to the job store — a conditional
@@ -293,6 +308,12 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | --- | ------ | ----- | ------------------------ | ----- | ----- | ------ | ------ |
 | 1 | `8a11b629` | branch-diff adversary + fresh correctness/authz + chunked | 3 / 0 / 1 (G24, G25, G26) | — surfaced; need decisions | green | **no** | 0 |
 
+**Post-run-1 fixes (your decisions):** G24 (retry resets budget), G25 (chunked terminal →
+`partial`) landed with tests; G26 resolved for the stuck-status symptom via G25. G4 decided as
+503 but deferred (see G4). Full gates re-green: API **349 / 0 / 1-skip**, agent **147 / 0**,
+clippy + oxlint + fmt clean. Streak stays **0/5** — the branch cannot be "clean" until G4 lands,
+so the next audit run should follow the G4 slice.
+
 **Run 1 — DIRTY.** Two independent hunters: an adversary on the 14 fixes, and a fresh sweep of
 the least-audited chunked surface. The adversary confirmed the 14 fixes are correct and complete
 **except** it caught that G1/G10 partial-cache retention has no reclaim path — which traces to
@@ -302,7 +323,13 @@ on today's behavior) and G25/G26 are a multi-file chunked-lifecycle slice — al
 not an autonomous change. The 14 prior fixes stay green (API 346/0/1-skip; agent 147/0; clippy/
 oxlint/fmt clean). Streak remains 0.
 
-### G24 — Operator retry is a no-op on terminally-`failed` upload items · `NEW · CATALOGUED`
+### G24 — Operator retry is a no-op on terminally-`failed` upload items · `FIXED`
+**Fixed:** `retry()` (both stores) now resets the attempt budget (`attemptCount = 0`,
+`status = "retrying"`, due now) so a terminally-failed upload is genuinely re-attempted by the
+runner — which also gives a `partial` recording's cache a reclaim path. **Tests:**
+`recording-upload-queue-routes.test.ts` ("operator retry revives a terminally-failed upload
+item…") + rewritten `upload-queue.test.ts` retry spec; force-failed test fixtures reworked to
+use real `start`/`fail` cycles instead of abusing `retry()`. Original analysis:
 `apps/api/src/upload-queue.ts:173-191` (JSON) & `:416-438` (Postgres); retry is offered via
 `retryableUploadQueueStatuses = {cancelled, failed}` (`recording-upload-queue-routes.ts:58,218`).
 `retry()` does `attemptCount + 1` then `status = nextAttempt >= maxAttempts ? "failed" :
@@ -319,7 +346,12 @@ semantics — the test `upload queue routes use scoped recording context…` use
 a `failed` state (`maxAttempts:1`), so it needs reworking. Also reword the G1/G10 retention
 comments (cache is retained to preserve the only copy, not because failed items auto-retry).
 
-### G25 — Lease expiry hard-fails a chunked recording, discarding uploaded chunks · `NEW · CATALOGUED`
+### G25 — Lease expiry hard-fails a chunked recording, discarding uploaded chunks · `FIXED`
+**Fixed:** `markAgentJobTerminalRecording` now consults `listRecordingChunksForRecording`; a
+`failed` terminal state resolves to `partial` when any chunk is `cached`/`uploading`/`uploaded`/
+`partial`, preserving secured progress. Covers both the lease listener and the agent
+job-terminal route. **Test:** `agent-job-terminal-recording.test.ts` (chunked-with-chunks →
+`partial`; no-chunks → `failed`). Original analysis:
 `apps/api/src/agent-job-terminal-recording.ts:64-75` (`terminalRecordingStatus` returns `failed`
 unconditionally), the `index.ts` lease listener, and `recording-jobs.ts expireRecordingJobLeases`
 (30s lease). Chunked recordings upload each chunk as it closes; if the agent's control-plane
@@ -331,7 +363,14 @@ then flips `failed` → `cached` (status flap). **Fix:** in the lease-expiry ter
 `listRecordingChunksForRecording` and resolve to `partial` (not `failed`) when any chunk is
 `cached`/`uploading`/`uploaded`/`partial`. **Severity: Medium** (window-dependent).
 
-### G26 — Chunked recording sticks non-terminal when the final chunk (carrying `chunkTotal`) never arrives · `NEW · SUSPECTED`
+### G26 — Chunked recording sticks non-terminal when the final chunk (carrying `chunkTotal`) never arrives · `MOSTLY FIXED (via G25)`
+**Status:** the stuck-status symptom is resolved by G25 — a dead capture expires the lease →
+`markAgentJobTerminalRecording` sets the recording to `partial` directly, so it is no longer
+stuck non-terminal. **Residual (minor follow-up):** the upload-runner's per-chunk
+`reconcileChunkedRecordingUpload` cache-retention gate still won't run for a recording whose
+`total` never arrived (finalization requires `chunks.length >= total`); those chunk cache
+objects are retained until the recording is deleted. Not data-loss; a cache-cleanup gap.
+Original analysis:
 `apps/api/src/upload-runner.ts:383-408` finalization requires `total !== undefined && chunks.length
 >= total`; `total` is stamped only by the final chunk's `chunkTotal`. If capture dies mid-stream
 (`finish_partial_after_failure` persists `chunk_total: None`) or a middle chunk exhausts retries,
