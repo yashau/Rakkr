@@ -301,6 +301,15 @@ async function reconcileRecordingUpload(
     return;
   }
 
+  // Re-read immediately before promoting: a concurrent retry (which resets the
+  // recording to `recording`/`queued`) or a terminal-failed decision must not be
+  // overwritten by a stale reconcile from earlier-enqueued upload items.
+  const current = await reconcilableRecording(recording, recordingStore);
+
+  if (!current) {
+    return;
+  }
+
   const status: RecordingSummary["status"] = failed.length > 0 ? "partial" : "uploaded";
   // Only release the shared controller cache once EVERY destination is
   // confirmed. A partial upload still has retryable failed destinations whose
@@ -309,23 +318,41 @@ async function reconcileRecordingUpload(
   const retention =
     failed.length > 0
       ? ({ skipped: "upload_incomplete" } satisfies UploadRetentionResult)
-      : await resolveCacheDeletion(succeeded, recording);
+      : await resolveCacheDeletion(succeeded, current);
   const cacheDeleted = retention.cacheDeleted === true;
 
   await recordingStore.save({
-    ...recording,
+    ...current,
     ...(cacheDeleted ? { cachePath: undefined, cached: false } : {}),
     status,
   });
 
   await appendReconcileAudit(
     auditStore,
-    recording,
+    current,
     status,
     succeeded.length,
     failed.length,
     retention,
   );
+}
+
+// Recording statuses a reconcile pass may legitimately promote from. A recording
+// a concurrent retry reset to `recording`/`queued`, or that another writer set
+// terminal (`failed`/`completed`), has moved on — a stale reconcile built from
+// earlier-enqueued upload items must not overwrite it. (Recording status has no
+// compare-and-set, so this re-read narrows the window; a full recording-status
+// CAS is the deeper fix, tracked alongside the job-reaper residual.)
+const RECONCILABLE_RECORDING_STATUSES = new Set<RecordingSummary["status"]>([
+  "cached",
+  "partial",
+  "uploaded",
+]);
+
+async function reconcilableRecording(recording: RecordingSummary, recordingStore: RecordingStore) {
+  const current = await recordingStore.find(recording.id);
+
+  return current && RECONCILABLE_RECORDING_STATUSES.has(current.status) ? current : undefined;
 }
 
 // Chunked reconciliation: settle each chunk independently (each is its own object
@@ -404,14 +431,22 @@ async function reconcileChunkedRecordingUpload(
     return;
   }
 
+  // Re-read before promoting so a concurrent retry/terminal decision on the
+  // recording isn't overwritten by this (possibly stale) finalization.
+  const current = await reconcilableRecording(recording, recordingStore);
+
+  if (!current) {
+    return;
+  }
+
   const uploaded = chunks.filter((chunk) => chunk.status === "uploaded").length;
   const degraded = chunks.filter(
     (chunk) => chunk.status === "partial" || chunk.status === "failed",
   ).length;
   const status = finalization.status;
 
-  await recordingStore.save({ ...recording, status });
-  await appendReconcileAudit(auditStore, recording, status, uploaded, degraded, {
+  await recordingStore.save({ ...current, status });
+  await appendReconcileAudit(auditStore, current, status, uploaded, degraded, {
     skipped: "chunked_per_chunk_retention",
   });
 }
