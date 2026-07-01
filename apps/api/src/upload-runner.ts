@@ -370,6 +370,14 @@ async function reconcileChunkedRecordingUpload(
     return;
   }
 
+  // Re-read up front: if the recording moved on (a retry reset it to `recording`,
+  // or a terminal decision landed) skip the whole pass — including the per-chunk
+  // cache deletion below — so a stale reconcile cannot delete a freshly
+  // re-captured chunk's controller cache.
+  if (!(await reconcilableRecording(recording, recordingStore))) {
+    return;
+  }
+
   const itemsByChunk = new Map<string, UploadQueueItem[]>();
 
   for (const item of chunkItems) {

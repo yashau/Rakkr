@@ -504,6 +504,76 @@ test("G55: chunked reconcile does not promote a recording reset to `recording`",
   assert.equal(updated?.status, "recording");
 });
 
+test("G55-d: a stale chunked reconcile does not delete a re-captured chunk's cache", async () => {
+  const auditStore = createAuditStore("");
+  const destinationStore = createUploadDestinationStore();
+  const contents = "chunk-recapture-bytes";
+  const retried = {
+    ...recording("rec_upload_chunk_recapture", contents),
+    status: "recording" as const,
+  };
+  const recordingStore = memoryRecordingStore([retried]);
+  const chunkId = "rec_upload_chunk_recapture:1";
+  const chunkCacheRel = `chunks/${chunkId}.mp3`;
+  const chunkCachePath = path.join(runnerRoot, "cache", chunkCacheRel);
+
+  await mkdir(path.dirname(chunkCachePath), { recursive: true });
+  await writeFile(chunkCachePath, contents);
+  await upsertRecordingChunk({
+    cachePath: chunkCacheRel,
+    createdAt: "2026-06-18T12:00:00.000Z",
+    durationSeconds: 60,
+    id: chunkId,
+    index: 1,
+    jobId: "job_chunk_recapture",
+    offsetSeconds: 0,
+    recordingId: retried.id,
+    status: "cached",
+    total: 1,
+  });
+
+  const smb = fakeSmbClient();
+  const runner = createUploadRunner({
+    auditStore,
+    destinationStore,
+    limit: 5,
+    recordingStore,
+    smbClientFactory: () => smb.client,
+  });
+  const destination = await destinationStore.create({
+    displayName: "Recapture Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const policy = await createUploadPolicy({
+    deleteCacheAfterUpload: true,
+    destinationId: destination.id,
+    enabled: true,
+    maxAttempts: 1,
+    name: "Recapture delete policy",
+    trigger: "manual",
+  });
+  await enqueueRecordingUpload(retried, {
+    cachePath: chunkCacheRel,
+    chunkId,
+    chunkIndex: 1,
+    destinationId: destination.id,
+    fileName: "chunk-1.mp3",
+    maxAttempts: 1,
+    policyId: policy.id,
+    provider: "smb",
+  });
+
+  await runner.runOnce();
+
+  // Pre-fix the per-chunk deletion ran before the recording-status guard, so a
+  // stale pass (recording reset to `recording` by a retry) deleted the
+  // re-captured chunk's cache. The hoisted guard now skips the whole pass.
+  await assert.doesNotReject(readFile(chunkCachePath));
+});
+
 test("upload runner routes expose status and run-now control", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
