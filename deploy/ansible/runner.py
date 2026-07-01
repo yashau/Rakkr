@@ -1,4 +1,5 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hmac
 import json
 import os
 import shutil
@@ -28,6 +29,30 @@ TOKEN_PROVISION_ACTIONS = {
     "rotate_trust",
 }
 
+# Shared secret the controller sends as `Authorization: Bearer <token>` on every
+# lifecycle call (its RAKKR_ANSIBLE_RUNNER_TOKEN). The runner validates the same
+# value so /runs cannot be driven by anything that can merely reach the port,
+# bypassing controller-side RBAC/scoping/audit.
+INBOUND_TOKEN = os.environ.get("RAKKR_ANSIBLE_RUNNER_TOKEN", "")
+
+
+def authorize(auth_header, expected_token):
+    # When no token is configured the runner is unauthenticated (dev/compose);
+    # a warning is printed at startup. When set, require a matching Bearer token
+    # (constant-time compare).
+    if not expected_token:
+        return True
+
+    if not isinstance(auth_header, str):
+        return False
+
+    prefix = "Bearer "
+
+    if not auth_header.startswith(prefix):
+        return False
+
+    return hmac.compare_digest(auth_header[len(prefix) :], expected_token)
+
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -40,6 +65,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/runs":
             self.respond(404, {"error": "not_found"})
+            return
+
+        if not authorize(self.headers.get("Authorization"), INBOUND_TOKEN):
+            self.respond(401, {"error": "unauthorized"})
             return
 
         try:
@@ -381,4 +410,10 @@ if __name__ == "__main__":
     port = int(os.environ.get("RAKKR_ANSIBLE_RUNNER_PORT", "8790"))
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Rakkr Ansible runner listening on http://{host}:{port}", flush=True)
+    if not INBOUND_TOKEN:
+        print(
+            "WARNING: RAKKR_ANSIBLE_RUNNER_TOKEN is not set; /runs is UNAUTHENTICATED. "
+            "Set it (matching the controller) in any non-isolated deployment.",
+            flush=True,
+        )
     server.serve_forever()
