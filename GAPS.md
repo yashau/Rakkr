@@ -342,7 +342,8 @@ discarded the rejection → unhandled → crash. **Fix:** `reportRunnerTickError
 `void tick()` sites per runner (scheduled path degrades; `runOnce()` still propagates → 503).
 **Test:** `runner-tick.test.ts` (handler never rethrows).
 
-### G27 — One-time schedule permanently disabled when its only occurrence hits a channel conflict · `NEW · CATALOGUED`
+### G27 — One-time schedule permanently disabled when its only occurrence hits a channel conflict · `FIXED`
+**Fixed:** the deferral branch now retries via `retryScheduleAfterFailure` instead of advancing/disabling; a `once` schedule stays enabled + armed. Test verified red (enabled=false) → green.
 `schedule-runner.ts:160-208` + `schedule-engine.ts:201-206`. On a channel-conflict deferral the
 runner calls `advanceScheduleAfterRun` unconditionally; for `mode: "once"` that returns
 `{ enabled: false, nextRunAt: undefined }` — identical to a *successful* completion. So a one-time
@@ -351,7 +352,8 @@ schedule whose sole occurrence is transiently deferred is disabled forever and *
 reschedule `once`/`always_on` via `retryScheduleAfterFailure(now)` instead of advancing as if
 completed. (Deferral branch has no test — see G29.) **Severity: Medium.**
 
-### G28 — Live-listen `MemoryListenSessionStore` never evicts abandoned sessions · `NEW · CATALOGUED`
+### G28 — Live-listen `MemoryListenSessionStore` never evicts abandoned sessions · `FIXED`
+**Fixed:** lazy eviction-on-access by TTL (`RAKKR_LISTEN_SESSION_TTL_SECONDS`, default 300s); clock injected for deterministic tests.
 `listen-session-store.ts:30-84`. Sessions are added in `start()`, removed only in `stop()`; an
 operator closing the tab / dropping network without `DELETE /listen/:id` leaves the record
 forever — unbounded process-lifetime memory growth. (`nodeWantsEnhanced` filters stale demand by
@@ -371,7 +373,7 @@ the success audit omits `stdout`/`stderr` though AGENTS.md says lifecycle runs a
 them — a doc/code divergence to reconcile. **Severity: Low / informational.**
 
 ### G4-2 & G24-1 — low-severity metric consequences · `NEW · SUSPECTED`
-**G4-2:** `/metrics` reads `recordingStore.list()`/`listUploadQueueItems()`, so during a DB blip it
+**G4-2 (`FIXED`):** `/metrics` reads `recordingStore.list()`/`listUploadQueueItems()`, so during a DB blip it
 now 503s — observability disappears exactly when needed. Consider catching in the metrics route +
 emitting a `database_unavailable` gauge. **G24-1:** `rakkr_upload_failures_total` is a `counter`
 computed from live `attemptCount` of currently-`failed` items; G24's retry (→ attemptCount 0,
