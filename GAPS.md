@@ -327,6 +327,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 3 | `8a11b629` | web console + Rust agent internals | 3 / 0 / 2 (G31, G32, G34; G33, G35) | G31, G32, G34 (fixed) | green | **no** | 0 |
 | 4 | `8a11b629` | infra (ansible/db/deploy/scripts) + broad residual re-sweep | 2 / 1 / 2 (G36, G37; G38; G39, +1) | G36, G37 (fixed) | green | **no** | 0 |
 | 5 | `8a11b629` | adversary on newest fixes + 2nd broad core re-sweep | 1 / 0 / 2 (G40; G41, G42) | G40 (fixed) | green | **no** | 0 |
+| 6 | `8a11b629` | deep RBAC/IDOR + state-machine/concurrency | 1 / 1 / 0 (G43; G44) | — (both need reviewed slices) | green | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -573,3 +574,46 @@ full-row read-modify-write `save`; concurrent requests on the same recording cou
 just-cleared `cachePath` or revert `uploaded`→`cached` (Postgres upsert is last-write-wins). The
 runner calls these sequentially today, so it's a latent smell, not a demonstrated defect. Fix
 would mirror G5's atomic conditional write for recording status/cache fields.
+
+
+---
+
+## Run 6 findings (deep RBAC/IDOR + state-machine/concurrency)
+
+**Strong convergence signal on security:** the deep authorization pass confirmed the RBAC core
+is **sound** — multi-user grant/scope isolation (G14) verified *correct* (not just asserted),
+scope-cascade deny-precedence holds, list/detail/action use the same scope fn, mutating routes
+re-check the referenced resource (no body-id IDOR), token-auth routes are node-bound/single-use/
+timing-safe. Two false-positive "CRITICAL IDOR" flags were traced and rejected. The G40
+regression check was also clean. Two real (but slice-worthy) items surfaced:
+
+### G43 — Chunk render failure silently drops a middle chunk → recording stranded in `cached` + audio loss · `CATALOGUED (CONFIRMED, Medium-High)`
+`crates/recorder-agent/src/recording_job_chunked.rs:457-479` + controller finalization
+`apps/api/src/upload-runner.ts:385-392`. Unlike the upload path (retry + push to `pending` →
+`partial`), the render-failure branch logs a warning and `return Ok(())` — no retry, no pending,
+capture continues. That drops the chunk's audio AND leaves an index gap; the final chunk's
+`chunkTotal` then overcounts the present rows, so the controller's `chunks.length >= total` gate
+never holds and the recording is stuck `cached` forever (offset drift too). Distinct from G26
+(`total` never arrives) and G33 (zero-audio). **Fix (dual, needs a careful slice):** agent —
+don't silently drop; ensure the job finishes `partial` (signal the loss) rather than clean
+`completed`; controller — finalize a chunked recording as `partial` once its owning job is
+terminal even if present-chunks < total (resolves the delayed-vs-dropped ambiguity via the
+job-terminal signal). Regression risk to the lightly-tested chunked flow → reviewed slice.
+Controller-side has a deterministic test path (upsert rows with a gap + total); agent-side needs
+the render seam injectable.
+
+### G44 — Bulk/collection routes over-deny scoped non-admin operators (fail-closed) · `CATALOGUED (CONFIRMED, Low)`
+`apps/api/src/index.ts:237-281` (`resourceScopeDecision`) + collection routes in
+`recording-routes.ts`, `recording-job-routes.ts`, `recording-upload-queue-routes.ts`. The
+synthetic `{id:"recording_collection", type:"recording_collection"}` middleware target matches no
+cascade/policy/grant, so a scoped **operator** (grants, not owner/admin) gets 403 on
+`bulk-delete`/`bulk-metadata`/`bulk-retry`/`bulk-stop`/`bulk-upload-queue` even for their own
+in-scope recordings — while the single-item routes work. **Fail-closed (over-denies; no
+escalation).** Verified the handlers already filter per-item via `scopedRecordings` (e.g.
+`recording-routes.ts:462-471`), so the per-item filter is the real gate. **Fix (security-sensitive
+slice):** early-return `allowed:true` from `resourceScopeDecision` for synthetic `*_collection`
+target types, delegating to the handlers' per-item filtering — **after** auditing that *every*
+collection route filters (recording/job/upload-queue confirmed; schedule/node/channel-map to
+verify), plus a test wiring the REAL middleware to a collection route for a scoped operator
+(the suite only ever stubs `requirePermission`). Weigh vs the audit-label tradeoff of the
+alternative (pass `{type:"controller"}`).
