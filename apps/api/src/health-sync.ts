@@ -28,13 +28,34 @@ export async function syncRecordingHealth(
   );
   const nextHealth = recordingHealthStatus(activeEvents);
 
-  if (recording.healthStatus !== nextHealth) {
-    await recordingStore.save({
-      ...recording,
-      healthStatus: nextHealth,
-    });
+  if (recording.healthStatus === nextHealth) {
+    return;
+  }
+
+  // Write healthStatus without carrying a status/cache decision. A plain
+  // save({ ...recording, healthStatus }) is a full-column upsert of the row as
+  // it was read, so a concurrent upload that secured the recording between our
+  // read and write would be reverted (same TOCTOU as the metadata routes).
+  // Commit through the status CAS instead; re-read and retry if a concurrent
+  // writer moved status (health is derived, so the re-read value still applies).
+  for (let attempt = 0; attempt < HEALTH_SYNC_COMMIT_ATTEMPTS; attempt += 1) {
+    const current = await recordingStore.find(recordingId);
+
+    if (!current || current.healthStatus === nextHealth) {
+      return;
+    }
+
+    const committed = await recordingStore.transition({ ...current, healthStatus: nextHealth }, [
+      current.status,
+    ]);
+
+    if (committed) {
+      return;
+    }
   }
 }
+
+const HEALTH_SYNC_COMMIT_ATTEMPTS = 5;
 
 export function recordingHealthStatus(events: HealthEvent[]): RecordingSummary["healthStatus"] {
   if (events.some((event) => event.severity === "critical")) {

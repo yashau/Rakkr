@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { HealthEvent, RecordingSummary } from "@rakkr/shared";
+import type { RecordingStore } from "../src/recording-store.js";
 
 process.env.DATABASE_URL = "";
 
@@ -45,6 +46,64 @@ test("R13-4: recording health reflects an open critical event beyond the newest 
   // Pre-fix the newest-500 window held only resolved events, so health synced to
   // "healthy" and hid the still-open critical.
   assert.equal((await recordingStore.find(recordingId))?.healthStatus, "critical");
+});
+
+test("R13-8: health sync does not clobber a recording secured mid-sync (status CAS)", async () => {
+  const recordingId = "rec_health_race";
+  const healthEventStore = createHealthEventStore("", [
+    healthEvent({ id: "health_race_critical", recordingId, severity: "critical", status: "open" }),
+  ]);
+  const secured = recording({
+    cached: true,
+    cachePath: "scheduled/rec_health_race.mp3",
+    healthStatus: "healthy",
+    id: recordingId,
+    status: "cached",
+  });
+  const preSecure = recording({ healthStatus: "healthy", id: recordingId, status: "recording" });
+  let stored: RecordingSummary = preSecure;
+  let findCalls = 0;
+  const recordingStore: RecordingStore = {
+    async create() {},
+    async delete() {
+      return undefined;
+    },
+    async find() {
+      findCalls += 1;
+      const snapshot = { ...stored };
+
+      if (findCalls === 1) {
+        // A concurrent cache-secure lands right after the first read.
+        stored = { ...secured };
+      }
+
+      return snapshot;
+    },
+    async list() {
+      return [stored];
+    },
+    async save(next) {
+      stored = next;
+    },
+    async transition(next, allowedFrom) {
+      if (!allowedFrom.includes(stored.status)) {
+        return undefined;
+      }
+
+      stored = next;
+
+      return next;
+    },
+  };
+
+  await syncRecordingHealth(healthEventStore, recordingStore, recordingId);
+
+  // Pre-fix a full-row save wrote back the stale "recording" snapshot, reverting
+  // the secure. The CAS re-reads and preserves status + cachePath while still
+  // applying the derived health status.
+  assert.equal(stored.healthStatus, "critical");
+  assert.equal(stored.status, "cached");
+  assert.equal(stored.cachePath, "scheduled/rec_health_race.mp3");
 });
 
 function healthEvent(

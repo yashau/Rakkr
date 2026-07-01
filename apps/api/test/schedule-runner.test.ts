@@ -281,6 +281,18 @@ function memoryRecordingStore(recordings: RecordingSummary[] = []) {
         recordings[index] = recording;
       }
     },
+    async transition(recording: RecordingSummary, allowedFrom: RecordingSummary["status"][]) {
+      const index = recordings.findIndex((candidate) => candidate.id === recording.id);
+      const current = recordings[index];
+
+      if (!current || !allowedFrom.includes(current.status)) {
+        return undefined;
+      }
+
+      recordings[index] = recording;
+
+      return recording;
+    },
   };
 }
 

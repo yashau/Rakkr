@@ -7,6 +7,7 @@ import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser, RecordingSummary } from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
+import { memoryRecordingStore } from "./recording-store-mock.js";
 
 const runnerRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-runner-"));
 process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(runnerRoot, "destinations.json");
@@ -905,38 +906,6 @@ function recording(id = "rec_upload_runner_test", contents?: string): RecordingS
     source: "schedule",
     status: "cached",
     tags: ["council"],
-  };
-}
-
-function memoryRecordingStore(recordings: RecordingSummary[]) {
-  return {
-    async create(recording: RecordingSummary) {
-      recordings.unshift(recording);
-    },
-    async delete(recordingId: string) {
-      const index = recordings.findIndex((recording) => recording.id === recordingId);
-
-      if (index < 0) {
-        return undefined;
-      }
-
-      const [deleted] = recordings.splice(index, 1);
-
-      return deleted;
-    },
-    async find(recordingId: string) {
-      return recordings.find((recording) => recording.id === recordingId);
-    },
-    async list() {
-      return recordings;
-    },
-    async save(recording: RecordingSummary) {
-      const index = recordings.findIndex((candidate) => candidate.id === recording.id);
-
-      if (index >= 0) {
-        recordings[index] = recording;
-      }
-    },
   };
 }
 
