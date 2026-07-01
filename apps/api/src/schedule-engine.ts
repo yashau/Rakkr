@@ -570,15 +570,40 @@ function localDate(date: Date, timeZone: string): LocalDate {
 
 function localDateTimeToUtc(date: LocalDate, time: string, timeZone: string) {
   const [hour, minute] = time.split(":").map(Number);
-  const wantedUtc = Date.UTC(date.year, date.month - 1, date.day, hour ?? 0, minute ?? 0);
-  let candidate = wantedUtc;
+  const wantedHour = hour ?? 0;
+  const wantedMinute = minute ?? 0;
+  const wantedUtc = Date.UTC(date.year, date.month - 1, date.day, wantedHour, wantedMinute);
 
-  for (let iteration = 0; iteration < 3; iteration += 1) {
-    const offset = zonedOffsetMs(new Date(candidate), timeZone);
-    candidate = wantedUtc - offset;
+  // Solve `t = wantedUtc - offset(t)` by reconciling the zone offset on both
+  // sides of a possible DST transition. A plain fixed-point iteration does not
+  // converge for a spring-forward gap (a nonexistent local time) — it oscillates
+  // between the two offsets, so the result depended on the iteration count.
+  const firstOffset = zonedOffsetMs(new Date(wantedUtc), timeZone);
+  const firstCandidate = wantedUtc - firstOffset;
+  const secondOffset = zonedOffsetMs(new Date(firstCandidate), timeZone);
+
+  if (firstOffset === secondOffset) {
+    // Stable: a normal local time (or one consistent side of the boundary).
+    return new Date(firstCandidate);
   }
 
-  return new Date(candidate);
+  // The two offsets disagree only near a transition. The fall-back (ambiguous)
+  // hour has a valid earlier occurrence we prefer; the spring-forward gap has no
+  // valid instant, so we shift the nonexistent time forward past the gap by
+  // taking the later candidate.
+  const secondCandidate = wantedUtc - secondOffset;
+  const earlier = Math.min(firstCandidate, secondCandidate);
+  const later = Math.max(firstCandidate, secondCandidate);
+
+  return new Date(
+    reproducesLocalTime(earlier, wantedHour, wantedMinute, timeZone) ? earlier : later,
+  );
+}
+
+function reproducesLocalTime(utcMs: number, hour: number, minute: number, timeZone: string) {
+  const parts = dateTimeParts(new Date(utcMs), timeZone);
+
+  return parts.hour === hour && parts.minute === minute;
 }
 
 function zonedOffsetMs(date: Date, timeZone: string) {

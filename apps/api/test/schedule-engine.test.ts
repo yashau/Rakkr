@@ -83,6 +83,49 @@ describe("schedule recurrence engine", () => {
     );
   });
 
+  it("shifts a spring-forward gap start time forward past the DST gap", () => {
+    // 2026-03-08 in America/New_York: clocks jump 02:00 -> 03:00, so 02:30 does
+    // not exist. Pre-fix the fixed point oscillated on the iteration count and
+    // could resolve backward to 01:30 local (06:30Z); it must deterministically
+    // shift forward to 03:30 local (07:30Z).
+    const recurrence: ScheduleRecurrence = {
+      endTime: "04:00",
+      interval: 1,
+      mode: "daily",
+      startTime: "02:30",
+    };
+
+    assert.equal(
+      nextRunAtForRecurrence(
+        recurrence,
+        "America/New_York",
+        undefined,
+        new Date("2026-03-08T00:00:00.000Z"),
+      ),
+      "2026-03-08T07:30:00.000Z",
+    );
+  });
+
+  it("keeps a normal (non-DST) daily start time exact", () => {
+    const recurrence: ScheduleRecurrence = {
+      endTime: "10:00",
+      interval: 1,
+      mode: "daily",
+      startTime: "09:00",
+    };
+
+    // A day with no transition round-trips to the exact requested wall time.
+    assert.equal(
+      nextRunAtForRecurrence(
+        recurrence,
+        "America/New_York",
+        undefined,
+        new Date("2026-06-14T00:00:00.000Z"),
+      ),
+      "2026-06-14T13:00:00.000Z",
+    );
+  });
+
   it("computes overnight recording duration with both buffer directions", () => {
     const schedule = scheduleFixture({
       recurrence: {
