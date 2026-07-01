@@ -269,8 +269,10 @@ function flatlineResult(
 }
 
 function shouldRepeat(event: HealthEvent, policy: WatchdogPolicy, now: Date) {
-  if (event.status === "suppressed" && event.suppressedUntil) {
-    return Date.parse(event.suppressedUntil) <= now.getTime();
+  if (event.status === "suppressed") {
+    // Indefinite suppression (no expiry) never repeats; a finite window repeats
+    // only once it has elapsed.
+    return event.suppressedUntil ? Date.parse(event.suppressedUntil) <= now.getTime() : false;
   }
 
   const details = record(event.details) ?? {};

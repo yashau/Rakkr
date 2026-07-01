@@ -82,6 +82,48 @@ test("repeats unresolved scheduled low-signal alerts after policy interval", asy
   assert.equal(repeatedAudits.length, 1);
 });
 
+test("G72: an indefinitely suppressed low-signal alert does not repeat", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  const firstRunAt = new Date();
+  const policy: WatchdogPolicy = {
+    ...watchdogPolicy(),
+    qualityMode: "signal_only",
+    repeatEverySeconds: 1,
+  };
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    meterFrameProvider: () => silentFrame(),
+    policies: [policy],
+    recordingStore: memoryRecordingStore([
+      recording({
+        recordedAt: new Date(firstRunAt.getTime() - 120_000).toISOString(),
+        watchdogPolicyId: policy.id,
+      }),
+    ]),
+  });
+
+  const [created] = await runner.runOnce(firstRunAt);
+  const [event] = await healthEventStore.list({ recordingId: "rec_watchdog_quality" });
+  // Suppress the open alert indefinitely (no expiry).
+  await healthEventStore.updateLifecycle(event!.id, {
+    status: "suppressed",
+    suppressedAt: firstRunAt,
+    suppressedBy: "operator",
+    suppressedUntil: null,
+  });
+
+  const [afterSuppress] = await runner.runOnce(new Date(firstRunAt.getTime() + 5_000));
+  const repeatedAudits = await auditStore.list({ action: "health.watchdog.low_signal.repeated" });
+
+  assert.equal(created?.outcome, "alert_created");
+  // Pre-fix a null suppressedUntil fell through to the cadence check and kept
+  // repeating a supposedly-suppressed alert.
+  assert.notEqual(afterSuppress?.outcome, "alert_repeated");
+  assert.equal(repeatedAudits.length, 0);
+});
+
 test("resolves scheduled low-signal alerts when signal recovers", async () => {
   const auditStore = createAuditStore("");
   const healthEventStore = createHealthEventStore("", []);
