@@ -59,9 +59,15 @@ export async function agentCacheFileJobScope(
 ) {
   const job = input.jobId
     ? await recordingJob(input.jobId)
-    : (await listRecordingJobs()).find(
+    : // When the agent sends no job header, prefer a still-live job for this
+      // recording and never a terminal-failed/cancelled one, so a late upload
+      // cannot latch onto an already-reaped job (see the terminal guard below).
+      (await listRecordingJobs()).find(
         (candidate) =>
-          candidate.recordingId === recording.id && candidate.nodeId === credential.nodeId,
+          candidate.recordingId === recording.id &&
+          candidate.nodeId === credential.nodeId &&
+          candidate.status !== "failed" &&
+          candidate.status !== "cancelled",
       );
 
   if (!input.jobId && !job) {
@@ -105,6 +111,21 @@ function agentRecordingJobScopeFailure(
       ok: false,
       reason: "recording_job_scope_denied",
       status: 403,
+      target,
+    } as const;
+  }
+
+  // A late/replayed upload for a job the controller already reaped (lease
+  // expiry -> failed, or cancelled) must not resurrect it: completing here
+  // would flip the terminal job back to `completed` and the recording back to
+  // `cached`, overturning a controller-decided terminal state. `completed`
+  // is intentionally allowed through so a duplicate upload stays idempotent.
+  if (job.status === "failed" || job.status === "cancelled") {
+    return {
+      error: "Recording job is in a terminal state and cannot be completed",
+      ok: false,
+      reason: "recording_job_not_completable",
+      status: 409,
       target,
     } as const;
   }

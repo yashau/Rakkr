@@ -24,7 +24,9 @@ process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(cacheRoot, "chunks.json
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAgentRoutes } = await import("../src/agent-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
-const { claimRecordingJob, createRecordingJob } = await import("../src/recording-jobs.js");
+const { claimRecordingJob, createRecordingJob, failRecordingJob, recordingJob } = await import(
+  "../src/recording-jobs.js"
+);
 const { listRecordingChunksForRecording } = await import("../src/recording-chunks.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
 const { listUploadQueueItems, succeedUploadQueueItem } = await import("../src/upload-queue.js");
@@ -138,6 +140,84 @@ test("chunk upload without an owning job is rejected instead of persisting an em
   // schema (jobId.min(1)) and broke the chunk store on the next load.
   assert.equal(response.status, 409);
   assert.equal(chunks.length, 0);
+});
+
+test("G47: cache upload for a terminal-failed job is rejected (no job/recording resurrection)", async () => {
+  const app = new Hono<AppBindings>();
+  const recorderNode = node();
+  const recordingStore = memoryRecordingStore([recording(recorderNode.id)]);
+  const [sourceRecording] = await recordingStore.list();
+  const job = await createRecordingJob(sourceRecording);
+  await claimRecordingJob(job.id, recorderNode.id);
+  // The controller reaps the job (lease expiry / explicit fail). The recording
+  // stays `recording` here so this exercises the JOB terminal guard, not the
+  // recording-status guard.
+  await failRecordingJob(job.id, "lease_expired");
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(recorderNode),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore,
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(`/api/v1/recordings/${sourceRecording.id}/cache-file`, {
+    body: wavFile([0, 1000, -1000, 500]),
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "audio/wav",
+      "x-rakkr-duration-seconds": "2",
+      "x-rakkr-file-name": "late-upload.wav",
+      "x-rakkr-recording-job-id": job.id,
+    },
+    method: "PUT",
+  });
+  const reloadedJob = await recordingJob(job.id);
+  const uploadItems = (await listUploadQueueItems()).filter(
+    (item) => item.recordingId === sourceRecording.id,
+  );
+
+  // Pre-fix this returned 201, flipped the job failed -> completed, the recording
+  // -> cached, and re-fanned the upload queue.
+  assert.equal(response.status, 409);
+  assert.equal(reloadedJob?.status, "failed");
+  assert.equal((await recordingStore.find(sourceRecording.id))?.status, "recording");
+  assert.equal(uploadItems.length, 0);
+});
+
+test("G47: cache upload for a terminally failed recording is rejected", async () => {
+  const app = new Hono<AppBindings>();
+  const recorderNode = node();
+  const failedRecording = { ...recording(recorderNode.id), status: "failed" as const };
+  const recordingStore = memoryRecordingStore([failedRecording]);
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(recorderNode),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore,
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(`/api/v1/recordings/${failedRecording.id}/cache-file`, {
+    body: wavFile([0, 1000, -1000, 500]),
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "audio/wav",
+      "x-rakkr-duration-seconds": "2",
+      "x-rakkr-file-name": "late-upload.wav",
+    },
+    method: "PUT",
+  });
+
+  assert.equal(response.status, 409);
+  // The recording is not resurrected to cached.
+  assert.equal((await recordingStore.find(failedRecording.id))?.status, "failed");
 });
 
 function memoryNodeStore(recorderNode: RecorderNode): NodeStore {

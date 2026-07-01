@@ -547,6 +547,19 @@ export function registerAgentRoutes({
       return c.json({ error: "Node credential cannot access this recording" }, 403);
     }
 
+    // The controller already decided this recording terminally failed (e.g. a
+    // lease expiry with no secured chunks). A late/replayed cache upload must
+    // not silently resurrect it back to `cached` via applyStoredRendition.
+    if (recording.status === "failed") {
+      await recordRecordingFileFailure(c, {
+        actor: auth.credential,
+        reason: "recording_terminal_failed",
+        recordingId,
+        targetName: recording.name,
+      });
+      return c.json({ error: "Recording is in a terminal failed state" }, 409);
+    }
+
     const jobId = c.req.header("x-rakkr-recording-job-id");
     const scopedJob = await agentCacheFileJobScope(
       { jobId },
