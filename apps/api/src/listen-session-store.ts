@@ -23,14 +23,26 @@ export interface ListenSessionStore {
   nodeWantsEnhanced(nodeId: string, maxAgeMs: number): Promise<boolean>;
 }
 
-export function createListenSessionStore(): ListenSessionStore {
-  return new MemoryListenSessionStore();
+export function createListenSessionStore(now: () => number = () => Date.now()): ListenSessionStore {
+  return new MemoryListenSessionStore(now);
+}
+
+// A live-listen browser polls /stream continuously; a session not polled for
+// this long has been abandoned (tab closed / network dropped without a DELETE)
+// and is evicted so the store cannot grow without bound.
+function listenSessionTtlMs(): number {
+  const parsed = Number(process.env.RAKKR_LISTEN_SESSION_TTL_SECONDS);
+
+  return (Number.isFinite(parsed) && parsed > 0 ? parsed : 300) * 1_000;
 }
 
 class MemoryListenSessionStore implements ListenSessionStore {
   private readonly sessions = new Map<string, ListenSessionRecord>();
 
+  constructor(private readonly now: () => number) {}
+
   async find(nodeId: string, sessionId: string) {
+    this.evictAbandoned();
     const session = this.sessions.get(sessionId);
 
     if (session?.nodeId !== nodeId) {
@@ -38,13 +50,14 @@ class MemoryListenSessionStore implements ListenSessionStore {
     }
 
     // Touch on access so a session stays "live" while the browser polls /stream.
-    session.lastSeenAt = new Date().toISOString();
+    session.lastSeenAt = new Date(this.now()).toISOString();
 
     return session;
   }
 
   async start(input: ListenSessionInput) {
-    const session = { ...input, lastSeenAt: new Date().toISOString() };
+    this.evictAbandoned();
+    const session = { ...input, lastSeenAt: new Date(this.now()).toISOString() };
     this.sessions.set(input.sessionId, session);
 
     return session;
@@ -61,12 +74,13 @@ class MemoryListenSessionStore implements ListenSessionStore {
 
     return {
       ...session,
-      endedAt: new Date().toISOString(),
+      endedAt: new Date(this.now()).toISOString(),
     };
   }
 
   async nodeWantsEnhanced(nodeId: string, maxAgeMs: number) {
-    const oldest = Date.now() - maxAgeMs;
+    this.evictAbandoned();
+    const oldest = this.now() - maxAgeMs;
 
     for (const session of this.sessions.values()) {
       if (
@@ -80,5 +94,17 @@ class MemoryListenSessionStore implements ListenSessionStore {
     }
 
     return false;
+  }
+
+  // Drop sessions whose last poll is older than the TTL. Called on every access
+  // so an abandoned session cannot linger for the process lifetime.
+  private evictAbandoned() {
+    const oldest = this.now() - listenSessionTtlMs();
+
+    for (const [sessionId, session] of this.sessions) {
+      if (Date.parse(session.lastSeenAt) < oldest) {
+        this.sessions.delete(sessionId);
+      }
+    }
   }
 }
