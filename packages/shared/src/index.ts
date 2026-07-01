@@ -744,7 +744,10 @@ export const uploadChecksumVerificationSchema = z.object({
   expected: z.string().min(1),
   method: z.enum(["file_copy_sha256", "s3_checksum_sha256"]),
   observed: z.string().min(1).optional(),
-  status: z.enum(["matched", "provider_validated"]),
+  // `provider_declared` is the honest status for S3-compatible custom endpoints
+  // that may ignore the trailing ChecksumSHA256; only real AWS S3 validates it,
+  // which is `provider_validated`. `matched` is our own read-back byte compare.
+  status: z.enum(["matched", "provider_validated", "provider_declared"]),
 });
 export const uploadQueueRunItemSchema = z.object({
   checksumVerification: uploadChecksumVerificationSchema.optional(),

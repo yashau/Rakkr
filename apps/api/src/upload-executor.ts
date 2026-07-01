@@ -159,7 +159,10 @@ async function runProviderUpload(
         algorithm: "sha256",
         expected: sourceChecksum.prefixed,
         method: "s3_checksum_sha256",
-        status: "provider_validated",
+        // Real AWS S3 validates the trailing ChecksumSHA256; an S3-compatible
+        // custom endpoint may silently ignore it, so only claim it was validated
+        // when we're talking to AWS (no custom endpoint configured).
+        status: config.s3?.endpoint ? "provider_declared" : "provider_validated",
       },
       ok: true,
     };

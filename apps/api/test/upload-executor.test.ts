@@ -188,6 +188,43 @@ test("uploads S3 queue items with explicit credentials, bucket, key, and metadat
   assert.equal(input?.Metadata?.recording_id, "rec_s3_ready_upload");
 });
 
+test("G58: S3 upload to a custom endpoint reports provider_declared, not provider_validated", async () => {
+  const destinationStore = createUploadDestinationStore();
+  const contents = "s3-endpoint-bytes";
+
+  await cacheRecording("rec_s3_endpoint_upload", contents);
+  const destination = await destinationStore.create({
+    displayName: "Custom S3",
+    enabled: true,
+    kind: "s3",
+    s3: {
+      accessKeyId: "AKIAEXAMPLE",
+      bucket: "rakkr-archive",
+      endpoint: "https://minio.example.lan",
+      region: "us-east-1",
+    },
+    s3SecretAccessKey: "s3-secret",
+  });
+  const queued = await enqueueRecordingUpload(recording("rec_s3_endpoint_upload", contents), {
+    destinationId: destination.id,
+    maxAttempts: 1,
+    provider: "s3",
+  });
+  const result = await runUploadQueueOnce({
+    destinationStore,
+    s3Client: {
+      async send() {},
+    },
+  });
+  const item = (await listUploadQueueItems()).find((candidate) => candidate.id === queued.id);
+
+  assert.equal(result.succeeded, 1);
+  // A custom S3-compatible endpoint may silently ignore ChecksumSHA256, so we
+  // don't overstate the audit trail with provider_validated.
+  assert.equal(result.items[0]?.checksumVerification?.status, "provider_declared");
+  assert.equal(item?.status, "succeeded");
+});
+
 test("fails real provider upload when cached file checksum disagrees with metadata", async () => {
   const destinationStore = createUploadDestinationStore();
 
