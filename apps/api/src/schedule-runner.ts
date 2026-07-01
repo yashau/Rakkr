@@ -159,7 +159,11 @@ export async function runDueSchedules(
       });
 
       if (result.status === "deferred") {
-        const updates = advanceScheduleAfterRun(schedule, now);
+        // A channel conflict is transient, so retry the deferred occurrence soon
+        // instead of advancing the schedule as if it had run — advancing a
+        // one-time (or always_on) schedule here silently drops its only
+        // occurrence forever. Mirrors the node-not-found retry above.
+        const updates = { nextRunAt: retryScheduleAfterFailure(now) };
         const updated = await scheduleStore.update(schedule.id, updates);
 
         if (healthEventStore) {

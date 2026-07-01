@@ -29,7 +29,7 @@ process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(runnerRoot, "upload-queue.
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAgentRoutes } = await import("../src/agent-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
-const { listRecordingJobs } = await import("../src/recording-jobs.js");
+const { createRecordingJob, listRecordingJobs } = await import("../src/recording-jobs.js");
 const { registerRecordingRoutes } = await import("../src/recording-routes.js");
 const { runDueSchedules } = await import("../src/schedule-runner.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
@@ -473,6 +473,60 @@ function splitProfile(input: Partial<RecordingProfile> = {}): RecordingProfile {
     ...input,
   };
 }
+
+test("a one-time schedule deferred by a channel conflict is retried, not disabled", async () => {
+  const now = new Date("2026-06-18T09:00:00.000Z");
+  const recordingStore = memoryRecordingStore();
+
+  // An active capture already holds channels 1-2 on iface_split for this node.
+  const activeRecording: RecordingSummary = {
+    cached: false,
+    durationSeconds: 3_600,
+    folder: "Meetings/2026",
+    healthStatus: "healthy",
+    id: "rec_conflict_holder",
+    name: "In-progress capture",
+    nodeId: "node_split",
+    recordedAt: now.toISOString(),
+    source: "ad_hoc",
+    status: "recording",
+    tags: [],
+  };
+  await recordingStore.create(activeRecording);
+  await createRecordingJob(activeRecording, {
+    captureChannelSelection: [1, 2],
+    captureInterfaceId: "iface_split",
+    durationSeconds: 3_600,
+  });
+
+  const onceSchedule = schedule({
+    captureChannelSelection: [1, 2],
+    captureInterfaceId: "iface_split",
+    id: "sched_once_conflict",
+    recurrence: { mode: "once", startsAt: now.toISOString() },
+  });
+  const scheduleStore = memoryScheduleStore([onceSchedule]);
+
+  const results = await runDueSchedules(
+    {
+      auditStore: createAuditStore(""),
+      nodeStore: memoryNodeStore([node()]),
+      recordingStore,
+      scheduleStore,
+      settingsStore: memorySettingsStore([splitProfile()]),
+    },
+    now,
+  );
+  const updated = (await scheduleStore.list()).find((entry) => entry.id === onceSchedule.id);
+
+  assert.equal(results[0]?.outcome, "deferred");
+  // Pre-fix the deferral advanced the schedule as if it had run: a `once`
+  // schedule became { enabled: false, nextRunAt: undefined } and its only
+  // occurrence was lost. It must stay enabled and armed for a retry instead.
+  assert.equal(updated?.enabled, true);
+  assert.ok(updated?.nextRunAt);
+  assert.ok(Date.parse(updated?.nextRunAt ?? "") > now.getTime());
+});
 
 function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
   return {
