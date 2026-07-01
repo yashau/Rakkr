@@ -18,12 +18,17 @@ const deleteRoot = await mkdtemp(path.join(tmpdir(), "rakkr-recording-delete-"))
 process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(deleteRoot, "chunks.json");
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(deleteRoot, "cache");
+process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(deleteRoot, "jobs.json");
+process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(deleteRoot, "queue.json");
+process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(deleteRoot, "retention-policies.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerRecordingRoutes } = await import("../src/recording-routes.js");
 const { storeRecordingChunkFile } = await import("../src/recording-cache.js");
 const { listRecordingChunksForRecording, recordingChunkId, upsertRecordingChunk } =
   await import("../src/recording-chunks.js");
+const { createRecordingJob, listRecordingJobs } = await import("../src/recording-jobs.js");
+const { enqueueRecordingUpload, listUploadQueueItems } = await import("../src/upload-queue.js");
 
 test.after(async () => {
   await rm(deleteRoot, { force: true, recursive: true });
@@ -169,6 +174,47 @@ test("G49: deleting a chunked recording removes its chunk cache files and rows",
   assert.equal(response.status, 204);
   assert.equal(details.cacheDeleted, true);
   assert.equal(remaining.length, 0);
+});
+
+test("G67: deleting a recording sweeps its recording_jobs and upload_queue_items", async () => {
+  const auditStore = createAuditStore("");
+  const target = recording({
+    id: `rec_delete_children_${randomUUID()}`,
+    name: "Delete Children",
+    status: "completed",
+  });
+  const recordingStore = memoryRecordingStore([target]);
+
+  await createRecordingJob(target);
+  await enqueueRecordingUpload(target, { destinationId: "dest-orphan", provider: "smb" });
+  assert.ok((await listRecordingJobs()).some((job) => job.recordingId === target.id));
+  assert.ok((await listUploadQueueItems()).some((item) => item.recordingId === target.id));
+
+  const app = new Hono<AppBindings>();
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser() }),
+    currentUser,
+    nodeStore: {},
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission([]),
+    scopedNodes: async () => [],
+    scopedRecordings: async () => [target],
+    settingsStore: {},
+  });
+
+  const response = await app.request(`/api/v1/recordings/${target.id}`, { method: "DELETE" });
+  const remainingJobs = (await listRecordingJobs()).filter((job) => job.recordingId === target.id);
+  const remainingItems = (await listUploadQueueItems()).filter(
+    (item) => item.recordingId === target.id,
+  );
+
+  // Pre-fix the job + queue rows outlived the deleted recording (no FK cascade,
+  // no app-code sweep); the upload runner then retried the orphaned items forever.
+  assert.equal(response.status, 204);
+  assert.equal(remainingJobs.length, 0);
+  assert.equal(remainingItems.length, 0);
 });
 
 interface PermissionCall {

@@ -59,6 +59,7 @@ interface RecordingJobStore {
     allowedFrom: RecordingJobStatus[],
   ): Promise<RecordingJob | undefined>;
   create(job: RecordingJob): Promise<void>;
+  deleteForRecording(recordingId: string): Promise<void>;
   find(jobId: string): Promise<RecordingJob | undefined>;
   list(): Promise<RecordingJob[]>;
   save(job: RecordingJob): Promise<void>;
@@ -395,6 +396,12 @@ export async function recordingJob(jobId: string) {
   return recordingJobStore.find(jobId);
 }
 
+// Remove every job row for a recording (used when the recording is deleted —
+// recording_jobs has no FK cascade, so the rows would otherwise outlive it).
+export async function deleteRecordingJobsForRecording(recordingId: string) {
+  await recordingJobStore.deleteForRecording(recordingId);
+}
+
 export async function heartbeatRecordingJob(jobId: string, claimedBy?: string) {
   await expireRecordingJobLeases();
   const job = await recordingJobStore.find(jobId);
@@ -536,6 +543,21 @@ class JsonRecordingJobStore implements RecordingJobStore {
     }
 
     this.persist();
+  }
+
+  async deleteForRecording(recordingId: string) {
+    let removed = false;
+
+    for (let index = this.jobs.length - 1; index >= 0; index -= 1) {
+      if (this.jobs[index]?.recordingId === recordingId) {
+        this.jobs.splice(index, 1);
+        removed = true;
+      }
+    }
+
+    if (removed) {
+      this.persist();
+    }
   }
 
   private persist() {
@@ -686,6 +708,22 @@ class PostgresRecordingJobStore implements RecordingJobStore {
     } catch (error) {
       await this.failover("recording job update unavailable; using JSON store", error);
       await this.fallback.save(job);
+    }
+  }
+
+  async deleteForRecording(recordingId: string) {
+    if (!this.dbAvailable) {
+      await this.fallback.deleteForRecording(recordingId);
+      return;
+    }
+
+    try {
+      await this.db
+        .delete(recordingJobsTable)
+        .where(eq(recordingJobsTable.recordingId, recordingId));
+    } catch (error) {
+      await this.failover("recording job delete unavailable; using JSON store", error);
+      await this.fallback.deleteForRecording(recordingId);
     }
   }
 

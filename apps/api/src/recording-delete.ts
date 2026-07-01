@@ -11,7 +11,9 @@ import {
   deleteRecordingChunksForRecording,
   listRecordingChunksForRecording,
 } from "./recording-chunks.js";
+import { deleteRecordingJobsForRecording } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
+import { deleteUploadQueueItemsForRecording } from "./upload-queue.js";
 import type { AppBindings, RecordAuditEvent } from "./http-types.js";
 import { uniqueRecordingIds } from "./recording-metadata.js";
 import type { RecordingSummary } from "@rakkr/shared";
@@ -253,6 +255,14 @@ async function deleteRecordingData(recordingStore: RecordingStore, recording: Re
   if (chunks.length > 0) {
     await deleteRecordingChunksForRecording(recording.id);
   }
+
+  // recording_jobs and upload_queue_items carry no FK cascade to recordings, so
+  // sweep them in app code too — otherwise a deleted recording's terminal job and
+  // (worse) still-queued upload items outlive it, and the upload runner keeps
+  // retrying the orphaned items with cache_path_missing, firing health events for
+  // a recording that no longer exists.
+  await deleteRecordingJobsForRecording(recording.id);
+  await deleteUploadQueueItemsForRecording(recording.id);
 
   const deleted = await recordingStore.delete(recording.id);
 

@@ -45,6 +45,7 @@ const activeStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying",
 const dueStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying"]);
 
 interface UploadQueueStore {
+  deleteForRecording(recordingId: string): Promise<void>;
   due(now?: Date): Promise<UploadQueueItem[]>;
   enqueue(recording: RecordingSummary, input?: EnqueueUploadInput): Promise<UploadQueueItem>;
   fail(itemId: string, reason: string): Promise<UploadQueueItem | undefined>;
@@ -97,6 +98,21 @@ class JsonUploadQueueStore implements UploadQueueStore {
     this.persist();
 
     return item;
+  }
+
+  async deleteForRecording(recordingId: string) {
+    let removed = false;
+
+    for (let index = this.items.length - 1; index >= 0; index -= 1) {
+      if (this.items[index]?.recordingId === recordingId) {
+        this.items.splice(index, 1);
+        removed = true;
+      }
+    }
+
+    if (removed) {
+      this.persist();
+    }
   }
 
   async list() {
@@ -458,6 +474,22 @@ class PostgresUploadQueueStore implements UploadQueueStore {
     return row ? queueItemFromRow(row) : undefined;
   }
 
+  async deleteForRecording(recordingId: string) {
+    if (!this.dbAvailable) {
+      await this.fallback.deleteForRecording(recordingId);
+      return;
+    }
+
+    try {
+      await this.db
+        .delete(uploadQueueItemsTable)
+        .where(eq(uploadQueueItemsTable.recordingId, recordingId));
+    } catch (error) {
+      await this.failover("upload queue delete unavailable; using JSON store", error);
+      await this.fallback.deleteForRecording(recordingId);
+    }
+  }
+
   private async writeItem(item: UploadQueueItem) {
     await this.db
       .insert(uploadQueueItemsTable)
@@ -505,6 +537,13 @@ export function enqueueRecordingUpload(recording: RecordingSummary, input?: Enqu
 
 export function listUploadQueueItems() {
   return uploadQueueStore.list();
+}
+
+// Remove every queue item for a recording (used when the recording is deleted —
+// upload_queue_items has no FK cascade, and orphaned items would otherwise be
+// retried forever with cache_path_missing).
+export async function deleteUploadQueueItemsForRecording(recordingId: string) {
+  await uploadQueueStore.deleteForRecording(recordingId);
 }
 
 export function listDueUploadQueueItems(now?: Date) {
