@@ -285,11 +285,11 @@ function csvCell(value: string) {
 }
 
 function sortRecordings(recordings: RecordingSummary[], filters: RecordingsQuery) {
-  if (!filters.sortBy) {
-    return recordings;
-  }
-
-  const sortBy = filters.sortBy;
+  // Default to newest-first even without an explicit sortBy, and always apply the
+  // `id` tiebreaker: recordings sharing a recordedAt (e.g. simultaneous scheduled
+  // tracks) must keep a deterministic order or a page boundary can skip/duplicate
+  // a row across separate paged requests.
+  const sortBy = filters.sortBy ?? "recordedAt";
   const sortOrder = filters.sortOrder ?? defaultSortOrder(sortBy);
 
   return [...recordings].sort((left, right) => {

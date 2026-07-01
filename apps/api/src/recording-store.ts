@@ -169,7 +169,11 @@ class PostgresRecordingStore implements RecordingStore {
       const rows = await this.db
         .select()
         .from(recordingsTable)
-        .orderBy(desc(recordingsTable.recordedAt));
+        // `id` is a deterministic tiebreaker so recordings sharing a recordedAt
+        // (e.g. simultaneous scheduled tracks) keep a stable order across paged
+        // requests — otherwise Postgres may reorder equal keys and a page
+        // boundary can skip or duplicate a row.
+        .orderBy(desc(recordingsTable.recordedAt), desc(recordingsTable.id));
 
       return rows.map(recordingFromRow);
     } catch (error) {

@@ -18,8 +18,9 @@ test("recording listing filters cached and missing cache states", () => {
     ["rec_cached_flagged", "rec_cached_status", "rec_uploaded_status"],
   );
   assert.deepEqual(
+    // Now deterministically id-tiebroken for equal recordedAt (was input order).
     filterRecordings(recordings, { cacheState: "missing" }).map((item) => item.id),
-    ["rec_missing_path", "rec_active"],
+    ["rec_active", "rec_missing_path"],
   );
 });
 
@@ -39,6 +40,30 @@ test("recording listing searches transcript snippets", () => {
   assert.deepEqual(
     filterRecordings(recordings, { search: "zoning motion" }).map((item) => item.id),
     ["rec_transcript_match"],
+  );
+});
+
+test("G66: equal recordedAt recordings sort deterministically without an explicit sortBy", () => {
+  const sameTime = "2026-06-18T09:00:00.000Z";
+  const forward = [
+    recording({ id: "rec_track_a", recordedAt: sameTime }),
+    recording({ id: "rec_track_b", recordedAt: sameTime }),
+  ];
+  const reversed = [
+    recording({ id: "rec_track_b", recordedAt: sameTime }),
+    recording({ id: "rec_track_a", recordedAt: sameTime }),
+  ];
+
+  // Pre-fix, no sortBy returned input order as-is, so equal-recordedAt rows
+  // ordered nondeterministically — across paged requests a boundary could skip or
+  // duplicate a row. The id tiebreaker now makes the order stable.
+  assert.deepEqual(
+    filterRecordings(forward, {}).map((item) => item.id),
+    filterRecordings(reversed, {}).map((item) => item.id),
+  );
+  assert.deepEqual(
+    filterRecordings(forward, {}).map((item) => item.id),
+    ["rec_track_a", "rec_track_b"],
   );
 });
 
