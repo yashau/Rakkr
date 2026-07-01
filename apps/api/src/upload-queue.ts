@@ -562,8 +562,13 @@ function reusableUploadQueueItem(
     return false;
   }
 
+  // An active item only dedups a genuine re-enqueue of the SAME logical upload.
+  // A recording can carry several policies pointing at one destination with
+  // different subfolders (`pathOverride`) or retention, so — mirroring the
+  // succeeded branch below — distinct policy/path must NOT collapse, or the
+  // other policies' uploads are silently dropped.
   if (activeStatuses.has(item.status)) {
-    return true;
+    return item.pathOverride === input.pathOverride && item.uploadPolicyId === input.policyId;
   }
 
   return (

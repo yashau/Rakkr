@@ -111,6 +111,39 @@ test("leases started upload queue items until crash recovery makes them due agai
   assert.ok(recovered.some((item) => item.id === queued.id));
 });
 
+test("G57: active items for one destination but different policy/path do not collapse", async () => {
+  const rec = recording("rec_upload_multi_policy");
+  const first = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-shared",
+    pathOverride: "archive/2026",
+    policyId: "upload-policy-archive",
+    provider: "smb",
+  });
+  const second = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-shared",
+    pathOverride: "working/latest",
+    policyId: "upload-policy-working",
+    provider: "smb",
+  });
+  const items = (await listUploadQueueItems()).filter((item) => item.recordingId === rec.id);
+
+  // Pre-fix the active-status dedup ignored pathOverride/uploadPolicyId and
+  // collapsed the second policy's distinct-subfolder upload into the first item,
+  // silently dropping it.
+  assert.notEqual(second.id, first.id);
+  assert.equal(items.length, 2);
+
+  // A genuine idempotent re-enqueue (same policy + path) still dedups.
+  const duplicate = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-shared",
+    pathOverride: "archive/2026",
+    policyId: "upload-policy-archive",
+    provider: "smb",
+  });
+
+  assert.equal(duplicate.id, first.id);
+});
+
 function recording(id = "rec_upload_test"): RecordingSummary {
   return {
     cachePath: `scheduled/${id}.mp3`,
