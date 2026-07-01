@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { reportRunnerTickError } from "./runner-tick.js";
 import type { AuditEvent, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
@@ -70,9 +71,9 @@ export function createScheduleRunner(dependencies: ScheduleRunnerDependencies) {
       }
 
       timer = setInterval(() => {
-        void tick();
+        void tick().catch(reportRunnerTickError("schedule runner"));
       }, intervalMs);
-      void tick();
+      void tick().catch(reportRunnerTickError("schedule runner"));
     },
     stop() {
       if (timer) {

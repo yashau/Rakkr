@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { reportRunnerTickError } from "./runner-tick.js";
 import type { AuditEvent, RecordingSummary, RetentionPolicy } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
@@ -74,9 +75,9 @@ export function createRetentionRunner(dependencies: RetentionRunnerDependencies)
 
       intervalMs = nextIntervalMs;
       timer = setInterval(() => {
-        void tick();
+        void tick().catch(reportRunnerTickError("retention runner"));
       }, nextIntervalMs);
-      void tick();
+      void tick().catch(reportRunnerTickError("retention runner"));
     },
     status() {
       return {

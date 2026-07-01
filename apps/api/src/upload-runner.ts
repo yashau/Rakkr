@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { reportRunnerTickError } from "./runner-tick.js";
 import type {
   AuditEvent,
   HealthEvent,
@@ -89,9 +90,9 @@ export function createUploadRunner(dependencies: UploadRunnerDependencies) {
 
       intervalMs = nextIntervalMs;
       timer = setInterval(() => {
-        void tick();
+        void tick().catch(reportRunnerTickError("upload runner"));
       }, nextIntervalMs);
-      void tick();
+      void tick().catch(reportRunnerTickError("upload runner"));
     },
     status() {
       return {

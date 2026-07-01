@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { reportRunnerTickError } from "./runner-tick.js";
 import {
   defaultScheduledVoiceWatchdogPolicy,
   type AuditEvent,
@@ -105,9 +106,9 @@ export function createWatchdogRunner(dependencies: WatchdogRunnerDependencies) {
       }
 
       timer = setInterval(() => {
-        void tick();
+        void tick().catch(reportRunnerTickError("watchdog runner"));
       }, intervalMs);
-      void tick();
+      void tick().catch(reportRunnerTickError("watchdog runner"));
     },
     stop() {
       if (timer) {

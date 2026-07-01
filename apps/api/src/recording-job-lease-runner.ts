@@ -1,4 +1,5 @@
 import { expireRecordingJobLeases } from "./recording-jobs.js";
+import { reportRunnerTickError } from "./runner-tick.js";
 
 export function createRecordingJobLeaseRunner() {
   let running = false;
@@ -28,9 +29,9 @@ export function createRecordingJobLeaseRunner() {
       }
 
       timer = setInterval(() => {
-        void tick();
+        void tick().catch(reportRunnerTickError("recording-job lease runner"));
       }, intervalMs);
-      void tick();
+      void tick().catch(reportRunnerTickError("recording-job lease runner"));
     },
     stop() {
       if (timer) {
