@@ -825,9 +825,66 @@ tests except the health half of G74 (catalogued).
   cross-reference (200, global page) are still bounded and not scoped to the
   visible set; a complete fix needs recording-/scope-scoped list filters.
 
+## Run 13 findings (4 parallel hunters: adversary-on-Run-12 + Rust agent + scheduler/settings/watchdog + upload/storage/node-lifecycle)
+
+All confirmed findings fixed red->green; gates + all baseline verifiers green.
+
+### Fixed
+- **R13-1** (`a6bef739`, Med-High) - recorder-agent cache sweep leaked a
+  surviving file when its sibling was already gone: `candidate_for_entry` aborted
+  the whole entry to None (`.ok()?`), so the sweep dropped it from the manifest
+  without deleting the survivor -> untracked, unreclaimable disk leak. Skip
+  missing paths instead of aborting. (Miri-gated fs test.)
+- **R13-2** (`2a75c34d`, High) - **G79 was incomplete**: the metadata routes'
+  find+save still had a live TOCTOU clobber window (save is a full-column upsert;
+  a concurrent secure between read and write reverts status/cache). Now commit
+  through the `transition` CAS with a bounded re-read/re-overlay retry. This is
+  the durable close the earlier ledger claim ("all writers guarded") overstated.
+- **R13-3** (`f0cc9a80`, Med) - retention deleted the cache of a `cached`
+  recording whose uploads were still queued/retrying (not just `partial`),
+  stranding them with cache_path_missing = lost audio. Added an in-flight-upload
+  floor mirroring the `partial` floor.
+- **R13-4** (`0b2099d5`, Med) - `syncRecordingHealth` aggregated over the newest
+  500 events of all statuses, so a long-open critical event pushed out by later
+  churn dropped the recording's critical badge. Aggregate via `listAll` (uncapped)
+  filtered to non-resolved. (Cross-type sibling of the per-type G71 fix.)
+- **R13-5** (`3c067949`, Low) - watchdog-policy create schema left durations
+  unbounded while update caps them at 86_400s; huge windows left recordings
+  unmonitored. Bounded the base schema to match. (`4bbfb9f2` then extracted the
+  watchdog schemas to their own shared submodule for the LOC guard.)
+- **R13-6** (`e4ee870b`, Low) - adversary on G78: six sibling audited mutations
+  (node rotate/enroll/update/interface, controller-name) didn't invalidate
+  `["audit-events"]`, leaving the audit view stale. Added it, matching the
+  schedules.tsx pattern.
+- **R13-7** (`c8831982`, Low-Med) - two upload policies resolving to the same
+  destination+subfolder wrote the same object key: the second silently overwrote
+  the first while both reconciled to `uploaded` (false redundancy). Dedupe the
+  fan-out by resolved target.
+
+### Also fixed
+- **Storage verifier drift** (`02cd43aa`) - `mise run storage:check` had been red
+  since the G24 slice (`17602b5d`) renamed a test without updating the verifier's
+  snippet list. Realigned. (Was a pre-existing broken gate on this branch, not a
+  Run 13 regression.)
+
+### Catalogued (not rushed)
+- **Rust-C2** (Med) - chunked graceful-finish: if the FINAL trailing chunk's
+  render fails, `finish_chunked_capture` writes terminal `completed` and never
+  delivers `chunkTotal`, so the controller recording hangs unfinalized while the
+  agent thinks it is done. Needs Linux integration testing (decoupled-finalize
+  family with G62/G33); fix = mark `partial` on final-chunk render failure.
+- **G74 (health)** still open (store-level status aggregate, two RBAC paths).
+- Suspected/by-design (verified, no action): S3 custom-endpoint upload is
+  provider-declared not read-back-verified (intended, G58); SMB/third-party error
+  messages flow into audit `reason` (theoretical); lifecycle audit omits
+  stdout/stderr but persists them on the job record; multi-replica schedule
+  double-fire (Helm ships replicaCount 1, no leader election); upload-destination
+  delete has no referential-integrity check vs referencing policies.
+
 ### Still open (tracked)
 - **Recording-status CAS** (systemic) - G54/G55/G63/G64 use per-writer re-reads;
-  health-sync's field write remains. G65 + G79 now closed via the CAS/overlay, so
-  all recording-status *writers* are guarded.
-- **G62 / G59-residual** (Rust) - decoupled chunked-finalize signal; needs Linux
-  integration testing. **G61** - per-job agent state files (config-gated).
+  **health-sync's field write still uses find+save** (same TOCTOU shape R13-2
+  fixed for metadata) - a safe follow-up to route through the CAS. The stop
+  (G65) and metadata (G79/R13-2) writers are now CAS-guarded.
+- **G62 / G59-residual / Rust-C2** (Rust) - decoupled chunked-finalize signal;
+  needs Linux integration testing. **G61** - per-job agent state files (config-gated).
