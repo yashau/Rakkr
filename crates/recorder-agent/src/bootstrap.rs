@@ -68,8 +68,6 @@ pub async fn run_bootstrap(config: &AgentConfig) -> anyhow::Result<()> {
     let status = response.status();
 
     if !status.is_success() {
-        // Wipe the local private key even on failure: it was already generated.
-        wipe_keypair(&keypair);
         let body = response.text().await.unwrap_or_default();
 
         bail!("controller rejected node bootstrap with {status}: {body}");
@@ -87,13 +85,15 @@ pub async fn run_bootstrap(config: &AgentConfig) -> anyhow::Result<()> {
         warn!("controller did not return a controller token during bootstrap");
     }
 
-    wipe_keypair(&keypair);
     info!(
         node_id = %config.node_id,
         fingerprint = ?envelope.data.fingerprint,
         "node bootstrap complete"
     );
 
+    // `keypair` is wiped by its Drop impl on every exit path (success or any
+    // `?`/`bail!` above) — the controller now holds the private key; the node
+    // keeps only its installed public key.
     Ok(())
 }
 
@@ -130,17 +130,35 @@ fn generate_keypair(config: &AgentConfig) -> anyhow::Result<GeneratedKey> {
         bail!("ssh-keygen failed with status {status}");
     }
 
-    let private_key = fs::read_to_string(&key_path).context("read generated private key")?;
-    let public_key = fs::read_to_string(public_key_path(&key_path))
-        .context("read generated public key")?
-        .trim()
-        .to_string();
+    // ssh-keygen has already written the key files; if reading them back fails
+    // (before the RAII-guarded GeneratedKey exists), remove them so a read error
+    // cannot orphan a live private key on disk.
+    let (private_key, public_key) = match read_generated_keypair(&key_path) {
+        Ok(pair) => pair,
+        Err(error) => {
+            let _ = fs::remove_file(&key_path);
+            let _ = fs::remove_file(public_key_path(&key_path));
+            let _ = fs::remove_dir(&dir);
+
+            return Err(error);
+        }
+    };
 
     Ok(GeneratedKey {
         private_key,
         private_key_path: key_path,
         public_key,
     })
+}
+
+fn read_generated_keypair(key_path: &Path) -> anyhow::Result<(String, String)> {
+    let private_key = fs::read_to_string(key_path).context("read generated private key")?;
+    let public_key = fs::read_to_string(public_key_path(key_path))
+        .context("read generated public key")?
+        .trim()
+        .to_string();
+
+    Ok((private_key, public_key))
 }
 
 fn install_authorized_key(path: &Path, public_key: &str) -> anyhow::Result<()> {
@@ -179,21 +197,22 @@ fn write_controller_token(env_file: &Path, token: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn wipe_keypair(keypair: &GeneratedKey) {
-    // Best-effort overwrite + remove of the temp private key now that the
-    // controller holds it; the node keeps only its public key.
-    if let Ok(metadata) = fs::metadata(&keypair.private_key_path) {
-        let _ = fs::write(
-            &keypair.private_key_path,
-            vec![0u8; metadata.len() as usize],
-        );
-    }
+impl Drop for GeneratedKey {
+    // RAII wipe: best-effort overwrite + remove of the temp private key on every
+    // exit path (success or any intermediate failure). Bootstrap is one-shot and
+    // exits right after, so this is the only cleanup — a partial/failed bootstrap
+    // must not leave a live SSH private key readable on disk.
+    fn drop(&mut self) {
+        if let Ok(metadata) = fs::metadata(&self.private_key_path) {
+            let _ = fs::write(&self.private_key_path, vec![0u8; metadata.len() as usize]);
+        }
 
-    let _ = fs::remove_file(&keypair.private_key_path);
-    let _ = fs::remove_file(public_key_path(&keypair.private_key_path));
+        let _ = fs::remove_file(&self.private_key_path);
+        let _ = fs::remove_file(public_key_path(&self.private_key_path));
 
-    if let Some(parent) = keypair.private_key_path.parent() {
-        let _ = fs::remove_dir(parent);
+        if let Some(parent) = self.private_key_path.parent() {
+            let _ = fs::remove_dir(parent);
+        }
     }
 }
 
@@ -247,6 +266,37 @@ mod tests {
         assert_eq!(contents.matches("RAKKR_CONTROLLER_TOKEN=").count(), 1);
 
         let _ = fs::remove_file(&env_file);
+        let _ = fs::remove_dir(&dir);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // touches the real filesystem
+    fn dropping_generated_key_wipes_the_private_key() {
+        let dir = std::env::temp_dir().join(format!("rakkr-bootstrap-drop-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let key_path = dir.join("id_ed25519");
+        fs::write(&key_path, "-----BEGIN OPENSSH PRIVATE KEY-----\n").unwrap();
+        fs::write(public_key_path(&key_path), "ssh-ed25519 AAAA rakkr\n").unwrap();
+
+        {
+            let _keypair = GeneratedKey {
+                private_key: "private".to_string(),
+                private_key_path: key_path.clone(),
+                public_key: "public".to_string(),
+            };
+            // Scope end drops the keypair. Pre-fix there was no Drop, so a
+            // failed bootstrap left this file on disk; RAII must now wipe it.
+        }
+
+        assert!(
+            !key_path.exists(),
+            "private key must be wiped when the keypair is dropped"
+        );
+        assert!(
+            !public_key_path(&key_path).exists(),
+            "public key temp must be removed on drop",
+        );
+
         let _ = fs::remove_dir(&dir);
     }
 }

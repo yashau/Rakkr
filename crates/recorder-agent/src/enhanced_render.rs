@@ -48,6 +48,14 @@ pub fn render_enhanced_output(
     let denoised_path = dir.join(format!("{stem}.enh-denoised.wav"));
     let enhanced_path = dir.join(format!("{stem}.enhanced.{}", plan.output_codec));
 
+    // Sweep the mono/denoised intermediates on every exit path. Previously a
+    // failed denoise or Pass B returned via `?` and left them on disk; on a
+    // long chunked recording with a persistent enhancement failure that leaks
+    // two WAVs per chunk while the job still reports success.
+    let _intermediates = IntermediateCleanup {
+        paths: vec![mono_path.clone(), denoised_path.clone()],
+    };
+
     // Pass A: apply the channel map, then downmix to 48 kHz mono PCM.
     let mut args_a: Vec<OsString> = vec![
         OsString::from("-y"),
@@ -104,10 +112,21 @@ pub fn render_enhanced_output(
     args_b.push(enhanced_path.as_os_str().to_os_string());
     run_render_command(&plan.render_command, &args_b)?;
 
-    let _ = fs::remove_file(&mono_path);
-    let _ = fs::remove_file(&denoised_path);
-
     Ok(Some(enhanced_path))
+}
+
+// RAII sweep of the enhanced-render intermediates so a failed pass cannot leak
+// them; runs on success and on any `?` early return.
+struct IntermediateCleanup {
+    paths: Vec<PathBuf>,
+}
+
+impl Drop for IntermediateCleanup {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            let _ = fs::remove_file(path);
+        }
+    }
 }
 
 fn run_render_command(command: &str, args: &[OsString]) -> anyhow::Result<()> {
@@ -160,5 +179,37 @@ fn enhanced_filter_chain(enhancement: &ControllerRecordingEnhancement) -> Option
         None
     } else {
         Some(parts.join(","))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // touches the real filesystem
+    fn intermediate_cleanup_removes_files_on_drop() {
+        let dir = std::env::temp_dir().join(format!("rakkr-enh-cleanup-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let mono = dir.join("clip.enh-mono.wav");
+        let denoised = dir.join("clip.enh-denoised.wav");
+        fs::write(&mono, b"pcm").unwrap();
+        fs::write(&denoised, b"pcm").unwrap();
+
+        {
+            let _cleanup = IntermediateCleanup {
+                paths: vec![mono.clone(), denoised.clone()],
+            };
+            // Scope end drops the guard even on an error path — the render
+            // intermediates must be swept regardless of pass success.
+        }
+
+        assert!(!mono.exists(), "mono intermediate must be removed on drop");
+        assert!(
+            !denoised.exists(),
+            "denoised intermediate must be removed on drop"
+        );
+
+        let _ = fs::remove_dir(&dir);
     }
 }
