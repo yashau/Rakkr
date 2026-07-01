@@ -329,6 +329,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 5 | `8a11b629` | adversary on newest fixes + 2nd broad core re-sweep | 1 / 0 / 2 (G40; G41, G42) | G40 (fixed) | green | **no** | 0 |
 | 6 | `8a11b629` | deep RBAC/IDOR + state-machine/concurrency | 1 / 1 / 0 (G43; G44) | — (both need reviewed slices) | green | **no** | 0 |
 | 7 | `8a11b629` | adversary on G43 + broad sweep | 2 / 0 / 0 (G45, G46) | G45, G46 (fixed) | green | **no** | 0 |
+| 8 | `8a11b629` | trust-boundary + Zod-bounds + broad adversary (3 hunters) | 7 / 0 / 0 (G47-G53) | catalogued; **paused for budget before fixing** | green (unchanged) | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -645,3 +646,107 @@ poison frame stayed `latest`, every subsequent watchdog pass for that node re-th
 fail-closed signal-loss watchdog silently disabled for that node via one request. **Fix:**
 `meterFrameSchema.levels.max(512)` (X32 = 32 channels). **Test:** 512 ok / 513 rejected.
 **Severity: Medium.**
+
+
+---
+
+## Run 8 findings (trust-boundary + Zod-bounds + broad-adversary; 3 parallel read-only hunters)
+
+Run 8 was aimed at draining the input-validation/trust-boundary vein. It instead
+revealed that the **chunked-recording lifecycle** and **recording-job terminal
+transitions** are an under-hardened cluster - several findings here are *higher*
+severity than recent rounds, so the "converging to clean" read was premature for
+this subsystem. The two most-recent fixes (G45, G46) were adversarially
+re-verified **SOUND**. **All items below are CATALOGUED, not yet fixed** - work
+paused for budget before implementing. G47/G48 independently verified against
+code; G49-G53 are hunter-reported pending my code verification.
+
+### G47 - Late/replayed cache upload resurrects a terminal (failed/cancelled) job + recording - CATALOGUED (verified) - Medium
+`agent-job-recording-scope.ts:86-113` (`agentRecordingJobScopeFailure` gates only
+on nodeId/recordingId, never `status`) + `recording-jobs.ts:318-333`
+(`completeRecordingJob` blind-sets `completed`, no precondition) +
+`recording-cache.ts:95` (`applyStoredRendition` blind-sets `recording.status="cached"`).
+A node whose lease expired (job->failed, recording->failed/partial via the
+`onRecordingJobLeaseExpired` listener) can `PUT ...cache-file` with the failed
+job's id and flip job->completed, recording->cached, re-fanning the upload
+queue - a remote party overturns a controller-decided terminal state.
+Repro: claim job -> let lease expire -> PUT cache-file with `x-rakkr-recording-job-id:<failed job>`.
+Fix sketch: reject in the scope check with 409 `recording_job_not_completable`
+when the scoped job is failed/cancelled (skip terminal jobs in the
+undefined-jobId finder); guard `applyStoredRendition` against resetting a failed
+recording. Verify against retry semantics: `retryRecordingJob` (recording-jobs.ts:263)
+mints a NEW queued job id, so guarding the old failed id is safe. Same root cause as G51.
+
+### G48 - Unvalidated `timezone` string -> 500 (RangeError) on schedule create - CATALOGUED (verified) - Medium
+Schema `packages/shared/src/index.ts:579` (`scheduleInputSchema.timezone` =
+`z.string().trim().min(1).max(80)`, length-bounded but not IANA-validated); crash
+sink `schedule-engine.ts:598-609` (`new Intl.DateTimeFormat("en-US",{timeZone})`
+throws on unknown zone); reached from `schedule-routes.ts:351` (`buildSchedule`)
+which runs OUTSIDE the try/catch at `:353`. Repro: `POST /api/v1/schedules` with
+`timezone:"Not/AZone"` + a recurring mode -> 500 instead of 400. Latent
+runner-starvation if a bad zone is ever persisted by a looser writer.
+Fix sketch: add a `.refine` IANA check (try `new Intl.DateTimeFormat` in a guard)
+to the shared timezone field, covering `scheduleInputSchema` + `scheduleUpdateSchema`.
+Rest of the unbounded-Zod->crash vein confirmed drained.
+
+### G49 - Deleting a chunked recording orphans its chunk files + rows - CATALOGUED (hunter-reported) - High
+`recording-delete.ts:229-236` deletes only `recording.cachePath`, but
+`markRecordingCachedFromChunks` (`agent-cache-uploads.ts:337-349`) never sets a
+recording-level `cachePath` (chunks own their own), so `recordingHasCachedFile`
+is false -> no file deletion at all; `recording_chunks.recordingId` has no
+`onDelete: cascade` (`packages/db/src/schema.ts:654-682`) -> chunk rows orphaned
+too. Unbounded disk growth on the common chunked-delete path; audit shows clean
+success (`cacheDeleted:false`). Fix sketch: enumerate
+`listRecordingChunksForRecording` + `deleteRecordingChunkCacheFile` per chunk and
+delete chunk rows (or add cascade + a chunk-file sweep); mirror in the bulk path.
+
+### G50 - Age/bytes controller-cache retention never applies to chunked recordings - CATALOGUED (hunter-reported) - Medium
+`retention-runner.ts:166-208` gates `retentionCandidates` on
+`recordingHasCachedFile`, false for chunked recordings (same root as G49) -> a
+`maxAgeDays`/`maxBytes` policy is a silent no-op for every chunked recording;
+their chunk files are reclaimed only by the per-upload `deleteCacheAfterUpload`
+gate, never by age/size pressure. Fix sketch: teach the retention runner to
+enumerate/size/delete chunk cache files.
+
+### G51 - Recording-job terminal transitions are non-atomic blind writes - CATALOGUED (hunter-reported) - Medium-High
+`recording-jobs.ts` - only `claim()` is CAS; `completeRecordingJob:318`,
+`cancelRecordingJob:335`, `failRecordingJob:350`, `stopRecordingJob(ById):226/245`,
+and `expireRecordingJobLeases:393-424` all read-then-blind-`save` with no status
+precondition. Generalizes G47: reaper->failed then a late complete->completed
+clobbers `failureReason`; heartbeat renewal between the reaper's `list()` and its
+per-job `save()` is overwritten (TOCTOU) -> a validly-renewed live recording is
+killed. Fix sketch: route all terminal/stop transitions through a status-guarded
+conditional update (extend the CAS `claim()` pattern; 0 rows = no-op), and have
+the reaper expire via one conditional `RETURNING` statement, firing listeners
+only for rows it actually changed. Fixing G51 subsumes G47.
+
+### G52 - Enhanced rendition file uploaded but never deleted on the agent - CATALOGUED (hunter-reported) - Medium-High
+`recording_job_upload.rs:234-273` uploads `enhanced_path` (the primary rendition)
+but never removes it; `recording_job_chunked.rs:487-522`
+`delete_chunk_working_files` omits the enhanced path; `enhanced_render.rs`
+`IntermediateCleanup` sweeps only the `.enh-mono/.enh-denoised` intermediates,
+not the final `<stem>.enhanced.<codec>`. With enhancement+chunking, one enhanced
+file per chunk leaks forever on the recorder node, defeating `delete_after_upload`
+for the primary rendition. Fix sketch: delete `enhanced_path` after upload;
+include it in `delete_chunk_working_files` and the single-file retention manifest.
+
+### G53 - DST spring-forward: nonexistent local start time resolves to an unintended instant - CATALOGUED (hunter-reported) - Low-Medium
+`schedule-engine.ts:571-596` (`localDateTimeToUtc` fixed-point) has no post-loop
+validation that the resolved instant reproduces the requested `hour:minute`; on
+~2 DST-transition days/year an early-morning occurrence fires at a shifted
+wall-clock time. Fix sketch: after the loop verify `dateTimeParts` reproduces the
+requested time; apply an explicit skipped/ambiguous-time policy otherwise.
+
+### Lower-confidence notes (not counted as findings, deferred)
+- Chunk `?chunkTotal=` early-finalize (hunter 2, Low): any chunk carrying
+  `chunkTotal` is treated as final (`agent-cache-uploads.ts:281-302`); a node can
+  send index 1 with `chunkTotal=1` to finalize its own still-capturing recording.
+  Bounded to the node's own data; folds into the G51 completeRecordingJob guard.
+- Unbounded free-text from node (hunter 2, Low): `x-rakkr-reason` header and
+  health-event `details` record have no length/size cap; spoofable audit/health
+  content, no memory/logic hazard. `x-rakkr-duration-seconds` has no upper bound
+  (cosmetic, own-recording only).
+- WAV `wavData` guard tautology (hunter 3): `recording-cache.ts:562` check
+  `end <= bytes.byteLength` should be `start + 16 <= bytes.byteLength`; a truncated
+  `fmt ` chunk can RangeError, but it's caught by the route `.catch()` -> handled
+  failure, not a crash.
