@@ -856,6 +856,26 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 18 — CLEAN (convergence check: broad sweep + cache/upload/retention floor-family re-verify)
+
+**No new confirmed actionable findings.** Both hunters converged:
+- Floor-family re-verify: the three cache-release paths + whole/chunk symmetry +
+  floor-set/reconcile/checksum ordering + chunked-partial handling all COHERENT.
+  Two non-issues: dangling raw/enhanced columns after release (verified INERT —
+  reads gated on `recordingHasCachedFile`->`cachePath`) and an unreachable
+  `cancelled` upload status (dead state). No action.
+- Broad sweep (OIDC/auth, inventory-reconcile, channel-map, shared Zod contracts,
+  16 Rust files, live-listen/metrics/audit/CSV, concurrency hot paths): all SOUND
+  or resolve to catalogued items (G24-1 metrics counter; the 3 blind-save status
+  writers = the accepted G54/G55 sub-tick residual, no harmful trigger). Three
+  "array corruption" flags were false positives (JS `arr[-1]` misconception).
+  Verified all six CSV exporters route through `csvCell` (G3 fully applied).
+
+Gates green (API 407/0, web 121/0, tsc, lint, fmt, LOC, baselines). Synced to
+main (origin/main unchanged). **Clean-run streak: 1/5** (strict streak starts at
+Run 18; Run 17 surfaced RS1). "Clean" = the audit found nothing NEW, not that
+zero known issues remain — RS1 (High) is still a tracked open item.
+
 ### Still open (tracked)
 - **RS1** (High, Rust) - see above; restart-recovery drops preserved segments.
 - **Recording-status CAS** (systemic) - RESOLVED: all writers (stop=G65,
