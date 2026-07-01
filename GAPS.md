@@ -943,6 +943,29 @@ All confirmed findings fixed red->green; gates + all baseline verifiers green.
 
 ### Sound (adversary verified Run 13): R13-1, R13-7, R13-8 confirmed correct.
 
+## Run 15 findings (adversary-on-Run-14 + last-corners sweep: docs/ansible/bootstrap/workflows/Rust)
+
+### Fixed
+- **RC1** (`5750de7a`, High) - Ansible lifecycle `restart_service` / `rotate_trust`
+  were in `TOKEN_PROVISION_ACTIONS`, so the runner minted a fresh node token
+  (revoking the live one) — but the `recorder_node` role only rewrites
+  `recorder-agent.env` (the token's only writer) for install/update. So those two
+  actions revoked the agent's controller token without writing the replacement,
+  locking the node out (401 on every heartbeat) until a full deploy. Restrict
+  minting to install_dependencies/update_binary. Test in `runner_test.py`.
+- **S3-followup** (`e598f2be`, Low) - adversary on S3: the no-save exhaustion path
+  returned 200 + a `...succeeded` audit while the edit was dropped (audit lie).
+  Now returns `undefined` on exhaustion → single route 409s +
+  `...failed`/`commit_contended`; bulk route skips it (accurate updatedCount).
+  Reaching it still needs pathological contention; the clobber stays closed.
+
+### Sound (adversary verified Run 14): Adv-C1, Adv-C2, C1 confirmed correct —
+notably the feared watchdog `toISOString()` RangeError from an unbounded
+windowSeconds is provably unreachable behind the runner's `readyAtMs` gate.
+Last-corners verified SOUND: bootstrap installer + agent `--bootstrap` key wipe,
+command-template/enhanced-render arg-injection safety, runner auth, release
+workflows, docs site, CI gate scripts.
+
 ### Still open (tracked)
 - **Recording-status CAS** (systemic) - RESOLVED: all writers (stop=G65,
   metadata=R13-2, health-sync=R13-8) now use the `transition` CAS; G54/G55/G63/G64
