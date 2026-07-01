@@ -62,13 +62,11 @@ async function commitRecordingMetadata(
   }
 
   // Pathological contention (every CAS round lost to a concurrent status
-  // change): re-read once more and overlay as a best effort rather than
-  // spinning forever.
-  const current = await recordingStore.find(recordingId);
-  const persisted = current ? overlay(current) : fallback;
-  await recordingStore.save(persisted);
-
-  return persisted;
+  // change): return the canonical row unchanged rather than a full-row save that
+  // could itself clobber the concurrent secure. The metadata edit is dropped and
+  // self-heals on the operator's retry — never reintroduce the revert this guards
+  // against (matches syncRecordingHealth's no-save fallback).
+  return (await recordingStore.find(recordingId)) ?? fallback;
 }
 
 export function registerRecordingMetadataRoutes({
