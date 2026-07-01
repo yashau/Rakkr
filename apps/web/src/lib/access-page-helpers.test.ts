@@ -8,6 +8,7 @@ import {
   accessUpdateFromDraft,
   appendTextLine,
   canManageAccessPage,
+  canResetUserPassword,
   createInputFromDraft,
   createUserDraftValid,
   emptyCreateUserDraft,
@@ -185,6 +186,14 @@ test("policiesFromText reports invalid effect and tokens", () => {
     policiesFromText("deny | bogus | node:n1").error,
     "Line 1 has an invalid subject or resource.",
   );
+});
+
+test("G75: password reset is offered only for local users", () => {
+  // The API refuses a reset for non-local providers
+  // (`non_local_user_password_unavailable`), so the UI must hide the affordance
+  // for OIDC-provisioned users while still offering it to local users.
+  assert.equal(canResetUserPassword(user(["auth:manage"], { provider: "local" })), true);
+  assert.equal(canResetUserPassword(user(["auth:manage"], { provider: "oidc" })), false);
 });
 
 function user(

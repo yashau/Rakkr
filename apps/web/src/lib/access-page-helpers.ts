@@ -62,6 +62,18 @@ export function createUserDraftValid(draft: CreateUserDraft): boolean {
   return Boolean(draft.email.trim()) && Boolean(draft.name.trim()) && draft.password.length >= 8;
 }
 
+/**
+ * Whether a password reset is meaningful for this user. Only local users have a
+ * controller-held password; OIDC-provisioned users authenticate through the IdP.
+ * Mirrors the API's `resetPassword` action readiness
+ * (`auth-management-routes.ts` -> `ready: user.provider === "local"`), so the UI
+ * must not offer a reset the API will refuse with
+ * `non_local_user_password_unavailable`.
+ */
+export function canResetUserPassword(user: CurrentUser): boolean {
+  return user.provider === "local";
+}
+
 export function accessDraftFromUser(user: CurrentUser): AccessDraft {
   return {
     groupsText: groupsToText(user.groups),

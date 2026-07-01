@@ -24,6 +24,7 @@ import {
   accessPagePermissions,
   accessUpdateFromDraft,
   appendTextLine,
+  canResetUserPassword,
   createInputFromDraft,
   policiesFromText,
   policiesToText,
@@ -400,10 +401,17 @@ function accessUserColumns({
               <Pencil className="size-4" />
               Edit access
             </Button>
-            <Button onClick={() => onResetPassword(user)} size="sm" type="button" variant="outline">
-              <KeyRound className="size-4" />
-              Reset password
-            </Button>
+            {canResetUserPassword(user) ? (
+              <Button
+                onClick={() => onResetPassword(user)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <KeyRound className="size-4" />
+                Reset password
+              </Button>
+            ) : null}
             <Button
               disabled={pending.status || (isSelf && !user.disabledAt)}
               onClick={() => onToggleStatus(user.id, !user.disabledAt)}
@@ -416,7 +424,7 @@ function accessUserColumns({
             </Button>
             <ConfirmButton
               confirmLabel="Delete"
-              description={`This permanently deletes the local user "${user.name}".`}
+              description={`This permanently deletes the user "${user.name}".`}
               disabled={pending.delete || isSelf}
               onConfirm={() => onDelete(user.id)}
               size="sm"
