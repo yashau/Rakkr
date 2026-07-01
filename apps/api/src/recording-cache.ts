@@ -235,35 +235,56 @@ function chunkPart(chunkIndex: number) {
   return `part${String(chunkIndex).padStart(4, "0")}`;
 }
 
+// A whole recording occupies its primary object plus, when enhancement keeps the
+// raw master, a DISTINCT `<id>.raw.<ext>` file (rawCachePath) — and possibly a
+// separate enhanced object. Size/delete must cover all of them or the raw master
+// (usually the largest rendition) leaks on disk and escapes byte-pressure
+// retention. Mirrors the per-chunk helpers above.
+function recordingCacheTargets(recording: RecordingSummary): Set<string> {
+  return new Set(
+    [recording.cachePath, recording.rawCachePath, recording.enhancedCachePath].filter(
+      (value): value is string => Boolean(value),
+    ),
+  );
+}
+
 export async function recordingCacheFileSize(recording: RecordingSummary) {
   if (!recordingHasCachedFile(recording)) {
     return undefined;
   }
 
-  try {
-    return (await stat(resolvedCachePath(recording))).size;
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return undefined;
-    }
+  let total = 0;
+  let found = false;
 
-    throw error;
+  for (const target of recordingCacheTargets(recording)) {
+    try {
+      total += (await stat(resolvedCachePathFromRelative(target))).size;
+      found = true;
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
   }
+
+  return found ? total : undefined;
 }
 
 export async function deleteRecordingCacheFile(recording: RecordingSummary) {
-  const filePath = resolvedCachePath(recording);
+  let deleted = false;
 
-  try {
-    await unlink(filePath);
-    return true;
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return false;
+  for (const target of recordingCacheTargets(recording)) {
+    try {
+      await unlink(resolvedCachePathFromRelative(target));
+      deleted = true;
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENOENT")) {
+        throw error;
+      }
     }
-
-    throw error;
   }
+
+  return deleted;
 }
 
 export async function storeRecordingFile(

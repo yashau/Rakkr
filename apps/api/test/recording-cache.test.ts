@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,7 +9,8 @@ import type { RecordingSummary } from "@rakkr/shared";
 const cacheRoot = await mkdtemp(path.join(tmpdir(), "rakkr-cache-"));
 process.env.RAKKR_RECORDING_CACHE_DIR = cacheRoot;
 
-const { recordingCacheFileSize, storeRecordingFile } = await import("../src/recording-cache.js");
+const { deleteRecordingCacheFile, recordingCacheFileSize, storeRecordingFile } =
+  await import("../src/recording-cache.js");
 const fakeAudioToolPath = path.join(cacheRoot, "fake-audio-tool.mjs");
 
 await writeFile(fakeAudioToolPath, fakeAudioToolScript());
@@ -60,6 +61,40 @@ test("extracts duration and decoded waveform preview for encoded recordings", as
   assert.equal(stored.waveformPreview?.source, "ffmpeg_decoded_peak");
   assert.equal(stored.waveformPreview?.sampleRate, 48_000);
   assert.deepEqual(stored.waveformPreview?.peaks, [0, 1]);
+});
+
+test("C-NEW-1: sizes and deletes the raw master alongside the primary rendition", async () => {
+  const base = recording();
+  const primary = await storeRecordingFile(base, {
+    bytes: wavFile([0, 1, 2, 3]),
+    fileName: "meeting.wav",
+    mimeType: "audio/wav",
+  });
+  const raw = await storeRecordingFile(
+    base,
+    { bytes: wavFile([0, 1, 2, 3, 4, 5, 6, 7]), fileName: "meeting.wav", mimeType: "audio/wav" },
+    "raw",
+  );
+  // keepRaw enhanced recording: the raw master is a DISTINCT on-disk file.
+  assert.notEqual(primary.cachePath, raw.cachePath);
+  const cached: RecordingSummary = {
+    ...base,
+    cachePath: primary.cachePath,
+    cached: true,
+    rawCachePath: raw.cachePath,
+    status: "cached",
+  };
+  const rawAbsolute = path.join(cacheRoot, raw.cachePath);
+
+  // Byte accounting must include the raw master (retention byte-pressure uses this).
+  assert.equal(await recordingCacheFileSize(cached), primary.size + raw.size);
+
+  const deleted = await deleteRecordingCacheFile(cached);
+
+  // Pre-fix only the primary was unlinked and the raw master leaked on disk.
+  assert.equal(deleted, true);
+  await assert.rejects(stat(rawAbsolute), /ENOENT/);
+  assert.equal(await recordingCacheFileSize(cached), undefined);
 });
 
 function recording(): RecordingSummary {
