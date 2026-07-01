@@ -886,6 +886,63 @@ All confirmed findings fixed red->green; gates + all baseline verifiers green.
   double-fire (Helm ships replicaCount 1, no leader election); upload-destination
   delete has no referential-integrity check vs referencing policies.
 
+## Run 14 findings (adversary-on-Run-13 + fresh sweep: DB/web-forms/metrics/deploy)
+
+### Fixed
+- **Adv-C1** (`0312b4ae`, High) - **R13-3 was narrowed-not-closed**: the retention
+  floor only covered queued/retrying, but a `failed` upload item is
+  operator-retryable and an all-destinations-failed recording stays `cached`
+  (not `partial`), escaping both floors. Retention then deleted its cache = the
+  same data loss R13-3 targeted. Floor on queued/retrying/**failed** (only
+  succeeded/cancelled are settled). Test covers the failed case.
+- **Adv-C2** (`ae8231ef`, Med) - **R13-5 + C3 introduced a read-parse hazard**:
+  `.max` on the base watchdog/profile schemas (which also `.parse` persisted
+  rows) would 503 the policy/profile list on a legacy over-cap row. Reverted the
+  base bounds (data schemas stay permissive); the input ceilings remain on the
+  update schemas. Tests repurposed to guard the layering. Create-route drift is
+  now catalogued (below).
+- **C1** (`356edd6e`, Med-High) - docker-compose ran NODE_ENV=production without
+  RAKKR_SECRET_KEY/RAKKR_NODE_SSH_MASTER_KEY, so the documented `docker compose
+  up` stack threw on every secret write (upload dest creds, node SSH keys).
+  Supplied length-valid local defaults (overridable via .env) + deployment docs.
+- **S3** (`d1600332`, Low) - R13-2's post-loop fallback `save` could re-clobber a
+  concurrent secure under pathological CAS contention; replaced with a
+  no-save re-read (matches R13-8).
+
+### Catalogued (not rushed)
+- **C2** (Med, observability) - `rakkr_audit_events_total` /
+  `rakkr_health_events_total` are Prometheus **counters** computed from the
+  newest-500 scoped set, so they are non-monotonic (breaks rate()). Same class as
+  G70; correct fix is a store-level scoped grouped-count (a redesign, not a
+  patch), so tracked with G70.
+- **Adv-C3** (Low, ~40 web mutations) - many audited mutations (access page,
+  settings CRUD, jobs actions, exports, listen, ad-hoc start) don't invalidate
+  `["audit-events"]`. But the audit page auto-refetches every 5s
+  (`refetchInterval: 5000`), so this is ≤5s self-healing cosmetic staleness.
+  G78/R13-6 covered the obvious paths; the rest are disproportionate to sweep
+  (40 edits for ≤5s). Fix if ever done: a shared onSuccess audit-invalidation helper.
+- **C4** (Med-Low, web) - clearing a required number field in the watchdog /
+  recording-profile editors yields `Number("") === 0`, failing `.positive()` with
+  a generic 400; optional fields collapse to 0 losing their unset state. Fix =
+  a `parseNumberField` helper (empty -> undefined) + disable Save on invalid.
+  Component-behavior (no render-test seam here); catalogued.
+- **S1** (Low, perf) - R13-4's `listAll({recordingId})` per health-event
+  ingestion is O(n) (O(n^2) over a churny recording's life). Better: a store-level
+  non-resolved (open/ack/suppressed) filter so the query stays small. Correctness
+  is fine; perf-only.
+- **S2** (Low, semantic) - health aggregation counts `suppressed` events toward
+  the recording badge (pre-existing; R13-4 amplified it). Needs a product decision
+  (should suppression quiet the badge?) — like G9.
+- **Watchdog/profile create-route drift** (Low) - create accepts durations/bitrate
+  the update schema rejects (a direct-API over-range value can't be UI-edited).
+  Correct fix = input-only bounding on the create schemas (deferred to avoid
+  duplicating the bound defs); the base data schemas must stay permissive (Adv-C2).
+- Suspected/by-design (verified): unbounded per-recording Prometheus label
+  cardinality (small-fleet product); SSE `/meter-events` nginx buffering (UI polls
+  instead); compose omits RAKKR_UPLOAD_DESTINATION_STORE_PATH (Postgres primary).
+
+### Sound (adversary verified Run 13): R13-1, R13-7, R13-8 confirmed correct.
+
 ### Still open (tracked)
 - **Recording-status CAS** (systemic) - RESOLVED: all writers (stop=G65,
   metadata=R13-2, health-sync=R13-8) now use the `transition` CAS; G54/G55/G63/G64
