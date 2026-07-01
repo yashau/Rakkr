@@ -14,6 +14,7 @@ process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(jobRoot, "retention-po
 const {
   claimNextRecordingGroup,
   claimRecordingJob,
+  completeRecordingJob,
   createRecordingJob,
   expireRecordingJobLeases,
   failRecordingJob,
@@ -23,6 +24,33 @@ const {
 
 test.after(async () => {
   await rm(jobRoot, { force: true, recursive: true });
+});
+
+test("G51: atomic transitions stop a terminal job from being clobbered", async () => {
+  // A late failure report must not flip an already-completed job to failed.
+  const done = recording();
+  const doneJob = await createRecordingJob(done);
+  await claimRecordingJob(doneJob.id, "node-a");
+  assert.equal((await completeRecordingJob(done.id, doneJob.id))?.status, "completed");
+
+  const lateFail = await failRecordingJob(doneJob.id, "late_agent_report");
+  const doneAfter = (await expireRecordingJobLeases()).find((job) => job.id === doneJob.id);
+
+  // Pre-fix failRecordingJob blind-saved failed over completed.
+  assert.equal(lateFail, undefined);
+  assert.equal(doneAfter?.status, "completed");
+
+  // A late complete must not resurrect an already-failed job.
+  const dead = recording();
+  const deadJob = await createRecordingJob(dead);
+  await claimRecordingJob(deadJob.id, "node-a");
+  await failRecordingJob(deadJob.id, "capture_error");
+
+  const resurrect = await completeRecordingJob(dead.id, deadJob.id);
+  const deadAfter = (await expireRecordingJobLeases()).find((job) => job.id === deadJob.id);
+
+  assert.equal(resurrect, undefined);
+  assert.equal(deadAfter?.status, "failed");
 });
 
 test("recording jobs carry node audio command defaults", async () => {

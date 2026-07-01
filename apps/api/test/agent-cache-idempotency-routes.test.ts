@@ -24,9 +24,8 @@ process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(cacheRoot, "chunks.json
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAgentRoutes } = await import("../src/agent-routes.js");
 const { createHealthEventStore } = await import("../src/health-store.js");
-const { claimRecordingJob, createRecordingJob, failRecordingJob, recordingJob } = await import(
-  "../src/recording-jobs.js"
-);
+const { claimRecordingJob, createRecordingJob, failRecordingJob, recordingJob } =
+  await import("../src/recording-jobs.js");
 const { listRecordingChunksForRecording } = await import("../src/recording-chunks.js");
 const { createUploadPolicy } = await import("../src/upload-policies.js");
 const { listUploadQueueItems, succeedUploadQueueItem } = await import("../src/upload-queue.js");

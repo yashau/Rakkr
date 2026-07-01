@@ -25,7 +25,13 @@ test("meterFrameSchema caps the levels array (watchdog Math.max spread guard)", 
 
 test("ianaTimeZoneSchema rejects zones that would throw in Intl.DateTimeFormat", () => {
   // Valid IANA zones (and UTC) parse.
-  for (const good of ["UTC", "America/New_York", "Europe/London", "Asia/Tokyo", "Indian/Maldives"]) {
+  for (const good of [
+    "UTC",
+    "America/New_York",
+    "Europe/London",
+    "Asia/Tokyo",
+    "Indian/Maldives",
+  ]) {
     assert.equal(ianaTimeZoneSchema.safeParse(good).success, true, good);
   }
 

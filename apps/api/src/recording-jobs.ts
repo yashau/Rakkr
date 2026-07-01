@@ -1,18 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { and, createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
+import {
+  and,
+  createDatabase,
+  desc,
+  eq,
+  inArray,
+  recordingJobs as recordingJobsTable,
+} from "@rakkr/db";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   defaultVoiceRecordingProfile,
   effectiveChunkSeconds,
-  recordingEnhancementSchema,
   type RetentionPolicy,
   type RecordingJob,
   type RecordingJobStatus,
   type RecordingProfile,
   type RecordingSummary,
 } from "@rakkr/shared";
+import { commandFromValue } from "./recording-job-command.js";
 import { findRetentionPolicy } from "./retention-policies.js";
 
 type RecordingJobCommand = RecordingJob["command"];
@@ -42,11 +49,23 @@ interface RecordingJobStore {
     job: RecordingJob,
     expectedStatus: RecordingJob["status"],
   ): Promise<RecordingJob | undefined>;
+  // Atomic compare-and-set for lifecycle transitions: persist `job` only if the
+  // stored row's status is still one of `allowedFrom`, returning the job on a
+  // win and `undefined` when another writer already moved it. This is what stops
+  // a late/racing transition (e.g. a stale complete) from clobbering a terminal
+  // state — a plain find-then-save is a blind last-writer-wins.
+  transition(
+    job: RecordingJob,
+    allowedFrom: RecordingJobStatus[],
+  ): Promise<RecordingJob | undefined>;
   create(job: RecordingJob): Promise<void>;
   find(jobId: string): Promise<RecordingJob | undefined>;
   list(): Promise<RecordingJob[]>;
   save(job: RecordingJob): Promise<void>;
 }
+// Statuses a job may still be transitioned *out of* to a terminal/stop state.
+const NON_TERMINAL_SOURCES: RecordingJobStatus[] = ["queued", "running", "stop_requested"];
+const STOPPABLE_SOURCES: RecordingJobStatus[] = ["queued", "running"];
 type RecordingJobLeaseExpirationListener = (input: {
   job: RecordingJob;
   terminalState: "cancelled" | "failed";
@@ -235,11 +254,10 @@ export async function stopRecordingJob(recordingId: string) {
     return undefined;
   }
 
-  job.status = "stop_requested";
-  job.stopRequestedAt = new Date().toISOString();
-  await recordingJobStore.save(job);
-
-  return job;
+  return recordingJobStore.transition(
+    { ...job, status: "stop_requested", stopRequestedAt: new Date().toISOString() },
+    STOPPABLE_SOURCES,
+  );
 }
 
 export async function stopRecordingJobById(jobId: string) {
@@ -253,11 +271,10 @@ export async function stopRecordingJobById(jobId: string) {
     return undefined;
   }
 
-  job.status = "stop_requested";
-  job.stopRequestedAt = new Date().toISOString();
-  await recordingJobStore.save(job);
-
-  return job;
+  return recordingJobStore.transition(
+    { ...job, status: "stop_requested", stopRequestedAt: new Date().toISOString() },
+    STOPPABLE_SOURCES,
+  );
 }
 
 export async function retryRecordingJob(jobId: string) {
@@ -325,11 +342,17 @@ export async function completeRecordingJob(recordingId: string, jobId?: string) 
     return undefined;
   }
 
-  job.completedAt = new Date().toISOString();
-  job.status = "completed";
-  await recordingJobStore.save(job);
+  // A duplicate upload for an already-completed job is an idempotent no-op.
+  if (job.status === "completed") {
+    return job;
+  }
 
-  return job;
+  // Atomic: only complete from a non-terminal state, so a late/racing upload
+  // cannot resurrect a job the controller already failed/cancelled.
+  return recordingJobStore.transition(
+    { ...job, completedAt: new Date().toISOString(), status: "completed" },
+    NON_TERMINAL_SOURCES,
+  );
 }
 
 export async function cancelRecordingJob(jobId: string, reason?: string) {
@@ -339,12 +362,14 @@ export async function cancelRecordingJob(jobId: string, reason?: string) {
     return undefined;
   }
 
-  job.completedAt = new Date().toISOString();
-  job.failureReason = reason;
-  job.status = "cancelled";
-  await recordingJobStore.save(job);
+  if (job.status === "cancelled") {
+    return job;
+  }
 
-  return job;
+  return recordingJobStore.transition(
+    { ...job, completedAt: new Date().toISOString(), failureReason: reason, status: "cancelled" },
+    NON_TERMINAL_SOURCES,
+  );
 }
 
 export async function failRecordingJob(jobId: string, reason?: string) {
@@ -354,12 +379,14 @@ export async function failRecordingJob(jobId: string, reason?: string) {
     return undefined;
   }
 
-  job.completedAt = new Date().toISOString();
-  job.failureReason = reason;
-  job.status = "failed";
-  await recordingJobStore.save(job);
+  if (job.status === "failed") {
+    return job;
+  }
 
-  return job;
+  return recordingJobStore.transition(
+    { ...job, completedAt: new Date().toISOString(), failureReason: reason, status: "failed" },
+    NON_TERMINAL_SOURCES,
+  );
 }
 
 export async function recordingJob(jobId: string) {
@@ -457,6 +484,23 @@ class JsonRecordingJobStore implements RecordingJobStore {
     return job;
   }
 
+  async transition(job: RecordingJob, allowedFrom: RecordingJobStatus[]) {
+    // Atomic within the single-threaded event loop (no await between the read
+    // and the write): a concurrent transition that already moved the job sees
+    // its new status and loses.
+    const index = this.jobs.findIndex((candidate) => candidate.id === job.id);
+    const current = this.jobs[index];
+
+    if (!current || !allowedFrom.includes(current.status)) {
+      return undefined;
+    }
+
+    this.jobs[index] = job;
+    this.persist();
+
+    return job;
+  }
+
   async create(job: RecordingJob) {
     this.jobs.unshift(job);
     this.persist();
@@ -543,6 +587,31 @@ class PostgresRecordingJobStore implements RecordingJobStore {
     }
   }
 
+  async transition(job: RecordingJob, allowedFrom: RecordingJobStatus[]) {
+    if (!this.dbAvailable) {
+      return this.fallback.transition(job, allowedFrom);
+    }
+
+    try {
+      const row = recordingJobToRow(job);
+      // Single atomic statement: apply the full transition only if the row is
+      // still in an allowed source status; zero returned rows means another
+      // writer already moved it, so we report the lost CAS as `undefined`.
+      const [updated] = await this.db
+        .update(recordingJobsTable)
+        .set(recordingJobMutableColumns(row))
+        .where(
+          and(eq(recordingJobsTable.id, job.id), inArray(recordingJobsTable.status, allowedFrom)),
+        )
+        .returning();
+
+      return updated ? recordingJobFromRow(updated) : undefined;
+    } catch (error) {
+      await this.failover("recording job transition unavailable; using JSON store", error);
+      return this.fallback.transition(job, allowedFrom);
+    }
+  }
+
   async create(job: RecordingJob) {
     if (!this.dbAvailable) {
       await this.fallback.create(job);
@@ -619,23 +688,29 @@ class PostgresRecordingJobStore implements RecordingJobStore {
       .insert(recordingJobsTable)
       .values(row)
       .onConflictDoUpdate({
-        set: {
-          claimedBy: row.claimedBy,
-          command: row.command,
-          completedAt: row.completedAt,
-          failureReason: row.failureReason,
-          lastHeartbeatAt: row.lastHeartbeatAt,
-          leaseExpiresAt: row.leaseExpiresAt,
-          nodeId: row.nodeId,
-          recordingId: row.recordingId,
-          startedAt: row.startedAt,
-          status: row.status,
-          stopRequestedAt: row.stopRequestedAt,
-          updatedAt: new Date(),
-        },
+        set: recordingJobMutableColumns(row),
         target: recordingJobsTable.id,
       });
   }
+}
+
+// The mutable column set shared by the unconditional upsert (`write`) and the
+// conditional compare-and-set (`transition`), so both stay in lockstep.
+function recordingJobMutableColumns(row: RecordingJobInsert) {
+  return {
+    claimedBy: row.claimedBy,
+    command: row.command,
+    completedAt: row.completedAt,
+    failureReason: row.failureReason,
+    lastHeartbeatAt: row.lastHeartbeatAt,
+    leaseExpiresAt: row.leaseExpiresAt,
+    nodeId: row.nodeId,
+    recordingId: row.recordingId,
+    startedAt: row.startedAt,
+    status: row.status,
+    stopRequestedAt: row.stopRequestedAt,
+    updatedAt: new Date(),
+  };
 }
 
 function createRecordingJobStore(): RecordingJobStore {
@@ -732,162 +807,12 @@ function recordingJobFromRow(row: RecordingJobRow): RecordingJob {
   };
 }
 
-function commandFromValue(value: unknown): RecordingJobCommand {
-  if (!isRecord(value) || value.type !== "alsa_capture") {
-    throw new Error("recording_job_command_invalid");
-  }
-
-  return {
-    captureChannels: positiveIntegerFromUnknown(value.captureChannels, 2),
-    captureBackend: captureBackendFromUnknown(value.captureBackend),
-    captureChannelSelection: channelSelectionFromUnknown(value.captureChannelSelection),
-    captureDevice: stringFromUnknown(value.captureDevice, "default"),
-    captureFormat: stringFromUnknown(value.captureFormat, "S16_LE"),
-    captureGroupId: stringOrUndefined(value.captureGroupId),
-    captureInterfaceId: stringOrUndefined(value.captureInterfaceId),
-    captureSampleRate: positiveIntegerFromUnknown(value.captureSampleRate, 48_000),
-    channelMap: channelMapFromValue(value.channelMap),
-    chunkSeconds: optionalPositiveInteger(value.chunkSeconds),
-    durationSeconds: positiveIntegerFromUnknown(value.durationSeconds, 3_600),
-    enhancement: enhancementFromValue(value.enhancement),
-    outputBitrateKbps: optionalPositiveInteger(value.outputBitrateKbps),
-    outputCodec: outputCodecFromUnknown(value.outputCodec),
-    outputFileName: stringFromUnknown(value.outputFileName, "recording.wav"),
-    outputVbr: typeof value.outputVbr === "boolean" ? value.outputVbr : undefined,
-    recorderCacheRetention: recorderCacheRetentionFromValue(value.recorderCacheRetention),
-    trackGroupId: stringOrUndefined(value.trackGroupId),
-    trackIndex: optionalPositiveInteger(value.trackIndex),
-    trackTotal: optionalPositiveInteger(value.trackTotal),
-    type: "alsa_capture",
-  };
-}
-
 function dateOrNull(value: string | undefined) {
   return value ? new Date(value) : null;
 }
 
 function isoOrUndefined(value: Date | null) {
   return value?.toISOString();
-}
-
-function positiveIntegerFromUnknown(value: unknown, fallback: number) {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
-}
-
-function optionalPositiveInteger(value: unknown) {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
-}
-
-function channelSelectionFromUnknown(value: unknown): number[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const channels = value.filter(
-    (channel): channel is number =>
-      typeof channel === "number" && Number.isInteger(channel) && channel > 0,
-  );
-
-  return channels.length > 0 ? channels : undefined;
-}
-
-function stringFromUnknown(value: unknown, fallback: string) {
-  return typeof value === "string" && value.trim() ? value : fallback;
-}
-
-function stringOrUndefined(value: unknown) {
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function channelMapFromValue(value: unknown): RecordingJobCommand["channelMap"] {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const sourceChannels = positiveIntegerFromUnknown(value.sourceChannels, 0);
-
-  if (sourceChannels <= 0) {
-    return undefined;
-  }
-
-  return {
-    assignmentId: stringFromUnknown(value.assignmentId, "unknown_assignment"),
-    channelMode: channelModeFromUnknown(value.channelMode),
-    entries: channelMapEntriesFromValue(value.entries, sourceChannels),
-    sourceChannels,
-    targetId: stringFromUnknown(value.targetId, "unknown_target"),
-    targetType: value.targetType === "interface" ? "interface" : "node",
-    templateId: stringFromUnknown(value.templateId, "unknown_template"),
-    templateName: stringFromUnknown(value.templateName, "Unknown Template"),
-  };
-}
-
-function channelMapEntriesFromValue(value: unknown, sourceChannels: number) {
-  if (!Array.isArray(value)) {
-    return Array.from({ length: sourceChannels }, (_, index) => ({
-      included: true,
-      label: `Channel ${index + 1}`,
-      outputChannelIndex: index + 1,
-      sourceChannelIndex: index + 1,
-    }));
-  }
-
-  return value.filter(isRecord).map((entry) => ({
-    included: entry.included === true,
-    label: stringFromUnknown(
-      entry.label,
-      `Channel ${positiveIntegerFromUnknown(entry.sourceChannelIndex, 1)}`,
-    ),
-    outputChannelIndex:
-      typeof entry.outputChannelIndex === "number" && Number.isInteger(entry.outputChannelIndex)
-        ? entry.outputChannelIndex
-        : undefined,
-    sourceChannelIndex: positiveIntegerFromUnknown(entry.sourceChannelIndex, 1),
-  }));
-}
-
-function channelModeFromUnknown(
-  value: unknown,
-): NonNullable<RecordingJobCommand["channelMap"]>["channelMode"] {
-  return value === "mono" ||
-    value === "stereo" ||
-    value === "mono_to_stereo_mix" ||
-    value === "multichannel"
-    ? value
-    : "mono_to_stereo_mix";
-}
-
-function outputCodecFromUnknown(value: unknown): RecordingJobCommand["outputCodec"] {
-  return value === "mp3" || value === "flac" || value === "wav" ? value : undefined;
-}
-
-function enhancementFromValue(value: unknown): RecordingJobCommand["enhancement"] {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const result = recordingEnhancementSchema.safeParse(value);
-
-  return result.success ? result.data : undefined;
-}
-
-function recorderCacheRetentionFromValue(
-  value: unknown,
-): RecordingJobCommand["recorderCacheRetention"] {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const policyId = stringOrUndefined(value.policyId);
-
-  if (!policyId || typeof value.deleteAfterUpload !== "boolean") {
-    return undefined;
-  }
-
-  return {
-    deleteAfterUpload: value.deleteAfterUpload,
-    policyId,
-  };
 }
 
 function trackOrder(left: RecordingJobCommand, right: RecordingJobCommand) {
@@ -922,16 +847,6 @@ function isRecordingJob(value: unknown): value is RecordingJob {
     typeof value.command.outputFileName === "string" &&
     value.command.type === "alsa_capture"
   );
-}
-
-function captureBackendFromUnknown(value: unknown): RecordingJobCommand["captureBackend"] {
-  return value === "pipewire"
-    ? "pipewire"
-    : value === "jack"
-      ? "jack"
-      : value === "alsa"
-        ? "alsa"
-        : undefined;
 }
 
 function optionalCaptureBackend(value: unknown) {
