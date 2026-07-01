@@ -34,6 +34,19 @@ export const auditedUploadActionQueryKeys: readonly (readonly string[])[] = [
   ["upload-queue"],
 ];
 
+/**
+ * Page size for the recordings-page cross-reference fetches (recording jobs and
+ * upload-queue items) that are grouped by recording onto each card. With the
+ * default page size (50) a recording's jobs/uploads fall off the fetched page
+ * once the system holds more than 50 of them, so the card renders empty even
+ * though jobs exist (G77) — the sibling health-events fetch already requests a
+ * large page. 200 is the API's max page size (PAGE_POLICY.default.maxLimit).
+ * This still fetches a global page rather than one scoped to the visible
+ * recordings, so a complete fix needs a recording-scoped job/upload filter
+ * (tracked).
+ */
+export const recordingCrossReferenceLimit = 200;
+
 export interface DownloadableRecordingFile {
   blob: Blob;
   fileName: string;

@@ -14,6 +14,7 @@ import {
   auditedUploadActionQueryKeys,
   clearPlaybackPreview,
   emptyRecordingFilterDraft,
+  recordingCrossReferenceLimit,
   filtersFromDraft,
   isCachedRecording,
   isTerminalRecording,
@@ -30,6 +31,18 @@ import {
   waveformBarHeightPercent,
   waveformPreviewSummary,
 } from "./recording-page-helpers";
+
+test("G77: recording card cross-reference fetches beyond the default page", () => {
+  // Jobs and upload-queue items are fetched globally and grouped onto each
+  // recording card; the default 50-row page drops a recording's jobs/uploads
+  // once the system holds more than 50, leaving the card falsely empty. The
+  // fetch must request more than one default page.
+  assert.ok(
+    recordingCrossReferenceLimit > 50,
+    "cross-reference fetch must exceed the default 50-row page",
+  );
+  assert.equal(recordingCrossReferenceLimit, 200, "requests the API's max page size");
+});
 
 test("G78: audited upload actions refresh the audit view alongside the queue", () => {
   // Single enqueue, bulk enqueue, and retry all write an audit event, so the

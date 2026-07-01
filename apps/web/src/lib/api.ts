@@ -797,7 +797,7 @@ export const api = {
       },
       method: "POST",
     }),
-  uploadQueue: (filters: UploadQueueFilters = {}) =>
+  uploadQueue: (filters: UploadQueueFilters & { limit?: number; offset?: number } = {}) =>
     fetchJson<{ data: UploadQueueItem[] }>(withQuery("/api/v1/upload-queue", filters)),
   uploadRunner: () => fetchJson<{ data: UploadRunnerStatus }>("/api/v1/upload-runner"),
   runUploadRunner: () =>

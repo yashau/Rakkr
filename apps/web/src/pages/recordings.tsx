@@ -46,6 +46,7 @@ import {
   isCachedRecording,
   healthStatuses,
   isTerminalRecording,
+  recordingCrossReferenceLimit,
   recordingPagePermissions,
   recordingFilterChips,
   recordingFilterDraftKeys,
@@ -96,7 +97,7 @@ export function RecordingsPage() {
   });
   const recordingJobsQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
-    queryFn: () => api.recordingJobs(),
+    queryFn: () => api.recordingJobs({ limit: recordingCrossReferenceLimit }),
     queryKey: ["recording-jobs"],
     refetchInterval: 3000,
   });
@@ -108,7 +109,7 @@ export function RecordingsPage() {
   });
   const uploadQueueQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
-    queryFn: () => api.uploadQueue(),
+    queryFn: () => api.uploadQueue({ limit: recordingCrossReferenceLimit }),
     queryKey: ["upload-queue"],
     refetchInterval: 5000,
   });
