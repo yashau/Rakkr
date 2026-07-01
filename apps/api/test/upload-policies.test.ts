@@ -13,6 +13,7 @@ const {
   createUploadPolicy,
   listUploadPolicies,
   updateUploadPolicy,
+  uploadPoliciesForCachedRecording,
   uploadPolicyForCachedRecording,
   uploadPolicyForQueue,
   uploadQueueInputForPolicy,
@@ -97,7 +98,54 @@ test("creates and updates upload policy templates", async () => {
   });
 });
 
+test("R13-7: policies resolving to the same destination and subfolder are collapsed", async () => {
+  const destinationStore = createUploadDestinationStore();
+  const destination = await destinationStore.create({
+    displayName: "Shared Bucket",
+    enabled: true,
+    kind: "s3",
+    s3: { accessKeyId: "AKIA", bucket: "rakkr-shared", prefix: "meetings", region: "us-east-1" },
+    s3SecretAccessKey: "secret",
+  });
+  const policyInput = (name: string, pathOverride: string) => ({
+    deleteCacheAfterUpload: false,
+    destinationId: destination.id,
+    enabled: true,
+    maxAttempts: 3,
+    name,
+    pathOverride,
+    trigger: "on_recording_cached" as const,
+  });
+  const first = await createUploadPolicy(policyInput("Archive A", "council"));
+  const second = await createUploadPolicy(policyInput("Archive B", "council"));
+  const distinct = await createUploadPolicy(policyInput("Archive C", "board"));
+
+  // Two policies with the same destination + subfolder write the same object
+  // key: only the first is kept, so the second cannot silently overwrite it
+  // while both falsely reconcile to `uploaded`.
+  const collides = await uploadPoliciesForCachedRecording(
+    recordingWithPolicies([first.id, second.id]),
+  );
+  assert.deepEqual(
+    collides.map((policy) => policy.id),
+    [first.id],
+  );
+
+  // A distinct subfolder is a distinct object, so both fan out.
+  const distinctTargets = await uploadPoliciesForCachedRecording(
+    recordingWithPolicies([first.id, distinct.id]),
+  );
+  assert.deepEqual(
+    distinctTargets.map((policy) => policy.id),
+    [first.id, distinct.id],
+  );
+});
+
 function recording(uploadPolicyId: string): RecordingSummary {
+  return recordingWithPolicies([uploadPolicyId]);
+}
+
+function recordingWithPolicies(uploadPolicyIds: string[]): RecordingSummary {
   return {
     cached: true,
     durationSeconds: 60,
@@ -110,6 +158,6 @@ function recording(uploadPolicyId: string): RecordingSummary {
     source: "schedule",
     status: "cached",
     tags: [],
-    uploadPolicyIds: [uploadPolicyId],
+    uploadPolicyIds,
   };
 }

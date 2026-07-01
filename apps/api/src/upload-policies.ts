@@ -272,13 +272,32 @@ export async function uploadPoliciesForCachedRecording(recording: RecordingSumma
 // closes — before the recording itself is marked cached.
 export async function uploadPoliciesForChunkedRecording(recording: RecordingSummary) {
   const policies: UploadPolicy[] = [];
+  // Two policies that resolve to the same destination + subfolder would write
+  // the same object key (the file name is shared across a recording's policies),
+  // so the second silently overwrites the first while BOTH reconcile to
+  // `uploaded` — a false sense of redundancy. Keep only the first policy per
+  // unique destination target; policies without a destination (stub) write no
+  // real object and never collide.
+  const seenTargets = new Set<string>();
 
   for (const policyId of recording.uploadPolicyIds ?? []) {
     const policy = await findUploadPolicy(policyId);
 
-    if (policy && policy.enabled && policy.trigger === "on_recording_cached") {
-      policies.push(policy);
+    if (!policy || !policy.enabled || policy.trigger !== "on_recording_cached") {
+      continue;
     }
+
+    if (policy.destinationId) {
+      const target = `${policy.destinationId}::${policy.pathOverride ?? ""}`;
+
+      if (seenTargets.has(target)) {
+        continue;
+      }
+
+      seenTargets.add(target);
+    }
+
+    policies.push(policy);
   }
 
   return policies;
