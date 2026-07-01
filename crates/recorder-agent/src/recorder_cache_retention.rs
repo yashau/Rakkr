@@ -296,11 +296,23 @@ fn candidate_for_entry(entry: &RecorderCacheManifestEntry) -> Option<RecorderCac
     let mut found = false;
 
     for path in paths {
-        let metadata = fs::metadata(&path).ok()?;
+        // Treat a missing path as already-gone (skip it) rather than aborting
+        // the whole entry. Aborting sent the entry down the `missing_recordings`
+        // path, which drops it from the manifest WITHOUT deleting the surviving
+        // sibling — leaking that file on disk, untracked and unreclaimable by any
+        // age/bytes/min-free policy. Keeping a partially-present entry as a real
+        // candidate lets `delete_recorder_cache_files` reclaim the survivor (it
+        // already tolerates the missing sibling).
+        let Some(metadata) = fs::metadata(&path).ok() else {
+            continue;
+        };
 
         found = true;
         size += metadata.len();
-        modified_at = modified_at.min(metadata.modified().ok()?);
+
+        if let Ok(modified) = metadata.modified() {
+            modified_at = modified_at.min(modified);
+        }
     }
 
     found.then(|| RecorderCacheCandidate {
@@ -417,6 +429,47 @@ mod tests {
         assert_eq!(cleanup.errors.len(), 1);
         assert!(cleanup.errors[0].contains(&raw.display().to_string()));
         assert!(raw.is_dir());
+        assert!(!rendered.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn sweeps_surviving_file_when_sibling_is_already_gone() {
+        let root = temp_dir("orphan-survivor");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        // The raw output is already gone; only the rendered output survives.
+        let raw = root.join("recording.raw.wav");
+        let rendered = root.join("recording.mp3");
+        fs::write(&rendered, b"rendered").unwrap();
+        let manifest_path = root.join("manifest.json");
+        save_manifest(
+            &manifest_path,
+            &RecorderCacheManifest {
+                entries: vec![RecorderCacheManifestEntry {
+                    output_path: rendered.display().to_string(),
+                    policy_id: "retain-1d".to_string(),
+                    raw_output_path: raw.display().to_string(),
+                    recording_id: "rec_orphan".to_string(),
+                }],
+                version: 1,
+            },
+        )
+        .unwrap();
+
+        let mut policy = policy("retain-1d");
+        policy.max_age_days = Some(1);
+        // Far past the age bound for the just-written survivor.
+        let now = SystemTime::now() + Duration::from_secs(3 * 86_400);
+
+        let summary = run_recorder_cache_sweep(&manifest_path, &[policy], None, now).unwrap();
+
+        // Pre-fix: the missing raw aborted candidate_for_entry, the entry was
+        // dropped from the manifest, and the surviving rendered file leaked
+        // (deleted == 0, file still present). Now it is reclaimed.
+        assert_eq!(summary.deleted, 1);
         assert!(!rendered.exists());
 
         let _ = fs::remove_dir_all(root);
