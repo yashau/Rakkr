@@ -856,6 +856,34 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 19 — CLEAN (systematic RBAC enumeration + web-logic/DB round-trip)
+
+**No new elevated findings; two LOW fail-safe items catalogued.**
+- RBAC: FULL enumeration of all 27 route files / 19 register*Routes into a
+  route×permission×scope×audit table — SOUND. No unauthenticated mutation, no
+  wrong-permission gate, no IDOR, no token-unbinding; audit integrity intact.
+  Confirms the sampling verdicts of Runs 6/17/18 by exhaustive enumeration.
+- Web logic (121/121) + DB round-trip: SOUND. Enum parity 9/9, no read-parse
+  hazard remains (Adv-C2 revert holds), pagination/filter/date/sort/permission
+  helpers all traced correct.
+
+### Catalogued (Low, fail-safe input-bounding — same class as G48/create-drift)
+- **DB-BOUND-1** - SSH-credential `username` is unbounded at the route
+  (`node-ssh-credential-routes.ts:87`) vs `varchar(64)` -> a 65+ char username
+  (node:manage-gated, self-inflicted) errors as 503 instead of 400. No
+  corruption. Fix = `.max(64)` on the route input schema (input-only, safe).
+- **DB-BOUND-2** - access-policy/grant `resourceType`/`resourceId`/`subjectId`
+  unbounded (`index.ts:89-102`) vs `varchar(80)`/`varchar(160)` -> over-length
+  (admin-only) INSERT error. Fix = input-only bounds; must NOT bound the base
+  schema if it read-parses stored rows (Adv-C2 hazard).
+- Judgment: fail-safe (error, no data loss/corruption), privileged self-inflicted,
+  auditor verdict "genuinely sound." Catalogued like the input-bounding-drift
+  class; not counted as streak-resetting. (Flagged to the user — fixable input-only
+  if they want them elevated.)
+
+Gates green (unchanged from Run 18; catalogue-only, no code change). **Clean-run
+streak: 2/5.**
+
 ## Run 18 — CLEAN (convergence check: broad sweep + cache/upload/retention floor-family re-verify)
 
 **No new confirmed actionable findings.** Both hunters converged:
