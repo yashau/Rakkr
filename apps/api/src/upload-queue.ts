@@ -5,8 +5,10 @@ import {
   and,
   createDatabase,
   eq,
+  inArray,
   lte,
   or,
+  sql,
   uploadQueueItems as uploadQueueItemsTable,
 } from "@rakkr/db";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
@@ -345,25 +347,28 @@ class PostgresUploadQueueStore implements UploadQueueStore {
     }
 
     try {
-      const item = await this.findItem(itemId);
+      // Atomic claim: transition to `retrying` (and increment attemptCount) only
+      // if the row is still due. A find-then-write races two runners (e.g. >1 API
+      // replica) into a double increment + double upload — this mirrors the
+      // recording-job CAS. Zero returned rows means another runner won the claim.
+      const [updated] = await this.db
+        .update(uploadQueueItemsTable)
+        .set({
+          attemptCount: sql`${uploadQueueItemsTable.attemptCount} + 1`,
+          lastError: null,
+          nextAttemptAt: new Date(uploadLeaseExpiresAt(now)),
+          status: "retrying",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(uploadQueueItemsTable.id, itemId),
+            inArray(uploadQueueItemsTable.status, [...dueStatuses]),
+          ),
+        )
+        .returning();
 
-      if (!item || !dueStatuses.has(item.status)) {
-        return undefined;
-      }
-
-      const nowIso = now.toISOString();
-      const updated = uploadQueueItemSchema.parse({
-        ...item,
-        attemptCount: item.attemptCount + 1,
-        lastError: undefined,
-        nextAttemptAt: uploadLeaseExpiresAt(now),
-        status: "retrying",
-        updatedAt: nowIso,
-      });
-
-      await this.writeItem(updated);
-
-      return updated;
+      return updated ? queueItemFromRow(updated) : undefined;
     } catch (error) {
       await this.failover("upload queue start unavailable; using JSON store", error);
       return this.fallback.start(itemId, now);
