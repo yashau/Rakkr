@@ -76,7 +76,18 @@ impl CapturePlan {
             "mp3" => "mp3",
             _ => "wav",
         };
-        let final_output_path = dir.join(format!("{chunk_stem}.{final_extension}"));
+        // A channel-map render reads `output_path` (the closed chunk wav) and
+        // writes `final_output_path`. For the wav codec those paths would collide
+        // (`{stem}.chunk-NNNN.wav` both), so ffmpeg would read and write the same
+        // file in place. Give the rendered output a distinct stem in that case,
+        // mirroring the raw.wav split in capture_plan_for_job. (Non-wav codecs
+        // already differ by extension; wav without a channel map is a passthrough,
+        // so no render runs and sharing the path is fine.)
+        let final_output_path = if final_extension == "wav" && self.channel_map.is_some() {
+            dir.join(format!("{chunk_stem}.rendered.wav"))
+        } else {
+            dir.join(format!("{chunk_stem}.{final_extension}"))
+        };
 
         CapturePlan {
             final_output_path,
@@ -814,6 +825,34 @@ mod tests {
         // The clone preserves capture parameters.
         assert_eq!(chunk_plan.sample_rate, plan.sample_rate);
         assert_eq!(chunk_plan.channels, plan.channels);
+    }
+
+    #[test]
+    fn chunk_plan_channel_mapped_wav_renders_to_a_distinct_path() {
+        let mut plan = capture_plan_from_config(&config()).unwrap();
+        plan.channel_map = Some(CaptureChannelMap {
+            assignment_id: "assignment".to_string(),
+            channel_mode: "mono".to_string(),
+            entries: Vec::new(),
+            source_channels: 1,
+            target_id: "target".to_string(),
+            target_type: "node".to_string(),
+            template_id: "template".to_string(),
+            template_name: "Template".to_string(),
+        });
+        let dir = Path::new("/tmp/chunks");
+        let chunk_wav = dir.join("rec.chunk-0003.wav");
+        let chunk_plan = plan.chunk_plan(dir, "rec", 3, &chunk_wav);
+
+        // Pre-fix final_output_path == output_path == chunk_wav, so a wav
+        // channel-map render read and wrote the same file in place.
+        assert_eq!(chunk_plan.output_path, chunk_wav);
+        assert_ne!(chunk_plan.final_output_path, chunk_wav);
+        assert!(
+            chunk_plan
+                .final_output_path
+                .ends_with("rec.chunk-0003.rendered.wav")
+        );
     }
 
     #[test]
