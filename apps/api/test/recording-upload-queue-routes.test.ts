@@ -231,6 +231,29 @@ test("upload queue list filters visible items by status provider and recording",
   assert.equal(event?.details.status, "retrying");
 });
 
+test("upload queue list bounds the page size when no limit is given", async () => {
+  const auditStore = createAuditStore("");
+  const a = recording({ id: "rec_queue_bound_a" });
+  const b = recording({ id: "rec_queue_bound_b" });
+  await enqueueRecordingUpload(a, { provider: "stub", target: "stub://bound-a" });
+  await enqueueRecordingUpload(b, { provider: "stub", target: "stub://bound-b" });
+
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore: memoryRecordingStore([a, b]),
+    visibleRecordingIds: [a.id, b.id],
+  });
+
+  const response = await app.request("/api/v1/upload-queue");
+  const body = (await response.json()) as { meta: { limit?: number } };
+
+  // Pre-fix an omitted limit returned every scoped row with no ceiling
+  // (meta.limit was undefined); now it defaults to the page-policy limit.
+  assert.equal(response.status, 200);
+  assert.equal(body.meta.limit, 50);
+});
+
 test("upload queue item detail returns scoped recording context", async () => {
   const auditStore = createAuditStore("");
   const visibleRecording = recording({ id: "rec_queue_detail_visible" });

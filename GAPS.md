@@ -14,9 +14,9 @@ UTC/DST core were checked and found **correct**. The gaps cluster where behaviou
 only be proven against real hardware/Postgres/time, exactly as the source-of-truth doc
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
-**Landed this branch (7, each with a red→green test):** G1, G1b, G3, G6, G7, G10, G12.
-**Catalogued (confirmed, fix needs a DB/Rust slice or product call):** G2, G4, G5, G9, G11, G13.
-**Coverage gaps / suspected:** G14–G23.
+**Landed (each with a red→green test):** G1, G1b, G3, G5, G6, G7, G10, G12, G13, G19, G21.
+**Still open (Rust slice or architectural call):** G2, G4, G9, G11; coverage G14/G16.
+**Suspected / by-design:** G17, G18, G20, G22, G23.
 Rebased onto `origin/main` (`844f6a8e`); **G1b is a fresh-on-main catch** — PR #14 reintroduced
 the G1 data-loss pattern in its new chunked-upload path, which this audit caught on rebase.
 
@@ -100,7 +100,14 @@ request (503) so the caller retries, or make `dbAvailable` a re-probing circuit 
 surface the degraded state via `/metrics` + a health event. Left CATALOGUED because the
 right semantics is an architectural decision, not a one-line fix.
 
-### G5 — Non-atomic recording-job claim (read-modify-write) → double-claim / double-capture · `CATALOGUED`
+### G5 — Non-atomic recording-job claim (read-modify-write) → double-claim / double-capture · `FIXED`
+**Fixed:** added an atomic `claim(job, expectedStatus)` to the job store — a conditional
+`UPDATE … WHERE id=$ AND status='queued' RETURNING` on Postgres and a no-`await`
+check-and-set in the JSON store — and routed `claimRecordingJob` through it.
+**Test (Postgres, opt-in via `RAKKR_API_TEST_DATABASE_URL`):**
+`recording-job-claim-atomic.test.ts` fires 16 concurrent claims and asserts exactly one
+wins. Verified **red on the old `save` path: 14 of 16 "won"**; green after the fix. Skips
+cleanly (no pool) in the default fallback-store suite. Original analysis:
 `apps/api/src/recording-jobs.ts:129-147` (`claimRecordingJob`), backed by the
 unconditional upsert at `:557-573`. *(Found independently by two hunters.)*
 The claim reads the job, checks `status === "queued"` in app memory, then `save()`s an
@@ -190,11 +197,12 @@ undefined); `limit=0` produced a garbled empty page.
 route. **Test:** `auth-management-routes.test.ts` → "clamp pagination to the page policy"
 (omitted→50, 99999→200, 0→1).
 
-### G13 — Unbounded response when `limit` omitted on `paginate()`-direct routes · `CATALOGUED`
-`apps/api/src/pagination.ts:86-100` reached by `recording-upload-queue-routes.ts:95-98`
-and the recordings listing path: omitting `limit` returns every scoped row (no default
-ceiling). **Fix:** apply `parsePagination(PAGE_POLICY.default)` so an absent limit is
-bounded.
+### G13 — Unbounded response when `limit` omitted on `paginate()`-direct routes · `FIXED`
+`recording-upload-queue-routes.ts` omitting `limit` returned every scoped row (`paginate`
+returns all rows when limit is undefined). **Fix:** route through
+`parsePagination(query.data, PAGE_POLICY.default)`. **Test:**
+`recording-upload-queue-routes.test.ts` → "bounds the page size when no limit is given"
+(meta.limit defaults to 50).
 
 ### G14 — Multi-user IDOR / grant isolation is effectively untested · `CATALOGUED (coverage)`
 `apps/api/src/index.ts:236-280` (`resourceScopeDecision`/`allowedByGrant`).
@@ -228,14 +236,17 @@ length/energy.
 - **G18 (SUSPECTED)** `auth-utils.ts:144-148` — a `user` access policy matches on id **or**
   email; an allow policy keyed by a reused/re-created email could over-grant across
   identities/providers. Fails safe for deny.
-- **G19 (SUSPECTED)** `packages/shared/src/index.ts:11` — `isoDateTimeSchema` is
-  `z.string().min(1)`; a non-date `once.startsAt` passes Zod then throws `RangeError` at
-  `schedule-engine.ts:261` (500 instead of 400). Tighten with a `Date.parse` refine.
+- **G19 — `FIXED`** `packages/shared/src/base.ts` — `isoDateTimeSchema` was
+  `z.string().min(1)`; a non-date value passed Zod then threw `RangeError` at
+  `new Date(value).toISOString()` (500 instead of 400). Added a `Date.parse` `.refine`.
+  **Test:** `input-hardening.test.ts` (rejects `not-a-date`/`tomorrow`/``, accepts ISO).
 - **G20 (SUSPECTED)** module-load `JSON.parse` without try/catch in ~11 stores
   (`recording-jobs.ts:624`, `settings-store.ts:732…`, etc.) — a corrupt `data/*.json` fails
   boot. `upload-destinations.ts` already degrades gracefully; mirror it.
-- **G21 (SUSPECTED)** `password.ts:30-41` — `verifyPassword` doesn't validate the numeric
-  scrypt params; a malformed stored hash throws instead of returning false.
+- **G21 — `FIXED`** `password.ts` — `verifyPassword` didn't validate the numeric scrypt
+  params; a malformed stored hash reached scrypt as `NaN` and threw instead of returning
+  false. Now validates cost/blockSize/parallelization are positive integers first.
+  **Test:** `input-hardening.test.ts` (malformed hashes return false, never throw).
 - **G22 (SUSPECTED)** `channel_map.rs:289-298` — positional fallback in `entry_for_output`
   can map an output channel to the wrong source when output indices are sparse/mixed;
   relevant to capture-once/split-many subset extraction.

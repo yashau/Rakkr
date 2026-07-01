@@ -11,7 +11,7 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import { recordingHasCachedFile } from "./recording-cache.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
-import { paginate, paginationQueryFields } from "./pagination.js";
+import { PAGE_POLICY, paginate, paginationQueryFields, parsePagination } from "./pagination.js";
 import { uniqueRecordingIds } from "./recording-metadata.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
 import { uploadPolicyForQueue, uploadQueueInputForPolicy } from "./upload-policies.js";
@@ -92,10 +92,10 @@ export function registerRecordingUploadQueueRoutes({
         (item) =>
           visibleRecordingIds.has(item.recordingId) && uploadQueueItemMatches(item, query.data),
       );
-      const { data, meta } = paginate(visibleItems, {
-        limit: query.data.limit,
-        offset: query.data.offset,
-      });
+      const { data, meta } = paginate(
+        visibleItems,
+        parsePagination(query.data, PAGE_POLICY.default),
+      );
 
       await recordAuditEvent(c, {
         action: "recordings.upload_queue.read.succeeded",

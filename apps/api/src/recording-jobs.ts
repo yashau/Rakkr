@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
+import { and, createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
 import {
   defaultVoiceRecordingProfile,
   effectiveChunkSeconds,
@@ -33,6 +33,14 @@ interface RecordingJobOptions {
 }
 
 interface RecordingJobStore {
+  // Atomic compare-and-set: persist `job` only if the stored row is still in
+  // `expectedStatus`, returning the job when it won the claim and `undefined`
+  // when another claimer already moved it. This is the guard against two agents
+  // claiming (and capturing) the same job — a plain find-then-save races.
+  claim(
+    job: RecordingJob,
+    expectedStatus: RecordingJob["status"],
+  ): Promise<RecordingJob | undefined>;
   create(job: RecordingJob): Promise<void>;
   find(jobId: string): Promise<RecordingJob | undefined>;
   list(): Promise<RecordingJob[]>;
@@ -138,15 +146,20 @@ export async function claimRecordingJob(jobId: string, claimedBy?: string) {
   }
 
   const now = new Date();
+  const claimed: RecordingJob = {
+    ...job,
+    claimedBy,
+    lastHeartbeatAt: now.toISOString(),
+    leaseExpiresAt: leaseExpiry(now).toISOString(),
+    startedAt: now.toISOString(),
+    status: "running",
+  };
 
-  job.claimedBy = claimedBy;
-  job.lastHeartbeatAt = now.toISOString();
-  job.leaseExpiresAt = leaseExpiry(now).toISOString();
-  job.startedAt = now.toISOString();
-  job.status = "running";
-  await recordingJobStore.save(job);
-
-  return job;
+  // Atomic compare-and-set on `queued`. If a concurrent claim already flipped
+  // the job to `running`, this returns undefined and the caller backs off —
+  // exactly one claimer wins, so a job (or capture group) is never captured
+  // twice.
+  return recordingJobStore.claim(claimed, "queued");
 }
 
 export async function claimNextRecordingJob(nodeId: string, claimedBy?: string) {
@@ -427,6 +440,22 @@ async function notifyLeaseExpirationListeners(
 class JsonRecordingJobStore implements RecordingJobStore {
   private readonly jobs: RecordingJob[] = loadRecordingJobs();
 
+  async claim(job: RecordingJob, expectedStatus: RecordingJob["status"]) {
+    // No `await` between the read and the write, so within the single-threaded
+    // event loop this check-and-set is atomic — a second interleaved claim sees
+    // the already-updated status and loses.
+    const index = this.jobs.findIndex((candidate) => candidate.id === job.id);
+
+    if (index < 0 || this.jobs[index]?.status !== expectedStatus) {
+      return undefined;
+    }
+
+    this.jobs[index] = job;
+    this.persist();
+
+    return job;
+  }
+
   async create(job: RecordingJob) {
     this.jobs.unshift(job);
     this.persist();
@@ -479,6 +508,38 @@ class PostgresRecordingJobStore implements RecordingJobStore {
     private readonly fallback: RecordingJobStore,
   ) {
     this.db = createDatabase(databaseUrl);
+  }
+
+  async claim(job: RecordingJob, expectedStatus: RecordingJob["status"]) {
+    if (!this.dbAvailable) {
+      return this.fallback.claim(job, expectedStatus);
+    }
+
+    try {
+      const row = recordingJobToRow(job);
+      // Single atomic statement: transition only if the row is still in the
+      // expected status. `returning()` yields zero rows when another claimer
+      // already won, so no read-modify-write window exists.
+      const [updated] = await this.db
+        .update(recordingJobsTable)
+        .set({
+          claimedBy: row.claimedBy,
+          lastHeartbeatAt: row.lastHeartbeatAt,
+          leaseExpiresAt: row.leaseExpiresAt,
+          startedAt: row.startedAt,
+          status: row.status,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(recordingJobsTable.id, job.id), eq(recordingJobsTable.status, expectedStatus)),
+        )
+        .returning();
+
+      return updated ? recordingJobFromRow(updated) : undefined;
+    } catch (error) {
+      await this.failover("recording job claim unavailable; using JSON store", error);
+      return this.fallback.claim(job, expectedStatus);
+    }
   }
 
   async create(job: RecordingJob) {

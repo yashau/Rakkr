@@ -33,15 +33,31 @@ export async function verifyPassword(password: string, encodedHash: string) {
     return false;
   }
 
+  const n = positiveInt(cost);
+  const r = positiveInt(blockSize);
+  const p = positiveInt(parallelization);
+
+  // A malformed stored hash (non-numeric scrypt params) must fail verification,
+  // not throw a RangeError out of scrypt — return false rather than crash.
+  if (n === undefined || r === undefined || p === undefined) {
+    return false;
+  }
+
   const key = await scrypt(password, salt, passwordKeyLength, {
-    N: Number(cost),
+    N: n,
     maxmem: scryptMaxMemory,
-    p: Number(parallelization),
-    r: Number(blockSize),
+    p,
+    r,
   });
   const expected = Buffer.from(expectedHash, "base64url");
 
   return expected.length === key.length && timingSafeEqual(expected, key);
+}
+
+function positiveInt(value: string | undefined): number | undefined {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function scrypt(
