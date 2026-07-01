@@ -95,7 +95,7 @@ async function ensureDirectories(client: SmbClientLike, segments: string[]) {
   }
 }
 
-function smbPathSegments(
+export function smbPathSegments(
   share: string,
   uploadPath: string | undefined,
   pathOverride: string | undefined,
@@ -106,12 +106,18 @@ function smbPathSegments(
   for (const part of `${uploadPath ?? ""}/${pathOverride ?? ""}`.split(/[\\/]+/)) {
     const normalized = normalizeSegment(part);
 
-    if (normalized) {
+    // Drop empty and traversal segments so a destination path / pathOverride
+    // like `../../secret` cannot escape the configured share/path.
+    if (normalized && normalized !== "." && normalized !== "..") {
       segments.push(normalized);
     }
   }
 
-  segments.push(normalizeSegment(fileName));
+  const normalizedFileName = normalizeSegment(fileName);
+
+  if (normalizedFileName && normalizedFileName !== "." && normalizedFileName !== "..") {
+    segments.push(normalizedFileName);
+  }
 
   return segments.filter((segment) => segment.length > 0);
 }
