@@ -200,6 +200,64 @@ test("G79: a concurrent secure landing mid-request is not clobbered (status CAS)
   assert.equal(stored.cachePath, "scheduled/rec_cas_race.mp3");
 });
 
+test("S3: metadata edit reports 409 (not a false success) when the CAS stays contended", async () => {
+  const auditStore = createAuditStore("");
+  const stored = recording({
+    cached: true,
+    cachePath: "scheduled/rec_contended.mp3",
+    id: "rec_contended",
+    name: "Original",
+    status: "cached",
+  });
+  const recordingStore: RecordingStore = {
+    async create() {},
+    async delete() {
+      return undefined;
+    },
+    async find() {
+      return { ...stored };
+    },
+    async list() {
+      return [stored];
+    },
+    async save() {
+      throw new Error("save must not be called on the contended path");
+    },
+    async transition() {
+      // The CAS is lost on every attempt (a concurrent writer keeps moving status).
+      return undefined;
+    },
+  };
+  const app = new Hono<AppBindings>();
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser() }),
+    currentUser,
+    nodeStore: {},
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission([]),
+    scopedNodes: async () => [],
+    scopedRecordings: async () => [stored],
+    settingsStore: {},
+  });
+
+  const response = await app.request("/api/v1/recordings/rec_contended/metadata", {
+    body: JSON.stringify({ name: "Renamed" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const succeeded = await auditStore.list({ action: "recordings.metadata.update.succeeded" });
+  const failed = await auditStore.list({ action: "recordings.metadata.update.failed" });
+
+  // No false "succeeded" audit and no 200: the edit did not land, so it surfaces
+  // as a conflict the operator can retry.
+  assert.equal(response.status, 409);
+  assert.equal(succeeded.length, 0);
+  assert.equal(failed.at(-1)?.reason, "commit_contended");
+});
+
 test("recording metadata update saves and clears transcript snippets with audit snapshots", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];

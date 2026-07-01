@@ -36,19 +36,22 @@ const METADATA_COMMIT_ATTEMPTS = 5;
  * full-column upsert, so a secure landing between the read and the write is
  * still clobbered. If the CAS is lost (status moved under us), re-read and
  * re-overlay: a metadata edit must still land regardless of the new status.
+ * Returns `undefined` when the CAS is lost on every attempt (pathological
+ * contention) so the caller can report a conflict rather than a false success —
+ * unlike derived health status, an operator's metadata edit does not self-heal.
  */
 async function commitRecordingMetadata(
   recordingStore: RecordingStore,
   recordingId: string,
   overlay: (current: RecordingSummary) => RecordingSummary,
   fallback: RecordingSummary,
-): Promise<RecordingSummary> {
+): Promise<RecordingSummary | undefined> {
   for (let attempt = 0; attempt < METADATA_COMMIT_ATTEMPTS; attempt += 1) {
     const current = await recordingStore.find(recordingId);
 
     if (!current) {
       // No canonical row (unpersisted/in-memory-only recording): the scoped
-      // snapshot is all we have.
+      // snapshot is all we have, and there is no concurrent row to clobber.
       await recordingStore.save(fallback);
       return fallback;
     }
@@ -61,12 +64,10 @@ async function commitRecordingMetadata(
     }
   }
 
-  // Pathological contention (every CAS round lost to a concurrent status
-  // change): return the canonical row unchanged rather than a full-row save that
-  // could itself clobber the concurrent secure. The metadata edit is dropped and
-  // self-heals on the operator's retry — never reintroduce the revert this guards
-  // against (matches syncRecordingHealth's no-save fallback).
-  return (await recordingStore.find(recordingId)) ?? fallback;
+  // Every CAS round lost to a concurrent status change. Do NOT fall back to a
+  // full-row save (it would reintroduce the clobber this guards against) and do
+  // NOT report success — signal contention so the caller can 409 / skip.
+  return undefined;
 }
 
 export function registerRecordingMetadataRoutes({
@@ -137,9 +138,6 @@ export function registerRecordingMetadataRoutes({
       for (const recordingId of recordingIds) {
         const recording = visibleRecordingMap.get(recordingId)!;
         const updated = applyRecordingBulkMetadataUpdate(recording, body.data);
-
-        before.push({ id: recording.id, ...recordingMetadataSnapshot(recording) });
-        after.push({ id: updated.id, ...recordingMetadataSnapshot(updated) });
         // Commit through the status CAS so a concurrent upload's status/cache
         // isn't clobbered (see the single route); scoped context drives folder/tags.
         const persisted = await commitRecordingMetadata(
@@ -148,6 +146,15 @@ export function registerRecordingMetadataRoutes({
           (current) => ({ ...current, folder: updated.folder, tags: updated.tags }),
           updated,
         );
+
+        // Skip a recording whose CAS lost to concurrent contention: don't audit
+        // it as updated or return it (no false success; self-heals on retry).
+        if (!persisted) {
+          continue;
+        }
+
+        before.push({ id: recording.id, ...recordingMetadataSnapshot(recording) });
+        after.push({ id: updated.id, ...recordingMetadataSnapshot(updated) });
         updates.push(persisted);
       }
 
@@ -238,6 +245,25 @@ export function registerRecordingMetadataRoutes({
         }),
         updated,
       );
+
+      if (!persisted) {
+        // The status CAS lost to concurrent contention on every attempt; the
+        // edit was not applied. Report a conflict instead of a false success so
+        // the audit log stays truthful and the operator knows to retry.
+        await recordAuditEvent(c, {
+          action: "recordings.metadata.update.failed",
+          auth: currentAuth(c),
+          outcome: "failed",
+          permission: "recording:edit",
+          reason: "commit_contended",
+          target: {
+            id: recordingId,
+            type: "recording",
+          },
+        });
+
+        return c.json({ error: "Recording was concurrently modified; retry" }, 409);
+      }
 
       await recordAuditEvent(c, {
         action: "recordings.metadata.update.succeeded",
