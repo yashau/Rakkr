@@ -14,8 +14,8 @@ UTC/DST core were checked and found **correct**. The gaps cluster where behaviou
 only be proven against real hardware/Postgres/time, exactly as the source-of-truth doc
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
-**Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G5, G6, G7, G10, G11, G12, G13, G19,
-G21, G24, G25 (18 confirmed findings); G26 mostly-fixed via G25.
+**Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
+G19, G21, G24, G25, G27, G28, G31, G32, G34 (23 confirmed findings); G26 mostly-fixed via G25.
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -324,6 +324,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | --- | ------ | ----- | ------------------------ | ----- | ----- | ------ | ------ |
 | 1 | `8a11b629` | branch-diff adversary + fresh correctness/authz + chunked | 3 / 0 / 1 (G24, G25, G26) | — surfaced; need decisions | green | **no** | 0 |
 | 2 | `8a11b629` | adversary on G4/G24/G25 + fresh sweep (live-listen, node-lifecycle, metrics, scheduler) | 3 / 1 / 3 (G4-1, G27, G28; G29; G30, G4-2, G24-1) | **G4-1** (fixed) | green | **no** | 0 |
+| 3 | `8a11b629` | web console + Rust agent internals | 3 / 0 / 2 (G31, G32, G34; G33, G35) | G31, G32, G34 (fixed) | green | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -451,3 +452,47 @@ the final chunk never arrives, `total` stays undefined, and the recording never 
 terminal reconciliation for a chunked recording whose owning job is terminal but whose `total`
 never arrived — treat "job failed/partial + ≥1 uploaded chunk + none incoming" as `partial` and run
 per-chunk retention.
+
+
+---
+
+## Run 3 findings (web console + Rust agent internals)
+
+The web operator console was **healthy**: RBAC UI boundaries all gated through tested
+helpers (no control leaks), no XSS sinks, dates correctly browser-local. One resilience bug
+(G34, fixed). Rust internals surfaced two confirmed bugs (G31/G32, fixed) + one narrow edge.
+
+### G31 — Day-0 bootstrap leaves the SSH private key on disk on most error paths · `FIXED`
+`crates/recorder-agent/src/bootstrap.rs`. `run_bootstrap` only wiped the generated key on 2 of
+5 exit paths (success + non-2xx); an install / transport / decode / env-write failure returned
+via `?` leaving a live private key at a predictable temp path. **Fix:** RAII — `Drop for
+GeneratedKey` wipes on every path; plus cleanup if the key reads fail before the guard exists.
+**Test:** dropping `GeneratedKey` wipes the key file. **Severity: High (credential-at-rest).**
+
+### G32 — Enhanced-render intermediates leak on every error path · `FIXED`
+`crates/recorder-agent/src/enhanced_render.rs`. The `.enh-mono.wav`/`.enh-denoised.wav`
+intermediates were removed only on success; a failed denoise/Pass B left them, and on a chunked
+recording that is two leaked WAVs per chunk while the job still reports success. **Fix:** RAII
+`IntermediateCleanup` guard sweeps on every exit path. **Test:** guard removes files on drop.
+
+### G33 — Zero-audio chunked recording never signals completion to the controller · `CATALOGUED (SUSPECTED)`
+`crates/recorder-agent/src/recording_job_chunked.rs:313-430`. Chunked completion is signalled
+only by `chunkTotal` on the final chunk's upload. If `capture.finish()` returns an empty
+`trailing` (device produced zero PCM on a very short window), no upload — and no `chunkTotal` —
+is ever sent, yet local state is written `completed`; the controller job can dangle open.
+**Fix:** if `finish()` yields no chunks and `uploaded_chunks == 0`, route to
+`finish_partial_after_failure` / `mark_recording_job_failed` with a "no audio captured" reason.
+Narrow edge; left catalogued.
+
+### G34 — Web: any `/auth/me` error forces re-login and leaves a stale token · `FIXED`
+`apps/web/src/main.tsx`, `lib/api.ts`, new `lib/api-error.ts` + `lib/auth-gate.ts`. Every non-2xx
+was an untyped Error and the query treated any error as unauthenticated, so a transient 5xx/
+network blip bounced a valid operator to login and a real 401 left a dead token in localStorage.
+**Fix:** typed `ApiError` (carries status) + pure `authGateState` — 401/403 → clear token + login;
+5xx/network → keep session, show a retry screen. **Test:** `auth-gate.test.ts`. **Severity: Low-Med.**
+
+### G35 — Web: no dedicated 503 `database_unavailable` UX · `CATALOGUED (coverage)`
+`apps/web/src/lib/api.ts`. Mutations surface a generic "failed" toast; a 503 during a DB outage
+is indistinguishable from a validation/permission failure. Not a correctness bug (writes throw,
+not swallowed). **Fix:** parse status in the fetch helpers and show a distinct "temporarily
+unavailable, retry" message for 503.
