@@ -562,9 +562,17 @@ export function registerRecordingJobRoutes({
         const recording = visibleRecordingMap.get(sourceJob.recordingId)!;
         const beforeRecordingStatus = recording.status;
 
-        recording.durationSeconds = Math.max(recording.durationSeconds, 1);
-        recording.status = "completed";
-        await recordingStore.save(recording);
+        // Atomic status CAS: only force `completed` from a still-active state so a
+        // concurrent cache upload that secured the recording isn't downgraded.
+        const stoppedRecording = {
+          ...recording,
+          durationSeconds: Math.max(recording.durationSeconds, 1),
+          status: "completed" as const,
+        };
+        const updatedRecording =
+          (await recordingStore.transition(stoppedRecording, ["queued", "recording"])) ??
+          (await recordingStore.find(recording.id)) ??
+          recording;
 
         stoppedJobs.push(stopped);
         before.push({
@@ -576,7 +584,7 @@ export function registerRecordingJobRoutes({
         after.push({
           jobId: stopped.id,
           recordingId: recording.id,
-          recordingStatus: recording.status,
+          recordingStatus: updatedRecording.status,
           status: stopped.status,
         });
       }

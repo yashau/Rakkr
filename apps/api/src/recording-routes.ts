@@ -877,16 +877,27 @@ export function registerRecordingRoutes({
       };
       const job = await stopRecordingJob(recording.id);
 
-      recording.durationSeconds = Math.max(recording.durationSeconds, 1);
-      recording.status = "completed";
-      await recordingStore.save(recording);
+      // Atomic status CAS: only force `completed` from a still-active state, so a
+      // concurrent cache upload that already secured the recording (cached/
+      // uploaded/partial) isn't downgraded. Persists the operator's scoped object
+      // but gates on the canonical stored status; on a lost CAS keep the current
+      // record for the audit/response.
+      const stopped: RecordingSummary = {
+        ...recording,
+        durationSeconds: Math.max(recording.durationSeconds, 1),
+        status: "completed",
+      };
+      const result =
+        (await recordingStore.transition(stopped, ["queued", "recording"])) ??
+        (await recordingStore.find(recording.id)) ??
+        recording;
 
       await recordAuditEvent(c, {
         action: "recordings.stop.succeeded",
         auth: currentAuth(c),
         after: {
-          cached: recording.cached,
-          status: recording.status,
+          cached: result.cached,
+          status: result.status,
         },
         before,
         correlationIds: {
@@ -905,7 +916,7 @@ export function registerRecordingRoutes({
         },
       });
 
-      return c.json({ data: recording });
+      return c.json({ data: result });
     },
   );
 

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createDatabase, desc, eq, recordings as recordingsTable } from "@rakkr/db";
+import { and, createDatabase, desc, eq, inArray, recordings as recordingsTable } from "@rakkr/db";
 import { recordingSummarySchema, type RecordingSummary } from "@rakkr/shared";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 
@@ -13,6 +13,17 @@ export interface RecordingStore {
   find(recordingId: string): Promise<RecordingSummary | undefined>;
   list(): Promise<RecordingSummary[]>;
   save(recording: RecordingSummary): Promise<void>;
+  // Atomic compare-and-set: persist `recording` only if the stored row's status
+  // is still one of `allowedFrom`, returning it on a win and `undefined` when a
+  // concurrent writer already moved it. Guards status-deciding writers (stop,
+  // terminal, retention, reconcile) against clobbering a status another path just
+  // changed — the recording-level analog of recordingJobStore.transition. Callers
+  // pass their own (possibly scoped) recording object, which is what gets
+  // persisted; only the STORED status gates the write.
+  transition(
+    recording: RecordingSummary,
+    allowedFrom: RecordingSummary["status"][],
+  ): Promise<RecordingSummary | undefined>;
 }
 
 const recordingStorePath = path.resolve(
@@ -70,6 +81,23 @@ class JsonRecordingStore implements RecordingStore {
     }
 
     this.persist();
+  }
+
+  async transition(recording: RecordingSummary, allowedFrom: RecordingSummary["status"][]) {
+    // Atomic within the single-threaded event loop (no await between the read and
+    // the write): a concurrent transition that already moved the recording sees
+    // its new status and loses.
+    const index = this.recordings.findIndex((candidate) => candidate.id === recording.id);
+    const current = this.recordings[index];
+
+    if (!current || !allowedFrom.includes(current.status)) {
+      return undefined;
+    }
+
+    this.recordings[index] = recording;
+    this.persist();
+
+    return recording;
   }
 
   private persist() {
@@ -196,6 +224,30 @@ class PostgresRecordingStore implements RecordingStore {
     }
   }
 
+  async transition(recording: RecordingSummary, allowedFrom: RecordingSummary["status"][]) {
+    if (!this.dbAvailable) {
+      return this.fallback.transition(recording, allowedFrom);
+    }
+
+    try {
+      const row = recordingToRow(recording);
+      // Single atomic statement: persist only if the stored row is still in an
+      // allowed source status; zero returned rows means another writer moved it.
+      const [updated] = await this.db
+        .update(recordingsTable)
+        .set(recordingMutableColumns(row))
+        .where(
+          and(eq(recordingsTable.id, recording.id), inArray(recordingsTable.status, allowedFrom)),
+        )
+        .returning();
+
+      return updated ? recordingFromRow(updated) : undefined;
+    } catch (error) {
+      await this.failover("recording metadata transition unavailable; using JSON store", error);
+      return this.fallback.transition(recording, allowedFrom);
+    }
+  }
+
   private async failover(message: string, error: unknown): Promise<never> {
     // DB-authoritative store: surface unavailability as 503 instead of silently
     // diverging to the boot-time fallback. See database-unavailable.ts.
@@ -230,26 +282,32 @@ class PostgresRecordingStore implements RecordingStore {
       .insert(recordingsTable)
       .values(row)
       .onConflictDoUpdate({
-        set: {
-          cachePath: row.cachePath,
-          checksum: row.checksum,
-          durationSeconds: row.durationSeconds,
-          enhancedCachePath: row.enhancedCachePath,
-          folder: row.folder,
-          healthStatus: row.healthStatus,
-          metadata: row.metadata,
-          rawCachePath: row.rawCachePath,
-          name: row.name,
-          nodeId: row.nodeId,
-          recordedAt: row.recordedAt,
-          scheduleId: row.scheduleId,
-          source: row.source,
-          status: row.status,
-          tags: row.tags,
-        },
+        set: recordingMutableColumns(row),
         target: recordingsTable.id,
       });
   }
+}
+
+// The mutable column set shared by the unconditional upsert (`write`) and the
+// conditional compare-and-set (`transition`), so both stay in lockstep.
+function recordingMutableColumns(row: RecordingInsert) {
+  return {
+    cachePath: row.cachePath,
+    checksum: row.checksum,
+    durationSeconds: row.durationSeconds,
+    enhancedCachePath: row.enhancedCachePath,
+    folder: row.folder,
+    healthStatus: row.healthStatus,
+    metadata: row.metadata,
+    rawCachePath: row.rawCachePath,
+    name: row.name,
+    nodeId: row.nodeId,
+    recordedAt: row.recordedAt,
+    scheduleId: row.scheduleId,
+    source: row.source,
+    status: row.status,
+    tags: row.tags,
+  };
 }
 
 function loadRecordings(seedRecordings: RecordingSummary[]) {

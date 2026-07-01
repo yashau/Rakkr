@@ -134,7 +134,9 @@ test("recording job bulk stop route uses scoped recording context for updates", 
     durationSeconds: 0,
     id: scopedRecording.id,
     name: "Raw Stop Context",
-    status: "failed",
+    // Stoppable status so the stop CAS transitions; the scoped/raw NAME divergence
+    // still verifies the route persists the scoped context, not the raw record.
+    status: "recording",
   });
   const recordingStore = memoryRecordingStore([rawRecording]);
   const job = await createRecordingJob(scopedRecording);
@@ -164,6 +166,41 @@ test("recording job bulk stop route uses scoped recording context for updates", 
       status: "queued",
     },
   ]);
+});
+
+test("G65: bulk stop does not downgrade a recording a concurrent upload secured", async () => {
+  const auditStore = createAuditStore("");
+  const scoped = recording({
+    id: `rec_bulk_stop_secured_${randomUUID()}`,
+    name: "Secured Recording",
+    status: "recording",
+  });
+  // Between the scoped snapshot and the stop, a cache upload secured the recording.
+  const secured = recording({
+    cached: true,
+    id: scoped.id,
+    name: "Secured Recording",
+    status: "cached",
+  });
+  const recordingStore = memoryRecordingStore([secured]);
+  const job = await createRecordingJob(scoped);
+  const app = recordingJobApp({
+    auditStore,
+    recordingStore,
+    scopedRecordingSnapshots: [scoped],
+  });
+
+  const response = await app.request("/api/v1/recording-jobs/bulk-stop", {
+    body: JSON.stringify({ jobIds: [job.id] }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const updated = await recordingStore.find(scoped.id);
+
+  // Pre-fix the blind write forced "completed" over the secured "cached"; the CAS
+  // now only transitions from a still-active status.
+  assert.equal(response.status, 200);
+  assert.equal(updated?.status, "cached");
 });
 
 function recordingJobApp({
@@ -246,6 +283,18 @@ function memoryRecordingStore(recordings: RecordingSummary[]): RecordingStore {
       } else {
         recordings.unshift(recording);
       }
+    },
+    async transition(recording, allowedFrom) {
+      const index = recordings.findIndex((candidate) => candidate.id === recording.id);
+      const current = recordings[index];
+
+      if (!current || !allowedFrom.includes(current.status)) {
+        return undefined;
+      }
+
+      recordings[index] = recording;
+
+      return recording;
     },
   };
 }
