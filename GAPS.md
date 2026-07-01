@@ -15,7 +15,7 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
-G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37 (25 confirmed findings); G26 mostly-fixed via G25.
+G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40 (26 confirmed findings); G26 mostly-fixed via G25.
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -326,6 +326,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 2 | `8a11b629` | adversary on G4/G24/G25 + fresh sweep (live-listen, node-lifecycle, metrics, scheduler) | 3 / 1 / 3 (G4-1, G27, G28; G29; G30, G4-2, G24-1) | **G4-1** (fixed) | green | **no** | 0 |
 | 3 | `8a11b629` | web console + Rust agent internals | 3 / 0 / 2 (G31, G32, G34; G33, G35) | G31, G32, G34 (fixed) | green | **no** | 0 |
 | 4 | `8a11b629` | infra (ansible/db/deploy/scripts) + broad residual re-sweep | 2 / 1 / 2 (G36, G37; G38; G39, +1) | G36, G37 (fixed) | green | **no** | 0 |
+| 5 | `8a11b629` | adversary on newest fixes + 2nd broad core re-sweep | 1 / 0 / 2 (G40; G41, G42) | G40 (fixed) | green | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -538,3 +539,37 @@ to a local user during a run; no `no_log:` in the ansible tree. Low severity (de
 container, single-use short-lived bootstrap token, rotating controller tokens). **Fix:** pass
 secret extra-vars via `--extra-vars @file` (0600) / env / stdin; add `no_log: true` on
 key/token tasks.
+
+
+---
+
+## Run 5 findings (adversary on newest fixes + 2nd broad re-sweep)
+
+The adversary re-verified the five newest fixes (G31/G32/G34/G36/G37) — **no regressions**
+(ran the runner auth test 7/7, an SMB-traversal harness, Python auth semantics; confirmed no
+web refetch loop, no bootstrap double-wipe, guard removes only intermediates). The 2nd broad
+core re-sweep confirmed convergence except one contained finding.
+
+### G40 — Upload-queue retry route missing server-side status guard · `FIXED`
+`apps/api/src/recording-upload-queue-routes.ts`. `POST /upload-queue/:id/retry` checked only
+existence + visibility; the `retryableUploadQueueStatuses` set was enforced only in the UI
+action-state layer. A `recording:control` operator could POST retry on a `succeeded` item →
+`retryUploadQueueItem` reset it → the re-attempt read the released cache → `cache_path_missing`
+→ the recording was demoted `uploaded`→`partial` with a spurious failure event. The sibling
+`retryRecordingJob` already guards server-side — this was an inconsistency and a
+"UI visibility ≠ API enforcement" violation. **Fix:** reject non-retryable statuses with 409
+server-side. **Test:** retry on a `succeeded` item → 409, item stays `succeeded`. (Amplified by
+G24's unconditional reset; both now correct.)
+
+### G41 — `always_on` schedules never re-arm after the job terminates · `CATALOGUED (SUSPECTED, likely by-design)`
+`schedule-engine.ts:208-210,244-246`. `always_on` sets `nextRunAt = undefined` after the first
+run and nothing re-arms it when the continuous recording's job ends; also its channel-conflict
+claim window is only `RAKKR_AGENT_CAPTURE_SECONDS` wide. Consistent with "one long continuous
+recording" intent — flagged only in case `always_on` is meant to auto-restart on job end.
+
+### G42 — Recording read-modify-write `save` is last-write-wins under concurrency · `CATALOGUED (SUSPECTED, low)`
+`health-sync.ts:15-31`, `reconcileRecordingUpload`, `markRecordingCachedFromChunks` each do a
+full-row read-modify-write `save`; concurrent requests on the same recording could resurrect a
+just-cleared `cachePath` or revert `uploaded`→`cached` (Postgres upsert is last-write-wins). The
+runner calls these sequentially today, so it's a latent smell, not a demonstrated defect. Fix
+would mirror G5's atomic conditional write for recording status/cache fields.
