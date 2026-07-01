@@ -986,6 +986,16 @@ green; main current.
   key (concurrent enqueue can double-insert); 16 stores each open a 3-conn pool
   (~48 conns/process) — a capacity concern at replicaCount > 2.
 
+### Post-Run-11: G65 fixed + recording-status CAS landed (`183cc2cb`)
+Added `RecordingStore.transition(recording, allowedFrom)` — the recording-level
+compare-and-set analog of the job store — and used it to close **G65** (stop
+routes force `completed` only from an active status; a concurrent secure isn't
+downgraded). This resolves the scoped-context tension (persist the scoped object,
+gate on the canonical status). The re-read stopgaps (G54/G55/G63/G64) still stand
+and could be upgraded to this CAS to fully close their sub-tick window — a safe
+follow-up refinement, not a new-finding risk (all recording-status *writers* are
+now guarded).
+
 ### Still open (tracked)
 - **Recording-status CAS** (systemic) - still the top item; G54/G55/G63/G64 use
   per-writer re-reads, G65 is blocked on it, and health-sync's field write remains.
