@@ -33,6 +33,7 @@ const {
   listUploadQueueItems,
   retryUploadQueueItem,
   startUploadQueueItem,
+  succeedUploadQueueItem,
 } = await import("../src/upload-queue.js");
 
 // Drive an enqueued item to a genuine terminal `failed` state: start() consumes
@@ -560,6 +561,32 @@ test("operator retry revives a terminally-failed upload item so the runner re-at
     due.some((entry) => entry.id === item.id),
     "the retried item must be due for the runner",
   );
+});
+
+test("retry route rejects a non-retryable (succeeded) item server-side", async () => {
+  const auditStore = createAuditStore("");
+  const rec = recording({ id: "rec_queue_retry_guard" });
+  const item = await enqueueRecordingUpload(rec, { provider: "stub", target: "stub://guard" });
+  await startUploadQueueItem(item.id);
+  await succeedUploadQueueItem(item.id);
+
+  const app = recordingUploadQueueApp({
+    auditStore,
+    permissionCalls: [],
+    recordingStore: memoryRecordingStore([rec]),
+    visibleRecordingIds: [rec.id],
+  });
+
+  const response = await app.request(`/api/v1/upload-queue/${item.id}/retry`, { method: "POST" });
+  const stored = (await listUploadQueueItems()).find((entry) => entry.id === item.id);
+  const [event] = await auditStore.list({ action: "recordings.upload_queue.retry.failed" });
+
+  // Pre-fix: the route reset a succeeded item to retrying (UI-only guard),
+  // which could demote an uploaded recording to partial. It must be rejected
+  // server-side, leaving the item succeeded.
+  assert.equal(response.status, 409);
+  assert.equal(stored?.status, "succeeded");
+  assert.equal(event?.reason, "upload_queue_item_not_retryable");
 });
 
 function recordingUploadQueueApp({

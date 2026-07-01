@@ -431,6 +431,23 @@ export function registerRecordingUploadQueueRoutes({
         return c.json({ error: "Upload queue item not found" }, 404);
       }
 
+      // Enforce the retryable-status contract server-side (the UI's
+      // retryable-action state is not a substitute). Retrying a succeeded item
+      // would reset it and, if its cache was released, demote the recording
+      // uploaded -> partial with a spurious failure. Mirrors retryRecordingJob.
+      if (!retryableUploadQueueStatuses.has(item.status)) {
+        await recordUploadQueueFailure(c, {
+          action: "recordings.upload_queue.retry.failed",
+          currentAuth,
+          itemId,
+          reason: "upload_queue_item_not_retryable",
+          recordAuditEvent,
+          recordingId: item.recordingId,
+        });
+
+        return c.json({ error: "Upload queue item is not retryable" }, 409);
+      }
+
       const retried = await retryUploadQueueItem(item.id);
 
       if (!retried) {
