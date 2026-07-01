@@ -78,6 +78,51 @@ test("recording metadata update saves and clears operator notes with audit snaps
   assert.equal((events[0]?.after as { notes?: string } | undefined)?.notes, undefined);
 });
 
+test("G79: metadata edit does not revert a recording secured by a concurrent upload", async () => {
+  const auditStore = createAuditStore("");
+  // The store holds the recording already secured (cached) by a concurrent
+  // upload; the scoped snapshot is the pre-secure view (still `recording`).
+  const recordingStore = memoryRecordingStore([
+    recording({
+      cached: true,
+      cachePath: "scheduled/rec_meta_race.mp3",
+      checksum: "sha256:secured",
+      id: "rec_meta_race",
+      name: "Original",
+      status: "cached",
+    }),
+  ]);
+  const stale = recording({ id: "rec_meta_race", name: "Original", status: "recording" });
+  const app = new Hono<AppBindings>();
+
+  registerRecordingRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser() }),
+    currentUser,
+    nodeStore: {},
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    requirePermission: requirePermission([]),
+    scopedNodes: async () => [],
+    scopedRecordings: async () => [stale],
+    settingsStore: {},
+  });
+
+  const response = await app.request("/api/v1/recordings/rec_meta_race/metadata", {
+    body: JSON.stringify({ name: "Renamed" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const stored = await recordingStore.find("rec_meta_race");
+
+  // Pre-fix the stale snapshot's status/cache were written back, reverting the
+  // secured recording. Now the metadata applies and status/cache are preserved.
+  assert.equal(response.status, 200);
+  assert.equal(stored?.name, "Renamed");
+  assert.equal(stored?.status, "cached");
+  assert.equal(stored?.cachePath, "scheduled/rec_meta_race.mp3");
+});
+
 test("recording metadata update saves and clears transcript snippets with audit snapshots", async () => {
   const auditStore = createAuditStore("");
   const permissionCalls: PermissionCall[] = [];

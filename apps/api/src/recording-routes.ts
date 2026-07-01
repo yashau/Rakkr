@@ -43,16 +43,8 @@ import { loadRecordingFile, recordingFileName, recordingHasCachedFile } from "./
 import { deleteRecording, deleteRecordings } from "./recording-delete.js";
 import { registerRecordingReadRoutes } from "./recording-read-routes.js";
 import { createRecordingRouteAudit } from "./recording-route-audit.js";
-import {
-  applyRecordingBulkMetadataUpdate,
-  applyRecordingMetadataUpdate,
-  bulkMetadataFields,
-  recordingBulkMetadataUpdateSchema,
-  recordingMetadataSnapshot,
-  recordingMetadataUpdateSchema,
-  uniqueRecordingIds,
-  uniqueTags,
-} from "./recording-metadata.js";
+import { uniqueRecordingIds, uniqueTags } from "./recording-metadata.js";
+import { registerRecordingMetadataRoutes } from "./recording-metadata-routes.js";
 import { registerRecordingUploadQueueRoutes } from "./recording-upload-queue-routes.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
 import type { RecordingStore } from "./recording-store.js";
@@ -299,6 +291,16 @@ export function registerRecordingRoutes({
     uploadDestinationStore,
   });
 
+  registerRecordingMetadataRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    recordAuditEvent,
+    recordingStore,
+    requirePermission,
+    scopedRecordings,
+  });
+
   app.post(
     "/api/v1/recordings/:recordingId/playback",
     requirePermission("recording:playback", "recordings.playback.start", (c) => ({
@@ -443,73 +445,6 @@ export function registerRecordingRoutes({
       serveRecordingFile(c, c.req.param("recordingId"), "attachment", "recording:download"),
   );
 
-  app.patch(
-    "/api/v1/recordings/bulk-metadata",
-    requirePermission("recording:edit", "recordings.metadata.bulk_update", () => ({
-      id: "recording_collection",
-      type: "recording_collection",
-    })),
-    async (c) => {
-      const body = recordingBulkMetadataUpdateSchema.safeParse(
-        await c.req.json().catch(() => ({})),
-      );
-
-      if (!body.success) {
-        await recordBulkMetadataFailure(c, "invalid_request");
-        return c.json({ error: "Invalid recording bulk metadata", issues: body.error.issues }, 400);
-      }
-
-      const recordingIds = uniqueRecordingIds(body.data.recordingIds);
-      const visibleRecordingMap = new Map(
-        (await scopedRecordings(currentUser(c))).map((recording) => [recording.id, recording]),
-      );
-      const hiddenIds = recordingIds.filter((recordingId) => !visibleRecordingMap.has(recordingId));
-
-      if (hiddenIds.length > 0) {
-        await recordBulkMetadataFailure(c, "recording_not_visible", { hiddenIds, recordingIds });
-        return c.json({ error: "One or more recordings are not visible" }, 404);
-      }
-
-      const updates: RecordingSummary[] = [];
-      const before = [];
-      const after = [];
-
-      for (const recordingId of recordingIds) {
-        const recording = visibleRecordingMap.get(recordingId)!;
-
-        const updated = applyRecordingBulkMetadataUpdate(recording, body.data);
-
-        before.push({ id: recording.id, ...recordingMetadataSnapshot(recording) });
-        after.push({ id: updated.id, ...recordingMetadataSnapshot(updated) });
-        await recordingStore.save(updated);
-        updates.push(updated);
-      }
-
-      await recordAuditEvent(c, {
-        action: "recordings.metadata.bulk_update.succeeded",
-        after: { recordings: after },
-        auth: currentAuth(c),
-        before: { recordings: before },
-        correlationIds: Object.fromEntries(
-          recordingIds.map((recordingId, index) => [`recordingId${index + 1}`, recordingId]),
-        ),
-        details: {
-          fields: bulkMetadataFields(body.data),
-          requestedCount: body.data.recordingIds.length,
-          updatedCount: updates.length,
-        },
-        outcome: "succeeded",
-        permission: "recording:edit",
-        target: {
-          id: "recording_collection",
-          type: "recording_collection",
-        },
-      });
-
-      return c.json({ data: updates, meta: { updatedCount: updates.length } });
-    },
-  );
-
   app.post(
     "/api/v1/recordings/bulk-delete",
     requirePermission("recording:delete", "recordings.bulk_delete", () => ({
@@ -524,76 +459,6 @@ export function registerRecordingRoutes({
         recordingStore,
         scopedRecordings,
       }),
-  );
-
-  app.patch(
-    "/api/v1/recordings/:recordingId/metadata",
-    requirePermission("recording:edit", "recordings.metadata.update", (c) => ({
-      id: c.req.param("recordingId"),
-      type: "recording",
-    })),
-    async (c) => {
-      const recordingId = c.req.param("recordingId");
-      const body = recordingMetadataUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
-
-      if (!body.success) {
-        await recordAuditEvent(c, {
-          action: "recordings.metadata.update.failed",
-          auth: currentAuth(c),
-          outcome: "failed",
-          permission: "recording:edit",
-          reason: "invalid_request",
-          target: {
-            id: recordingId,
-            type: "recording",
-          },
-        });
-
-        return c.json({ error: "Invalid recording metadata", issues: body.error.issues }, 400);
-      }
-
-      const recording = await findScopedRecording(c, recordingId);
-
-      if (!recording) {
-        await recordAuditEvent(c, {
-          action: "recordings.metadata.update.failed",
-          auth: currentAuth(c),
-          outcome: "failed",
-          permission: "recording:edit",
-          reason: "recording_not_found",
-          target: {
-            id: recordingId,
-            type: "recording",
-          },
-        });
-
-        return c.json({ error: "Recording not found" }, 404);
-      }
-
-      const before = recordingMetadataSnapshot(recording);
-      const updated = applyRecordingMetadataUpdate(recording, body.data);
-
-      await recordingStore.save(updated);
-
-      await recordAuditEvent(c, {
-        action: "recordings.metadata.update.succeeded",
-        after: recordingMetadataSnapshot(updated),
-        auth: currentAuth(c),
-        before,
-        details: {
-          fields: Object.keys(body.data),
-        },
-        outcome: "succeeded",
-        permission: "recording:edit",
-        target: {
-          id: updated.id,
-          name: updated.name,
-          type: "recording",
-        },
-      });
-
-      return c.json({ data: updated });
-    },
   );
 
   app.delete(
@@ -937,25 +802,6 @@ export function registerRecordingRoutes({
         id: nodeId,
         name: nodeName,
         type: "node",
-      },
-    });
-  }
-
-  async function recordBulkMetadataFailure(
-    c: Context<AppBindings>,
-    reason: string,
-    details: Record<string, unknown> = {},
-  ) {
-    await recordAuditEvent(c, {
-      action: "recordings.metadata.bulk_update.failed",
-      auth: currentAuth(c),
-      details,
-      outcome: reason === "recording_not_visible" ? "denied" : "failed",
-      permission: "recording:edit",
-      reason,
-      target: {
-        id: "recording_collection",
-        type: "recording_collection",
       },
     });
   }
