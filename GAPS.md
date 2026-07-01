@@ -15,7 +15,7 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
-G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43, G45, G46, G47, G48, G49, G50, G51, G52, G53 (36 confirmed findings landed, G43 controller-side); G26 mostly-fixed via G25.
+G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43, G45-G58 incl. G47b/G48b/G50b/G51b (45 confirmed findings landed, G43 controller-side); G26 mostly-fixed via G25.
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -330,6 +330,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 6 | `8a11b629` | deep RBAC/IDOR + state-machine/concurrency | 1 / 1 / 0 (G43; G44) | — (both need reviewed slices) | green | **no** | 0 |
 | 7 | `8a11b629` | adversary on G43 + broad sweep | 2 / 0 / 0 (G45, G46) | G45, G46 (fixed) | green | **no** | 0 |
 | 8 | `8a11b629` | trust-boundary + Zod-bounds + broad adversary (3 hunters) | 7 confirmed (G47-G53) | **4 fixed** (G47, G48, G49, G51); G50/G52/G53 remain | green (API 373/0) | **no** | 0 |
+| 9 | `8a11b629` | adversary-on-fixes + lifecycle state-machine + fresh-sweep (3 hunters) | 9 confirmed (G47b, G54, G55, G56, G57, G48b, G58, G50b, G51b) | **all 9 fixed** | green (API 385/0) | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -801,3 +802,79 @@ suite (150 pass). Later additions this session:
   free-text (`x-rakkr-reason`/health details), WAV `wavData` guard tautology
   (already caught by the route `.catch()`). To be re-surfaced by a later round if
   a reachable-harm repro exists.
+
+
+---
+
+## Run 9 findings (adversary-on-fixes + lifecycle state-machine + fresh-sweep; 3 hunters)
+
+Run 9 targeted this session's own work plus the recording-status/upload subsystem.
+The adversary pass caught that **G47 was incomplete** and that **G51 introduced a
+new asymmetry** (the blind-save reaper could revert a CAS-completed job); the
+lifecycle hunter surfaced the dominant structural issue — **recording status has
+no compare-and-set**, so background runners blind-overwrite it from stale
+snapshots. All nine confirmed findings fixed, each with a red->green test; full
+API suite 387 (385 pass / 0 fail / 2 DB-skip), full-repo TS typecheck, and
+oxfmt/oxlint/check:loc green; main current at `8a11b629`. Broad areas
+re-verified clean: bootstrap tokens, runner-token auth, secret crypto, inventory
+reconcile, RBAC, OIDC, audit scope, listen/metrics; G49/G50/G52/G53 re-verified
+SOUND.
+
+### G47b - G47 guard only covered `failed`, not `partial`/`completed`; no-jobId path bypassed it - `FIXED` (`a1c5d411`) - Medium
+`agent-job-recording-scope.ts`. A terminal job leaves the recording `partial`
+(failed job + secured chunks) or `completed` (cancelled job); a headerless
+manual-attach upload took the no-jobId fallback, which excluded terminal jobs and
+returned `{ok:true}`, so it resurrected the recording to `cached`. Now the scope
+check 409s when the recording's own jobs are all terminal (live retry + genuine
+no-job attach still allowed).
+
+### G54 - Stale upload-reconcile overwrites a retried recording's fresh state - `FIXED` (`36f50457`) - High
+`upload-runner.ts`. `reconcileRecordingUpload` blind-saved status from a
+start-of-pass snapshot; a concurrent retry (reset to `recording`) or terminal
+decision was overwritten (and cache deleted) by a stale reconcile. Re-read before
+promoting; skip unless still `cached`/`partial`/`uploaded`.
+
+### G55 - Chunked reconcile promotes a terminal recording - `FIXED` (`36f50457`) - High
+`upload-runner.ts`. Same missing guard on `reconcileChunkedRecordingUpload`'s
+finalize write; same re-read guard applied.
+
+### G56 - Retry didn't reset supplementary renditions or sweep stale chunks - `FIXED` (`91d80369`) - Medium
+`recording-job-routes.ts`. `recordingForRetriedJob` left `rawCachePath`/
+`enhancedCachePath` (UI served the failed attempt's audio) and retry never cleared
+chunk rows (stale rows/totals mis-finalized the retry as `partial`). Clear the
+rendition paths and sweep chunk files+rows in both retry handlers.
+
+### G57 - Distinct upload policies sharing one destination collapse - `FIXED` (`514a4e22`) - Medium
+`upload-queue.ts`. The active-status dedup branch matched on destination+chunk
+only, unlike the succeeded branch, so a second policy targeting the same
+destination with a different subfolder was silently dropped. Match pathOverride +
+uploadPolicyId in the active branch too.
+
+### G48b - Corrupt persisted timezone starved the due-run pass - `FIXED` (`abcf4b19`) - Low-Medium
+`schedule-runner.ts`. `scheduleOccurrenceIsSkipped` runs before the per-schedule
+run try/catch and throws in the engine's Intl call on a bad zone, aborting the
+whole pass. Guard the occurrence check so one schedule defers itself. (Completes
+G48, which closed the create boundary but not the persisted-load boundary.)
+
+### G58 - S3 reported `provider_validated` for custom endpoints - `FIXED` (`1760e38b`) - Low
+`upload-executor.ts` + shared enum. Only real AWS S3 validates the trailing
+ChecksumSHA256; custom S3-compatible endpoints may ignore it. Added
+`provider_declared` and use it whenever a custom `s3.endpoint` is configured.
+
+### G50b - Metrics under-reported chunked-recording cache size - `FIXED` (`2b79dcd8`) - Low
+`metrics-routes.ts`. `recordingCacheByteMap` sized only the recording-level file,
+so chunked recordings reported 0 bytes. Sum chunk footprints too.
+
+### G51b - Lease reaper blind-save clobbered a CAS-completed job - `FIXED` (`9761fa51`) - Medium
+`recording-jobs.ts`. After G51 made complete/fail/cancel atomic, the reaper's
+blind save could revert a freshly-completed job to `failed`. Route the reaper
+through `transition()` (CAS on source status) and re-list for post-expiry truth.
+
+### Residual (documented)
+- **G51b-race1** (Low, pre-existing) - the heartbeat-renewal TOCTOU: a lease
+  renewed between the reaper's `list()` and its write. Needs a
+  `leaseExpiresAt`-conditioned store update; narrow (agent must heartbeat exactly
+  at lease expiry). Not shipped as untested hot-path concurrency code.
+- **Recording-status CAS** - the deeper structural fix behind G54/G55: recording
+  status has no compare-and-set, so the re-read guards narrow rather than fully
+  close the sub-tick window. A recording-store CAS is the eventual fix.
