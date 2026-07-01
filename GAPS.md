@@ -860,6 +860,11 @@ All confirmed findings fixed red->green; gates + all baseline verifiers green.
   destination+subfolder wrote the same object key: the second silently overwrote
   the first while both reconciled to `uploaded` (false redundancy). Dedupe the
   fan-out by resolved target.
+- **R13-8** (`8d33ef54`, Med) - proactive close of the last find+save status
+  writer: `syncRecordingHealth` wrote healthStatus via a full-row save, reverting
+  a concurrent secure (same TOCTOU as R13-2). Now commits through the status CAS.
+  **All recording-status writers are now CAS-guarded** (stop=G65, metadata=R13-2,
+  health-sync=R13-8); G54/G55/G63/G64 re-read stopgaps remain as safe backstops.
 
 ### Also fixed
 - **Storage verifier drift** (`02cd43aa`) - `mise run storage:check` had been red
@@ -882,9 +887,8 @@ All confirmed findings fixed red->green; gates + all baseline verifiers green.
   delete has no referential-integrity check vs referencing policies.
 
 ### Still open (tracked)
-- **Recording-status CAS** (systemic) - G54/G55/G63/G64 use per-writer re-reads;
-  **health-sync's field write still uses find+save** (same TOCTOU shape R13-2
-  fixed for metadata) - a safe follow-up to route through the CAS. The stop
-  (G65) and metadata (G79/R13-2) writers are now CAS-guarded.
+- **Recording-status CAS** (systemic) - RESOLVED: all writers (stop=G65,
+  metadata=R13-2, health-sync=R13-8) now use the `transition` CAS; G54/G55/G63/G64
+  keep their re-read stopgaps as safe backstops (optional CAS upgrade, not a bug).
 - **G62 / G59-residual / Rust-C2** (Rust) - decoupled chunked-finalize signal;
   needs Linux integration testing. **G61** - per-job agent state files (config-gated).
