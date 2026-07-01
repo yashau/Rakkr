@@ -118,6 +118,7 @@ function ControllerSettingsCard({
     onSuccess: ({ data }) => {
       setDraft(data.controllerName);
       void queryClient.invalidateQueries({ queryKey: ["controller-settings"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
 

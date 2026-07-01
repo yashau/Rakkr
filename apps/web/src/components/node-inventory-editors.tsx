@@ -80,6 +80,7 @@ export function NodeIdentityEditor({
       setDraft(nodeIdentityDraft(data));
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
       void queryClient.invalidateQueries({ queryKey: ["status"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
 
@@ -203,6 +204,7 @@ export function NodeAudioDefaultsEditor({
     onSuccess: ({ data }) => {
       setDraft(nodeAudioDefaultsDraft(data.audioDefaults));
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
 
@@ -349,6 +351,7 @@ export function NodeInterfaceEditor({
       }
 
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
 

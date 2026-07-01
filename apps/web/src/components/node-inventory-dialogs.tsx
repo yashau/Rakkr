@@ -103,6 +103,7 @@ export function EnrollNodeDialog() {
         description: "Copy the one-time token before closing this dialog.",
       });
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
 

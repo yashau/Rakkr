@@ -147,6 +147,7 @@ export function NodesPage() {
         description: "A fresh one-time node token has been issued.",
       });
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
   const healthLifecycleMutation = useMutation({
