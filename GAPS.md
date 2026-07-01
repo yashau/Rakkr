@@ -15,7 +15,7 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
-G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43 (27 confirmed findings, G43 controller-side); G26 mostly-fixed via G25.
+G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43, G45, G46 (29 confirmed findings, G43 controller-side); G26 mostly-fixed via G25.
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -328,6 +328,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 4 | `8a11b629` | infra (ansible/db/deploy/scripts) + broad residual re-sweep | 2 / 1 / 2 (G36, G37; G38; G39, +1) | G36, G37 (fixed) | green | **no** | 0 |
 | 5 | `8a11b629` | adversary on newest fixes + 2nd broad core re-sweep | 1 / 0 / 2 (G40; G41, G42) | G40 (fixed) | green | **no** | 0 |
 | 6 | `8a11b629` | deep RBAC/IDOR + state-machine/concurrency | 1 / 1 / 0 (G43; G44) | — (both need reviewed slices) | green | **no** | 0 |
+| 7 | `8a11b629` | adversary on G43 + broad sweep | 2 / 0 / 0 (G45, G46) | G45, G46 (fixed) | green | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -618,3 +619,29 @@ collection route filters (recording/job/upload-queue confirmed; schedule/node/ch
 verify), plus a test wiring the REAL middleware to a collection route for a scoped operator
 (the suite only ever stubs `requirePermission`). Weigh vs the audit-label tradeoff of the
 alternative (pass `{type:"controller"}`).
+
+
+---
+
+## Run 7 findings (adversary on G43 + broad sweep)
+
+The G43 controller finalization change was re-verified **sound** — no premature finalize (gated on
+`allSettled`), the `recordingJob` lookup degrades via the runner-tick `.catch` (not a crash), no
+regression to the all-present path or the G1b per-chunk gate; full API suite 366/0. The broad
+sweep found two narrow trust-boundary input-validation edges (agent-supplied data) — consistent
+with a strongly-converged core ("the easy correctness bugs are gone").
+
+### G45 — Orphan chunk upload persists an empty `jobId`, crashing the chunk store on read · `FIXED`
+`apps/api/src/agent-cache-uploads.ts`. A chunk cache-file upload with no job header for a recording
+with no job row persisted `jobId:""`, violating the read schema (`jobId.min(1)`) → ZodError on the
+next chunk-store load (JSON store crash on boot / Postgres reconcile break). Write never validated;
+read always did. **Fix:** reject the orphaned upload with 409 before storing. **Test:** jobless
+chunk upload → 409, no row persisted. **Severity: Medium.**
+
+### G46 — Unbounded meter `levels` array wedges the watchdog · `FIXED`
+`packages/shared/src/index.ts`. An authenticated node could POST a meter frame with a huge `levels`
+array; the watchdog's `Math.max(...frame.levels)` spread then threw `RangeError`, and since the
+poison frame stayed `latest`, every subsequent watchdog pass for that node re-threw — the
+fail-closed signal-loss watchdog silently disabled for that node via one request. **Fix:**
+`meterFrameSchema.levels.max(512)` (X32 = 32 channels). **Test:** 512 ok / 513 rejected.
+**Severity: Medium.**
