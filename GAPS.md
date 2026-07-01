@@ -15,7 +15,7 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
-G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43, G45, G46, G47, G48, G49, G51 (33 confirmed findings landed, G43 controller-side); G26 mostly-fixed via G25.
+G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37, G40, G43, G45, G46, G47, G48, G49, G50, G51, G52, G53 (36 confirmed findings landed, G43 controller-side); G26 mostly-fixed via G25.
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -700,7 +700,7 @@ success (`cacheDeleted:false`). Fix sketch: enumerate
 `listRecordingChunksForRecording` + `deleteRecordingChunkCacheFile` per chunk and
 delete chunk rows (or add cascade + a chunk-file sweep); mirror in the bulk path.
 
-### G50 - Age/bytes controller-cache retention never applies to chunked recordings - `CATALOGUED` (hunter-reported, verified) - Medium
+### G50 - Age/bytes controller-cache retention never applies to chunked recordings - `FIXED` (`5312d798`) - Medium
 `retention-runner.ts:166-208` gates `retentionCandidates` on
 `recordingHasCachedFile`, false for chunked recordings (same root as G49) -> a
 `maxAgeDays`/`maxBytes` policy is a silent no-op for every chunked recording;
@@ -720,7 +720,7 @@ conditional update (extend the CAS `claim()` pattern; 0 rows = no-op), and have
 the reaper expire via one conditional `RETURNING` statement, firing listeners
 only for rows it actually changed. Fixing G51 subsumes G47.
 
-### G52 - Enhanced rendition file uploaded but never deleted on the agent - `CATALOGUED` (hunter-reported) - Medium-High
+### G52 - Enhanced rendition file uploaded but never deleted on the agent - `FIXED` (`22ab533e`) - Medium-High
 `recording_job_upload.rs:234-273` uploads `enhanced_path` (the primary rendition)
 but never removes it; `recording_job_chunked.rs:487-522`
 `delete_chunk_working_files` omits the enhanced path; `enhanced_render.rs`
@@ -730,7 +730,7 @@ file per chunk leaks forever on the recorder node, defeating `delete_after_uploa
 for the primary rendition. Fix sketch: delete `enhanced_path` after upload;
 include it in `delete_chunk_working_files` and the single-file retention manifest.
 
-### G53 - DST spring-forward: nonexistent local start time resolves to an unintended instant - `CATALOGUED` (hunter-reported) - Low-Medium
+### G53 - DST spring-forward: nonexistent local start time resolves to an unintended instant - `FIXED` (`72ae464e`) - Low-Medium
 `schedule-engine.ts:571-596` (`localDateTimeToUtc` fixed-point) has no post-loop
 validation that the resolved instant reproduces the requested `hour:minute`; on
 ~2 DST-transition days/year an early-morning occurrence fires at a shifted
@@ -779,13 +779,25 @@ leaseExpiresAt < now`). Deferred: the reaper is called on nearly every job op an
 returns a snapshot callers depend on, so it needs a careful, separately-tested
 change. Narrow window (agent silent enough to expire yet still heartbeating).
 
-### Remaining Run 8 queue (next session)
-- **G50** (Medium) - retention age/bytes skips chunked recordings. Destructive
-  path: needs chunk-aware eligibility + size (sum chunk files) + deletion, and a
-  decision on chunk-row cache-state after reclaim (null cachePaths vs delete
-  rows). Deferred to a careful, well-tested slice rather than a tail-of-turn edit.
-- **G52** (Med-High, Rust) - agent never deletes the enhanced rendition file;
-  needs `delete_chunk_working_files` + retention-manifest changes + cargo/clippy/miri.
-- **G53** (Low-Med) - DST spring-forward local-time resolution.
-- Lower notes: chunk `?chunkTotal=` early-finalize (folds into a completeRecordingJob
-  guard), unbounded node free-text, WAV `wavData` guard tautology.
+### Run 8 confirmed findings: all fixed
+All seven confirmed Run 8 findings (G47-G53) are fixed with red->green tests,
+full API suite green (378 pass / 0 fail / 2 DB-skip), full-repo TS typecheck,
+oxfmt/oxlint/check:loc, and (for G52) cargo fmt/check/clippy + full Rust unit
+suite (150 pass). Later additions this session:
+- **G50** (`5312d798`) - retention now sizes/reclaims chunked-recording cache
+  (sum chunk files, sweep files, clear chunk cache paths).
+- **G52** (`22ab533e`) - agent deletes the enhanced rendition after upload.
+- **G53** (`72ae464e`) - DST spring-forward gap start times resolve forward
+  deterministically (two-offset reconciliation replaces the oscillating loop).
+
+### Deferred (specified, not yet done)
+- **G51b** (Low-Med) - lease-reaper `list()`-then-save TOCTOU. Correct fix needs
+  optimistic concurrency on `leaseExpiresAt` (`... WHERE status='running' AND
+  leaseExpiresAt = <snapshot>`) plus reworking the reaper's return to reflect
+  post-CAS truth (re-list). The reaper runs on nearly every job op, so this is a
+  hot-path change held for its own carefully-tested slice. Narrow window.
+- Lower-confidence notes (hunter marked "not counted as findings", unverified):
+  chunk `?chunkTotal=` early-finalize (own-recording only), unbounded node
+  free-text (`x-rakkr-reason`/health details), WAV `wavData` guard tautology
+  (already caught by the route `.catch()`). To be re-surfaced by a later round if
+  a reachable-harm repro exists.
