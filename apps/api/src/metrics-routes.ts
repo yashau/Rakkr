@@ -11,6 +11,7 @@ import type {
 
 import type { AuditStore } from "./audit-store.js";
 import { canReadAuditEvent } from "./audit-scope.js";
+import { isDatabaseUnavailableError } from "./database-unavailable.js";
 import type { AuthResult } from "./auth-service.js";
 import type { HealthEventStore } from "./health-store.js";
 import type {
@@ -56,22 +57,53 @@ export function registerMetricsRoutes(dependencies: MetricsRouteDependencies) {
     dependencies.requirePermission("metrics:read", "metrics.read"),
     async (c) => {
       const user = dependencies.currentUser(c);
-      const result = await controllerPrometheusMetrics(user, dependencies);
+      const contentType = "text/plain; version=0.0.4; charset=utf-8";
 
-      await dependencies.recordAuditEvent(c, {
-        action: "metrics.read.succeeded",
-        auth: { user },
-        details: result.details,
-        outcome: "succeeded",
-        permission: "metrics:read",
-        target: { type: "controller" },
-      });
+      try {
+        const result = await controllerPrometheusMetrics(user, dependencies);
 
-      return c.text(result.output, 200, {
-        "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
-      });
+        await dependencies.recordAuditEvent(c, {
+          action: "metrics.read.succeeded",
+          auth: { user },
+          details: result.details,
+          outcome: "succeeded",
+          permission: "metrics:read",
+          target: { type: "controller" },
+        });
+
+        return c.text(`${result.output}${databaseUnavailableGauge(false)}`, 200, {
+          "Content-Type": contentType,
+        });
+      } catch (error) {
+        if (!isDatabaseUnavailableError(error)) {
+          throw error;
+        }
+
+        // Degrade instead of 503: keep the scrape alive during a DB outage —
+        // that is exactly when the operator needs the signal — and expose the
+        // outage itself as a gauge.
+        await dependencies.recordAuditEvent(c, {
+          action: "metrics.read.succeeded",
+          auth: { user },
+          details: { databaseUnavailable: true },
+          outcome: "succeeded",
+          permission: "metrics:read",
+          target: { type: "controller" },
+        });
+
+        return c.text(databaseUnavailableGauge(true), 200, { "Content-Type": contentType });
+      }
     },
   );
+}
+
+function databaseUnavailableGauge(unavailable: boolean): string {
+  return [
+    "# HELP rakkr_database_unavailable Controller database reachability (1 = unavailable).",
+    "# TYPE rakkr_database_unavailable gauge",
+    `rakkr_database_unavailable ${unavailable ? 1 : 0}`,
+    "",
+  ].join("\n");
 }
 
 export async function scopedHealthEvents(

@@ -17,6 +17,7 @@ import type {
 import type { AppBindings, AuditTarget, RequirePermission } from "../src/http-types.js";
 import type { RecordAuditEvent } from "../src/http-types.js";
 import type { RecordingStore } from "../src/recording-store.js";
+import { DatabaseUnavailableError } from "../src/database-unavailable.js";
 
 const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-metrics-routes-"));
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
@@ -78,6 +79,50 @@ test("metrics audit totals respect resource scope", async () => {
   assert.match(output, /rakkr_audit_events_total\{action="metrics\.read"/);
   assert.match(output, /rakkr_audit_events_total\{action="recordings\.download\.succeeded"/);
   assert.doesNotMatch(output, /recordings\.delete\.succeeded/);
+  // Healthy scrape reports the database as available.
+  assert.match(output, /rakkr_database_unavailable 0/);
+});
+
+test("metrics degrade to 200 with a database_unavailable gauge when a store is down", async () => {
+  const auditStore = createAuditStore("");
+  const downRecordingStore: RecordingStore = {
+    async create() {},
+    async delete() {
+      return undefined;
+    },
+    async find() {
+      return undefined;
+    },
+    async list() {
+      throw new DatabaseUnavailableError("recordings unavailable");
+    },
+    async save() {},
+  };
+
+  const app = new Hono<AppBindings>();
+  registerMetricsRoutes({
+    app,
+    auditStore,
+    currentUser: () => user(["metrics:read"]),
+    hasResourceScope: async () => true,
+    healthEventStore: createHealthEventStore("", []),
+    listenMonitorStore: createListenMonitorStore(),
+    meterFrameStore: createMeterFrameStore(),
+    nodeStore: createNodeStore([]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: downRecordingStore,
+    requirePermission: allowPermission,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/metrics");
+  const output = await response.text();
+
+  // Pre-fix the thrown DatabaseUnavailableError reached the error boundary as a
+  // 503, losing the scrape exactly during an outage. Now it stays up and flags
+  // the outage as a gauge.
+  assert.equal(response.status, 200);
+  assert.match(output, /rakkr_database_unavailable 1/);
 });
 
 test("metrics audit totals respect health event resource scope", async () => {
