@@ -26,8 +26,22 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(routeRoot, "upload-queue.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
-const { enqueueRecordingUpload, listUploadQueueItems, retryUploadQueueItem } =
-  await import("../src/upload-queue.js");
+const {
+  enqueueRecordingUpload,
+  failUploadQueueItem,
+  listDueUploadQueueItems,
+  listUploadQueueItems,
+  retryUploadQueueItem,
+  startUploadQueueItem,
+} = await import("../src/upload-queue.js");
+
+// Drive an enqueued item to a genuine terminal `failed` state: start() consumes
+// an attempt, fail() marks it failed once the budget is exhausted (maxAttempts:1).
+async function exhaustToFailed(itemId: string, reason: string) {
+  await startUploadQueueItem(itemId);
+
+  return failUploadQueueItem(itemId, reason);
+}
 const { registerRecordingUploadQueueRoutes } =
   await import("../src/recording-upload-queue-routes.js");
 
@@ -341,7 +355,7 @@ test("upload queue routes use scoped recording context for reads and controls", 
     reason: "scoped_context_failed",
     target: "s3://rakkr-route-test/scoped-context",
   });
-  await retryUploadQueueItem(failed.id);
+  await exhaustToFailed(failed.id, "scoped_context_failed");
 
   const app = recordingUploadQueueApp({
     auditStore,
@@ -396,7 +410,7 @@ test("upload queue item action summary returns retry readiness", async () => {
     target: "stub://queued",
   });
 
-  await retryUploadQueueItem(failed.id);
+  await exhaustToFailed(failed.id, "terminal_failure");
 
   const app = recordingUploadQueueApp({
     auditStore,
@@ -448,8 +462,8 @@ test("upload queue item action summary reports permission and visibility blocker
     target: "s3://rakkr-route-test/hidden",
   });
 
-  await retryUploadQueueItem(visible.id);
-  await retryUploadQueueItem(hidden.id);
+  await exhaustToFailed(visible.id, "readonly_failed");
+  await exhaustToFailed(hidden.id, "hidden_failed");
 
   const app = recordingUploadQueueApp({
     auditStore,
@@ -521,6 +535,32 @@ interface UploadQueueActionsResponse {
     actions: Record<string, { enabled: boolean; href?: string; reason?: string }>;
   };
 }
+
+test("operator retry revives a terminally-failed upload item so the runner re-attempts it", async () => {
+  const rec = recording({ id: "rec_queue_retry_revive" });
+  const item = await enqueueRecordingUpload(rec, {
+    maxAttempts: 1,
+    provider: "s3",
+    reason: "revive_failed",
+    target: "s3://rakkr-route-test/revive",
+  });
+  const failed = await exhaustToFailed(item.id, "revive_failed");
+
+  assert.equal(failed?.status, "failed");
+
+  const retried = await retryUploadQueueItem(item.id);
+  const due = await listDueUploadQueueItems();
+
+  // Pre-fix: retry() incremented the already-maxed attemptCount, so the item
+  // stayed "failed" and the runner (dueStatuses = queued|retrying) never
+  // re-attempted it. Now it returns to "retrying" with a fresh budget, due now.
+  assert.equal(retried?.status, "retrying");
+  assert.equal(retried?.attemptCount, 0);
+  assert.ok(
+    due.some((entry) => entry.id === item.id),
+    "the retried item must be due for the runner",
+  );
+});
 
 function recordingUploadQueueApp({
   auditStore,

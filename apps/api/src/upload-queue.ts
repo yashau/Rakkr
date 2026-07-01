@@ -177,13 +177,17 @@ class JsonUploadQueueStore implements UploadQueueStore {
       return undefined;
     }
 
-    const nextAttempt = item.attemptCount + 1;
     const now = new Date().toISOString();
 
-    item.attemptCount = nextAttempt;
+    // Operator-initiated retry: give the item a fresh attempt budget so a
+    // terminally-`failed`/`cancelled` upload is genuinely re-attempted by the
+    // runner (`dueStatuses` includes `retrying`), due immediately. Previously
+    // this incremented an already-maxed `attemptCount`, so a failed item stayed
+    // failed and the retry action was a no-op.
+    item.attemptCount = 0;
     item.lastError = "provider_not_configured";
-    item.nextAttemptAt = retryAt(nextAttempt);
-    item.status = nextAttempt >= item.maxAttempts ? "failed" : "retrying";
+    item.nextAttemptAt = now;
+    item.status = "retrying";
     item.updatedAt = now;
     this.persist();
 
@@ -422,14 +426,15 @@ class PostgresUploadQueueStore implements UploadQueueStore {
         return undefined;
       }
 
-      const nextAttempt = item.attemptCount + 1;
       const now = new Date().toISOString();
+      // Operator retry resets the attempt budget so the runner re-attempts a
+      // terminally-failed item (see the JSON store for the rationale).
       const updated = uploadQueueItemSchema.parse({
         ...item,
-        attemptCount: nextAttempt,
+        attemptCount: 0,
         lastError: "provider_not_configured",
-        nextAttemptAt: retryAt(nextAttempt),
-        status: nextAttempt >= item.maxAttempts ? "failed" : "retrying",
+        nextAttemptAt: now,
+        status: "retrying",
         updatedAt: now,
       });
 
