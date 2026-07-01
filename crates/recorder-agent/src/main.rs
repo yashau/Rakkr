@@ -34,7 +34,7 @@ use anyhow::Context;
 use clap::Parser;
 use config::{AgentConfig, CaptureBackend, MeterBackend};
 use meter_command::MeterCaptureConfig;
-use meter_health::{MeterFailureKind, update_meter_health};
+use meter_health::{MeterFailureKind, MeterHealthState, update_meter_health};
 use serde_json::{Value, json};
 use telemetry::{
     MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample, synthetic_meter_frame,
@@ -154,11 +154,8 @@ async fn main() -> anyhow::Result<()> {
     let mut ticker = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
     let mut tick = 0_u64;
     let mut meter_capture_failure = None;
-    let mut meter_channel_correlation_active = false;
-    let mut meter_clipping_active = false;
+    let mut meter_health_state = MeterHealthState::default();
     let mut clock_skew_active = false;
-    let mut meter_flatline_active = false;
-    let mut meter_low_signal_active = false;
     let mut heartbeat_sync_failed = false;
     let mut monitor_sync_failed = false;
     let mut meter_sync_failed = false;
@@ -263,10 +260,7 @@ async fn main() -> anyhow::Result<()> {
                     &active_config,
                     token,
                     frame,
-                    &mut meter_channel_correlation_active,
-                    &mut meter_clipping_active,
-                    &mut meter_flatline_active,
-                    &mut meter_low_signal_active,
+                    &mut meter_health_state,
                 ).await?;
 
                 update_system_health(

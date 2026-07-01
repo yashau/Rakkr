@@ -14,8 +14,8 @@ UTC/DST core were checked and found **correct**. The gaps cluster where behaviou
 only be proven against real hardware/Postgres/time, exactly as the source-of-truth doc
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
-**Landed (each with a red→green test):** G1, G1b, G3, G5, G6, G7, G10, G12, G13, G19, G21.
-**Still open (Rust slice or architectural call):** G2, G4, G9, G11; coverage G14/G16.
+**Landed (each with a test):** G1, G1b, G2, G3, G5, G6, G7, G10, G11, G12, G13, G19, G21.
+**Still open:** G4 (architectural call), G9 (product decision); coverage G14/G16.
 **Suspected / by-design:** G17, G18, G20, G22, G23.
 Rebased onto `origin/main` (`844f6a8e`); **G1b is a fresh-on-main catch** — PR #14 reintroduced
 the G1 data-loss pattern in its new chunked-upload path, which this audit caught on rebase.
@@ -46,7 +46,15 @@ only source, identical to G1 but at the chunk level. The chunked reconciliation 
 `upload-runner.test.ts` → "keeps a chunk's cache when one destination fails (chunked
 recordings)" — verified red (ENOENT/data loss) against #14's gate, green after the fix.
 
-### G2 — Raw master permanently lost despite `keepRaw` when the supplementary raw upload fails · `CATALOGUED`
+### G2 — Raw master permanently lost despite `keepRaw` when the supplementary raw upload fails · `FIXED`
+**Fixed:** `upload_recording_renditions` no longer swallows a required raw-upload failure —
+it returns `Err`, which routes every caller down its existing safe path: the whole-recording
+job stays `upload_pending` (retention skipped, local raw preserved, retried), a capture-group
+secondary is not marked completed, and a chunk is preserved + retried (its `Ok`-only cache
+delete is skipped). The decision is extracted into a pure `resolve_rendition_upload(primary,
+raw_outcome)` so it is unit-tested without ffmpeg/HTTP. **Test:**
+`recording_job_upload::tests` (required-raw failure ⇒ Err; succeeded/not-attempted keep the
+primary Ok; primary failure dominates). Original analysis:
 `crates/recorder-agent/src/recording_job_upload.rs:264-292`, `controller.rs:615-624`,
 `recording_job_recovery.rs:484-532`, `recorder_cache_retention.rs:90-111`.
 With enhancement on, `keepRaw=true` (default), and recorder-cache retention
@@ -181,12 +189,15 @@ of upload state — including `partial` (failed-but-retryable destinations) and 
 non-terminal/failed-retryable queue item, independent of the flag. **Test:** a `partial`
 recording past its age limit is retained with the flag off.
 
-### G11 — Agent meter-health events flap on a single transient frame · `CATALOGUED`
-`crates/recorder-agent/src/meter_health.rs:68-255`. Edge-triggered on plain booleans with
-no debounce/grace — one noisy frame emits a warning+recovery pair, polluting the JSONL
-evidence stream the baseline promotes as deterministic. (Controller watchdog has the
-sustained math; agent evidence does not.) **Fix:** require N consecutive frames / small
-cumulative duration with hysteresis.
+### G11 — Agent meter-health events flap on a single transient frame · `FIXED`
+`crates/recorder-agent/src/meter_health.rs`. Was edge-triggered on plain booleans with no
+debounce — one noisy frame emitted a warning+recovery pair, polluting the JSONL evidence
+stream. **Fix:** a debounced `MeterHealthState` (per-condition `MeterConditionState`) where a
+condition must persist for `METER_HEALTH_MIN_CONSECUTIVE_FRAMES` (3) before its warning
+fires and clear for the same before recovery; a single transient frame no longer flaps.
+Threaded through the meter loop in `main.rs`. **Test:** `meter_health::tests` (single frame
+doesn't flap; sustained raises/recovers once; interrupted streak resets) + the updated
+`meter_health_logs_low_signal_and_recovery` integration test.
 
 ### G12 — `auth/groups` & `auth/users` bypass pagination clamping · `FIXED`
 `apps/api/src/auth-management-routes.ts:94,121`. These privileged routes read `limit`/

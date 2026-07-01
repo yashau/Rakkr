@@ -273,7 +273,7 @@ pub(crate) async fn upload_recording_renditions(
     .await;
 
     // Supplementary raw master so the player/monitor toggle has both renditions.
-    if result.is_ok() && enhanced_path.is_some() && keep_raw {
+    let raw_outcome = if result.is_ok() && enhanced_path.is_some() && keep_raw {
         let raw_upload = upload_cache_file(CacheFileUpload {
             allow_insecure_controller: config.allow_insecure_controller,
             content_type,
@@ -293,19 +293,57 @@ pub(crate) async fn upload_recording_renditions(
         })
         .await;
 
-        if let Err(error) = raw_upload {
-            append_job_upload_warning(
-                config,
-                token,
-                job,
-                "agent.recording_job.raw_rendition_upload_failed",
-                error.to_string(),
-            )
-            .await;
+        match raw_upload {
+            Ok(()) => RawUploadOutcome::Succeeded,
+            Err(error) => {
+                append_job_upload_warning(
+                    config,
+                    token,
+                    job,
+                    "agent.recording_job.raw_rendition_upload_failed",
+                    error.to_string(),
+                )
+                .await;
+                RawUploadOutcome::Failed(error)
+            }
         }
-    }
+    } else {
+        // keepRaw off, or no enhanced rendition was produced (the raw render is
+        // then the primary) — no separate raw master is required.
+        RawUploadOutcome::NotAttempted
+    };
 
-    result
+    resolve_rendition_upload(result, raw_outcome)
+}
+
+/// The outcome of the supplementary raw-master upload.
+enum RawUploadOutcome {
+    /// keepRaw is off, or there is no separate raw upload (raw was the primary).
+    NotAttempted,
+    Succeeded,
+    Failed(anyhow::Error),
+}
+
+/// Combine the primary and supplementary-raw upload outcomes into the result the
+/// caller drives the job lifecycle with.
+///
+/// A **required** raw master (`keepRaw`) that failed to upload fails the whole
+/// rendition upload. The caller then keeps the job `upload_pending`, does **not**
+/// run recorder-cache retention, and retries — so the only local copy of the raw
+/// is never deleted before the controller has it. Previously a failed raw upload
+/// was swallowed and the primary `Ok` returned, letting the job complete and
+/// retention delete the raw: "raw is always preserved" was violated.
+fn resolve_rendition_upload(
+    primary: anyhow::Result<()>,
+    raw: RawUploadOutcome,
+) -> anyhow::Result<()> {
+    // Primary (enhanced, or the legacy raw-as-primary) failure dominates.
+    primary?;
+
+    match raw {
+        RawUploadOutcome::NotAttempted | RawUploadOutcome::Succeeded => Ok(()),
+        RawUploadOutcome::Failed(error) => Err(error),
+    }
 }
 
 pub(crate) async fn append_job_health_event(
@@ -352,4 +390,45 @@ async fn append_job_upload_warning(
         }),
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn required_raw_upload_failure_fails_the_whole_upload() {
+        // Regression for the raw-master data-loss path: a failed supplementary
+        // raw upload must fail the rendition upload so the caller keeps the job
+        // upload_pending and never lets retention delete the only local raw.
+        // Pre-fix this returned the primary's Ok and the raw was silently lost.
+        let result =
+            resolve_rendition_upload(Ok(()), RawUploadOutcome::Failed(anyhow::anyhow!("blip")));
+
+        assert!(
+            result.is_err(),
+            "a required raw upload failure must fail the upload"
+        );
+    }
+
+    #[test]
+    fn succeeded_or_absent_raw_keeps_the_primary_ok() {
+        assert!(resolve_rendition_upload(Ok(()), RawUploadOutcome::Succeeded).is_ok());
+        assert!(resolve_rendition_upload(Ok(()), RawUploadOutcome::NotAttempted).is_ok());
+    }
+
+    #[test]
+    fn primary_failure_dominates_regardless_of_raw() {
+        assert!(
+            resolve_rendition_upload(Err(anyhow::anyhow!("primary")), RawUploadOutcome::Succeeded)
+                .is_err()
+        );
+        assert!(
+            resolve_rendition_upload(
+                Err(anyhow::anyhow!("primary")),
+                RawUploadOutcome::NotAttempted,
+            )
+            .is_err()
+        );
+    }
 }

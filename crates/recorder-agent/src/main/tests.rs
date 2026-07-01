@@ -113,33 +113,20 @@ async fn meter_health_logs_low_signal_and_recovery() {
         ],
         node_id: "node_1".to_string(),
     };
-    let mut channel_correlation_active = false;
-    let mut clipping_active = false;
-    let mut flatline_active = false;
-    let mut low_signal_active = false;
+    let mut meter_health_state = MeterHealthState::default();
 
-    update_meter_health(
-        &config,
-        None,
-        &low_frame,
-        &mut channel_correlation_active,
-        &mut clipping_active,
-        &mut flatline_active,
-        &mut low_signal_active,
-    )
-    .await
-    .expect("log low signal");
-    update_meter_health(
-        &config,
-        None,
-        &recovered_frame,
-        &mut channel_correlation_active,
-        &mut clipping_active,
-        &mut flatline_active,
-        &mut low_signal_active,
-    )
-    .await
-    .expect("log low signal recovery");
+    // The debounce requires METER_HEALTH_MIN_CONSECUTIVE_FRAMES sustained frames
+    // before an edge fires, so feed the low then recovered frame that many times.
+    for _ in 0..meter_health::METER_HEALTH_MIN_CONSECUTIVE_FRAMES {
+        update_meter_health(&config, None, &low_frame, &mut meter_health_state)
+            .await
+            .expect("log low signal");
+    }
+    for _ in 0..meter_health::METER_HEALTH_MIN_CONSECUTIVE_FRAMES {
+        update_meter_health(&config, None, &recovered_frame, &mut meter_health_state)
+            .await
+            .expect("log low signal recovery");
+    }
 
     let contents = std::fs::read_to_string(&health_log_file).expect("read health log");
 
