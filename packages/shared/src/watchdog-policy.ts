@@ -10,28 +10,30 @@ export const watchdogPolicySchema = z.object({
   clippingMode: z.enum(["off", "alert_on_clipping"]).optional(),
   flatlineMode: z.enum(["off", "alert_on_flatline"]).optional(),
   flatlineThresholdDbfs: dbfsSchema.optional(),
-  // Duration fields share the update schema's 86_400s (24h) ceiling so a policy
-  // that is valid to create is also valid to update (the two schemas drifted).
-  graceSeconds: z.number().int().nonnegative().max(86_400),
+  // This schema also parses persisted rows (watchdogPolicyFromRow), so it must
+  // stay permissive for any value that was ever validly stored — input ceilings
+  // belong on watchdogPolicyUpdateSchema / the create route, NOT here (a `.max`
+  // here would 503 the whole policy list on a single legacy over-cap row).
+  graceSeconds: z.number().int().nonnegative(),
   humScoreThreshold: z.number().min(0).max(1).optional(),
   id: z.string().min(1),
   metric: z.enum(["peak", "rms", "percentile_95"]),
-  minCumulativeChannelCorrelationSeconds: z.number().nonnegative().max(86_400).optional(),
-  minCumulativeClippingSeconds: z.number().nonnegative().max(86_400).optional(),
-  minCumulativeFlatlineSeconds: z.number().nonnegative().max(86_400).optional(),
-  minCumulativeQualitySeconds: z.number().nonnegative().max(86_400).optional(),
-  minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400),
-  minCumulativeSpeechSeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeChannelCorrelationSeconds: z.number().nonnegative().optional(),
+  minCumulativeClippingSeconds: z.number().nonnegative().optional(),
+  minCumulativeFlatlineSeconds: z.number().nonnegative().optional(),
+  minCumulativeQualitySeconds: z.number().nonnegative().optional(),
+  minCumulativeSecondsAboveThreshold: z.number().nonnegative(),
+  minCumulativeSpeechSeconds: z.number().nonnegative().optional(),
   minSpeechScore: z.number().min(0).max(1).optional(),
   name: z.string().min(1),
   noiseScoreThreshold: z.number().min(0).max(1).optional(),
   qualityAlertMode: z.enum(["off", "alert_on_noise_hum_static"]).optional(),
   qualityMode: z.enum(["signal_only", "speech_required"]).optional(),
-  repeatEverySeconds: z.number().int().positive().max(86_400),
+  repeatEverySeconds: z.number().int().positive(),
   severity: healthSeveritySchema,
   staticScoreThreshold: z.number().min(0).max(1).optional(),
   thresholdDbfs: dbfsSchema,
-  windowSeconds: z.number().int().positive().max(86_400),
+  windowSeconds: z.number().int().positive(),
 });
 export const watchdogPolicyUpdateSchema = z
   .object({

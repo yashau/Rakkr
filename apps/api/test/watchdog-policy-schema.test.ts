@@ -1,33 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultScheduledVoiceWatchdogPolicy, watchdogPolicySchema } from "@rakkr/shared";
+import {
+  defaultScheduledVoiceWatchdogPolicy,
+  watchdogPolicySchema,
+  watchdogPolicyUpdateSchema,
+} from "@rakkr/shared";
 
-test("R13-5: watchdog policy duration fields are bounded on create like on update", () => {
-  // The shipped default (all durations well under the 24h ceiling) still passes.
+test("watchdog policy schema stays permissive on read but bounds durations on input", () => {
+  // watchdogPolicySchema also parses persisted rows (watchdogPolicyFromRow), so
+  // it must accept any previously-stored value — a `.max` here would 503 the
+  // policy list on a single legacy over-cap row. The 86_400s ceiling belongs on
+  // the input (update) schema instead.
   assert.equal(watchdogPolicySchema.safeParse(defaultScheduledVoiceWatchdogPolicy).success, true);
-
-  // Every duration field the update schema caps at 86_400s is now rejected by
-  // the base (create) schema too — pre-fix these were unbounded on create, so a
-  // policy could be created that could never be updated, and huge windows left
-  // recordings effectively unmonitored.
-  const cappedDurationFields = [
-    "graceSeconds",
-    "minCumulativeChannelCorrelationSeconds",
-    "minCumulativeClippingSeconds",
-    "minCumulativeFlatlineSeconds",
-    "minCumulativeQualitySeconds",
-    "minCumulativeSecondsAboveThreshold",
-    "minCumulativeSpeechSeconds",
-    "repeatEverySeconds",
-    "windowSeconds",
-  ] as const;
-
-  for (const field of cappedDurationFields) {
-    const result = watchdogPolicySchema.safeParse({
+  assert.equal(
+    watchdogPolicySchema.safeParse({
       ...defaultScheduledVoiceWatchdogPolicy,
-      [field]: 100_000,
-    });
+      windowSeconds: 100_000,
+    }).success,
+    true,
+    "the data schema must load legacy over-cap rows, not reject them",
+  );
 
-    assert.equal(result.success, false, `${field} above 86_400 must be rejected`);
-  }
+  // The input path (update) enforces the 24h ceiling.
+  assert.equal(watchdogPolicyUpdateSchema.safeParse({ windowSeconds: 100_000 }).success, false);
+  assert.equal(watchdogPolicyUpdateSchema.safeParse({ windowSeconds: 900 }).success, true);
 });

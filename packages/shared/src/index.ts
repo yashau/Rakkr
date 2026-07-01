@@ -287,6 +287,10 @@ export const meterFrameSchema = z.object({
 });
 
 export const recordingProfileSchema = z.object({
+  // This schema also parses persisted rows (recordingProfileFromRow), so it
+  // stays permissive for any previously-stored value — the 512 kbps input
+  // ceiling lives on recordingProfileUpdateSchema / the create route, not here
+  // (a `.max` here would reject a legacy over-cap profile row on read).
   bitrateKbps: z.number().int().positive(),
   channelMode: channelModeSchema,
   // Length of each recording chunk in seconds. When set, the recording is
