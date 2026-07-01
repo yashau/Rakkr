@@ -16,6 +16,7 @@ import type { HealthEventStore } from "./health-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import { deleteRecordingCacheFile, deleteRecordingChunkCacheFile } from "./recording-cache.js";
 import { listRecordingChunksForRecording, upsertRecordingChunk } from "./recording-chunks.js";
+import { recordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
 import { runUploadQueueOnce } from "./upload-executor.js";
@@ -381,13 +382,25 @@ async function reconcileChunkedRecordingUpload(
     }
   }
 
-  // Only finalize once every expected chunk is present and has settled uploads.
+  // Capture is definitively done once the owning job is terminal — no more
+  // chunks are coming, so a missing index is a dropped chunk (a render failure
+  // orphans one, leaving an index gap the final chunk's chunkTotal overcounts),
+  // not one still in flight. Without this signal the recording would hang in
+  // `cached` forever when `chunks.length < total`.
+  const owningJob = chunks[0]?.jobId ? await recordingJob(chunks[0].jobId) : undefined;
+  const captureDone =
+    owningJob?.status === "completed" ||
+    owningJob?.status === "failed" ||
+    owningJob?.status === "cancelled";
   const total = chunks.find((chunk) => chunk.total !== undefined)?.total;
-  const settledStatuses: RecordingChunkStatus[] = ["uploaded", "partial", "failed"];
-  const allPresent = total !== undefined && chunks.length >= total;
-  const allSettled = chunks.every((chunk) => settledStatuses.includes(chunk.status));
+  const finalization = chunkedRecordingFinalization({
+    captureDone,
+    chunkStatuses: chunks.map((chunk) => chunk.status),
+    presentCount: chunks.length,
+    total,
+  });
 
-  if (!allPresent || !allSettled) {
+  if (!finalization) {
     return;
   }
 
@@ -395,18 +408,46 @@ async function reconcileChunkedRecordingUpload(
   const degraded = chunks.filter(
     (chunk) => chunk.status === "partial" || chunk.status === "failed",
   ).length;
-
-  // Every chunk failed: leave the recording cached; failures are retryable.
-  if (uploaded === 0) {
-    return;
-  }
-
-  const status: RecordingSummary["status"] = degraded > 0 ? "partial" : "uploaded";
+  const status = finalization.status;
 
   await recordingStore.save({ ...recording, status });
   await appendReconcileAudit(auditStore, recording, status, uploaded, degraded, {
     skipped: "chunked_per_chunk_retention",
   });
+}
+
+// Decide whether a chunked recording can finalize, and to what status. Kept pure
+// so the rules are unit-tested without the store/queue machinery: finalize when
+// all present chunks are settled AND either every expected chunk is present or
+// capture is done (owning job terminal); a gap (present < total, e.g. a dropped
+// chunk) or any degraded chunk means `partial`, not `uploaded`.
+export function chunkedRecordingFinalization(input: {
+  captureDone: boolean;
+  chunkStatuses: RecordingChunkStatus[];
+  presentCount: number;
+  total: number | undefined;
+}): { status: RecordingSummary["status"] } | undefined {
+  const settledStatuses: RecordingChunkStatus[] = ["uploaded", "partial", "failed"];
+  const allSettled = input.chunkStatuses.every((status) => settledStatuses.includes(status));
+  const allPresent = input.total !== undefined && input.presentCount >= input.total;
+
+  if (!allSettled || !(allPresent || input.captureDone)) {
+    return undefined;
+  }
+
+  const uploaded = input.chunkStatuses.filter((status) => status === "uploaded").length;
+
+  // Every chunk failed: leave the recording cached; failures are retryable.
+  if (uploaded === 0) {
+    return undefined;
+  }
+
+  const degraded = input.chunkStatuses.filter(
+    (status) => status === "partial" || status === "failed",
+  ).length;
+  const hasGap = input.total !== undefined && input.presentCount < input.total;
+
+  return { status: degraded > 0 || hasGap ? "partial" : "uploaded" };
 }
 
 function chunkUploadStatus(
