@@ -15,6 +15,7 @@ export * from "./enhancement.js";
 export * from "./oidc.js";
 export * from "./pagination.js";
 export * from "./recording-chunks.js";
+export * from "./recording-job-summary.js";
 export * from "./upload-providers.js";
 
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

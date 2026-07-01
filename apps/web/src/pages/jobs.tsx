@@ -196,7 +196,9 @@ export function JobsPage() {
   const advancedFilterChips = recordingJobFilterChips(apiFilters).filter(
     (chip) => chip.key !== "search",
   );
-  const summary = recordingJobSummary(visibleJobs);
+  // Prefer the server's summary over the full filtered set; fall back to the
+  // page-derived count only before the first response arrives (G74).
+  const summary = jobsQuery.data?.summary ?? recordingJobSummary(visibleJobs);
   const visibleJobIds = visibleJobs.map((job) => job.id);
   const selectedVisibleJobIds = selectedJobIds.filter((jobId) => visibleJobIds.includes(jobId));
   const allVisibleSelected =

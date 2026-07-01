@@ -27,6 +27,7 @@ import {
   listRecordingChunksForRecording,
 } from "./recording-chunks.js";
 import { listUploadQueueItems } from "./upload-queue.js";
+import { recordingJobStatusSummary } from "./recording-job-status-summary.js";
 import { registerRecordingJobActionRoutes } from "./recording-job-action-routes.js";
 import { scopedRecordingJobs } from "./recording-job-scope.js";
 import { PAGE_POLICY, paginate, paginationQueryFields, parsePagination } from "./pagination.js";
@@ -122,6 +123,9 @@ export function registerRecordingJobRoutes({
       // Jobs are scoped + filtered in memory, so the scoped count is the real
       // total; paginate that set (RBAC-correct).
       const jobs = filterRecordingJobsForExport(await scopedJobs(currentUser(c)), query.data);
+      // Summary tiles must reflect the full filtered set, not the page, so they
+      // do not undercount once matches exceed the page size.
+      const summary = recordingJobStatusSummary(jobs);
       const { data, meta } = paginate(
         jobs,
         parsePagination(
@@ -146,7 +150,7 @@ export function registerRecordingJobRoutes({
         },
       });
 
-      return c.json({ data, meta });
+      return c.json({ data, meta, summary });
     },
   );
 

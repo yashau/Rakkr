@@ -29,6 +29,7 @@ import type {
   RecordingProfile,
   RecordingProfileUpdate,
   RecordingJob,
+  RecordingJobStatusSummary,
   RecordingSummary,
   RetentionPolicy,
   RetentionPolicyInput,
@@ -559,7 +560,9 @@ export const api = {
   recordingJobChunks: (jobId: string) =>
     fetchJson<{ data: RecordingChunk[] }>(`/api/v1/recording-jobs/${jobId}/chunks`),
   recordingJobs: (filters: RecordingJobFilters & { limit?: number; offset?: number } = {}) =>
-    fetchJson<PaginatedResponse<RecordingJob>>(withQuery("/api/v1/recording-jobs", filters)),
+    fetchJson<PaginatedResponse<RecordingJob> & { summary: RecordingJobStatusSummary }>(
+      withQuery("/api/v1/recording-jobs", filters),
+    ),
   recordingJobsExport: (filters: RecordingJobFilters = {}) =>
     fetchBlob(withQuery("/api/v1/recording-jobs/export", filters)),
   recordingJobsExportSelected: (input: RecordingJobSelectedExportInput) =>
