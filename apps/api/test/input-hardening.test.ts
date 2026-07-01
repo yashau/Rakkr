@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isoDateTimeSchema, meterFrameSchema } from "@rakkr/shared";
+import { ianaTimeZoneSchema, isoDateTimeSchema, meterFrameSchema } from "@rakkr/shared";
 import { hashPassword, verifyPassword } from "../src/password.js";
 
 test("meterFrameSchema caps the levels array (watchdog Math.max spread guard)", () => {
@@ -21,6 +21,21 @@ test("meterFrameSchema caps the levels array (watchdog Math.max spread guard)", 
   // RangeError. 512 is well past any real interface's channel count.
   assert.equal(meterFrameSchema.safeParse(frame(512)).success, true);
   assert.equal(meterFrameSchema.safeParse(frame(513)).success, false);
+});
+
+test("ianaTimeZoneSchema rejects zones that would throw in Intl.DateTimeFormat", () => {
+  // Valid IANA zones (and UTC) parse.
+  for (const good of ["UTC", "America/New_York", "Europe/London", "Asia/Tokyo", "Indian/Maldives"]) {
+    assert.equal(ianaTimeZoneSchema.safeParse(good).success, true, good);
+  }
+
+  // Pre-fix these passed `.min(1).max(80)` and then threw
+  // `RangeError: Invalid time zone specified` at `new Intl.DateTimeFormat(...,
+  // { timeZone })` in buildSchedule (500 instead of 400) — buildSchedule runs
+  // outside the schedule-create route's try/catch.
+  for (const bad of ["Not/AZone", "Mars/Olympus", "tomorrow", "GMT+25", ""]) {
+    assert.equal(ianaTimeZoneSchema.safeParse(bad).success, false, bad);
+  }
 });
 
 test("isoDateTimeSchema rejects non-date strings that would throw later", () => {

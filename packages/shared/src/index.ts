@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { isoDateTimeSchema, uploadProviderSchema, uploadQueueStatusSchema } from "./base.js";
+import {
+  ianaTimeZoneSchema,
+  isoDateTimeSchema,
+  uploadProviderSchema,
+  uploadQueueStatusSchema,
+} from "./base.js";
 import { captureChannelSelectionSchema, channelModeSchema } from "./channels.js";
 import { recordingEnhancementSchema } from "./enhancement.js";
 import { recordingChunkSchema } from "./recording-chunks.js";
@@ -576,7 +581,7 @@ export const scheduleInputSchema = z.object({
   retentionPolicyId: z.string().trim().min(1).max(160).default("retention-keep-controller-cache"),
   room: z.string().trim().min(1).max(160),
   tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
-  timezone: z.string().trim().min(1).max(80),
+  timezone: ianaTimeZoneSchema,
   titleTemplate: z.string().trim().min(1).max(500),
   uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).default(["upload-policy-stub"]),
   watchdogPolicyId: z.string().trim().min(1).max(160),
@@ -597,7 +602,7 @@ export const scheduleUpdateSchema = z
     retentionPolicyId: z.string().trim().min(1).max(160).optional(),
     room: z.string().trim().min(1).max(160).optional(),
     tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
-    timezone: z.string().trim().min(1).max(80).optional(),
+    timezone: ianaTimeZoneSchema.optional(),
     titleTemplate: z.string().trim().min(1).max(500).optional(),
     uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).optional(),
     watchdogPolicyId: z.string().trim().min(1).max(160).optional(),

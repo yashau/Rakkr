@@ -13,6 +13,25 @@ export const isoDateTimeSchema = z
   .refine((value) => !Number.isNaN(Date.parse(value)), {
     message: "must be a parseable ISO 8601 date-time",
   });
+
+// A valid IANA time-zone name. The `.refine` rejects strings that pass
+// `.min(1)` but then throw `RangeError: Invalid time zone specified` at
+// `new Intl.DateTimeFormat(..., { timeZone })` in the schedule engine — a 500
+// instead of a clean 400 at the schema boundary.
+function isValidTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+export const ianaTimeZoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .refine(isValidTimeZone, { message: "must be a valid IANA time zone" });
 export const uploadProviderSchema = z.enum(["stub", "smb", "s3"]);
 export const uploadQueueStatusSchema = z.enum([
   "queued",
