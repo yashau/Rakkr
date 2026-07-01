@@ -15,8 +15,10 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G5, G6, G7, G10, G11, G12, G13, G19, G21.
-**Still open:** G4 (architectural call), G9 (product decision); coverage G14/G16.
+**Open — need a decision/steer:** G4 (DB-failover architecture), G9 (keepRaw wording),
+G24 (retry semantics + partial-cache reclaim), G25/G26 (chunked lease/finalization); coverage G14/G16.
 **Suspected / by-design:** G17, G18, G20, G22, G23.
+**Iteration loop:** Run 1 dirty (surfaced G24/G25/G26). Streak 0/5. See the run log at the end.
 Rebased onto `origin/main` (`844f6a8e`); **G1b is a fresh-on-main catch** — PR #14 reintroduced
 the G1 data-loss pattern in its new chunked-upload path, which this audit caught on rebase.
 
@@ -273,3 +275,68 @@ Deny-precedence & cascade; token-auth atomicity (single-use bootstrap consume,
 (random IV, verified tag, scrypt KDF); upload-destination secret masking; scheduler
 `localDateTimeToUtc` DST fixpoint; Rust agent all-UTC timestamps; SMB client closed in
 `finally`; sort fields are enum/hardcoded allowlists (no sort injection).
+
+---
+
+## Iteration run log
+
+Following `docs/contributing/audit-workflow.md`. Target: **5 consecutive clean runs.**
+A run is _dirty_ if it changes any file, a gate fails, or `main` advanced with un-audited
+commits → streak resets to 0. Runs are strictly sequential.
+
+Pre-loop: fixed 14 confirmed findings (G1, G1b, G2, G3, G5, G6, G7, G10, G11, G12, G13,
+G19, G21), each with a red→green test. Deferred by design: **G4** (silent DB failover —
+architectural: latches `dbAvailable=false` across 14 stores; needs a re-probe-circuit-breaker
+vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — product wording).
+
+| Run | main @ | Focus | Findings (Conf/Cov/Susp) | Fixes | Gates | Clean? | Streak |
+| --- | ------ | ----- | ------------------------ | ----- | ----- | ------ | ------ |
+| 1 | `8a11b629` | branch-diff adversary + fresh correctness/authz + chunked | 3 / 0 / 1 (G24, G25, G26) | — surfaced; need decisions | green | **no** | 0 |
+
+**Run 1 — DIRTY.** Two independent hunters: an adversary on the 14 fixes, and a fresh sweep of
+the least-audited chunked surface. The adversary confirmed the 14 fixes are correct and complete
+**except** it caught that G1/G10 partial-cache retention has no reclaim path — which traces to
+**G24**. The fresh sweep found the chunked lease-expiry gap (**G25**) and its finalization twin
+(**G26**). Nothing fixed this run: G24 is a `retry()`-semantics decision (an existing test relies
+on today's behavior) and G25/G26 are a multi-file chunked-lifecycle slice — all warrant a steer,
+not an autonomous change. The 14 prior fixes stay green (API 346/0/1-skip; agent 147/0; clippy/
+oxlint/fmt clean). Streak remains 0.
+
+### G24 — Operator retry is a no-op on terminally-`failed` upload items · `NEW · CATALOGUED`
+`apps/api/src/upload-queue.ts:173-191` (JSON) & `:416-438` (Postgres); retry is offered via
+`retryableUploadQueueStatuses = {cancelled, failed}` (`recording-upload-queue-routes.ts:58,218`).
+`retry()` does `attemptCount + 1` then `status = nextAttempt >= maxAttempts ? "failed" :
+"retrying"`. A `failed` item is already at `attemptCount >= maxAttempts`, so retry leaves it
+`failed` — never returns to `retrying`, never re-run (`dueStatuses = {queued, retrying}`). The
+retry action does nothing on the items it is offered for. **Consequence for G1/G10:** a `partial`
+recording's cache is correctly retained (the un-uploaded destination's only source), but with
+retry broken there is **no path to reclaim it** short of deleting the recording → unbounded
+controller-cache growth when a destination chronically fails.
+**Fix (needs a decision):** make operator `retry()` reset the attempt budget (`attemptCount = 0`,
+`status = "retrying"`, due now) in both stores so the runner re-attempts; a successful retry then
+flips the recording to `uploaded` and retention reclaims the cache. This changes `retry()`
+semantics — the test `upload queue routes use scoped recording context…` uses `retry()` to *force*
+a `failed` state (`maxAttempts:1`), so it needs reworking. Also reword the G1/G10 retention
+comments (cache is retained to preserve the only copy, not because failed items auto-retry).
+
+### G25 — Lease expiry hard-fails a chunked recording, discarding uploaded chunks · `NEW · CATALOGUED`
+`apps/api/src/agent-job-terminal-recording.ts:64-75` (`terminalRecordingStatus` returns `failed`
+unconditionally), the `index.ts` lease listener, and `recording-jobs.ts expireRecordingJobLeases`
+(30s lease). Chunked recordings upload each chunk as it closes; if the agent's control-plane
+heartbeat blips >30s while capture continues (intended), the controller expires the lease and
+marks the whole recording `failed` even though N chunks are already `cached`/`uploaded`. The
+agent's own outcome here is `partial` (`recording_job_chunked.rs finish_partial_after_failure`),
+and `partial` is a valid status. If the final chunk later arrives, `markRecordingCachedFromChunks`
+then flips `failed` → `cached` (status flap). **Fix:** in the lease-expiry terminal path, consult
+`listRecordingChunksForRecording` and resolve to `partial` (not `failed`) when any chunk is
+`cached`/`uploading`/`uploaded`/`partial`. **Severity: Medium** (window-dependent).
+
+### G26 — Chunked recording sticks non-terminal when the final chunk (carrying `chunkTotal`) never arrives · `NEW · SUSPECTED`
+`apps/api/src/upload-runner.ts:383-408` finalization requires `total !== undefined && chunks.length
+>= total`; `total` is stamped only by the final chunk's `chunkTotal`. If capture dies mid-stream
+(`finish_partial_after_failure` persists `chunk_total: None`) or a middle chunk exhausts retries,
+the final chunk never arrives, `total` stays undefined, and the recording never promotes to
+`uploaded`/`partial` — its cache-retention gate never runs. **Fix (twin of G25):** controller-side
+terminal reconciliation for a chunked recording whose owning job is terminal but whose `total`
+never arrived — treat "job failed/partial + ≥1 uploaded chunk + none incoming" as `partial` and run
+per-chunk retention.
