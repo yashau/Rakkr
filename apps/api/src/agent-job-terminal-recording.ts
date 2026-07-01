@@ -31,9 +31,15 @@ export async function markAgentJobTerminalRecording(
   // recording is `partial`, not `failed` — the captured audio is preserved.
   const chunks = await listRecordingChunksForRecording(recording.id);
   const hasPreservedChunks = chunks.some((chunk) => PRESERVED_CHUNK_STATUSES.has(chunk.status));
+  // Re-read immediately before writing: a concurrent cache-file upload may have
+  // just secured this recording (`cached`/`uploaded`). A stale terminal write
+  // from a lease-expiry snapshot must not downgrade a secured recording to
+  // `failed`/`completed`. (Recording status has no compare-and-set, so this
+  // narrows the window; the full fix is the tracked recording-status CAS.)
+  const current = (await recordingStore.find(recording.id)) ?? recording;
   const updated = {
-    ...recording,
-    status: terminalRecordingStatus(recording, input.terminalState, hasPreservedChunks),
+    ...current,
+    status: terminalRecordingStatus(current, input.terminalState, hasPreservedChunks),
   };
 
   await recordingStore.save(updated);
@@ -76,12 +82,21 @@ function terminalRecordingStatus(
   terminalState: "cancelled" | "failed",
   hasPreservedChunks: boolean,
 ): RecordingSummary["status"] {
+  // A recording whose audio is already secured (uploaded to the controller, or
+  // preserved as `partial`) is never downgraded by a late terminal transition —
+  // the capture succeeded, whatever the job's lease did afterward.
+  if (
+    recording.status === "cached" ||
+    recording.status === "uploaded" ||
+    recording.status === "partial"
+  ) {
+    return recording.status;
+  }
+
   if (terminalState === "failed") {
     // Preserve already-secured chunk progress instead of discarding it.
     return hasPreservedChunks ? "partial" : "failed";
   }
 
-  return recording.status === "cached" || recording.status === "uploaded"
-    ? recording.status
-    : "completed";
+  return "completed";
 }

@@ -47,6 +47,28 @@ test("lease-expiry failure of a recording with no chunks stays failed", async ()
   assert.equal(result.status, "failed");
 });
 
+test("G64: lease-expiry failure does not downgrade a recording already secured as cached", async () => {
+  // A concurrent cache-file upload secured the recording before the lease
+  // reaper's terminal write lands.
+  const recording = {
+    ...recordingSummary("rec_terminal_secured"),
+    cached: true,
+    status: "cached" as const,
+  };
+  const recordingStore = memoryRecordingStore([recording]);
+
+  const result = await markAgentJobTerminalRecording(
+    recording,
+    { jobId: "job_terminal_secured", reason: "lease_expired", terminalState: "failed" },
+    { healthEventStore: createHealthEventStore(""), recordingStore },
+  );
+
+  // Pre-fix this clobbered the secured recording to "failed", orphaning its audio
+  // while the owning job may have completed.
+  assert.equal(result.status, "cached");
+  assert.equal((await recordingStore.find(recording.id))?.status, "cached");
+});
+
 function chunk(
   recordingId: string,
   index: number,

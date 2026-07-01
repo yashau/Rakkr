@@ -64,6 +64,53 @@ test("retention runner deletes stale controller cache and audits the lifecycle",
   assert.equal(runEvents[0]?.details.deleted, 1);
 });
 
+test("G63: retention does not downgrade a recording promoted to uploaded mid-pass", async () => {
+  const auditStore = createAuditStore("");
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: false,
+    maxAgeDays: 14,
+    name: "Reclaim stale cache",
+    preserveTagged: false,
+    scope: "controller_cache",
+  });
+  // Planning reads the recording as `cached`; by delete time a concurrent
+  // upload-reconcile has promoted it to `uploaded`. The custom store models that
+  // race: list() (planning) returns the stale snapshot, find() (the delete-time
+  // re-read) returns the promotion.
+  const planned = recording({
+    id: "rec_retention_promoted",
+    recordedAt: "2026-05-01T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+  });
+  await cacheRecording(planned, "promoted-bytes");
+  const promoted = { ...planned, status: "uploaded" as const };
+  let saved: RecordingSummary | undefined;
+  const recordingStore = {
+    async create() {},
+    async delete() {
+      return undefined;
+    },
+    async find() {
+      return promoted;
+    },
+    async list() {
+      return [planned];
+    },
+    async save(next: RecordingSummary) {
+      saved = next;
+    },
+  };
+  const runner = createRetentionRunner({ auditStore, recordingStore });
+
+  const summary = await runner.runOnce(new Date("2026-06-20T12:00:00.000Z"));
+
+  // Pre-fix the save used the stale `cached` snapshot and downgraded to
+  // "completed"; now it re-reads and preserves the concurrent `uploaded`.
+  assert.equal(summary.deleted, 1);
+  assert.equal(saved?.status, "uploaded");
+});
+
 test("retention runner trims oldest uploaded cache when max bytes is exceeded", async () => {
   const auditStore = createAuditStore("");
   const policy = await createRetentionPolicy({

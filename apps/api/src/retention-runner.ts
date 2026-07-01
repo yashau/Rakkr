@@ -30,7 +30,7 @@ export interface RetentionRunItem {
   policyId: string;
   recordingId: string;
   reason: "max_age" | "max_bytes";
-  status: "deleted" | "failed";
+  status: "deleted" | "failed" | "skipped";
 }
 
 export interface RetentionRunSummary {
@@ -157,9 +157,11 @@ export async function runRetentionPass(
       if (status === "deleted") {
         summary.deleted += 1;
         deletedRecordingIds.add(candidate.recording.id);
-      } else {
+      } else if (status === "failed") {
         summary.errors += 1;
       }
+      // `skipped` (the recording moved on between planning and delete) is neither
+      // a deletion nor an error — leave both counters untouched.
     }
   }
 
@@ -279,9 +281,21 @@ async function deleteCandidate({
   recording: RecordingSummary;
   recordingStore: RecordingStore;
 }): Promise<RetentionRunItem["status"]> {
+  // Re-read immediately before acting: this pass was planned from a list snapshot
+  // taken earlier, and a concurrent upload-reconcile (which may have promoted the
+  // recording to `uploaded` and released its cache) or a retry (reset to
+  // `recording`) must not be overwritten. Only reclaim a still-cached/uploaded
+  // recording, and derive the post-delete status from the fresh read — a stale
+  // `cached` snapshot must not downgrade a now-`uploaded` recording to `completed`.
+  const current = await recordingStore.find(recording.id);
+
+  if (!current || (current.status !== "cached" && current.status !== "uploaded")) {
+    return "skipped";
+  }
+
   try {
-    let cacheDeleted = recordingHasCachedFile(recording)
-      ? await deleteRecordingCacheFile(recording)
+    let cacheDeleted = recordingHasCachedFile(current)
+      ? await deleteRecordingCacheFile(current)
       : false;
 
     for (const chunk of chunks) {
@@ -302,16 +316,16 @@ async function deleteCandidate({
     }
 
     await recordingStore.save({
-      ...recording,
+      ...current,
       cachePath: undefined,
       cached: false,
-      status: recording.status === "cached" ? "completed" : recording.status,
+      status: current.status === "cached" ? "completed" : current.status,
     });
     await appendItemAudit(auditStore, {
       cacheDeleted,
       policy,
       reason,
-      recording,
+      recording: current,
       status: "deleted",
     });
 
