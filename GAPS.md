@@ -274,348 +274,53 @@ and chunked-recording finalization. All settled; one line each.
 
 ---
 
-## Run 8 findings (trust-boundary + Zod-bounds + broad-adversary; 3 parallel read-only hunters)
+## Archived Runs 8-11 (G47-G73 + recording-status CAS, compacted - full detail in git history)
 
-Run 8 was aimed at draining the input-validation/trust-boundary vein. It instead
-revealed that the **chunked-recording lifecycle** and **recording-job terminal
-transitions** are an under-hardened cluster - several findings here are *higher*
-severity than recent rounds, so the "converging to clean" read was premature for
-this subsystem. The two most-recent fixes (G45, G46) were adversarially
-re-verified **SOUND**. **All items below are CATALOGUED, not yet fixed** - work
-paused for budget before implementing. G47/G48 independently verified against
-code; G49-G53 are hunter-reported pending my code verification.
+Runs 8-11 hardened the chunked-recording lifecycle, recording-job terminal
+transitions, the recording-status race, DB orphan sweeps, and health/watchdog.
+All settled; one line each.
 
-### G47 - Late/replayed cache upload resurrects a terminal (failed/cancelled) job + recording - `FIXED` (`b4063b80`) - Medium
-`agent-job-recording-scope.ts:86-113` (`agentRecordingJobScopeFailure` gates only
-on nodeId/recordingId, never `status`) + `recording-jobs.ts:318-333`
-(`completeRecordingJob` blind-sets `completed`, no precondition) +
-`recording-cache.ts:95` (`applyStoredRendition` blind-sets `recording.status="cached"`).
-A node whose lease expired (job->failed, recording->failed/partial via the
-`onRecordingJobLeaseExpired` listener) can `PUT ...cache-file` with the failed
-job's id and flip job->completed, recording->cached, re-fanning the upload
-queue - a remote party overturns a controller-decided terminal state.
-Repro: claim job -> let lease expire -> PUT cache-file with `x-rakkr-recording-job-id:<failed job>`.
-Fix sketch: reject in the scope check with 409 `recording_job_not_completable`
-when the scoped job is failed/cancelled (skip terminal jobs in the
-undefined-jobId finder); guard `applyStoredRendition` against resetting a failed
-recording. Verify against retry semantics: `retryRecordingJob` (recording-jobs.ts:263)
-mints a NEW queued job id, so guarding the old failed id is safe. Same root cause as G51.
+**Run 8** (chunked lifecycle + terminal-transition cluster):
+- **G47** `FIXED` - late/replayed cache upload resurrected a terminal job+recording -> scope-check 409 on terminal jobs.
+- **G48** `FIXED` - unvalidated timezone -> 500 -> `ianaTimeZoneSchema` refine.
+- **G49** `FIXED` (High) - deleting a chunked recording orphaned chunk files+rows -> sweep both.
+- **G50** `FIXED` - age/bytes retention was a no-op for chunked recordings -> size/reclaim chunk files.
+- **G51** `FIXED` - recording-job terminal transitions were non-atomic blind writes -> `transition(job, allowedFrom)` CAS for all five.
+- **G52** `FIXED` - agent never deleted the uploaded enhanced rendition -> delete after upload + chunk sweep.
+- **G53** `FIXED` - DST spring-forward gap start resolved to a shifted instant -> two-offset reconciliation.
 
-### G48 - Unvalidated `timezone` string -> 500 (RangeError) on schedule create - `FIXED` (`343d423a`) - Medium
-Schema `packages/shared/src/index.ts:579` (`scheduleInputSchema.timezone` =
-`z.string().trim().min(1).max(80)`, length-bounded but not IANA-validated); crash
-sink `schedule-engine.ts:598-609` (`new Intl.DateTimeFormat("en-US",{timeZone})`
-throws on unknown zone); reached from `schedule-routes.ts:351` (`buildSchedule`)
-which runs OUTSIDE the try/catch at `:353`. Repro: `POST /api/v1/schedules` with
-`timezone:"Not/AZone"` + a recurring mode -> 500 instead of 400. Latent
-runner-starvation if a bad zone is ever persisted by a looser writer.
-Fix sketch: add a `.refine` IANA check (try `new Intl.DateTimeFormat` in a guard)
-to the shared timezone field, covering `scheduleInputSchema` + `scheduleUpdateSchema`.
-Rest of the unbounded-Zod->crash vein confirmed drained.
+**Run 9** (adversary + recording-status race):
+- **G47b** `FIXED` - G47 guard missed partial/completed + the no-jobId path -> 409 when all the recording's jobs are terminal.
+- **G54/G55** `FIXED` (High) - stale upload-reconcile (whole + chunked) overwrote a retried/terminal recording -> re-read guard.
+- **G56** `FIXED` - retry left stale raw/enhanced renditions + chunk rows -> clear renditions + sweep chunks.
+- **G57** `FIXED` - distinct policies on one destination collapsed -> match pathOverride+policyId in the active-dedup branch.
+- **G48b** `FIXED` - corrupt persisted timezone starved the due-run pass -> guard the occurrence check.
+- **G58** `FIXED` - S3 custom endpoints reported provider_validated -> added provider_declared.
+- **G50b** `FIXED` - metrics under-sized chunked recordings -> sum chunk footprints.
+- **G51b** `FIXED` - lease reaper blind-save reverted a CAS-completed job -> route reaper through `transition` + re-list.
 
-### G49 - Deleting a chunked recording orphans its chunk files + rows - `FIXED` (`e71a718f`) - High
-`recording-delete.ts:229-236` deletes only `recording.cachePath`, but
-`markRecordingCachedFromChunks` (`agent-cache-uploads.ts:337-349`) never sets a
-recording-level `cachePath` (chunks own their own), so `recordingHasCachedFile`
-is false -> no file deletion at all; `recording_chunks.recordingId` has no
-`onDelete: cascade` (`packages/db/src/schema.ts:654-682`) -> chunk rows orphaned
-too. Unbounded disk growth on the common chunked-delete path; audit shows clean
-success (`cacheDeleted:false`). Fix sketch: enumerate
-`listRecordingChunksForRecording` + `deleteRecordingChunkCacheFile` per chunk and
-delete chunk rows (or add cascade + a chunk-file sweep); mirror in the bulk path.
+**Run 10** (Rust chunked-capture + recording-status sweep):
+- **G60** `FIXED` (High) - chunked wav render corrupted the file in place with a channel map -> render to a distinct `.rendered.wav`.
+- **G59/G59b** `FIXED` (High) - chunked crash-recovery never sent chunkTotal -> derive max(highest+1, uploaded+pending) + stamp every recovered chunk.
+- **G63/G64** `FIXED` (High) - retention + lease-expiry reverted a concurrently-secured recording -> re-read + preserve cached/uploaded/partial.
+- **G66** `FIXED` - unstable pagination for equal recordedAt -> id tiebreaker.
+- **G55-d** `FIXED` - chunked reconcile deleted a re-captured chunk's cache before the guard -> hoist the re-read.
 
-### G50 - Age/bytes controller-cache retention never applies to chunked recordings - `FIXED` (`5312d798`) - Medium
-`retention-runner.ts:166-208` gates `retentionCandidates` on
-`recordingHasCachedFile`, false for chunked recordings (same root as G49) -> a
-`maxAgeDays`/`maxBytes` policy is a silent no-op for every chunked recording;
-their chunk files are reclaimed only by the per-upload `deleteCacheAfterUpload`
-gate, never by age/size pressure. Fix sketch: teach the retention runner to
-enumerate/size/delete chunk cache files.
+**Run 11** (DB + health/watchdog):
+- **G69** `FIXED` (High) - production watchdog runner never loaded operator policies -> thread the settings store, load per pass.
+- **G67** `FIXED` (Med/High) - deleting a recording orphaned its jobs + upload-queue rows -> sweep both (like G49).
+- **G68** `FIXED` - Postgres upload-queue start() was non-atomic -> conditional UPDATE ... RETURNING.
+- **G71** `FIXED` - watchdog active-event lookups filtered type in-memory over a 500-cap -> push the filter into the query.
+- **G72** `FIXED` - indefinitely-suppressed alert kept repeating -> treat as never-repeat.
+- **G73** `FIXED` - agent could forge controller-/watchdog-reserved health-event type prefixes -> reject at the schema boundary.
+- **G70** `CATALOGUED` (Med) - Prometheus active-alert gauges undercount past 500 events (store-level scoped aggregate; sibling of C2).
 
-### G51 - Recording-job terminal transitions are non-atomic blind writes - `FIXED` (`8a0e4e33`) - Medium-High
-`recording-jobs.ts` - only `claim()` is CAS; `completeRecordingJob:318`,
-`cancelRecordingJob:335`, `failRecordingJob:350`, `stopRecordingJob(ById):226/245`,
-and `expireRecordingJobLeases:393-424` all read-then-blind-`save` with no status
-precondition. Generalizes G47: reaper->failed then a late complete->completed
-clobbers `failureReason`; heartbeat renewal between the reaper's `list()` and its
-per-job `save()` is overwritten (TOCTOU) -> a validly-renewed live recording is
-killed. Fix sketch: route all terminal/stop transitions through a status-guarded
-conditional update (extend the CAS `claim()` pattern; 0 rows = no-op), and have
-the reaper expire via one conditional `RETURNING` statement, firing listeners
-only for rows it actually changed. Fixing G51 subsumes G47.
+**Post-Run-11**: added `RecordingStore.transition(recording, allowedFrom)` (the recording-level CAS) and closed **G65** (stop routes downgraded a concurrently-secured recording); later extended to metadata (R13-2) and health-sync (R13-8) - all status writers CAS-guarded, with G54/G55/G63/G64 keeping re-read stopgaps as backstops.
 
-### G52 - Enhanced rendition file uploaded but never deleted on the agent - `FIXED` (`22ab533e`) - Medium-High
-`recording_job_upload.rs:234-273` uploads `enhanced_path` (the primary rendition)
-but never removes it; `recording_job_chunked.rs:487-522`
-`delete_chunk_working_files` omits the enhanced path; `enhanced_render.rs`
-`IntermediateCleanup` sweeps only the `.enh-mono/.enh-denoised` intermediates,
-not the final `<stem>.enhanced.<codec>`. With enhancement+chunking, one enhanced
-file per chunk leaks forever on the recorder node, defeating `delete_after_upload`
-for the primary rendition. Fix sketch: delete `enhanced_path` after upload;
-include it in `delete_chunk_working_files` and the single-file retention manifest.
-
-### G53 - DST spring-forward: nonexistent local start time resolves to an unintended instant - `FIXED` (`72ae464e`) - Low-Medium
-`schedule-engine.ts:571-596` (`localDateTimeToUtc` fixed-point) has no post-loop
-validation that the resolved instant reproduces the requested `hour:minute`; on
-~2 DST-transition days/year an early-morning occurrence fires at a shifted
-wall-clock time. Fix sketch: after the loop verify `dateTimeParts` reproduces the
-requested time; apply an explicit skipped/ambiguous-time policy otherwise.
-
-### Lower-confidence notes (not counted as findings, deferred)
-- Chunk `?chunkTotal=` early-finalize (hunter 2, Low): any chunk carrying
-  `chunkTotal` is treated as final (`agent-cache-uploads.ts:281-302`); a node can
-  send index 1 with `chunkTotal=1` to finalize its own still-capturing recording.
-  Bounded to the node's own data; folds into the G51 completeRecordingJob guard.
-- Unbounded free-text from node (hunter 2, Low): `x-rakkr-reason` header and
-  health-event `details` record have no length/size cap; spoofable audit/health
-  content, no memory/logic hazard. `x-rakkr-duration-seconds` has no upper bound
-  (cosmetic, own-recording only).
-- WAV `wavData` guard tautology (hunter 3): `recording-cache.ts:562` check
-  `end <= bytes.byteLength` should be `start + 16 <= bytes.byteLength`; a truncated
-  `fmt ` chunk can RangeError, but it's caught by the route `.catch()` -> handled
-  failure, not a crash.
-
-
----
-
-## Run 8 fixes landed (this session)
-
-Fixed four of Run 8's seven confirmed findings, each with a red->green test, full
-API suite green (373 pass / 0 fail / 2 DB-skip), oxfmt/oxlint/check:loc clean,
-main current at `8a11b629`:
-
-- **G48** (`343d423a`) - `ianaTimeZoneSchema` refine in `packages/shared`; schedule
-  create now 400s an invalid zone instead of 500.
-- **G47** (`b4063b80`) - cache-file scope returns 409 for a terminal-failed/cancelled
-  job (idempotent for `completed`); route rejects uploads to a `failed` recording.
-- **G51** (`8a0e4e33`) - atomic `transition(job, allowedFrom)` CAS for all five
-  lifecycle transitions; extracted `recording-job-command.ts` to hold LOC.
-- **G49** (`e71a718f`) - chunk-store `deleteForRecording` + `deleteRecordingData`
-  now sweeps chunk cache files and rows on recording delete.
-
-### G51b - Lease-reaper list()-then-save TOCTOU (residual of G51) - `CATALOGUED` - Low-Medium
-`expireRecordingJobLeases` still reads a `list()` snapshot and blind-saves the
-expiry; a heartbeat that renews the lease (status stays `running`, only
-`leaseExpiresAt` advances) between the read and the write is overwritten with
-`failed` in Postgres. A status-based CAS does not help (status is unchanged), so
-this needs a `leaseExpiresAt`-conditioned expiry (`... WHERE status='running' AND
-leaseExpiresAt < now`). Deferred: the reaper is called on nearly every job op and
-returns a snapshot callers depend on, so it needs a careful, separately-tested
-change. Narrow window (agent silent enough to expire yet still heartbeating).
-
-### Run 8 confirmed findings: all fixed
-All seven confirmed Run 8 findings (G47-G53) are fixed with red->green tests,
-full API suite green (378 pass / 0 fail / 2 DB-skip), full-repo TS typecheck,
-oxfmt/oxlint/check:loc, and (for G52) cargo fmt/check/clippy + full Rust unit
-suite (150 pass). Later additions this session:
-- **G50** (`5312d798`) - retention now sizes/reclaims chunked-recording cache
-  (sum chunk files, sweep files, clear chunk cache paths).
-- **G52** (`22ab533e`) - agent deletes the enhanced rendition after upload.
-- **G53** (`72ae464e`) - DST spring-forward gap start times resolve forward
-  deterministically (two-offset reconciliation replaces the oscillating loop).
-
-### Deferred (specified, not yet done)
-- **G51b** (Low-Med) - lease-reaper `list()`-then-save TOCTOU. Correct fix needs
-  optimistic concurrency on `leaseExpiresAt` (`... WHERE status='running' AND
-  leaseExpiresAt = <snapshot>`) plus reworking the reaper's return to reflect
-  post-CAS truth (re-list). The reaper runs on nearly every job op, so this is a
-  hot-path change held for its own carefully-tested slice. Narrow window.
-- Lower-confidence notes (hunter marked "not counted as findings", unverified):
-  chunk `?chunkTotal=` early-finalize (own-recording only), unbounded node
-  free-text (`x-rakkr-reason`/health details), WAV `wavData` guard tautology
-  (already caught by the route `.catch()`). To be re-surfaced by a later round if
-  a reachable-harm repro exists.
-
-
----
-
-## Run 9 findings (adversary-on-fixes + lifecycle state-machine + fresh-sweep; 3 hunters)
-
-Run 9 targeted this session's own work plus the recording-status/upload subsystem.
-The adversary pass caught that **G47 was incomplete** and that **G51 introduced a
-new asymmetry** (the blind-save reaper could revert a CAS-completed job); the
-lifecycle hunter surfaced the dominant structural issue — **recording status has
-no compare-and-set**, so background runners blind-overwrite it from stale
-snapshots. All nine confirmed findings fixed, each with a red->green test; full
-API suite 387 (385 pass / 0 fail / 2 DB-skip), full-repo TS typecheck, and
-oxfmt/oxlint/check:loc green; main current at `8a11b629`. Broad areas
-re-verified clean: bootstrap tokens, runner-token auth, secret crypto, inventory
-reconcile, RBAC, OIDC, audit scope, listen/metrics; G49/G50/G52/G53 re-verified
-SOUND.
-
-### G47b - G47 guard only covered `failed`, not `partial`/`completed`; no-jobId path bypassed it - `FIXED` (`a1c5d411`) - Medium
-`agent-job-recording-scope.ts`. A terminal job leaves the recording `partial`
-(failed job + secured chunks) or `completed` (cancelled job); a headerless
-manual-attach upload took the no-jobId fallback, which excluded terminal jobs and
-returned `{ok:true}`, so it resurrected the recording to `cached`. Now the scope
-check 409s when the recording's own jobs are all terminal (live retry + genuine
-no-job attach still allowed).
-
-### G54 - Stale upload-reconcile overwrites a retried recording's fresh state - `FIXED` (`36f50457`) - High
-`upload-runner.ts`. `reconcileRecordingUpload` blind-saved status from a
-start-of-pass snapshot; a concurrent retry (reset to `recording`) or terminal
-decision was overwritten (and cache deleted) by a stale reconcile. Re-read before
-promoting; skip unless still `cached`/`partial`/`uploaded`.
-
-### G55 - Chunked reconcile promotes a terminal recording - `FIXED` (`36f50457`) - High
-`upload-runner.ts`. Same missing guard on `reconcileChunkedRecordingUpload`'s
-finalize write; same re-read guard applied.
-
-### G56 - Retry didn't reset supplementary renditions or sweep stale chunks - `FIXED` (`91d80369`) - Medium
-`recording-job-routes.ts`. `recordingForRetriedJob` left `rawCachePath`/
-`enhancedCachePath` (UI served the failed attempt's audio) and retry never cleared
-chunk rows (stale rows/totals mis-finalized the retry as `partial`). Clear the
-rendition paths and sweep chunk files+rows in both retry handlers.
-
-### G57 - Distinct upload policies sharing one destination collapse - `FIXED` (`514a4e22`) - Medium
-`upload-queue.ts`. The active-status dedup branch matched on destination+chunk
-only, unlike the succeeded branch, so a second policy targeting the same
-destination with a different subfolder was silently dropped. Match pathOverride +
-uploadPolicyId in the active branch too.
-
-### G48b - Corrupt persisted timezone starved the due-run pass - `FIXED` (`abcf4b19`) - Low-Medium
-`schedule-runner.ts`. `scheduleOccurrenceIsSkipped` runs before the per-schedule
-run try/catch and throws in the engine's Intl call on a bad zone, aborting the
-whole pass. Guard the occurrence check so one schedule defers itself. (Completes
-G48, which closed the create boundary but not the persisted-load boundary.)
-
-### G58 - S3 reported `provider_validated` for custom endpoints - `FIXED` (`1760e38b`) - Low
-`upload-executor.ts` + shared enum. Only real AWS S3 validates the trailing
-ChecksumSHA256; custom S3-compatible endpoints may ignore it. Added
-`provider_declared` and use it whenever a custom `s3.endpoint` is configured.
-
-### G50b - Metrics under-reported chunked-recording cache size - `FIXED` (`2b79dcd8`) - Low
-`metrics-routes.ts`. `recordingCacheByteMap` sized only the recording-level file,
-so chunked recordings reported 0 bytes. Sum chunk footprints too.
-
-### G51b - Lease reaper blind-save clobbered a CAS-completed job - `FIXED` (`9761fa51`) - Medium
-`recording-jobs.ts`. After G51 made complete/fail/cancel atomic, the reaper's
-blind save could revert a freshly-completed job to `failed`. Route the reaper
-through `transition()` (CAS on source status) and re-list for post-expiry truth.
-
-### Residual (documented)
-- **G51b-race1** (Low, pre-existing) - the heartbeat-renewal TOCTOU: a lease
-  renewed between the reaper's `list()` and its write. Needs a
-  `leaseExpiresAt`-conditioned store update; narrow (agent must heartbeat exactly
-  at lease expiry). Not shipped as untested hot-path concurrency code.
-- **Recording-status CAS** - the deeper structural fix behind G54/G55: recording
-  status has no compare-and-set, so the re-read guards narrow rather than fully
-  close the sub-tick window. A recording-store CAS is the eventual fix.
-
-
----
-
-## Run 10 findings (adversary-on-fixes + Rust agent deep-dive + recording-status sweep)
-
-Run 10's adversary pass confirmed all nine Run 9 fixes **SOUND** (one new low edge,
-G55-d). The Rust deep-dive opened the chunked-capture/recovery path (2 High), and
-the recording-status sweep confirmed the systemic root — **recording status has no
-compare-and-set**, so ~8 writers blind-overwrite it (G54/G55 fixed, G63/G64 fixed,
-G65 + A5-A8 remain). Six fixed with red->green tests; full API 388/0, Rust 152/0,
-all gates green; main current.
-
-### Fixed
-- **G60** (`1e657f9b`, High) - chunked wav render corrupted the file in place with
-  a channel map (final path == raw path); render to a distinct `.rendered.wav`.
-- **G59** (`ae9223ef`, High) - chunked crash-recovery never sent chunkTotal so the
-  recording never completed; derive it from the highest known chunk index.
-- **G64** (`e5d6d50a`, High) - lease-expiry terminal write downgraded a
-  concurrently-secured recording; re-read + preserve cached/uploaded/partial.
-- **G63** (`e5d6d50a`, High) - retention reverted a concurrently-promoted recording
-  (cached->uploaded) to completed; re-read + skip/preserve.
-- **G66** (`a17dd537`, Medium) - unstable pagination for equal recordedAt; add an
-  `id` tiebreaker to the store order + the default in-memory sort.
-- **G55-d** (`44047e9c`, Low) - chunked reconcile deleted a re-captured chunk's
-  cache before the recording guard; hoist the re-read to the top of the pass.
-- Module split (`b8494e6b`) - extracted `capture_naming.rs` +
-  `recording_job_recovery_chunk_total.rs` to keep both files under the LOC guard.
-
-### Deferred (with precise fix + reason)
-- **G65** (Medium) - the stop routes (single + bulk) blind-write `completed`,
-  downgrading a concurrently-secured recording. A store re-read conflicts with the
-  **scoped-context authorization** design (the routes operate on the operator's
-  scoped view, not the canonical record; re-reading the store would break that
-  guarantee and its test). Correct fix is the recording-status CAS applied to the
-  canonical record while preserving scoped context. Reverted the naive attempt.
-- **G62** (Medium) + **G59-residual** - chunkTotal transmission is coupled to a
-  chunk-file upload existing (graceful finish with empty `trailing`, or all chunks
-  uploaded pre-crash). Needs a decoupled agent->controller finalize signal;
-  requires Linux fake-controller integration testing, not shippable as untested
-  hot-path code here.
-- **G61** (Medium) - concurrent recording-job workers share one `agent_state_file`,
-  corrupting crash-recovery state when `max_concurrent_recordings > 1` (non-default).
-  Needs per-job state files + a recovery directory scan; deferred as a scoped
-  refactor gated behind a non-default config.
-
-### Systemic residual (the leverage point)
-**Recording-status compare-and-set.** `RecordingStore.save` is an unconditional
-blind write; ~8 writers (claim, terminal, stop, retention, reconcile, health-sync,
-metadata edit) race on `recording.status` from stale snapshots. G54/G55/G63/G64
-are patched with per-writer re-reads (which narrow but don't close the sub-tick
-window, and don't fix the whole-object field clobber), and G65 is blocked on it.
-The durable fix is a `RecordingStore.transition(next, allowedFrom)` mirroring the
-job store's CAS, routing every status write through it. This is the single
-highest-leverage remaining item.
-
-### Not yet audited (Run 10 sub-agents did not return)
-- **DB layer / migrations** - FK `onDelete` behavior, indexes/constraints,
-  migration replay, nullable-read-as-non-null.
-- **Health / watchdog** - flatline thresholds, event dedup/never-resolve,
-  liveness staleness. To be covered in Run 11.
-
-
----
-
-## Run 11 findings (DB layer + health/watchdog coverage + adversary-on-fixes)
-
-Run 11 closed Run 10's coverage gap (DB + health/watchdog, never audited) and
-re-verified Run 10's fixes. The adversary found Run 10's fixes SOUND except G59
-(incomplete -> G59b). DB layer: migrations/enum-parity/single-use-atomicity
-confirmed solid; two real orphan/CAS gaps found. Health/watchdog: meter freshness,
-node liveness, windowing confirmed solid; one HIGH (config inert) + several
-Med/Low. Seven fixed with red->green tests; full API 393/0, Rust 152/0, gates
-green; main current.
-
-### Fixed
-- **G69** (`8b86ae0e`, High) - the production watchdog runner never loaded
-  operator policies (custom policies unmonitored; edits to the default inert).
-  Thread the settings store in and load policies per pass.
-- **G67** (`c1b0dfc6`, Med/High) - deleting a recording orphaned its recording_jobs
-  and upload_queue_items rows (no FK cascade, no app sweep) — the runner then
-  retried the orphaned items forever. Sweep both in deleteRecordingData (like G49).
-- **G59b** (`b04abb28`, Med) - completes G59: the recovery chunkTotal marker still
-  missed when uploaded dominated a low-index pending set. Derive
-  max(highest+1, uploaded+pending.len()) and stamp the total on every recovered chunk.
-- **G68** (`ed5fd6fa`, Low-Med) - the Postgres upload-queue start() was a
-  non-atomic find-then-write (double upload under >1 replica); now a conditional
-  UPDATE...WHERE status IN (due) RETURNING, mirroring the job CAS.
-- **G71** (`75484767`, Low-Med) - watchdog active-event lookups filtered type in
-  memory over a 500-row cap, so a busy recording could dup open events; push the
-  type filter into the query.
-- **G72** (`23c7815d`, Low) - an indefinitely-suppressed alert (suppressedUntil
-  null) kept repeating; treat it as never-repeat across the three reconcilers.
-- **G73** (`7668cfe2`, Low) - agent health events could forge controller-/watchdog-
-  reserved type prefixes; reject them at the schema boundary.
-
-### Catalogued
-- **G70** (Med, observability) - the Prometheus active-alert gauges compute from
-  the newest 500 health events (RBAC-filtered in memory), so once total events
-  exceed 500 older-but-open alerts drop out and the gauges undercount. Correct fix
-  needs scoped unresolved counting in the health store (loading all events per
-  scrape would regress the per-event RBAC cost); a store-level change, not a patch.
-- DB hardening notes (Low): no DB unique index backing the upload-dedup logical
-  key (concurrent enqueue can double-insert); 16 stores each open a 3-conn pool
-  (~48 conns/process) — a capacity concern at replicaCount > 2.
-
-### Post-Run-11: G65 fixed + recording-status CAS landed (`183cc2cb`)
-Added `RecordingStore.transition(recording, allowedFrom)` — the recording-level
-compare-and-set analog of the job store — and used it to close **G65** (stop
-routes force `completed` only from an active status; a concurrent secure isn't
-downgraded). This resolves the scoped-context tension (persist the scoped object,
-gate on the canonical status). The re-read stopgaps (G54/G55/G63/G64) still stand
-and could be upgraded to this CAS to fully close their sub-tick window — a safe
-follow-up refinement, not a new-finding risk (all recording-status *writers* are
-now guarded).
+Deferred/residual from these runs (still tracked below): G51b-race1 (lease
+heartbeat TOCTOU, narrow), G61 (per-job agent state files, config-gated),
+G62/G59-residual (decoupled chunked-finalize signal, needs Linux), DB hardening
+notes (upload-dedup unique index; ~48 conns/process at replicaCount > 2).
 
 ## Run 12 findings (web console: RBAC affordances, pagination staleness)
 
