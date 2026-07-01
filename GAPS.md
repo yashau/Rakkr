@@ -989,7 +989,40 @@ queue), terminal-job resurrection guard.
   whereas the single route now 409s. Optional consistency nicety, not a
   correctness bug; mirror the single-route failure if ever desired.
 
+## Run 17 findings (adversary-on-C-NEW-1 + max-skeptic data-loss/RBAC re-sweep)
+
+### Sound (verified)
+- C-NEW-1 adversary: SOUND (dedup correct, undefined-not-0 preserved, no
+  traversal-throw regression, no orphaned-raw path). 409-test genuine red->green.
+- RBAC re-sweep: SOUND across agent node-token scope checks, runner/bootstrap
+  token auth, body-param IDOR guards, upload-destination secret masking,
+  live-listen scoping, audit target/actor/outcome consistency. No bypass found.
+
+### RS1 (High, CATALOGUED - needs Linux capture-recovery integration)
+Restart during runtime capture recovery permanently drops preserved early audio
+and leaks the segment files. On a mid-capture device-loss/disk-shortfall,
+`controller.rs` `preserve_recovered_capture_segment` renames the partial to
+`<stem>.recovery-attempt-N.wav`, pushes it to `recovered_segments`, and persists
+state (status running/captured); graceful completion then
+`stitch_recovered_capture_segments` combines them before the upload checkpoint.
+But if the agent RESTARTS before the stitch, `reconcile_previous_recording_job`
+(`recording_job_recovery.rs:111-223`) uploads ONLY `state.output_path` (the last
+segment) and reads `state.recovered_segments` merely to log a count -- never
+stitching, uploading, or deleting them. So the pre-loss audio is lost while the
+recording reports `uploaded`->`completed`, and the recovery-attempt files leak
+(not in the recorder-cache retention manifest, which tracks only raw/output).
+**Fix spec:** in the restart-recovery branch, when `recovered_segments` is
+non-empty, reconstruct the job/capture-plan context (may require persisting
+`render_command`/plan in AgentJobState across restart) and run
+`stitch_recovered_capture_segments` (segments + output_path) before upload; on
+stitch success delete the segment inputs, on failure mark the recording `partial`
++ preserve segments (never silent-complete with lost audio). **Why catalogued:**
+end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
+recorder rig); shipping an unverified change to the reliability-critical recovery
+path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
+
 ### Still open (tracked)
+- **RS1** (High, Rust) - see above; restart-recovery drops preserved segments.
 - **Recording-status CAS** (systemic) - RESOLVED: all writers (stop=G65,
   metadata=R13-2, health-sync=R13-8) now use the `transition` CAS; G54/G55/G63/G64
   keep their re-read stopgaps as safe backstops (optional CAS upgrade, not a bug).
