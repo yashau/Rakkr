@@ -10,6 +10,7 @@ import {
   templateAssignments as templateAssignmentsTable,
   watchdogPolicies as watchdogPoliciesTable,
 } from "@rakkr/db";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   channelMapTemplateAssignmentSchema,
   channelMapTemplateSchema,
@@ -717,9 +718,8 @@ class PostgresSettingsStore implements SettingsStore {
       });
   }
 
-  private async failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private async failover(message: string, error: unknown): Promise<never> {
+    throw new DatabaseUnavailableError(message, error);
   }
 }
 

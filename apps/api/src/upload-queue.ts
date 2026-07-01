@@ -9,6 +9,7 @@ import {
   or,
   uploadQueueItems as uploadQueueItemsTable,
 } from "@rakkr/db";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   uploadProviderSchema,
   uploadQueueItemSchema,
@@ -485,9 +486,8 @@ class PostgresUploadQueueStore implements UploadQueueStore {
       });
   }
 
-  private async failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private async failover(message: string, error: unknown): Promise<never> {
+    throw new DatabaseUnavailableError(message, error);
   }
 }
 

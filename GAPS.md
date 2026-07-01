@@ -14,13 +14,13 @@ UTC/DST core were checked and found **correct**. The gaps cluster where behaviou
 only be proven against real hardware/Postgres/time, exactly as the source-of-truth doc
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
-**Landed (each with a test):** G1, G1b, G2, G3, G5, G6, G7, G10, G11, G12, G13, G19, G21,
-G24, G25 (16 confirmed findings); G26 mostly-fixed via G25.
-**Open:** G4 (decided → 503; deferred as a focused slice — no API error boundary yet + 14
-heterogeneous stores), G9 (keepRaw wording — product call); coverage G14/G16.
+**Landed (each with a test):** G1, G1b, G2, G3, G4, G5, G6, G7, G10, G11, G12, G13, G19, G21,
+G24, G25 (17 confirmed findings); G26 mostly-fixed via G25.
+**Open:** G9 (keepRaw wording — product call); coverage G14/G16; G4 follow-up for
+`auth-service`/`oidc-login`.
 **Suspected / by-design:** G17, G18, G20, G22, G23.
-**Iteration loop:** Run 1 dirty (surfaced G24/G25/G26, now fixed except the G26 residual and
-G4). Streak 0/5 — cannot reach clean until G4 lands. See the run log at the end.
+**Iteration loop:** Run 1 dirty (surfaced G24/G25/G26). All decided items now fixed (incl. G4).
+Streak 0/5 — a fresh Run 2 (incl. adversarial review of the G4 change) is the next step.
 Rebased onto `origin/main` (`844f6a8e`); **G1b is a fresh-on-main catch** — PR #14 reintroduced
 the G1 data-loss pattern in its new chunked-upload path, which this audit caught on rebase.
 
@@ -99,9 +99,23 @@ named `=1+1` is neutralised.
 
 ## HIGH
 
-### G4 — Permanent silent failover to a divergent in-memory store on any transient DB error · `DECIDED (503) — deferred as a focused slice`
-`recording-store.ts:180-197`, `recording-jobs.ts:540-549`, `upload-destinations.ts:335`,
-`settings-store.ts:720`, and sibling Postgres wrappers.
+### G4 — Permanent silent failover to a divergent in-memory store on any transient DB error · `FIXED (503)`
+**Fixed:** added `DatabaseUnavailableError` + an `app.onError` boundary in `index.ts` that maps
+it to **503**. The 9 DB-authoritative operator-data/config stores — recordings, recording-jobs,
+recording-chunks, schedules, settings, controller-settings, upload-destinations (encrypted
+secrets), upload-policies, upload-queue — now **throw** it on a DB error (their `failover()`
+throws instead of latching `dbAvailable=false` and serving the boot-time fallback). So a caller
+gets a 503 and retries against the real DB rather than writing to a throwaway store.
+**Intentionally left resilient (not converted):** `audit-store`, `health-store`, `meter-store`
+(in-memory is a *legitimate* primary — they must not 503 every audited action); `node-store`
+(already refuses writes with `NodeStoreError` when the DB is down and only *reads* fall back to
+seed nodes — not silent write loss); `auth-service`/`oidc-login` (login critical path with an
+env-based local admin — a scoped follow-up so a DB blip can't lock out local admin).
+**Tests:** `database-unavailable.test.ts` (boundary: DB error → 503, other → 500; deterministic)
++ gated `database-failover-integration.test.ts` (unreachable Postgres → store throws
+`DatabaseUnavailableError`; `RAKKR_API_TEST_DB_FAILOVER=1`, `--test-force-exit`). Full suite
+(DATABASE_URL unset) unaffected — the Postgres wrappers aren't instantiated in dev/test.
+Original analysis:
 One transient Postgres error latches `dbAvailable=false` for the whole process lifetime
 (one `console.warn`, no metric/health signal). Every subsequent read/write silently
 serves the boot-time JSON fallback; routes still return 200. Operator writes land only in

@@ -35,6 +35,7 @@ import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { createNodeSshCredentialStore } from "./node-ssh-credential-store.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
+import { isDatabaseUnavailableError } from "./database-unavailable.js";
 import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
@@ -523,6 +524,23 @@ app.use(
     origin: webOrigin,
   }),
 );
+
+// When a DB-authoritative store cannot reach Postgres it throws
+// DatabaseUnavailableError rather than silently persisting to a throwaway
+// fallback. Surface that as 503 so the caller retries against the real
+// database; everything else keeps the default 500.
+app.onError((error, c) => {
+  if (isDatabaseUnavailableError(error)) {
+    return c.json(
+      { error: "Service temporarily unavailable", reason: "database_unavailable" },
+      503,
+    );
+  }
+
+  console.error("unhandled API error", error);
+
+  return c.json({ error: "Internal server error" }, 500);
+});
 
 registerMetricsRoutes({
   app,

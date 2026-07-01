@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { and, createDatabase, desc, eq, recordingJobs as recordingJobsTable } from "@rakkr/db";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   defaultVoiceRecordingProfile,
   effectiveChunkSeconds,
@@ -607,9 +608,8 @@ class PostgresRecordingJobStore implements RecordingJobStore {
     }
   }
 
-  private async failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private async failover(message: string, error: unknown): Promise<never> {
+    throw new DatabaseUnavailableError(message, error);
   }
 
   private async write(job: RecordingJob) {

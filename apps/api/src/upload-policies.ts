@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDatabase, eq, uploadPolicies as uploadPoliciesTable } from "@rakkr/db";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   defaultStubUploadPolicy,
   uploadPolicyInputSchema,
@@ -223,9 +224,8 @@ class PostgresUploadPolicyStore implements UploadPolicyStore {
       });
   }
 
-  private async failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private async failover(message: string, error: unknown): Promise<never> {
+    throw new DatabaseUnavailableError(message, error);
   }
 }
 

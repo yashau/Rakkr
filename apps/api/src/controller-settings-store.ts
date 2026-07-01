@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { controllerSettings as controllerSettingsTable, createDatabase, eq } from "@rakkr/db";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   controllerSettingsSchema,
   defaultControllerSettings,
@@ -99,9 +100,8 @@ class PostgresControllerSettingsStore implements ControllerSettingsStore {
     }
   }
 
-  private failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private failover(message: string, error: unknown): never {
+    throw new DatabaseUnavailableError(message, error);
   }
 }
 

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import path from "node:path";
 import { createDatabase, desc, eq, recordings as recordingsTable } from "@rakkr/db";
 import { recordingSummarySchema, type RecordingSummary } from "@rakkr/shared";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 
 type RecordingInsert = typeof recordingsTable.$inferInsert;
 type RecordingRow = typeof recordingsTable.$inferSelect;
@@ -191,9 +192,10 @@ class PostgresRecordingStore implements RecordingStore {
     }
   }
 
-  private async failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private async failover(message: string, error: unknown): Promise<never> {
+    // DB-authoritative store: surface unavailability as 503 instead of silently
+    // diverging to the boot-time fallback. See database-unavailable.ts.
+    throw new DatabaseUnavailableError(message, error);
   }
 
   private async seedIfEmpty() {

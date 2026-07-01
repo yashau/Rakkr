@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDatabase, desc, eq, schedules as schedulesTable } from "@rakkr/db";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
@@ -234,9 +235,8 @@ class PostgresScheduleStore implements ScheduleStore {
     }
   }
 
-  private async failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private async failover(message: string, error: unknown): Promise<never> {
+    throw new DatabaseUnavailableError(message, error);
   }
 
   private async findRow(scheduleId: string) {

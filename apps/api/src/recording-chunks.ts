@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { asc, createDatabase, eq, recordingChunks as recordingChunksTable } from "@rakkr/db";
+import { DatabaseUnavailableError } from "./database-unavailable.js";
 import { recordingChunkSchema, type RecordingChunk } from "@rakkr/shared";
 
 type RecordingChunkInsert = typeof recordingChunksTable.$inferInsert;
@@ -204,9 +205,8 @@ class PostgresRecordingChunkStore implements RecordingChunkStore {
     }
   }
 
-  private async failover(message: string, error: unknown) {
-    this.dbAvailable = false;
-    console.warn(message, error);
+  private async failover(message: string, error: unknown): Promise<never> {
+    throw new DatabaseUnavailableError(message, error);
   }
 }
 
