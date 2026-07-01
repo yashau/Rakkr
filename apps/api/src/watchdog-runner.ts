@@ -15,6 +15,7 @@ import type { HealthEventStore } from "./health-store.js";
 import type { NodeStore } from "./node-store.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import type { RecordingStore } from "./recording-store.js";
+import type { SettingsStore } from "./settings-store.js";
 import { reconcileClippingEvent } from "./watchdog-clipping.js";
 import { reconcileFlatlineEvent } from "./watchdog-flatline.js";
 import { nodeOfflineEventType, reconcileNodeLivenessEvents } from "./watchdog-node-liveness.js";
@@ -54,8 +55,12 @@ export interface WatchdogRunnerDependencies {
   healthEventStore: HealthEventStore;
   meterFrameProvider?: MeterFrameProvider;
   nodeStore?: Pick<NodeStore, "list">;
+  // Explicit policies (tests) take precedence; otherwise the runner loads the
+  // operator-managed policies from the settings store each pass so custom
+  // policies — and edits to the default — actually take effect in production.
   policies?: WatchdogPolicy[];
   recordingStore: RecordingStore;
+  settingsStore?: Pick<SettingsStore, "listWatchdogPolicies">;
 }
 
 export interface WatchdogRunResult {
@@ -125,13 +130,28 @@ async function runWatchdogPass(
     healthEventStore,
     meterFrameProvider = defaultMeterFrameProvider,
     nodeStore,
-    policies = [defaultScheduledVoiceWatchdogPolicy],
+    policies,
     recordingStore,
+    settingsStore,
   }: WatchdogRunnerDependencies,
   histories: Map<string, SignalHistory>,
   now = new Date(),
 ): Promise<WatchdogRunResult[]> {
-  const policyById = new Map(policies.map((policy) => [policy.id, policy]));
+  // Explicit `policies` win (tests). Otherwise load the operator-managed set from
+  // the settings store so custom watchdog policies are evaluated and edits to the
+  // default take effect — the runner previously only ever saw the compiled-in
+  // default, so custom-policy recordings were silently unmonitored.
+  const effectivePolicies =
+    policies ??
+    (settingsStore
+      ? await settingsStore.listWatchdogPolicies()
+      : [defaultScheduledVoiceWatchdogPolicy]);
+  const policyById = new Map(effectivePolicies.map((policy) => [policy.id, policy]));
+
+  // The built-in default must always be resolvable even if the store omits it.
+  if (!policyById.has(defaultScheduledVoiceWatchdogPolicy.id)) {
+    policyById.set(defaultScheduledVoiceWatchdogPolicy.id, defaultScheduledVoiceWatchdogPolicy);
+  }
   const recordings = await recordingStore.list();
   const activeRecordingIds = new Set<string>();
   const results: WatchdogRunResult[] = [];

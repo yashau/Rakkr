@@ -396,6 +396,29 @@ test("creates and resolves stale node heartbeat health events", async () => {
   assert.equal(resolvedAudits.length, 1);
 });
 
+test("G69: watchdog evaluates operator policies loaded from the settings store", async () => {
+  const customPolicy: WatchdogPolicy = { ...watchdogPolicy(), id: "watchdog_policy_custom" };
+  const runner = createWatchdogRunner({
+    auditStore: createAuditStore(""),
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameProvider: () => loudNoiseFrame(),
+    recordingStore: memoryRecordingStore([
+      recording({ watchdogPolicyId: "watchdog_policy_custom" }),
+    ]),
+    // No explicit `policies` — the runner must load this from the settings store.
+    settingsStore: { listWatchdogPolicies: async () => [customPolicy] },
+  });
+
+  await runner.runOnce(new Date("2026-06-18T12:00:30.000Z"));
+  const [result] = await runner.runOnce(new Date("2026-06-18T12:01:00.000Z"));
+
+  // Pre-fix the runner only knew the compiled default, so a recording with a
+  // custom watchdogPolicyId was skipped (watchdog_policy_not_found) — silently
+  // unmonitored. It must now be evaluated.
+  assert.notEqual(result?.reason, "watchdog_policy_not_found");
+  assert.notEqual(result?.outcome, "skipped");
+});
+
 function runnerFor({
   healthEventStore = createHealthEventStore("", []),
   policy,

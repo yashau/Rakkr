@@ -60,6 +60,9 @@ export function createApiRunners({
       meterFrameProvider: (nodeId, now) => watchdogMeterFrame(meterFrameStore, nodeId, now),
       nodeStore,
       recordingStore,
+      // Load operator-managed watchdog policies each pass (custom policies + edits
+      // to the default) instead of only the compiled-in default.
+      settingsStore,
     }),
   };
 }
