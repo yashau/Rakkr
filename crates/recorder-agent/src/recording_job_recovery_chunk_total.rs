@@ -28,7 +28,11 @@ pub(crate) fn recovered_chunk_total(state: &AgentJobState) -> Option<u32> {
         .map(|chunk| chunk.index + 1)
         .max()
         .unwrap_or(0);
-    let total = highest_pending.max(uploaded);
+    // All closed chunks = already-uploaded + still-pending (disjoint sets). Bound
+    // by the highest known index+1 in case an index gap (a dropped chunk) sits
+    // above them. `uploaded` alone undercounts when the pending chunks are the
+    // low indices (e.g. chunk 0 failed while 1..N uploaded).
+    let total = highest_pending.max(uploaded + state.pending_chunks.len() as u32);
 
     (total > 0).then_some(total)
 }
@@ -78,7 +82,14 @@ mod tests {
             recovered_chunk_total(&state(None, Some(1), vec![1, 2])),
             Some(3)
         );
-        // Uploaded count dominates when it exceeds the pending indices.
+        // G59b: an early chunk failed (pending=[0]) while later chunks uploaded
+        // (uploaded=4). The total is uploaded + pending = 5, NOT max index+1 of
+        // the pending set (1) nor uploaded alone (4).
+        assert_eq!(
+            recovered_chunk_total(&state(None, Some(4), vec![0])),
+            Some(5)
+        );
+        // Uploaded count with no pending chunks is the whole total.
         assert_eq!(
             recovered_chunk_total(&state(None, Some(5), Vec::new())),
             Some(5)

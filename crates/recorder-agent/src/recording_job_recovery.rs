@@ -327,8 +327,14 @@ async fn reconcile_previous_chunked_recording_job(
             continue;
         }
 
-        // The final chunk carries chunkTotal so the controller learns the count.
-        let chunk_total_marker = chunk_total.filter(|total| chunk.index + 1 == *total);
+        // Capture already ended before this recovery, so the total is final and
+        // known. Stamp it on EVERY recovered chunk upload rather than an
+        // index-equality match: when the pending chunks are the low indices (an
+        // early chunk failed while later ones uploaded), no pending index equals
+        // the total, so an `index + 1 == total` marker never fired and the
+        // controller never finalized. Sending it on each upload is idempotent
+        // (setRecordingChunkTotal + finalize) and guarantees delivery.
+        let chunk_total_marker = chunk_total;
         let upload = upload_cache_file(CacheFileUpload {
             allow_insecure_controller: config.allow_insecure_controller,
             content_type: content_type_for_codec(None, &output_path),
