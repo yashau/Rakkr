@@ -966,6 +966,29 @@ Last-corners verified SOUND: bootstrap installer + agent `--bootstrap` key wipe,
 command-template/enhanced-render arg-injection safety, runner auth, release
 workflows, docs site, CI gate scripts.
 
+## Run 16 findings (adversary-on-Run-15 + cross-cutting end-to-end sweep)
+
+### Fixed
+- **C-NEW-1** (`860ea294`, Med) - whole-recording `deleteRecordingCacheFile` /
+  `recordingCacheFileSize` only touched the primary `cachePath`, so a keepRaw
+  enhanced recording's DISTINCT raw master (`<id>.raw.<ext>`, usually the largest
+  rendition) leaked on disk on every delete/retention/post-upload-cleanup path
+  and was invisible to byte-pressure retention (audit also lied cacheDeleted).
+  The per-chunk helpers already union all renditions (G49/G50/G52); brought the
+  whole-recording helpers to parity. Test in `recording-cache.test.ts`.
+
+### Sound (adversary verified Run 15): RC1 + S3-followup confirmed correct, no
+regressions to the Run 13/14 CAS/health work. Cross-cutting flows verified sound:
+upload-reconcile↔retention↔retry ordering, orphan-row delete sweeps (chunks/jobs/
+queue), terminal-job resurrection guard.
+
+### Catalogued (Low)
+- **Bulk metadata all-contended asymmetry** - if EVERY recording in a bulk
+  metadata request loses the CAS (pathological), the route still audits
+  `bulk_update.succeeded` with updatedCount 0 (truthful count, no clobber),
+  whereas the single route now 409s. Optional consistency nicety, not a
+  correctness bug; mirror the single-route failure if ever desired.
+
 ### Still open (tracked)
 - **Recording-status CAS** (systemic) - RESOLVED: all writers (stop=G65,
   metadata=R13-2, health-sync=R13-8) now use the `transition` CAS; G54/G55/G63/G64
