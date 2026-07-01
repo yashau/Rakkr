@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { api } from "@/lib/api";
+import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { settingsPagePermissions } from "@/lib/settings-page-helpers";
 
 export function SettingsPage() {
@@ -34,7 +35,7 @@ export function SettingsPage() {
   });
   const nodesQuery = useQuery({
     enabled: canReadSettings && canReadNodes,
-    queryFn: () => api.nodes(),
+    queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
   });
 

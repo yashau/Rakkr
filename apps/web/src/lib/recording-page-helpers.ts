@@ -21,6 +21,19 @@ import type {
 } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
 
+/**
+ * Query keys to invalidate after an operator upload-queue action that is
+ * audited server-side (single enqueue, bulk enqueue, retry). Each of these
+ * records an audit event, so the audit view must refresh alongside the upload
+ * queue; otherwise the on-screen audit log stays stale until an unrelated
+ * refetch. Single-enqueue and retry previously invalidated only the queue and
+ * left the audit view stale (G78) — the bulk path already refreshed both.
+ */
+export const auditedUploadActionQueryKeys: readonly (readonly string[])[] = [
+  ["audit-events"],
+  ["upload-queue"],
+];
+
 export interface DownloadableRecordingFile {
   blob: Blob;
   fileName: string;

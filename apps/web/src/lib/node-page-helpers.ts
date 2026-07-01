@@ -21,6 +21,22 @@ export interface NodePageActionPermissions {
   canManage: boolean;
 }
 
+/**
+ * Page size for node pickers and id->label lookups (recording start, schedules,
+ * jobs, dashboard, health, recordings, settings). These callers need the whole
+ * scoped node inventory, not a page: `api.nodes()` with no `limit` gets the
+ * server default (50), silently dropping the 51st+ node from dropdowns and
+ * leaving its recordings/jobs unlabeled. 200 is the API's max page size
+ * (`PAGE_POLICY.default.maxLimit`); requesting it fetches the full inventory up
+ * to that cap. Deployments beyond 200 nodes need a paginated picker (tracked).
+ */
+export const NODE_PICKER_LIMIT = 200;
+
+/** Query filters for node pickers/labels — fetch the full inventory, not a page. */
+export function nodePickerFilters(): { limit: number } {
+  return { limit: NODE_PICKER_LIMIT };
+}
+
 export function nodePageActionPermissions(permissions: readonly Permission[]) {
   return {
     canRead: permissions.includes("node:read"),

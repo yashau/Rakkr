@@ -26,6 +26,7 @@ import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { nodePickerFilters } from "@/lib/node-page-helpers";
 import {
   emptySchedulePageFilters,
   scheduleActionState,
@@ -82,7 +83,7 @@ export function SchedulesPage() {
   });
   const nodesQuery = useQuery({
     enabled: actionPermissions.canReadNodes,
-    queryFn: () => api.nodes(),
+    queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
   });
   const nodes = useMemo(() => nodesQuery.data?.data ?? [], [nodesQuery.data?.data]);

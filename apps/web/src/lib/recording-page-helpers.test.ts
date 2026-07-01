@@ -11,6 +11,7 @@ import type {
 } from "@rakkr/shared";
 
 import {
+  auditedUploadActionQueryKeys,
   clearPlaybackPreview,
   emptyRecordingFilterDraft,
   filtersFromDraft,
@@ -29,6 +30,15 @@ import {
   waveformBarHeightPercent,
   waveformPreviewSummary,
 } from "./recording-page-helpers";
+
+test("G78: audited upload actions refresh the audit view alongside the queue", () => {
+  // Single enqueue, bulk enqueue, and retry all write an audit event, so the
+  // audit log must be invalidated too — not just the upload queue.
+  const keys = auditedUploadActionQueryKeys.map((queryKey) => queryKey.join("/"));
+
+  assert.ok(keys.includes("audit-events"), "must refresh the audit-events view");
+  assert.ok(keys.includes("upload-queue"), "must refresh the upload queue");
+});
 
 test("recording action helpers identify cached files for playback download and upload", () => {
   assert.equal(isCachedRecording(recording({ cached: true, cachePath: "ad-hoc/rec.mp3" })), true);

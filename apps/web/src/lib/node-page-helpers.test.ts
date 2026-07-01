@@ -14,12 +14,23 @@ import {
   nodeHealthLifecycleInput,
   nodeLocationSummary,
   nodePageActionPermissions,
+  nodePickerFilters,
   nodeRuntimeSummary,
   nodeSelectionState,
   nextNodeSelection,
   rotateNodeTokenTitle,
 } from "./node-page-helpers";
 import { formatDateTime } from "./dates";
+
+test("G76: node pickers request the full inventory, not the default page", () => {
+  // The API's default node page is 50; pickers/labels that omit `limit` drop
+  // every node past the first page. The picker filters must request more than
+  // one default page so the whole scoped inventory reaches the dropdowns.
+  const filters = nodePickerFilters();
+
+  assert.ok(filters.limit > 50, "picker must fetch beyond the default 50-row page");
+  assert.equal(filters.limit, 200, "requests the API's max page size (PAGE_POLICY.default)");
+});
 
 test("node page action permissions split listen and management actions", () => {
   assert.deepEqual(nodePageActionPermissions(["node:read"]), {

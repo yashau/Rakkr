@@ -52,6 +52,7 @@ import {
 import {
   defaultNodeHealthSuppressedUntil,
   nodeHealthLifecycleInput,
+  nodePickerFilters,
 } from "@/lib/node-page-helpers";
 import { downloadBlob } from "@/lib/recording-page-helpers";
 import { defaultPageSize } from "@/lib/server-pagination";
@@ -102,7 +103,7 @@ export function HealthPage() {
   });
   const nodesQuery = useQuery({
     enabled: permissions.canReadNodes,
-    queryFn: () => api.nodes(),
+    queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
   });
   const schedulesQuery = useQuery({

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
+import { nodePickerFilters } from "@/lib/node-page-helpers";
 import {
   emptyRecordingStartDraft,
   recordingStartNodeLabel,
@@ -47,7 +48,7 @@ export function RecordingStartPanel({
   const [draft, setDraft] = useState<RecordingStartDraft>(emptyRecordingStartDraft);
   const nodesQuery = useQuery({
     enabled: canReadNodes,
-    queryFn: () => api.nodes(),
+    queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
   });
   const recordingProfilesQuery = useQuery({

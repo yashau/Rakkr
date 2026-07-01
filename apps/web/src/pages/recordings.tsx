@@ -32,7 +32,9 @@ import {
   type RecordingSortOrder,
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { nodePickerFilters } from "@/lib/node-page-helpers";
 import {
+  auditedUploadActionQueryKeys,
   clearPlaybackPreview,
   defaultRecordingPageSize,
   downloadBlob,
@@ -112,7 +114,7 @@ export function RecordingsPage() {
   });
   const nodesQuery = useQuery({
     enabled: pagePermissions.canReadNodes,
-    queryFn: () => api.nodes(),
+    queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
   });
   const recordingProfilesQuery = useQuery({
@@ -296,7 +298,9 @@ export function RecordingsPage() {
         title: "Upload queue unavailable",
       }),
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      for (const queryKey of auditedUploadActionQueryKeys) {
+        queryClient.invalidateQueries({ queryKey });
+      }
       setNotice({
         detail: `${response.data.provider} upload queue item ${response.data.status}.`,
         title: "Upload queued",
@@ -312,8 +316,9 @@ export function RecordingsPage() {
         title: "Bulk upload queue unavailable",
       }),
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ["audit-events"] });
-      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      for (const queryKey of auditedUploadActionQueryKeys) {
+        queryClient.invalidateQueries({ queryKey });
+      }
       setNotice({
         detail: `${response.meta.queuedCount} cached recordings were queued.`,
         title: "Uploads queued",
@@ -328,7 +333,9 @@ export function RecordingsPage() {
         title: "Retry unavailable",
       }),
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ["upload-queue"] });
+      for (const queryKey of auditedUploadActionQueryKeys) {
+        queryClient.invalidateQueries({ queryKey });
+      }
       setNotice({
         detail: `${response.data.provider} retry scheduled for ${formatDateTime(response.data.nextAttemptAt)}.`,
         title: "Upload retry scheduled",

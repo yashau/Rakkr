@@ -49,6 +49,7 @@ import {
   type JobsPageFilters,
   type RecordingJobFilterKey,
 } from "@/lib/jobs-page-helpers";
+import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { downloadBlob } from "@/lib/recording-page-helpers";
 import { defaultPageSize } from "@/lib/server-pagination";
 import { useServerPagination } from "@/lib/use-server-pagination";
@@ -97,7 +98,7 @@ export function JobsPage() {
   });
   const nodesQuery = useQuery({
     enabled: permissions.canReadNodes,
-    queryFn: () => api.nodes(),
+    queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
   });
   const recordingsQuery = useQuery({

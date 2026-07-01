@@ -30,6 +30,7 @@ import {
 import { formatDateTime } from "@/lib/dates";
 import { healthEventTargetLabel, readableHealthEventType } from "@/lib/health-page-helpers";
 import { recordingJobStatusClass, recordingJobStopActionState } from "@/lib/jobs-page-helpers";
+import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 import { toneBadgeClass } from "@/lib/status-colors";
 
@@ -50,7 +51,7 @@ export function DashboardPage() {
   });
   const nodesQuery = useQuery({
     enabled: pagePermissions.canRead,
-    queryFn: () => api.nodes(),
+    queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
     refetchInterval: 5000,
   });
