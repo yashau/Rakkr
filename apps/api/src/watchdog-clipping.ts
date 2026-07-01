@@ -195,9 +195,11 @@ async function resolveClippingEvent({
 }
 
 async function activeClippingEvent(healthEventStore: HealthEventStore, recordingId: string) {
-  const events = await healthEventStore.list({ limit: 500, recordingId });
+  // Filter by `type` in the query so the 500-row cap applies per-type, not across
+  // all of the recording's events (which could hide the open one → duplicate).
+  const events = await healthEventStore.list({ limit: 500, recordingId, type: clippingEventType });
 
-  return events.find((event) => event.type === clippingEventType && event.status !== "resolved");
+  return events.find((event) => event.status !== "resolved");
 }
 
 function clippingDetails(

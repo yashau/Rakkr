@@ -169,9 +169,11 @@ async function resolveNodeOfflineEvent({
 }
 
 async function activeNodeOfflineEvent(healthEventStore: HealthEventStore, nodeId: string) {
-  const events = await healthEventStore.list({ limit: 500, nodeId });
+  // Filter by `type` in the query so the 500-row cap applies per-type, not across
+  // all of the node's events (which could hide the open one → duplicate).
+  const events = await healthEventStore.list({ limit: 500, nodeId, type: nodeOfflineEventType });
 
-  return events.find((event) => event.type === nodeOfflineEventType && event.status !== "resolved");
+  return events.find((event) => event.status !== "resolved");
 }
 
 function nodeOfflineDetails(node: RecorderNode, now: Date, existing?: HealthEvent) {

@@ -616,22 +616,29 @@ async function resolveChannelCorrelationEvent({
 }
 
 async function activeLowSignalEvent(healthEventStore: HealthEventStore, recordingId: string) {
-  const events = await healthEventStore.list({ limit: 500, recordingId });
+  // Filter by `type` in the query, not just in memory: without it the 500-row cap
+  // covers events of ALL types for the recording, so on a busy recording the open
+  // event of this type could fall outside the window and a duplicate got created.
+  const events = await healthEventStore.list({
+    limit: 500,
+    recordingId,
+    type: scheduledLowSignalEventType,
+  });
 
-  return events.find(
-    (event) => event.type === scheduledLowSignalEventType && event.status !== "resolved",
-  );
+  return events.find((event) => event.status !== "resolved");
 }
 
 async function activeChannelCorrelationEvent(
   healthEventStore: HealthEventStore,
   recordingId: string,
 ) {
-  const events = await healthEventStore.list({ limit: 500, recordingId });
+  const events = await healthEventStore.list({
+    limit: 500,
+    recordingId,
+    type: channelCorrelationEventType,
+  });
 
-  return events.find(
-    (event) => event.type === channelCorrelationEventType && event.status !== "resolved",
-  );
+  return events.find((event) => event.status !== "resolved");
 }
 
 function lowSignalDetails(
