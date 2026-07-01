@@ -19,14 +19,16 @@ ACTIONS = {
     "smoke_check",
 }
 
-# Lifecycle actions that (re)write the agent unit/env, so the controller mints a
-# fresh node token for the agent. Read-only actions (smoke_check) leave the
-# running agent's token untouched.
+# Lifecycle actions that (re)write the agent env file, so the controller mints a
+# fresh node token for the agent to consume. This MUST match the actions that
+# actually template `recorder-agent.env` in the `recorder_node` role
+# (install_dependencies / update_binary). Minting revokes the node's current
+# token, so an action that mints but does NOT rewrite the env would lock the
+# agent out of the controller (401 on the next heartbeat) — restart_service and
+# rotate_trust do not rewrite the env, so they must not mint.
 TOKEN_PROVISION_ACTIONS = {
     "install_dependencies",
     "update_binary",
-    "restart_service",
-    "rotate_trust",
 }
 
 # Shared secret the controller sends as `Authorization: Bearer <token>` on every
