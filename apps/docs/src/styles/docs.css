@@ -144,10 +144,17 @@ body {
   letter-spacing: -0.012em;
 }
 
-/* Wordmark next to the logo, matching the site's quiet semibold "rakkr". */
+/* Wordmark next to the logo: the primary foreground colour, not Starlight's
+   default accent — light foreground on dark, deep brand navy on light
+   (matching the marketing site's wordmark). */
 .site-title {
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: #e6eaf2;
+}
+
+:root[data-theme="light"] .site-title {
+  color: #0c1b2e;
 }
 
 /* Selection + focus echo the site's signal-blue affordances. */
