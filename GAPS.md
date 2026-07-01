@@ -856,6 +856,41 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 22 — DIRTY (adversary-on-G80 + "begin recording" flow deep pass)
+
+Adversary-on-G80: **SOUND** (traversal + collision closed, SMB/S3 symmetric, 0
+behavior change across 75 legit inputs, C-NEW-1/Adv-C1/metadata-409 intact).
+Recording-start hunter found a confirmed concurrency bug (below) → run DIRTY.
+
+### GH-START-1 (Med-High, FIXED `0288524e`) — capture-start conflict/capacity TOCTOU
+The ad-hoc start route AND the scheduler read a jobs/recordings snapshot,
+evaluate the channel-conflict + maxConcurrentRecordings guard synchronously, then
+create the recording+job after more awaits — no atomic reservation between check
+and create. Two concurrent starts on one node/interface both passed the guard
+against the pre-create snapshot and both created (verified repro:
+maxConcurrentRecordings 1 -> [202, 202] / 2 recordings). The "begin" counterpart
+to G5's claim-time CAS. Fixed with a per-node serial lock (`capture-start-lock.ts`
+`withCaptureStartLock`) shared by both paths; second start re-reads post-create ->
+409. Tests: mutex unit + route concurrency ([202, 409], 1 recording).
+
+### Catalogued (from the same hunter)
+- **GH-START-2** (Low-Med, conditional) - if a store/settings read fails BETWEEN
+  `recordingStore.create` and `createRecordingJob` (a DB blip in the ~1-2 await
+  window), the recording persists `status:"recording"` with no job; lease expiry
+  only acts on jobs, so it's stuck forever (no data loss). Same shape in the
+  scheduler. Fix = create job before recording, or compensating delete on
+  job-create throw. Needs a failure-injection test.
+- **GH-START-3** (Suspected, Med) - `claimNextRecordingGroup` claims each member
+  via an independent CAS in a loop, so two concurrent claim-next-group calls for
+  one node can SPLIT a capture group (A gets M0, B gets M1). Reachable only via
+  two concurrent claim-group calls for one node (retry / two agents) — the G5
+  threat model, but the GROUP claim isn't group-atomic. Fix = claim the group in
+  one atomic op.
+- **GH-START-4** (ledger note) - the claim paths (`agent-routes.ts:382/428`,
+  `agent-claim-group-route.ts`) still blind-`save` `status="recording"` rather
+  than the CAS; benign (recording can't be secured that early) but contradicts
+  the ledger's "all writers CAS-guarded" — accepted residual class.
+
 ## Run 21 — DIRTY (agent trust-boundary + upload-executor SMB/S3 deep pass)
 
 Trust-boundary hunter: **CLEAN** — every agent-facing route enumerated
