@@ -12,6 +12,7 @@ process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(queueRoot, "queue.json");
 
 const {
   enqueueRecordingUpload,
+  failUploadQueueItem,
   listDueUploadQueueItems,
   listUploadQueueItems,
   retryUploadQueueItem,
@@ -23,7 +24,7 @@ test.after(async () => {
   await rm(queueRoot, { force: true, recursive: true });
 });
 
-test("queues cached recordings and retries failed stub uploads", async () => {
+test("operator retry resets a terminally-failed stub upload to a fresh retrying attempt", async () => {
   const queued = await enqueueRecordingUpload(recording(), {
     reason: "manual_retry_test",
     target: "s3://future-bucket/meetings",
@@ -42,16 +43,22 @@ test("queues cached recordings and retries failed stub uploads", async () => {
   assert.equal(duplicate.id, queued.id);
   assert.equal((await listUploadQueueItems()).length, 1);
 
-  const retrying = await retryUploadQueueItem(queued.id);
-
-  assert.equal(retrying?.attemptCount, 1);
-  assert.equal(retrying?.lastError, "provider_not_configured");
-  assert.equal(retrying?.status, "retrying");
-
-  const failed = await retryUploadQueueItem(queued.id);
+  // Exhaust the attempt budget (maxAttempts=2) via real start/fail cycles.
+  await startUploadQueueItem(queued.id);
+  await failUploadQueueItem(queued.id, "attempt_1");
+  await startUploadQueueItem(queued.id);
+  const failed = await failUploadQueueItem(queued.id, "attempt_2");
 
   assert.equal(failed?.attemptCount, 2);
   assert.equal(failed?.status, "failed");
+
+  // Operator retry resets the budget so the runner re-attempts the failed item,
+  // rather than incrementing an already-maxed count (which left it failed).
+  const retried = await retryUploadQueueItem(queued.id);
+
+  assert.equal(retried?.attemptCount, 0);
+  assert.equal(retried?.status, "retrying");
+  assert.equal(retried?.lastError, "provider_not_configured");
 });
 
 test("reuses succeeded upload queue item for the same cached artifact", async () => {
