@@ -57,36 +57,60 @@ export async function agentCacheFileJobScope(
   input: AgentCacheFileJobScopeInput,
   { credential, recording }: AgentCacheFileJobScopeDependencies,
 ) {
-  const job = input.jobId
-    ? await recordingJob(input.jobId)
-    : // When the agent sends no job header, prefer a still-live job for this
-      // recording and never a terminal-failed/cancelled one, so a late upload
-      // cannot latch onto an already-reaped job (see the terminal guard below).
-      (await listRecordingJobs()).find(
-        (candidate) =>
-          candidate.recordingId === recording.id &&
-          candidate.nodeId === credential.nodeId &&
-          candidate.status !== "failed" &&
-          candidate.status !== "cancelled",
-      );
+  if (input.jobId) {
+    const job = await recordingJob(input.jobId);
 
-  if (!input.jobId && !job) {
-    return { job: undefined, ok: true } as const;
+    if (!job) {
+      return {
+        error: "Recording job not found",
+        ok: false,
+        reason: "recording_job_not_found",
+        status: 404,
+        target: { id: input.jobId, type: "recording_job" } satisfies AuditTarget,
+      } as const;
+    }
+
+    return (
+      agentRecordingJobScopeFailure(job, { credential, recording }) ?? ({ job, ok: true } as const)
+    );
   }
 
-  if (!job) {
+  // No job header: prefer a still-live job for this recording.
+  const ownJobs = (await listRecordingJobs()).filter(
+    (candidate) => candidate.recordingId === recording.id && candidate.nodeId === credential.nodeId,
+  );
+  const liveJob = ownJobs.find(
+    (candidate) => candidate.status !== "failed" && candidate.status !== "cancelled",
+  );
+
+  if (liveJob) {
+    return (
+      agentRecordingJobScopeFailure(liveJob, { credential, recording }) ??
+      ({ job: liveJob, ok: true } as const)
+    );
+  }
+
+  // No live job. If the recording's own jobs are all terminal, a headerless
+  // (manual-attach) upload would resurrect a controller-decided terminal
+  // recording — which may be `partial` (failed job with secured chunks) or
+  // `completed` (cancelled job), not only `failed`, so the recording-status
+  // guard alone does not catch it. Reject it. A recording with no job row at
+  // all remains a legacy manual-attach edge and is still allowed.
+  const terminalJob = ownJobs.find(
+    (candidate) => candidate.status === "failed" || candidate.status === "cancelled",
+  );
+
+  if (terminalJob) {
     return {
-      error: "Recording job not found",
+      error: "Recording job is in a terminal state and cannot be completed",
       ok: false,
-      reason: "recording_job_not_found",
-      status: 404,
-      target: { id: input.jobId, type: "recording_job" } satisfies AuditTarget,
+      reason: "recording_job_not_completable",
+      status: 409,
+      target: { id: terminalJob.id, type: "recording_job" } satisfies AuditTarget,
     } as const;
   }
 
-  return (
-    agentRecordingJobScopeFailure(job, { credential, recording }) ?? ({ job, ok: true } as const)
-  );
+  return { job: undefined, ok: true } as const;
 }
 
 function agentRecordingJobScopeFailure(

@@ -219,6 +219,48 @@ test("G47: cache upload for a terminally failed recording is rejected", async ()
   assert.equal((await recordingStore.find(failedRecording.id))?.status, "failed");
 });
 
+test("G47b: headerless cache upload is rejected when the recording's only job is terminal", async () => {
+  const app = new Hono<AppBindings>();
+  const recorderNode = node();
+  const recordingStore = memoryRecordingStore([recording(recorderNode.id)]);
+  const [sourceRecording] = await recordingStore.list();
+  const job = await createRecordingJob(sourceRecording);
+  await claimRecordingJob(job.id, recorderNode.id);
+  // Job reaped/failed; the recording is left non-`failed` here (e.g. it would be
+  // `partial`/`completed` in real terminal paths), so only the job-scope guard
+  // can catch this — not the recording-status guard.
+  await failRecordingJob(job.id, "lease_expired");
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(recorderNode),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore,
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await app.request(`/api/v1/recordings/${sourceRecording.id}/cache-file`, {
+    body: wavFile([0, 1000, -1000, 500]),
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "audio/wav",
+      "x-rakkr-duration-seconds": "2",
+      "x-rakkr-file-name": "late-upload.wav",
+      // No x-rakkr-recording-job-id header — exercises the no-jobId fallback.
+    },
+    method: "PUT",
+  });
+  const reloaded = await recordingStore.find(sourceRecording.id);
+
+  // Pre-fix the no-jobId fallback excluded the failed job and returned
+  // {job: undefined, ok: true}, so the upload proceeded and resurrected the
+  // recording to `cached`.
+  assert.equal(response.status, 409);
+  assert.notEqual(reloaded?.status, "cached");
+});
+
 function memoryNodeStore(recorderNode: RecorderNode): NodeStore {
   return {
     async authenticateCredential(token) {
