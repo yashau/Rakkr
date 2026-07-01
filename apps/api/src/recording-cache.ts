@@ -184,6 +184,29 @@ export async function deleteRecordingChunkCacheFile(chunk: RecordingChunk) {
   return deleted;
 }
 
+// Total on-disk bytes a chunk occupies across its renditions. Missing files
+// count as 0 so a partially-swept chunk still reports its remaining footprint.
+export async function recordingChunkCacheFileSize(chunk: RecordingChunk): Promise<number> {
+  const targets = new Set(
+    [chunk.cachePath, chunk.rawCachePath, chunk.enhancedCachePath].filter(
+      (value): value is string => Boolean(value),
+    ),
+  );
+  let total = 0;
+
+  for (const target of targets) {
+    try {
+      total += (await stat(resolvedCachePathFromRelative(target))).size;
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+  }
+
+  return total;
+}
+
 function chunkCachePathFor(
   recording: RecordingSummary,
   chunkIndex: number,

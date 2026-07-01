@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { reportRunnerTickError } from "./runner-tick.js";
-import type { AuditEvent, RecordingSummary, RetentionPolicy } from "@rakkr/shared";
+import type { AuditEvent, RecordingChunk, RecordingSummary, RetentionPolicy } from "@rakkr/shared";
 
 import type { AuditStore } from "./audit-store.js";
 import {
   deleteRecordingCacheFile,
+  deleteRecordingChunkCacheFile,
   recordingCacheFileSize,
+  recordingChunkCacheFileSize,
   recordingHasCachedFile,
 } from "./recording-cache.js";
+import { listRecordingChunksForRecording, upsertRecordingChunk } from "./recording-chunks.js";
 import type { RecordingStore } from "./recording-store.js";
 import { listRetentionPolicies } from "./retention-policies.js";
 
@@ -18,6 +21,7 @@ interface RetentionRunnerDependencies {
 }
 
 interface RetentionCandidate {
+  chunks: RecordingChunk[];
   recording: RecordingSummary;
   size: number;
 }
@@ -136,6 +140,7 @@ export async function runRetentionPass(
 
       const status = await deleteCandidate({
         auditStore,
+        chunks: candidate.chunks,
         policy,
         reason,
         recording: candidate.recording,
@@ -171,7 +176,7 @@ async function retentionCandidates(
   const candidates: RetentionCandidate[] = [];
 
   for (const recording of recordings) {
-    if (!recordingHasCachedFile(recording) || deletedRecordingIds.has(recording.id)) {
+    if (deletedRecordingIds.has(recording.id)) {
       continue;
     }
 
@@ -195,13 +200,24 @@ async function retentionCandidates(
       continue;
     }
 
-    const size = await recordingCacheFileSize(recording);
+    // Cache footprint spans the whole-file rendition (if any) plus every chunk's
+    // renditions — chunked recordings carry no recording-level cachePath, so
+    // sizing/eligibility must sum the chunk files or they escape retention.
+    const chunks = await listRecordingChunksForRecording(recording.id);
+    const wholeFileSize = recordingHasCachedFile(recording)
+      ? await recordingCacheFileSize(recording)
+      : undefined;
+    let size = wholeFileSize ?? 0;
 
-    if (size === undefined) {
+    for (const chunk of chunks) {
+      size += await recordingChunkCacheFileSize(chunk);
+    }
+
+    if (size <= 0) {
       continue;
     }
 
-    candidates.push({ recording, size });
+    candidates.push({ chunks, recording, size });
   }
 
   return candidates;
@@ -250,19 +266,40 @@ function deletionPlan(
 
 async function deleteCandidate({
   auditStore,
+  chunks,
   policy,
   reason,
   recording,
   recordingStore,
 }: {
   auditStore: AuditStore;
+  chunks: RecordingChunk[];
   policy: RetentionPolicy;
   reason: RetentionRunItem["reason"];
   recording: RecordingSummary;
   recordingStore: RecordingStore;
 }): Promise<RetentionRunItem["status"]> {
   try {
-    const cacheDeleted = await deleteRecordingCacheFile(recording);
+    let cacheDeleted = recordingHasCachedFile(recording)
+      ? await deleteRecordingCacheFile(recording)
+      : false;
+
+    for (const chunk of chunks) {
+      if (await deleteRecordingChunkCacheFile(chunk)) {
+        cacheDeleted = true;
+      }
+
+      // Keep the chunk row as metadata but drop its now-deleted cache paths so
+      // reads don't dangle — the analog of clearing recording.cachePath.
+      if (chunk.cachePath || chunk.rawCachePath || chunk.enhancedCachePath) {
+        await upsertRecordingChunk({
+          ...chunk,
+          cachePath: undefined,
+          enhancedCachePath: undefined,
+          rawCachePath: undefined,
+        });
+      }
+    }
 
     await recordingStore.save({
       ...recording,

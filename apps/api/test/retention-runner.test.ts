@@ -8,10 +8,13 @@ import type { RecordingSummary } from "@rakkr/shared";
 const runnerRoot = await mkdtemp(path.join(tmpdir(), "rakkr-retention-runner-"));
 process.env.RAKKR_RECORDING_CACHE_DIR = path.join(runnerRoot, "cache");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(runnerRoot, "policies.json");
+process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(runnerRoot, "chunks.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createRetentionPolicy } = await import("../src/retention-policies.js");
 const { createRetentionRunner } = await import("../src/retention-runner.js");
+const { listRecordingChunksForRecording, recordingChunkId, upsertRecordingChunk } =
+  await import("../src/recording-chunks.js");
 
 test.after(async () => {
   await rm(runnerRoot, { force: true, recursive: true });
@@ -133,6 +136,53 @@ test("retention runner never deletes a partial recording even when deleteOnlyAft
   assert.equal(updated?.cachePath, partialRecording.cachePath);
 });
 
+test("G50: retention reclaims chunked-recording cache (chunk files + rows)", async () => {
+  const auditStore = createAuditStore("");
+  const policy = await createRetentionPolicy({
+    action: "delete_cache",
+    deleteOnlyAfterUploaded: false,
+    maxAgeDays: 14,
+    name: "Delete stale chunked cache",
+    preserveTagged: false,
+    scope: "controller_cache",
+  });
+  // A chunked recording is `cached` but carries no recording-level cachePath.
+  const chunked: RecordingSummary = {
+    cached: true,
+    durationSeconds: 1800,
+    folder: "Meetings/2026",
+    healthStatus: "healthy",
+    id: "rec_retention_chunked",
+    name: "rec_retention_chunked",
+    recordedAt: "2026-05-01T12:00:00.000Z",
+    retentionPolicyId: policy.id,
+    source: "schedule",
+    status: "cached",
+    tags: [],
+  };
+  const chunkPathA = await cacheChunk(chunked, 1, "chunk-one-bytes");
+  const chunkPathB = await cacheChunk(chunked, 2, "chunk-two-bytes");
+  const recordingStore = memoryRecordingStore([chunked]);
+  const runner = createRetentionRunner({ auditStore, recordingStore });
+
+  const summary = await runner.runOnce(new Date("2026-06-20T12:00:00.000Z"));
+  const updated = await recordingStore.find(chunked.id);
+  const remainingChunks = await listRecordingChunksForRecording(chunked.id);
+
+  // Pre-fix: chunked recordings had no recording-level cachePath, so
+  // recordingHasCachedFile was false and retention skipped them entirely — the
+  // chunk files grew without bound under max-age/max-bytes pressure.
+  assert.equal(summary.deleted, 1);
+  assert.equal(summary.items[0]?.reason, "max_age");
+  await assert.rejects(readFile(chunkPathA), /ENOENT/);
+  await assert.rejects(readFile(chunkPathB), /ENOENT/);
+  assert.equal(updated?.cached, false);
+  assert.equal(updated?.status, "completed");
+  // Chunk rows survive as metadata, but their now-deleted cache paths are cleared.
+  assert.equal(remainingChunks.length, 2);
+  assert.equal(remainingChunks[0]?.cachePath, undefined);
+});
+
 function recording({
   id,
   recordedAt,
@@ -202,4 +252,26 @@ async function cacheRecording(recording: RecordingSummary, contents: string) {
   await writeFile(cachePath, contents);
 
   return cachePath;
+}
+
+async function cacheChunk(recording: RecordingSummary, index: number, contents: string) {
+  const relativePath = `scheduled/${recording.id}/part000${index}.mp3`;
+  const absolute = path.join(process.env.RAKKR_RECORDING_CACHE_DIR ?? "", relativePath);
+
+  await mkdir(path.dirname(absolute), { recursive: true });
+  await writeFile(absolute, contents);
+  await upsertRecordingChunk({
+    cachePath: relativePath,
+    createdAt: "2026-05-01T12:00:00.000Z",
+    durationSeconds: 900,
+    id: recordingChunkId(recording.id, index),
+    index,
+    jobId: `job_${recording.id}`,
+    offsetSeconds: (index - 1) * 900,
+    recordingId: recording.id,
+    status: "cached",
+    total: 2,
+  });
+
+  return absolute;
 }
