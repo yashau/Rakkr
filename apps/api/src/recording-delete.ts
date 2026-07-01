@@ -2,7 +2,15 @@ import type { Context } from "hono";
 import { z } from "zod";
 
 import type { AuthResult } from "./auth-service.js";
-import { deleteRecordingCacheFile, recordingHasCachedFile } from "./recording-cache.js";
+import {
+  deleteRecordingCacheFile,
+  deleteRecordingChunkCacheFile,
+  recordingHasCachedFile,
+} from "./recording-cache.js";
+import {
+  deleteRecordingChunksForRecording,
+  listRecordingChunksForRecording,
+} from "./recording-chunks.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { AppBindings, RecordAuditEvent } from "./http-types.js";
 import { uniqueRecordingIds } from "./recording-metadata.js";
@@ -227,9 +235,25 @@ export async function deleteRecordings(
 }
 
 async function deleteRecordingData(recordingStore: RecordingStore, recording: RecordingSummary) {
-  const cacheDeleted = recordingHasCachedFile(recording)
+  let cacheDeleted = recordingHasCachedFile(recording)
     ? await deleteRecordingCacheFile(recording)
     : false;
+
+  // Chunked recordings have no recording-level cachePath — each chunk owns its
+  // own files and rows, and there is no DB cascade, so sweep them explicitly or
+  // they outlive the deleted recording forever.
+  const chunks = await listRecordingChunksForRecording(recording.id);
+
+  for (const chunk of chunks) {
+    if (await deleteRecordingChunkCacheFile(chunk)) {
+      cacheDeleted = true;
+    }
+  }
+
+  if (chunks.length > 0) {
+    await deleteRecordingChunksForRecording(recording.id);
+  }
+
   const deleted = await recordingStore.delete(recording.id);
 
   return { cacheDeleted, deleted: Boolean(deleted) };

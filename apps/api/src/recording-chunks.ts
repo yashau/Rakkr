@@ -8,6 +8,7 @@ type RecordingChunkInsert = typeof recordingChunksTable.$inferInsert;
 type RecordingChunkRow = typeof recordingChunksTable.$inferSelect;
 
 interface RecordingChunkStore {
+  deleteForRecording(recordingId: string): Promise<void>;
   list(): Promise<RecordingChunk[]>;
   listForJob(jobId: string): Promise<RecordingChunk[]>;
   listForRecording(recordingId: string): Promise<RecordingChunk[]>;
@@ -46,6 +47,12 @@ export async function upsertRecordingChunk(chunk: RecordingChunk) {
   await chunkStore.upsert(chunk);
 }
 
+// Remove every chunk row for a recording (used when the recording is deleted so
+// chunk rows do not outlive their owner — there is no DB cascade).
+export async function deleteRecordingChunksForRecording(recordingId: string) {
+  await chunkStore.deleteForRecording(recordingId);
+}
+
 // Stamp the known total on every chunk of a recording once capture stops.
 export async function setRecordingChunkTotal(recordingId: string, total: number) {
   const chunks = await chunkStore.listForRecording(recordingId);
@@ -59,6 +66,21 @@ export async function setRecordingChunkTotal(recordingId: string, total: number)
 
 class JsonRecordingChunkStore implements RecordingChunkStore {
   private readonly chunks: RecordingChunk[] = loadRecordingChunks();
+
+  async deleteForRecording(recordingId: string) {
+    let removed = false;
+
+    for (let index = this.chunks.length - 1; index >= 0; index -= 1) {
+      if (this.chunks[index]?.recordingId === recordingId) {
+        this.chunks.splice(index, 1);
+        removed = true;
+      }
+    }
+
+    if (removed) {
+      this.persist();
+    }
+  }
 
   async list() {
     return [...this.chunks];
@@ -115,6 +137,22 @@ class PostgresRecordingChunkStore implements RecordingChunkStore {
     private readonly fallback: RecordingChunkStore,
   ) {
     this.db = createDatabase(databaseUrl);
+  }
+
+  async deleteForRecording(recordingId: string) {
+    if (!this.dbAvailable) {
+      await this.fallback.deleteForRecording(recordingId);
+      return;
+    }
+
+    try {
+      await this.db
+        .delete(recordingChunksTable)
+        .where(eq(recordingChunksTable.recordingId, recordingId));
+    } catch (error) {
+      await this.failover("recording chunk delete unavailable; using JSON store", error);
+      await this.fallback.deleteForRecording(recordingId);
+    }
   }
 
   async list() {
