@@ -19,10 +19,13 @@ const routeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-recording-job-control
 process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(routeRoot, "retention-policies.json");
+process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(routeRoot, "chunks.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createRecordingJob, failRecordingJob } = await import("../src/recording-jobs.js");
 const { registerRecordingJobRoutes } = await import("../src/recording-job-routes.js");
+const { listRecordingChunksForRecording, recordingChunkId, upsertRecordingChunk } =
+  await import("../src/recording-chunks.js");
 
 test.after(async () => {
   await rm(routeRoot, { force: true, recursive: true });
@@ -70,6 +73,53 @@ test("recording job retry route uses scoped recording context for state reset", 
   assert.equal(updatedRecording?.durationSeconds, 0);
   assert.equal(event?.before?.recordingStatus, "failed");
   assert.equal(event?.target.name, "Scoped Retry Context");
+});
+
+test("G56: retry clears supplementary renditions and sweeps stale chunk rows", async () => {
+  const auditStore = createAuditStore("");
+  const chunkedRecording = recording({
+    cached: true,
+    enhancedCachePath: "scheduled/rec_retry_chunked/part0001.enhanced.mp3",
+    id: `rec_retry_chunked_${randomUUID()}`,
+    name: "Chunked Retry",
+    rawCachePath: "scheduled/rec_retry_chunked/part0001.raw.wav",
+    status: "partial",
+  });
+  const recordingStore = memoryRecordingStore([chunkedRecording]);
+  const sourceJob = await createRecordingJob(chunkedRecording);
+
+  await failRecordingJob(sourceJob.id, "capture_failed");
+  await upsertRecordingChunk({
+    cachePath: "scheduled/rec_retry_chunked/part0001.mp3",
+    createdAt: "2026-06-18T12:00:00.000Z",
+    durationSeconds: 60,
+    id: recordingChunkId(chunkedRecording.id, 1),
+    index: 1,
+    jobId: sourceJob.id,
+    offsetSeconds: 0,
+    recordingId: chunkedRecording.id,
+    status: "uploaded",
+    total: 2,
+  });
+
+  const app = recordingJobApp({
+    auditStore,
+    recordingStore,
+    scopedRecordingSnapshots: [chunkedRecording],
+  });
+  const response = await app.request(`/api/v1/recording-jobs/${sourceJob.id}/retry`, {
+    method: "POST",
+  });
+  const updated = await recordingStore.find(chunkedRecording.id);
+  const remainingChunks = await listRecordingChunksForRecording(chunkedRecording.id);
+
+  assert.equal(response.status, 201);
+  // Pre-fix rawCachePath/enhancedCachePath survived (the UI served the failed
+  // attempt's audio) and the stale chunk rows persisted (contaminating the
+  // retry's chunked finalization → spurious `partial`).
+  assert.equal(updated?.rawCachePath, undefined);
+  assert.equal(updated?.enhancedCachePath, undefined);
+  assert.equal(remainingChunks.length, 0);
 });
 
 test("recording job bulk stop route uses scoped recording context for updates", async () => {

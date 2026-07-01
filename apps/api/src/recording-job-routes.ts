@@ -20,7 +20,12 @@ import {
   retryRecordingJob,
   stopRecordingJobById,
 } from "./recording-jobs.js";
-import { listRecordingChunksForJob } from "./recording-chunks.js";
+import { deleteRecordingChunkCacheFile } from "./recording-cache.js";
+import {
+  deleteRecordingChunksForRecording,
+  listRecordingChunksForJob,
+  listRecordingChunksForRecording,
+} from "./recording-chunks.js";
 import { listUploadQueueItems } from "./upload-queue.js";
 import { registerRecordingJobActionRoutes } from "./recording-job-action-routes.js";
 import { scopedRecordingJobs } from "./recording-job-scope.js";
@@ -443,6 +448,7 @@ export function registerRecordingJobRoutes({
         const recording = visibleRecordingMap.get(sourceJob.recordingId)!;
         const updated = recordingForRetriedJob(recording, result.job.createdAt);
 
+        await purgeRetriedRecordingChunks(recording);
         await recordingStore.save(updated);
         retriedJobs.push(result.job);
         before.push({ jobId: sourceJob.id, recordingId: recording.id, status: sourceJob.status });
@@ -670,6 +676,7 @@ export function registerRecordingJobRoutes({
 
       const updated = recordingForRetriedJob(recording, result.job.createdAt);
 
+      await purgeRetriedRecordingChunks(recording);
       await recordingStore.save(updated);
       await recordAuditEvent(c, {
         action: "recording_jobs.retry.succeeded",
@@ -811,11 +818,30 @@ function recordingForRetriedJob(recording: RecordingSummary, retriedAt: string) 
     cachePath: undefined,
     checksum: undefined,
     durationSeconds: 0,
+    // Clear the previous attempt's supplementary renditions too, or the UI's
+    // raw/enhanced toggle keeps serving the failed attempt's audio.
+    enhancedCachePath: undefined,
     healthStatus: "unknown" as const,
+    rawCachePath: undefined,
     recordedAt: retriedAt,
     status: "recording" as const,
     waveformPreview: undefined,
   };
+}
+
+// Sweep the failed attempt's chunk cache files and rows before a retry so the
+// re-capture starts clean — stale chunk rows/totals otherwise contaminate
+// chunkedRecordingFinalization and mis-finalize the retry as `partial`.
+async function purgeRetriedRecordingChunks(recording: RecordingSummary) {
+  const chunks = await listRecordingChunksForRecording(recording.id);
+
+  for (const chunk of chunks) {
+    await deleteRecordingChunkCacheFile(chunk);
+  }
+
+  if (chunks.length > 0) {
+    await deleteRecordingChunksForRecording(recording.id);
+  }
 }
 
 function uniqueJobIds(jobIds: string[]) {
