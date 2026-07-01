@@ -25,7 +25,8 @@ import type { MeterFrameStore } from "./meter-store.js";
 import { renderPrometheusMetrics } from "./metrics.js";
 import { visibleHealthEvent } from "./health-visibility.js";
 import type { NodeStore } from "./node-store.js";
-import { recordingCacheFileSize } from "./recording-cache.js";
+import { recordingCacheFileSize, recordingChunkCacheFileSize } from "./recording-cache.js";
+import { listRecordingChunksForRecording } from "./recording-chunks.js";
 import { listRecordingJobs } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import { listUploadQueueItems } from "./upload-queue.js";
@@ -275,16 +276,21 @@ async function scopedMeterFrames(nodes: RecorderNode[], dependencies: MetricsSco
   return frames.filter((frame): frame is MeterFrame => Boolean(frame));
 }
 
-async function recordingCacheByteMap(
+export async function recordingCacheByteMap(
   recordings: RecordingSummary[],
 ): Promise<Record<string, number>> {
   const entries = await Promise.all(
-    recordings.map(
-      async (recording): Promise<[string, number]> => [
-        recording.id,
-        (await recordingCacheFileSize(recording)) ?? 0,
-      ],
-    ),
+    recordings.map(async (recording): Promise<[string, number]> => {
+      // Chunked recordings carry no recording-level cachePath, so their footprint
+      // lives entirely on the chunk files — sum both or the metric under-reports.
+      let total = (await recordingCacheFileSize(recording)) ?? 0;
+
+      for (const chunk of await listRecordingChunksForRecording(recording.id)) {
+        total += await recordingChunkCacheFileSize(chunk);
+      }
+
+      return [recording.id, total];
+    }),
   );
 
   return Object.fromEntries(entries);
