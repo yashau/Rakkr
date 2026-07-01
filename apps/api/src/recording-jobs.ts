@@ -420,34 +420,46 @@ export async function heartbeatRecordingJob(jobId: string, claimedBy?: string) {
 export async function expireRecordingJobLeases(now = new Date()) {
   const jobs = await recordingJobStore.list();
   const expiredAt = now.toISOString();
-  const changedJobs: RecordingJob[] = [];
+  const expired: Array<{ job: RecordingJob; terminalState: "cancelled" | "failed" }> = [];
 
   for (const job of jobs) {
+    // Expire through the atomic CAS, not a blind save: only transition a job that
+    // is STILL in its expected source status. Otherwise a reaper pass built from a
+    // stale snapshot could revert a job a concurrent complete/fail/cancel already
+    // moved (e.g. clobbering a freshly-`completed` job back to `failed`).
     if (job.status === "running" && isExpired(job, now)) {
-      job.completedAt = expiredAt;
-      job.failureReason = "lease_expired";
-      job.status = "failed";
-      changedJobs.push(job);
-    }
+      const changed = await recordingJobStore.transition(
+        { ...job, completedAt: expiredAt, failureReason: "lease_expired", status: "failed" },
+        ["running"],
+      );
 
-    if (job.status === "stop_requested" && isStopRequestExpired(job, now)) {
-      job.completedAt = expiredAt;
-      job.failureReason = "stop_request_lease_expired";
-      job.status = "cancelled";
-      changedJobs.push(job);
+      if (changed) {
+        expired.push({ job: changed, terminalState: "failed" });
+      }
+    } else if (job.status === "stop_requested" && isStopRequestExpired(job, now)) {
+      const changed = await recordingJobStore.transition(
+        {
+          ...job,
+          completedAt: expiredAt,
+          failureReason: "stop_request_lease_expired",
+          status: "cancelled",
+        },
+        ["stop_requested"],
+      );
+
+      if (changed) {
+        expired.push({ job: changed, terminalState: "cancelled" });
+      }
     }
   }
 
-  await Promise.all(changedJobs.map((job) => recordingJobStore.save(job)));
   await Promise.all(
-    changedJobs.map(async (job) => {
-      const terminalState = job.status === "cancelled" ? "cancelled" : "failed";
-
-      await notifyLeaseExpirationListeners(job, terminalState);
-    }),
+    expired.map(({ job, terminalState }) => notifyLeaseExpirationListeners(job, terminalState)),
   );
 
-  return jobs;
+  // Return the post-expiry truth so callers that immediately `.find()` a job see
+  // its transitioned state, not the pre-expiry snapshot we iterated.
+  return expired.length > 0 ? recordingJobStore.list() : jobs;
 }
 
 async function notifyLeaseExpirationListeners(

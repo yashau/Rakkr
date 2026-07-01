@@ -26,6 +26,37 @@ test.after(async () => {
   await rm(jobRoot, { force: true, recursive: true });
 });
 
+test("G51b: lease reaper expires via CAS and returns the post-expiry state", async () => {
+  const dead = recording();
+  const deadJob = await createRecordingJob(dead);
+  await claimRecordingJob(deadJob.id, "node-a");
+
+  const fired: string[] = [];
+  const off = onRecordingJobLeaseExpired(({ job, terminalState }) => {
+    fired.push(`${job.id}:${terminalState}`);
+  });
+
+  // A pass far past the lease must expire the running job (regression guard for
+  // the CAS-based reaper) and return the transitioned state, not the pre-expiry
+  // snapshot — callers immediately .find() the job after expiry.
+  const after = (await expireRecordingJobLeases(new Date("2999-01-01T00:00:00.000Z"))).find(
+    (candidate) => candidate.id === deadJob.id,
+  );
+
+  off();
+
+  assert.equal(after?.status, "failed");
+  assert.equal(after?.failureReason, "lease_expired");
+  assert.ok(fired.includes(`${deadJob.id}:failed`));
+
+  // The now-terminal job is not re-expired or reverted on a subsequent pass.
+  const again = (await expireRecordingJobLeases(new Date("2999-01-02T00:00:00.000Z"))).find(
+    (candidate) => candidate.id === deadJob.id,
+  );
+
+  assert.equal(again?.status, "failed");
+});
+
 test("G51: atomic transitions stop a terminal job from being clobbered", async () => {
   // A late failure report must not flip an already-completed job to failed.
   const done = recording();
