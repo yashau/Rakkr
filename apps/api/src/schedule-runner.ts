@@ -104,7 +104,33 @@ export async function runDueSchedules(
 
     const before = scheduleExecutionSnapshot(schedule);
 
-    if (scheduleOccurrenceIsSkipped(schedule)) {
+    let occurrenceSkipped: boolean;
+
+    try {
+      occurrenceSkipped = scheduleOccurrenceIsSkipped(schedule);
+    } catch (error) {
+      // A corrupt persisted timezone (or any occurrence-date error) throws in
+      // the engine's Intl call here, which is outside the run try/catch below.
+      // Defer this one schedule instead of aborting the entire due-run pass and
+      // starving every other schedule.
+      await scheduleStore.update(schedule.id, { nextRunAt: retryScheduleAfterFailure(now) });
+      await appendScheduleAudit(auditStore, {
+        action: "schedules.due_run.failed",
+        before,
+        details: { reason: "schedule_occurrence_check_failed" },
+        outcome: "failed",
+        reason: error instanceof Error ? error.message : "schedule_occurrence_check_failed",
+        schedule,
+      });
+      results.push({
+        outcome: "failed",
+        reason: "schedule_due_run_failed",
+        scheduleId: schedule.id,
+      });
+      continue;
+    }
+
+    if (occurrenceSkipped) {
       const skipped = skipNextScheduleOccurrence(schedule);
       const updated = skipped
         ? await scheduleStore.update(schedule.id, skipped.updates)

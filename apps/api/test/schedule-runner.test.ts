@@ -97,6 +97,33 @@ test("due schedule creates one chunked recording when the profile sets a chunk l
   );
 });
 
+test("G48b: a corrupt persisted timezone defers one schedule without starving the pass", async () => {
+  const recordingStore = memoryRecordingStore();
+  // A legacy/corrupt persisted zone bypasses the input-side ianaTimeZoneSchema.
+  const badSchedule = schedule({ id: "sched_bad_zone", timezone: "Not/AZone" });
+  const goodSchedule = schedule({ id: "sched_good_zone" });
+  // Bad schedule first: a pre-fix throw in its occurrence check aborted the whole
+  // pass, starving the valid schedule behind it.
+  const scheduleStore = memoryScheduleStore([badSchedule, goodSchedule]);
+
+  const results = await runDueSchedules(
+    {
+      auditStore: createAuditStore(""),
+      nodeStore: memoryNodeStore([node()]),
+      recordingStore,
+      scheduleStore,
+      settingsStore: memorySettingsStore([splitProfile()]),
+    },
+    new Date("2026-06-18T09:00:00.000Z"),
+  );
+  const bad = results.find((entry) => entry.scheduleId === "sched_bad_zone");
+  const good = results.find((entry) => entry.scheduleId === "sched_good_zone");
+
+  assert.equal(results.length, 2);
+  assert.equal(bad?.outcome, "failed");
+  assert.equal(good?.outcome, "succeeded");
+});
+
 test("scheduled recording completes through agent cache attach and exposes schedule-owned media", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
