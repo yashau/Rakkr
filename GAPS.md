@@ -856,6 +856,44 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 20 — DIRTY (deep Rust capture/recovery core + scheduler/time/resilience)
+
+Scheduler/time/resilience hunter: **CLEAN** (DST/recurrence executed against real
+edge dates — spring-forward gap, fall-back hour, monthly day-31 clamp, interval
+alignment across skips, off-grid retry self-heal; all 5 runners' G4-1 isolation +
+reentrancy guards; DB-503 boundary intact, no silent-fallback regression; NaN-guards;
+G27 holds). Rust core hunter: found a **new High** finding (below) → run is DIRTY.
+**Clean-run streak resets to 0/5.**
+
+### GH-1 (High, CATALOGUED — needs Linux capture-recovery integration) — sibling of RS1
+A failed segment stitch during **graceful** completion silently truncates audio to
+the last segment and leaks the recovery-attempt files — RS1's twin, reached WITHOUT
+a restart. When a runtime device-loss/disk-shortfall recovery has preserved
+`recovery-attempt-N.wav` segments and `stitch_recovered_capture_segments`
+(`recording_job_segments.rs:88-109`) then fails the ffmpeg concat (corrupt/short
+segment, codec mismatch, transient), it logs a `warning` and
+`return Ok(final_capture_path)` = only the LAST segment. `controller.rs:547-664`
+renders/uploads that and marks the recording **`completed`** — silent loss of all
+pre-loss audio, and the segment files (deleted only on stitch success) leak untracked
+by the retention manifest. **Fix:** on stitch failure, do not return the tail as
+whole — mark `partial` + emit a naming health event + preserve/track the segments;
+never silent-complete. Needs a Linux failing-ffmpeg-concat scenario to verify.
+
+### GH-2 (Low, SUSPECTED — product decision, like G9)
+Restart-recovery uploads (`recording_job_recovery.rs:150-179` single + chunked) send
+the raw as `rendition=None` (legacy primary), so a recovered recording/chunk ends up
+with only the raw as its single playable rendition — no enhanced toggle,
+inconsistent with normally-uploaded chunks. Raw is fully preserved (no audio loss);
+quality/consistency degradation. Warrants a product call alongside G9.
+
+### Systemic note: capture-recovery segment lifecycle
+RS1 + GH-1 + GH-2 are one gap — the recovered-segment lifecycle is wired only for
+the stitch-SUCCESS path (restart-before-stitch, graceful-stitch-failure, and the
+rendition-drop are all unhandled). This is now comprehensively mapped and belongs
+in ONE Linux-integration fix slice on the recorder rig. The controller/web/DB/shared
+surfaces have converged (Runs 18/19 + Run 20 scheduler = clean); the remaining High
+data-loss risk is localized here and is not fixable/verifiable from a Windows worktree.
+
 ## Run 19 — CLEAN (systematic RBAC enumeration + web-logic/DB round-trip)
 
 **No new elevated findings; two LOW fail-safe items catalogued.**
@@ -905,7 +943,11 @@ Run 18; Run 17 surfaced RS1). "Clean" = the audit found nothing NEW, not that
 zero known issues remain — RS1 (High) is still a tracked open item.
 
 ### Still open (tracked)
-- **RS1** (High, Rust) - see above; restart-recovery drops preserved segments.
+- **Capture-recovery segment lifecycle (RS1 + GH-1 High, GH-2 Low)** - one Rust
+  slice: recovered segments are handled only on the stitch-success path, so a
+  restart-before-stitch (RS1) OR a graceful stitch-failure (GH-1) silently
+  truncates audio + leaks files, and restart-recovery drops the enhanced rendition
+  (GH-2). Needs the Linux recorder rig to fix+verify. **Top open item.**
 - **Recording-status CAS** (systemic) - RESOLVED: all writers (stop=G65,
   metadata=R13-2, health-sync=R13-8) now use the `transition` CAS; G54/G55/G63/G64
   keep their re-read stopgaps as safe backstops (optional CAS upgrade, not a bug).
