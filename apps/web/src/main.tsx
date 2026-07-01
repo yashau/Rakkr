@@ -49,6 +49,7 @@ import {
   getAuthToken,
   setAuthToken,
 } from "@/lib/api";
+import { authGateState } from "@/lib/auth-gate";
 import {
   rootLayoutNavItems,
   rootLayoutPermissions,
@@ -136,7 +137,23 @@ function RootLayout() {
       queryClient.clear();
     },
   });
-  if (!authToken || currentUserQuery.isError) {
+  const gate = authGateState({
+    error: currentUserQuery.error,
+    hasToken: Boolean(authToken),
+    isError: currentUserQuery.isError,
+    isPending: currentUserQuery.isPending,
+  });
+  React.useEffect(() => {
+    // A 401/403 means the stored token is dead: clear it so a reload does not
+    // replay the failing request. Transient 5xx/network errors keep the token
+    // (gate === "session-error") so a blip does not force a re-login.
+    if (authToken && gate === "unauthenticated") {
+      clearAuthToken();
+      setAuthTokenState(null);
+    }
+  }, [authToken, gate]);
+
+  if (gate === "unauthenticated") {
     return (
       <LoginScreen
         onLogin={(token) => {
@@ -148,7 +165,27 @@ function RootLayout() {
     );
   }
 
-  if (currentUserQuery.isPending) {
+  if (gate === "session-error") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-stone-100 p-6">
+        <div className="grid w-full max-w-sm gap-4 rounded-lg border border-border bg-panel p-6 text-center">
+          <div className="mx-auto flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+            <Radio className="size-5" />
+          </div>
+          <div className="grid gap-1">
+            <h1 className="text-base font-semibold text-foreground">Controller unavailable</h1>
+            <p className="text-sm text-muted-foreground">
+              Couldn&apos;t reach the Rakkr controller. Your session is still active — retry in a
+              moment.
+            </p>
+          </div>
+          <Button onClick={() => void currentUserQuery.refetch()}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUserQuery.data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-stone-100 p-6">
         <output aria-label="Loading Rakkr" className="grid w-full max-w-xs gap-3">

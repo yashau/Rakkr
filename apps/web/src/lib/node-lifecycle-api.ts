@@ -1,5 +1,5 @@
 import type { RecorderNode } from "@rakkr/shared";
-import { getAuthToken } from "@/lib/api";
+import { ApiError, getAuthToken } from "@/lib/api";
 
 export type NodeLifecycleAction =
   | "install_dependencies"
@@ -62,7 +62,7 @@ async function fetchNodeLifecycleJson<T>(path: string, init?: RequestInit): Prom
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw new ApiError(response.status);
   }
 
   return response.json() as Promise<T>;

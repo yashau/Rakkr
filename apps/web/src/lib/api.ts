@@ -57,8 +57,10 @@ import type {
   WatchdogCalibrationInput,
   WatchdogCalibrationResult,
 } from "./api-types";
+import { ApiError } from "./api-error";
 
 export type { ControllerStatus } from "./status-types";
+export { ApiError, apiErrorStatus } from "./api-error";
 export type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-types";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
@@ -382,7 +384,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw new ApiError(response.status);
   }
 
   if (response.status === 204) {
@@ -406,7 +408,7 @@ async function fetchBlob(path: string, init?: RequestInit): Promise<RecordingFil
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw new ApiError(response.status);
   }
 
   return {
