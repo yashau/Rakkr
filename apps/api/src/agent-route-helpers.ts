@@ -23,7 +23,19 @@ export const nodeHealthEventSchema = z
     recordingId: z.string().trim().min(1).max(160).optional(),
     scheduleId: z.string().trim().min(1).max(160).optional(),
     severity: healthSeveritySchema,
-    type: z.string().trim().min(1).max(160),
+    // `controller.` and `watchdog.` are controller-authored event namespaces; a
+    // node must not forge them (the watchdog keys its active-event state on the
+    // type string, so a forged `watchdog.*` event would pollute that bookkeeping
+    // and the audit trail). Agents use `agent.*`.
+    type: z
+      .string()
+      .trim()
+      .min(1)
+      .max(160)
+      .refine(
+        (value) => !value.startsWith("controller.") && !value.startsWith("watchdog."),
+        "Health event type must not use a controller-reserved prefix",
+      ),
   })
   .strict();
 

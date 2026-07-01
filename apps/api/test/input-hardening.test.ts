@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ianaTimeZoneSchema, isoDateTimeSchema, meterFrameSchema } from "@rakkr/shared";
+import { nodeHealthEventSchema } from "../src/agent-route-helpers.js";
 import { hashPassword, verifyPassword } from "../src/password.js";
 
 test("meterFrameSchema caps the levels array (watchdog Math.max spread guard)", () => {
@@ -42,6 +43,20 @@ test("ianaTimeZoneSchema rejects zones that would throw in Intl.DateTimeFormat",
   for (const bad of ["Not/AZone", "Mars/Olympus", "tomorrow", "GMT+25", ""]) {
     assert.equal(ianaTimeZoneSchema.safeParse(bad).success, false, bad);
   }
+});
+
+test("G73: nodeHealthEventSchema rejects controller-reserved type prefixes", () => {
+  const event = (type: string) => ({ details: {}, severity: "warning" as const, type });
+
+  // An agent may report its own namespaced events.
+  assert.equal(nodeHealthEventSchema.safeParse(event("agent.capture_failed")).success, true);
+  // But not forge controller-/watchdog-authored event types — the watchdog keys
+  // its active-event state on the type string.
+  assert.equal(nodeHealthEventSchema.safeParse(event("watchdog.flatline")).success, false);
+  assert.equal(
+    nodeHealthEventSchema.safeParse(event("controller.recording.job_failed")).success,
+    false,
+  );
 });
 
 test("isoDateTimeSchema rejects non-date strings that would throw later", () => {
