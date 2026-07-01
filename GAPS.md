@@ -15,7 +15,7 @@ only be proven against real hardware/Postgres/time, exactly as the source-of-tru
 admits. The structural verifiers (string-presence greps) can catch none of the below.
 
 **Landed (each with a test):** G1, G1b, G2, G3, G4, G4-1, G4-2, G5, G6, G7, G10, G11, G12, G13,
-G19, G21, G24, G25, G27, G28, G31, G32, G34 (23 confirmed findings); G26 mostly-fixed via G25.
+G19, G21, G24, G25, G27, G28, G31, G32, G34, G36, G37 (25 confirmed findings); G26 mostly-fixed via G25.
 **Open (confirmed, pre-existing):** G27 (one-time-schedule defer data-loss — Medium), G28
 (live-listen session leak — Low-Med); G9 (keepRaw wording); coverage G14/G16/G29; G4 follow-up
 (auth-service/oidc-login).
@@ -325,6 +325,7 @@ vs 503-vs-surface decision), **G9** (keepRaw=false vs "always preserved" — pro
 | 1 | `8a11b629` | branch-diff adversary + fresh correctness/authz + chunked | 3 / 0 / 1 (G24, G25, G26) | — surfaced; need decisions | green | **no** | 0 |
 | 2 | `8a11b629` | adversary on G4/G24/G25 + fresh sweep (live-listen, node-lifecycle, metrics, scheduler) | 3 / 1 / 3 (G4-1, G27, G28; G29; G30, G4-2, G24-1) | **G4-1** (fixed) | green | **no** | 0 |
 | 3 | `8a11b629` | web console + Rust agent internals | 3 / 0 / 2 (G31, G32, G34; G33, G35) | G31, G32, G34 (fixed) | green | **no** | 0 |
+| 4 | `8a11b629` | infra (ansible/db/deploy/scripts) + broad residual re-sweep | 2 / 1 / 2 (G36, G37; G38; G39, +1) | G36, G37 (fixed) | green | **no** | 0 |
 
 **Run 2 — DIRTY.** The adversary caught a **HIGH regression in G4 itself (G4-1)**: converting
 `failover()` to throw turned a DB blip in a background-runner tick into an unhandled promise
@@ -496,3 +497,44 @@ network blip bounced a valid operator to login and a real 401 left a dead token 
 is indistinguishable from a validation/permission failure. Not a correctness bug (writes throw,
 not swallowed). **Fix:** parse status in the fetch helpers and show a distinct "temporarily
 unavailable, retry" message for 503.
+
+
+---
+
+## Run 4 findings (infra/deploy + broad residual re-sweep)
+
+**Convergence signal:** the broad residual re-sweep of the core controller/agent/web (fresh
+angles: audit/RBAC invariants, runner concurrency/ordering, numeric/boundary, Zod gaps, Rust
+panics) found **no new confirmed correctness or security bug** — the areas checked
+(pagination meta, upload-runner reentrancy, retention/chunk ordering, watchdog auto-resolve,
+scheduler DST/boundary math, metrics escaping, OIDC PKCE, CSV neutralization, agent scope
+checks, Rust hot paths) are all solid. The one dirty item this run was in **infra**.
+
+### G36 — Ansible runner `/runs` had no authentication · `FIXED`
+`deploy/ansible/runner.py`. The controller sent `RAKKR_ANSIBLE_RUNNER_TOKEN` as a Bearer header
+but the runner never validated it, so anything reaching port 8790 could run lifecycle actions
+(arbitrary agent-binary deploy / systemd changes over SSH) and exfiltrate controller tokens —
+bypassing controller RBAC/scoping/audit. **Fix:** validate the shared token (constant-time)
+on `/runs`; unset = unauthenticated dev mode with a loud startup warning. **Test:**
+`runner_test.py` (7 auth checks). **Severity: High.**
+
+### G37 — SMB upload path traversal via `pathOverride`/destination path · `FIXED`
+`apps/api/src/upload-smb.ts`. `smbPathSegments` only trimmed slashes, so a `../../x` path kept
+its `..` segments and escaped the configured share/path on the SMB server. **Fix:** drop
+`.`/`..` segments (and guard the filename). **Test:** `upload-smb-path.test.ts`. Defense-in-depth
+(settings:manage-gated, operator-against-own-target).
+
+### G38 — Migration verifier only replays; never checks schema↔migration drift · `CATALOGUED (coverage)`
+`packages/db/scripts/verify-migrations.mjs`. `db:verify` replays migrations but never diffs them
+against `schema.ts`, so a forgotten `db:generate` (schema changed, migration missing) passes the
+gate. No live drift today. **Fix:** add a `drizzle-kit check` (or generate-is-noop) step to the
+gate. Left catalogued — the exact drizzle-kit drift command is version-specific and shouldn't be
+wired into the gate without validating it won't false-positive.
+
+### G39 — Secrets passed as process arguments (runner extra-vars, agent.sh bootstrap token) · `CATALOGUED (SUSPECTED, low)`
+`deploy/ansible/runner.py` (`-e` extra-vars incl. controller/github tokens) and
+`deploy/bootstrap/agent.sh` (`--bootstrap-token` on argv) expose secrets via `ps`/`/proc/<pid>/cmdline`
+to a local user during a run; no `no_log:` in the ansible tree. Low severity (dedicated runner
+container, single-use short-lived bootstrap token, rotating controller tokens). **Fix:** pass
+secret extra-vars via `--extra-vars @file` (0600) / env / stdin; add `no_log: true` on
+key/token tasks.
