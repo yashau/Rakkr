@@ -57,6 +57,10 @@ interface ScheduleRouteDependencies {
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
+  // Materializes a schedule's assignees into its room's calendar-source roster
+  // rows (and clears them when a schedule is removed). Default no-ops.
+  reconcileScheduleRoster?(schedule: ScheduleSummary): Promise<void>;
+  removeScheduleRoster?(scheduleId: string): Promise<void>;
   requirePermission: RequirePermission;
   scheduleStore: ScheduleStore;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
@@ -76,8 +80,11 @@ export function registerScheduleRoutes({
   currentAuth,
   currentUser,
   hasResourceScope = async () => true,
+  nodeStore,
   recordAuditEvent,
   recordingStore,
+  reconcileScheduleRoster = async () => {},
+  removeScheduleRoster = async () => {},
   requirePermission,
   scheduleStore,
   scopedNodes,
@@ -312,7 +319,14 @@ export function registerScheduleRoutes({
 
   app.post(
     "/api/v1/schedules",
-    requirePermission("schedule:manage", "schedules.create", () => ({ type: "schedule" })),
+    requirePermission("schedule:manage", "schedules.create", async (c) => {
+      // Gate creation on the target ROOM so a room BOOK grant authorizes it (not
+      // just a global schedule:manage role). Falls back to a generic target when
+      // the room cannot be resolved (only a role can then authorize).
+      const roomId = await resolveCreateRoomId(c);
+
+      return roomId ? { id: roomId, type: "room" } : { type: "schedule" };
+    }),
     async (c) => {
       const body = scheduleInputSchema.safeParse(await c.req.json().catch(() => ({})));
 
@@ -378,10 +392,12 @@ export function registerScheduleRoutes({
         return assignmentError;
       }
 
-      const schedule = buildSchedule(body.data);
+      // The schedule's room is the node's room unless the caller pins one.
+      const schedule = { ...buildSchedule(body.data), roomId: body.data.roomId ?? node.roomId };
 
       try {
         const created = await scheduleStore.create(schedule);
+        await reconcileScheduleRoster(created);
 
         await recordAuditEvent(c, {
           action: "schedules.create.succeeded",
@@ -522,10 +538,14 @@ export function registerScheduleRoutes({
         }
       }
 
-      const updated = await scheduleStore.update(
-        scheduleId,
-        sanitizeScheduleUpdate(body.data, before),
-      );
+      const updates = sanitizeScheduleUpdate(body.data, before);
+
+      // Follow the node's room when the node changes and no room is pinned.
+      if (updates.nodeId && body.data.roomId === undefined && targetNode.roomId) {
+        updates.roomId = targetNode.roomId;
+      }
+
+      const updated = await scheduleStore.update(scheduleId, updates);
 
       if (!updated) {
         await recordScheduleWriteFailure(
@@ -536,6 +556,8 @@ export function registerScheduleRoutes({
         );
         return c.json({ error: "Schedule not found" }, 404);
       }
+
+      await reconcileScheduleRoster(updated);
 
       await recordAuditEvent(c, {
         action: "schedules.update.succeeded",
@@ -750,6 +772,10 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule not found" }, 404);
       }
 
+      // Clear the schedule's calendar-derived roster grants (room_roster cascades
+      // on the FK too, but the JSON fallback store needs the explicit removal).
+      await removeScheduleRoster(scheduleId);
+
       await recordAuditEvent(c, {
         action: "schedules.delete.succeeded",
         auth: currentAuth(c),
@@ -773,6 +799,22 @@ export function registerScheduleRoutes({
 
   async function findScopedNode(c: Context<AppBindings>, nodeId: string) {
     return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
+  }
+
+  // Resolves the room a create request targets (pinned roomId, else the selected
+  // node's room) so the create gate can authorize a room BOOK grant.
+  async function resolveCreateRoomId(c: Context<AppBindings>) {
+    const raw = (await c.req.json().catch(() => ({}))) as { nodeId?: unknown; roomId?: unknown };
+
+    if (typeof raw.roomId === "string" && raw.roomId.trim()) {
+      return raw.roomId.trim();
+    }
+
+    if (typeof raw.nodeId === "string" && raw.nodeId.trim()) {
+      return (await nodeStore.find(raw.nodeId.trim()))?.roomId;
+    }
+
+    return undefined;
   }
 
   // Rejects a create/update whose assignee ids do not resolve to real

@@ -11,6 +11,7 @@ import { registerAgentRoutes } from "./agent-routes.js";
 import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   type AuditEvent,
+  defaultCalendarGrantCapabilities,
   type Permission,
   permissionRequiresCapability,
   type RecorderNode,
@@ -878,6 +879,23 @@ registerScheduleRoutes({
   nodeStore,
   recordAuditEvent,
   recordingStore,
+  reconcileScheduleRoster: (schedule) =>
+    roomRosterStore.reconcileCalendar({
+      capabilities: [...defaultCalendarGrantCapabilities],
+      roomId: schedule.roomId,
+      scheduleId: schedule.id,
+      subjects: [
+        ...schedule.assignedUserIds.map((subjectId) => ({
+          subjectId,
+          subjectType: "user" as const,
+        })),
+        ...schedule.assignedGroupIds.map((subjectId) => ({
+          subjectId,
+          subjectType: "group" as const,
+        })),
+      ],
+    }),
+  removeScheduleRoster: (scheduleId) => roomRosterStore.removeForSchedule(scheduleId),
   requirePermission,
   scheduleStore,
   scopedNodes,
