@@ -9,6 +9,9 @@ import { createRetentionRunner } from "./retention-runner.js";
 import { createScheduleRunner } from "./schedule-runner.js";
 import type { ScheduleStore } from "./schedule-store.js";
 import type { SettingsStore } from "./settings-store.js";
+import type { SwitcherMappingStore } from "./switcher-mapping-store.js";
+import { createSwitcherRoutingRunner } from "./switcher-routing-runner.js";
+import type { SwitcherStore } from "./switcher-store.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
 import { createUploadRunner } from "./upload-runner.js";
 import { createWatchdogRunner } from "./watchdog-runner.js";
@@ -16,26 +19,40 @@ import { createWatchdogRunner } from "./watchdog-runner.js";
 interface ApiRunnerDependencies {
   auditStore: AuditStore;
   healthEventStore: HealthEventStore;
+  listSwitcherUsers: () => Promise<Array<{ groupIds: string[]; id: string }>>;
   meterFrameStore: MeterFrameStore;
   nodeStore: NodeStore;
   recordingStore: RecordingStore;
   scheduleStore: ScheduleStore;
   settingsStore: SettingsStore;
+  switcherMappingStore: SwitcherMappingStore;
+  switcherStore: SwitcherStore;
   uploadDestinationStore: UploadDestinationStore;
 }
 
 export function createApiRunners({
   auditStore,
   healthEventStore,
+  listSwitcherUsers,
   meterFrameStore,
   nodeStore,
   recordingStore,
   scheduleStore,
   settingsStore,
+  switcherMappingStore,
+  switcherStore,
   uploadDestinationStore,
 }: ApiRunnerDependencies) {
   return {
     recordingJobLeaseRunner: createRecordingJobLeaseRunner(),
+    switcherRoutingRunner: createSwitcherRoutingRunner({
+      auditStore,
+      healthEventStore,
+      listUsers: listSwitcherUsers,
+      scheduleStore,
+      switcherMappingStore,
+      switcherStore,
+    }),
     scheduleRunner: createScheduleRunner({
       auditStore,
       healthEventStore,
@@ -71,11 +88,16 @@ export function startApiRunners({
   recordingJobLeaseRunner,
   retentionRunner,
   scheduleRunner,
+  switcherRoutingRunner,
   uploadRunner,
   watchdogRunner,
 }: ReturnType<typeof createApiRunners>) {
   if (process.env.RAKKR_SCHEDULE_RUNNER_ENABLED !== "0") {
     scheduleRunner.start();
+  }
+
+  if (process.env.RAKKR_SWITCHER_ROUTING_RUNNER_ENABLED !== "0") {
+    switcherRoutingRunner.start();
   }
 
   if (process.env.RAKKR_UPLOAD_RUNNER_ENABLED !== "0") {

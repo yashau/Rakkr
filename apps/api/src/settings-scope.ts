@@ -4,6 +4,7 @@ import type {
   ChannelMapTemplateAssignment,
   RecordingProfile,
   RetentionPolicy,
+  SwitcherStatus,
   UploadDestinationRuntimeStatus,
   UploadPolicy,
   WatchdogPolicy,
@@ -89,6 +90,14 @@ export function retentionPolicySettingsTarget(policy: Pick<RetentionPolicy, "id"
     id: policy.id,
     name: policy.name,
     type: "retention_policy",
+  };
+}
+
+export function switcherSettingsTarget(switcher?: Pick<SwitcherStatus, "displayName" | "id">) {
+  return {
+    id: switcher?.id,
+    name: switcher?.displayName,
+    type: "switcher",
   };
 }
 

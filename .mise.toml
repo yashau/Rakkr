@@ -49,6 +49,7 @@ depends = [
   "devices:check-generic",
   "health:check-watchdog",
   "storage:check",
+  "switcher:check",
   "operations:check",
   "time:check",
   "node:check",
@@ -127,6 +128,10 @@ run = "node scripts/verify-health-watchdog-baseline.mjs"
 [tasks."storage:check"]
 description = "Validate storage upload baseline documentation"
 run = "node scripts/verify-storage-upload-baseline.mjs"
+
+[tasks."switcher:check"]
+description = "Validate audio matrix switcher routing baseline documentation"
+run = "node scripts/verify-switcher-routing-baseline.mjs"
 
 [tasks."operations:check"]
 description = "Validate operations baseline documentation"

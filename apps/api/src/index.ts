@@ -57,6 +57,10 @@ import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { createSettingsStore } from "./settings-store.js";
 import { registerStatusRoutes } from "./status-routes.js";
+import { registerSwitcherMappingRoutes } from "./switcher-mapping-routes.js";
+import { createSwitcherMappingStore } from "./switcher-mapping-store.js";
+import { registerSwitcherRoutes } from "./switcher-routes.js";
+import { createSwitcherStore } from "./switcher-store.js";
 import { apiListenConfig } from "./transport-security.js";
 import { createUploadDestinationStore } from "./upload-destinations.js";
 import { registerUploadRunnerRoutes } from "./upload-runner-routes.js";
@@ -80,6 +84,8 @@ const roomStore = createRoomStore();
 const roomRosterStore = createRoomRosterStore();
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
+const switcherStore = createSwitcherStore();
+const switcherMappingStore = createSwitcherMappingStore();
 const uploadDestinationStore = createUploadDestinationStore();
 onRecordingJobLeaseExpired(async ({ job, terminalState }) => {
   const recording = await recordingStore.find(job.recordingId);
@@ -103,16 +109,24 @@ export const {
   recordingJobLeaseRunner,
   retentionRunner,
   scheduleRunner,
+  switcherRoutingRunner,
   uploadRunner,
   watchdogRunner,
 } = createApiRunners({
   auditStore,
   healthEventStore,
+  listSwitcherUsers: async () =>
+    (await authService.localUsers()).map((account) => ({
+      groupIds: account.groups.map((group) => group.id),
+      id: account.id,
+    })),
   meterFrameStore,
   nodeStore,
   recordingStore,
   scheduleStore,
   settingsStore,
+  switcherMappingStore,
+  switcherStore,
   uploadDestinationStore,
 });
 type NodeRecord = RecorderNode;
@@ -641,6 +655,30 @@ registerWatchdogCalibrationRoutes({
   settingsStore,
 });
 
+registerSwitcherRoutes({
+  app,
+  currentAuth,
+  recordAuditEvent,
+  requirePermission,
+  switcherStore,
+});
+
+registerSwitcherMappingRoutes({
+  app,
+  currentAuth,
+  listUsers: async () =>
+    (await authService.localUsers()).map((account) => ({
+      email: account.email,
+      id: account.id,
+      name: account.name,
+    })),
+  recordAuditEvent,
+  requirePermission,
+  roomStore,
+  switcherMappingStore,
+  switcherStore,
+});
+
 registerRetentionPolicyRoutes({
   app,
   currentAuth,
@@ -953,6 +991,7 @@ if (process.env.RAKKR_API_NO_LISTEN !== "1") {
     recordingJobLeaseRunner,
     retentionRunner,
     scheduleRunner,
+    switcherRoutingRunner,
     uploadRunner,
     watchdogRunner,
   });

@@ -36,6 +36,9 @@ Status: MVP baseline checked.
 | `schedule:read`      | Schedule list, occurrences, detail context                                                  | `apps/api/src/schedule-routes.ts`, `apps/web/src/lib/schedule-page-helpers.ts`                                              |
 | `settings:manage`    | Recording profiles, watchdog policies, channel maps, upload settings writes                 | `apps/api/src/settings-routes.ts`, `apps/web/src/lib/settings-page-helpers.ts`                                              |
 | `settings:read`      | Settings reads and Settings shell visibility                                                | `apps/api/src/settings-routes.ts`, `apps/web/src/lib/settings-page-helpers.ts`                                              |
+| `switcher:manage`    | Audio matrix switcher config create/update/delete, test-connection, config snapshot/restore | `apps/api/src/switcher-routes.ts`, `apps/api/src/switcher-store.ts`                                                         |
+| `switcher:map`       | Switcher input→room and output→user channel mapping writes                                  | `apps/api/src/switcher-mapping-routes.ts`, `apps/api/src/switcher-mapping-store.ts`                                        |
+| `switcher:read`      | Switcher list/detail, channel mappings, and live route/signal reads                         | `apps/api/src/switcher-routes.ts`, `apps/api/src/switcher-mapping-routes.ts`                                              |
 | `system:admin`       | Owner-only system super permission; no public route grants it directly                      | `packages/shared/src/index.ts`                                                                                              |
 
 ## Room Roster Capabilities

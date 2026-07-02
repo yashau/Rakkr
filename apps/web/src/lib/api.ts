@@ -51,6 +51,13 @@ import type {
   ScheduleOccurrencePreview,
   ScheduleSummary,
   ScheduleUpdate,
+  SwitcherConnectionTest,
+  SwitcherCreate,
+  SwitcherMappingOptions,
+  SwitcherMappings,
+  SwitcherMappingsUpdate,
+  SwitcherStatus,
+  SwitcherUpdate,
   UploadDestinationInput,
   UploadDestinationRuntimeStatus,
   UploadDestinationUpdate,
@@ -699,6 +706,35 @@ export const api = {
     fetchJson<{ data: { id: string } }>(`/api/v1/settings/upload-destinations/${id}`, {
       method: "DELETE",
     }),
+  switchers: () => fetchJson<{ data: SwitcherStatus[] }>("/api/v1/settings/switchers"),
+  createSwitcher: (input: SwitcherCreate) =>
+    fetchJson<{ data: SwitcherStatus }>("/api/v1/settings/switchers", {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "POST",
+    }),
+  updateSwitcher: (id: string, input: SwitcherUpdate) =>
+    fetchJson<{ data: SwitcherStatus }>(`/api/v1/settings/switchers/${id}`, {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "PATCH",
+    }),
+  deleteSwitcher: (id: string) =>
+    fetchJson<{ data: { id: string } }>(`/api/v1/settings/switchers/${id}`, { method: "DELETE" }),
+  testSwitcher: (id: string) =>
+    fetchJson<{ data: SwitcherConnectionTest }>(`/api/v1/settings/switchers/${id}/test`, {
+      method: "POST",
+    }),
+  switcherMappings: (id: string) =>
+    fetchJson<{ data: SwitcherMappings }>(`/api/v1/settings/switchers/${id}/mappings`),
+  updateSwitcherMappings: (id: string, input: SwitcherMappingsUpdate) =>
+    fetchJson<{ data: SwitcherMappings }>(`/api/v1/settings/switchers/${id}/mappings`, {
+      body: JSON.stringify(input),
+      headers: jsonHeaders,
+      method: "PUT",
+    }),
+  switcherMappingOptions: () =>
+    fetchJson<{ data: SwitcherMappingOptions }>("/api/v1/settings/switcher-mapping-options"),
   createUploadPolicy: (input: UploadPolicyInput) =>
     fetchJson<{ data: UploadPolicy }>("/api/v1/settings/upload-policies", {
       body: JSON.stringify(input),

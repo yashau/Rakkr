@@ -22,6 +22,7 @@ export * from "./recording-chunks.js";
 export * from "./recording-job-summary.js";
 export * from "./room-capabilities.js";
 export * from "./rooms.js";
+export * from "./switchers.js";
 export * from "./upload-providers.js";
 export * from "./watchdog-policy.js";
 
@@ -75,6 +76,9 @@ export const permissions = [
   "schedule:read",
   "settings:manage",
   "settings:read",
+  "switcher:manage",
+  "switcher:map",
+  "switcher:read",
   "system:admin",
 ] as const;
 
@@ -118,6 +122,8 @@ export const rolePermissions: Record<Role, readonly Permission[]> = {
     "schedule:manage",
     "schedule:read",
     "settings:read",
+    "switcher:map",
+    "switcher:read",
   ],
   owner: permissions,
   viewer: [
@@ -129,6 +135,7 @@ export const rolePermissions: Record<Role, readonly Permission[]> = {
     "recording:read",
     "schedule:read",
     "settings:read",
+    "switcher:read",
   ],
 };
 
