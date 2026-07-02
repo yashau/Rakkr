@@ -561,6 +561,25 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 25 — CLEAN (health/watchdog alert-reconciler lifecycle deep pass, direct)
+
+Traced the reconciler state machine (create -> repeat -> resolve -> suppress ->
+acknowledge) across flatline (template) + the runner's low-signal copy; the
+others (clipping/quality/channel-correlation/node-liveness) share the same
+`shouldRepeat`/active-event pattern. **No new finding**:
+- Active-event lookup filters by `type` in the query (G71) so the 500-row cap is
+  per-type — the open event can't be hidden -> no duplicate.
+- `shouldRepeat`: indefinite suppression (no `suppressedUntil`) never repeats;
+  finite window repeats only after it elapses (G72); otherwise paces on
+  `lastRepeatedAt` (stamped to now ONLY on a repeat), so alerts don't re-fire
+  every tick.
+- Updates write `status: existing.status` — an operator's acknowledge/suppress is
+  preserved, not reset to open on the next evaluation.
+- resolve -> `updateLifecycle` status "resolved" + resolvedAt/By; every path syncs
+  recording health and audits with correct before/after + system actor.
+
+**Clean-run streak: 3/5.**
+
 ## Run 24 — CLEAN (auth / OIDC / session / password deep pass, direct)
 
 Thorough security-critical pass (done directly to conserve usage), **no new
