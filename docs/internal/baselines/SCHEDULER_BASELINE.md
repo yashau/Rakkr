@@ -36,7 +36,7 @@ Status: MVP baseline checked.
 | Retention assignment                                                | `packages/db/drizzle/0021_true_midnight.sql`, `apps/api/src/schedule-store.ts`, `apps/web/src/lib/schedule-draft.ts` |
 | Route RBAC and operator controls                                    | `apps/api/test/schedule-routes.test.ts`                                                                              |
 | Calendar occurrences and occurrence moves                           | `apps/api/test/schedule-engine.test.ts`, `apps/api/test/schedule-occurrence-routes.test.ts`                          |
-| Assignment payload and scoped grants                                | `apps/api/test/schedule-occurrence-routes.test.ts`, `apps/api/test/schedule-assignment.test.ts`                      |
+| Assignment payload and calendar occurrences                         | `apps/api/test/schedule-occurrence-routes.test.ts`                                                                   |
 | UI permissions                                                      | `apps/web/src/lib/schedule-page-helpers.test.ts`                                                                     |
 | Detail permissions                                                  | `apps/web/src/lib/schedule-detail-page-helpers.test.ts`                                                              |
 | Quick phrase parsing                                                | `apps/web/src/lib/schedule-draft.test.ts`                                                                            |

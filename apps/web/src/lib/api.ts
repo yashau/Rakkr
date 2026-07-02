@@ -53,6 +53,7 @@ import type {
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
+import { fileNameFromDisposition, withQuery } from "./api-http";
 import type { ControllerStatus } from "./status-types";
 import type {
   RecordingStartInput,
@@ -990,24 +991,3 @@ export const api = {
     }),
 };
 
-function withQuery(path: string, filters: object) {
-  const params = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(filters) as Array<
-    [string, number | string | undefined]
-  >) {
-    if (value !== undefined && value !== "") {
-      params.set(key, String(value));
-    }
-  }
-
-  const query = params.toString();
-
-  return query ? `${path}?${query}` : path;
-}
-
-function fileNameFromDisposition(disposition: string | null) {
-  const match = /filename="([^"]+)"/.exec(disposition ?? "");
-
-  return match?.[1] ?? "recording.mp3";
-}

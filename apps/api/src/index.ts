@@ -12,7 +12,9 @@ import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   type AuditEvent,
   type Permission,
+  permissionRequiresCapability,
   type RecorderNode,
+  type RoomCapability,
   type ScheduleSummary,
 } from "@rakkr/shared";
 import { registerAuditRoutes } from "./audit-routes.js";
@@ -40,13 +42,8 @@ import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
-import {
-  ASSIGNMENT_CAPABILITIES,
-  assignedRoomKeysFor,
-  nodeInAssignedRoom,
-  roomTargetsMatchAssignedKeys,
-  scheduleAssignsUser,
-} from "./schedule-assignment.js";
+import { createRoomRosterStore } from "./room-roster-store.js";
+import { createRoomStore } from "./room-store.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -71,6 +68,8 @@ const nodeStore = createNodeStore(seedNodes);
 const sshCredentialStore = createNodeSshCredentialStore();
 const bootstrapStore = createNodeBootstrapStore();
 const recordingStore = createRecordingStore(recordings);
+const roomStore = createRoomStore();
+const roomRosterStore = createRoomRosterStore();
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
 const uploadDestinationStore = createUploadDestinationStore();
@@ -180,17 +179,18 @@ function requirePermission(
       : { allowed: false, reason: "unauthenticated" };
     let allowed = hasPermission && scope.allowed;
 
-    // Schedule assignment grants the capability bundle over the assignee's room
-    // even without the role permission — but never past an explicit deny policy.
-    let grantedViaAssignment = false;
-    if (
-      !allowed &&
-      auth.user &&
-      scope.reason !== "access_policy_denied" &&
-      ASSIGNMENT_CAPABILITIES.has(permission)
-    ) {
-      grantedViaAssignment = await assignmentAuthorizes(auth.user, auditTarget);
-      allowed = grantedViaAssignment;
+    // A room roster (a manual grant or a calendar meeting-assignment) grants a
+    // per-action capability over its room even without the role permission — but
+    // never past an explicit deny policy.
+    let grantedViaRoomCapability = false;
+    const requiredCapability = permissionRequiresCapability(permission);
+    if (!allowed && auth.user && scope.reason !== "access_policy_denied" && requiredCapability) {
+      grantedViaRoomCapability = await roomCapabilityAuthorizes(
+        auth.user,
+        requiredCapability,
+        auditTarget,
+      );
+      allowed = grantedViaRoomCapability;
     }
 
     const reason = allowed
@@ -206,10 +206,11 @@ function requirePermission(
       action,
       auth,
       details: {
-        grantedViaAssignment,
+        grantedViaRoomCapability,
         requiredPermission: permission,
         resourceScope: auditTarget,
         resourceScopeDecision: scope.reason,
+        roomCapability: requiredCapability,
         roles: auth.user?.roles ?? [],
       },
       outcome: allowed ? "allowed" : "denied",
@@ -393,7 +394,12 @@ async function addScheduleScopeTargets(
     return;
   }
 
-  targets.push({ id: schedule.id, type: "schedule" }, { id: schedule.room, type: "room" });
+  targets.push({ id: schedule.id, type: "schedule" });
+
+  if (schedule.roomId) {
+    targets.push({ id: schedule.roomId, type: "room" });
+  }
+
   addNodeScopeTargets(targets, schedule.nodeId, knownNodes);
 }
 
@@ -439,42 +445,70 @@ function addChannelScopeTargets(
 }
 
 function addRoomScopeTargets(targets: AuditTarget[], node: NodeRecord) {
-  targets.push({ id: node.location.site, type: "site" }, { id: node.location.room, type: "room" });
+  // Site remains an optional (metadata) scope target for site-wide admin grants;
+  // the room is now keyed on the node's first-class roomId rather than the
+  // free-text <site>/<room> string.
+  if (node.location.site) {
+    targets.push({ id: node.location.site, type: "site" });
+  }
 
-  if (node.location.site && node.location.room) {
-    targets.push({ id: `${node.location.site}/${node.location.room}`, type: "room" });
+  if (node.roomId) {
+    targets.push({ id: node.roomId, type: "room" });
   }
 }
 
-// Composite `<site>/<room>` keys for every room the user is assigned to (via a
-// direct user assignment or an access-group assignment). Skips listing nodes
-// when the user is assigned to nothing. See schedule-assignment.ts for the
-// policy (capability bundle, room-keying, and its safety invariants).
-async function assignedRoomKeys(user: NonNullable<AuthResult["user"]>) {
-  const schedules = await scheduleStore.list();
-
-  if (!schedules.some((schedule) => scheduleAssignsUser(schedule, user))) {
-    return new Set<string>();
-  }
-
-  return assignedRoomKeysFor(schedules, await nodeStore.list(), user);
+function rosterSubject(user: NonNullable<AuthResult["user"]>) {
+  return { groupIds: user.groups.map((group) => group.id), userId: user.id };
 }
 
-// True when the user is assigned to a room that `target` resolves into. Reuses
-// the same hierarchy expansion as role scoping, so an assignment on a room
-// authorizes that room's nodes, interfaces, channels, schedules, and recordings.
-async function assignmentAuthorizes(user: NonNullable<AuthResult["user"]>, target: AuditTarget) {
+// Room ids a target resolves into (via the shared hierarchy expansion).
+function roomIdsFromTargets(targets: AuditTarget[]) {
+  const roomIds: string[] = [];
+
+  for (const target of targets) {
+    if (target.type === "room" && target.id) {
+      roomIds.push(target.id);
+    }
+  }
+
+  return roomIds;
+}
+
+// The set of room ids the user holds any capability in (direct or via a group).
+async function rosterRoomIds(user: NonNullable<AuthResult["user"]>) {
+  return new Set((await roomRosterStore.roomsForSubject(rosterSubject(user))).keys());
+}
+
+// True when the user holds `capability` in a room that `target` resolves into,
+// via the room roster (a manual grant or a calendar meeting-assignment). Reuses
+// the same hierarchy expansion as role scoping, so a room grant covers that
+// room's nodes, interfaces, channels, schedules, and recordings.
+async function roomCapabilityAuthorizes(
+  user: NonNullable<AuthResult["user"]>,
+  capability: RoomCapability,
+  target: AuditTarget,
+) {
   if (!target.id) {
     return false;
   }
 
-  const assignedKeys = await assignedRoomKeys(user);
+  const roomIds = roomIdsFromTargets(await resourceScopeTargets(target));
 
-  if (assignedKeys.size === 0) {
+  if (roomIds.length === 0) {
     return false;
   }
 
-  return roomTargetsMatchAssignedKeys(await resourceScopeTargets(target), assignedKeys);
+  const subject = rosterSubject(user);
+
+  for (const roomId of roomIds) {
+    const capabilities = await roomRosterStore.effectiveCapabilities(subject, roomId);
+
+    if (capabilities.has(capability)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function interfaceNode(interfaceId: string, knownNodes: NodeRecord[]) {
@@ -532,12 +566,12 @@ function currentUser(c: Context<AppBindings>) {
 }
 
 async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
-  const assignedKeys = await assignedRoomKeys(user);
+  const userRoomIds = await rosterRoomIds(user);
   const result: NodeRecord[] = [];
 
   for (const node of await nodeStore.list()) {
     if (
-      nodeInAssignedRoom(node, assignedKeys) ||
+      (node.roomId !== undefined && userRoomIds.has(node.roomId)) ||
       (await hasResourceScope(user, { id: node.id, type: "node" }))
     ) {
       result.push(node);
@@ -548,19 +582,16 @@ async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
 }
 
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
-  const assignedKeys = await assignedRoomKeys(user);
-  const knownNodes = assignedKeys.size > 0 ? await nodeStore.list() : [];
+  const userRoomIds = await rosterRoomIds(user);
+  const knownNodes = userRoomIds.size > 0 ? await nodeStore.list() : [];
   const result: ScheduleSummary[] = [];
 
   for (const schedule of await scheduleStore.list()) {
     const node = knownNodes.find((candidate) => candidate.id === schedule.nodeId);
-    const inAssignedRoom = node ? nodeInAssignedRoom(node, assignedKeys) : false;
+    const roomId = schedule.roomId ?? node?.roomId;
+    const inRosterRoom = roomId !== undefined && userRoomIds.has(roomId);
 
-    if (
-      scheduleAssignsUser(schedule, user) ||
-      inAssignedRoom ||
-      (await hasResourceScope(user, { id: schedule.id, type: "schedule" }))
-    ) {
+    if (inRosterRoom || (await hasResourceScope(user, { id: schedule.id, type: "schedule" }))) {
       result.push(schedule);
     }
   }
@@ -569,17 +600,18 @@ async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
 }
 
 async function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
-  const assignedKeys = await assignedRoomKeys(user);
-  const knownNodes = assignedKeys.size > 0 ? await nodeStore.list() : [];
+  const userRoomIds = await rosterRoomIds(user);
+  const knownNodes = userRoomIds.size > 0 ? await nodeStore.list() : [];
   const result = [];
 
   for (const recording of await recordingStore.list()) {
     const node = recording.nodeId
       ? knownNodes.find((candidate) => candidate.id === recording.nodeId)
       : undefined;
-    const inAssignedRoom = node ? nodeInAssignedRoom(node, assignedKeys) : false;
+    const roomId = node?.roomId;
+    const inRosterRoom = roomId !== undefined && userRoomIds.has(roomId);
 
-    if (inAssignedRoom || (await hasResourceScope(user, { id: recording.id, type: "recording" }))) {
+    if (inRosterRoom || (await hasResourceScope(user, { id: recording.id, type: "recording" }))) {
       result.push(recording);
     }
   }

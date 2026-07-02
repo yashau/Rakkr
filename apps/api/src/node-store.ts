@@ -701,6 +701,7 @@ function recorderNodeToRow(node: RecorderNode): typeof nodeRows.$inferInsert {
     ),
     network: { ipAddresses: node.ipAddresses },
     notes: node.notes,
+    roomId: node.roomId ?? null,
     status: node.status,
     tags: node.tags,
   };
@@ -738,6 +739,7 @@ function nodeFromRows(
     ipAddresses: stringArray(record(node.network)?.ipAddresses),
     lastSeenAt: (node.lastSeenAt ?? node.createdAt).toISOString(),
     location: locationFromValue(node.location),
+    roomId: node.roomId ?? undefined,
     notes: node.notes ?? undefined,
     audioDefaults: nodeAudioDefaultsFromMetadata(node.metadata),
     recordingCapacity: nodeRecordingCapacityFromMetadata(node.metadata),

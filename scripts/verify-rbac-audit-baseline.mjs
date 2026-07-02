@@ -13,12 +13,16 @@ const requiredPhrases = [
   "API enforces",
   "UI helpers mirror",
   "denied attempts",
-  "Schedule Assignment Scoped Grants",
-  "capability bundle",
-  "explicit deny access-policy always overrides an assignment",
-  "grantedViaAssignment",
+  "Room Roster Capabilities",
+  "per-action capabilities",
+  "explicit deny access-policy always overrides",
+  "grantedViaRoomCapability",
 ];
-const requiredApiIdentifiers = ["ASSIGNMENT_CAPABILITIES", "assignmentAuthorizes", "assignedRoomKeys"];
+const requiredApiIdentifiers = [
+  "roomCapabilityAuthorizes",
+  "roomRosterStore",
+  "permissionRequiresCapability",
+];
 const errors = [];
 
 const [baseline, sharedSource] = await Promise.all([
