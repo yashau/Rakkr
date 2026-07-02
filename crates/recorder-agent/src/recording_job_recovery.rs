@@ -114,8 +114,11 @@ pub(crate) async fn reconcile_previous_recording_job(
         // segment before upload rather than uploading (and leaking) only the final
         // one (RS1). Owned locals back the stitch context so the persisted state can
         // still be moved into a terminal snapshot below.
-        let segments: Vec<RecoveredCaptureSegment> =
-            state.recovered_segments.iter().map(runtime_segment).collect();
+        let segments: Vec<RecoveredCaptureSegment> = state
+            .recovered_segments
+            .iter()
+            .map(runtime_segment)
+            .collect();
         let recording_id = state.recording_id.clone();
         let job_id = state.job_id.clone();
         let render_command = config.channel_render_command.clone();
@@ -127,30 +130,33 @@ pub(crate) async fn reconcile_previous_recording_job(
             render_command: &render_command,
             output_path: &output_path,
         };
-        let (upload_path, raw_for_retention, stitched) =
-            match plan_restart_stitch(&stitch_ctx, &segments, state.raw_output_path.as_deref().map(Path::new))
-                .await?
-            {
-                RestartStitchPlan::Upload {
-                    upload_path,
-                    raw_for_retention,
-                    stitched,
-                } => (upload_path, raw_for_retention, stitched),
-                RestartStitchPlan::Failed => {
-                    // The pre-loss segments could not be merged; they are preserved on
-                    // disk and a critical event was emitted. Fail the job rather than
-                    // complete a recording missing its start.
-                    return write_job_state_snapshot(
-                        config,
-                        AgentJobState {
-                            reason: Some(STITCH_FAILED_REASON.to_string()),
-                            status: "failed".to_string(),
-                            updated_at: crate::telemetry::now_rfc3339(),
-                            ..state
-                        },
-                    );
-                }
-            };
+        let (upload_path, raw_for_retention, stitched) = match plan_restart_stitch(
+            &stitch_ctx,
+            &segments,
+            state.raw_output_path.as_deref().map(Path::new),
+        )
+        .await?
+        {
+            RestartStitchPlan::Upload {
+                upload_path,
+                raw_for_retention,
+                stitched,
+            } => (upload_path, raw_for_retention, stitched),
+            RestartStitchPlan::Failed => {
+                // The pre-loss segments could not be merged; they are preserved on
+                // disk and a critical event was emitted. Fail the job rather than
+                // complete a recording missing its start.
+                return write_job_state_snapshot(
+                    config,
+                    AgentJobState {
+                        reason: Some(STITCH_FAILED_REASON.to_string()),
+                        status: "failed".to_string(),
+                        updated_at: crate::telemetry::now_rfc3339(),
+                        ..state
+                    },
+                );
+            }
+        };
 
         let output_bytes = fs::metadata(&upload_path)
             .ok()

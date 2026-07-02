@@ -284,8 +284,10 @@ pub(crate) async fn plan_restart_stitch(
     raw_output_path: Option<&Path>,
 ) -> anyhow::Result<RestartStitchPlan> {
     let output_path = ctx.output_path.to_path_buf();
-    let should_stitch =
-        !segments.is_empty() && segments.iter().all(|segment| fs::metadata(&segment.path).is_ok());
+    let should_stitch = !segments.is_empty()
+        && segments
+            .iter()
+            .all(|segment| fs::metadata(&segment.path).is_ok());
 
     if !should_stitch {
         let raw = raw_output_path

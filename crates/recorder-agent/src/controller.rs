@@ -555,31 +555,28 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
         render_command: &capture_plan.render_command,
         output_path: &capture_plan.output_path,
     };
-    let raw_output_path = match stitch_recovered_capture_segments(
-        &stitch_ctx,
-        &recovered_segments,
-        &raw_output_path,
-    )
-    .await?
-    {
-        StitchOutcome::NoSegments => raw_output_path,
-        StitchOutcome::Stitched(stitched_path) => stitched_path,
-        StitchOutcome::Failed { preserved } => {
-            // The pre-loss segments could not be merged. Never silent-complete:
-            // preserve the audio on disk, emit a critical health event, and fail
-            // the job so the recording reflects the loss (GH-1).
-            report_unrecoverable_capture_segments(&stitch_ctx, &preserved).await?;
-            write_job_state(
-                config,
-                &job,
-                "failed",
-                Some(&raw_output_path),
-                Some(STITCH_FAILED_REASON),
-            )?;
+    let raw_output_path =
+        match stitch_recovered_capture_segments(&stitch_ctx, &recovered_segments, &raw_output_path)
+            .await?
+        {
+            StitchOutcome::NoSegments => raw_output_path,
+            StitchOutcome::Stitched(stitched_path) => stitched_path,
+            StitchOutcome::Failed { preserved } => {
+                // The pre-loss segments could not be merged. Never silent-complete:
+                // preserve the audio on disk, emit a critical health event, and fail
+                // the job so the recording reflects the loss (GH-1).
+                report_unrecoverable_capture_segments(&stitch_ctx, &preserved).await?;
+                write_job_state(
+                    config,
+                    &job,
+                    "failed",
+                    Some(&raw_output_path),
+                    Some(STITCH_FAILED_REASON),
+                )?;
 
-            return Err(anyhow::anyhow!(STITCH_FAILED_REASON));
-        }
-    };
+                return Err(anyhow::anyhow!(STITCH_FAILED_REASON));
+            }
+        };
     let output_path = match render_capture_output(&capture_plan, &raw_output_path) {
         Ok(rendered_path) => {
             if rendered_path != raw_output_path {
