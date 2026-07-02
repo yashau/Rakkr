@@ -59,9 +59,10 @@ These hold for every run. They are what make the result trustworthy.
 - **`main` is always in scope.** Sync at the start of every run. New code that
   landed on `main` gets audited like everything else — fixed code can be
   re-broken by an unrelated merge.
-- **Honest ledger.** Every run appends to a findings ledger (default
-  `GAPS.md` at the repo root). Status labels are truthful: `FIXED` only with a
-  red→green test; everything else is `CATALOGUED` or `SUSPECTED`.
+- **Honest ledger.** Every run appends to a findings ledger — an ISO-dated file
+  under `docs/internal/audits/` (e.g. `docs/internal/audits/2026-07-02-gap-hunt.md`).
+  Status labels are truthful: `FIXED` only with a red→green test; everything else
+  is `CATALOGUED` or `SUSPECTED`.
 
 ## Part 1 — A single audit run
 
@@ -160,9 +161,11 @@ If Rust changed, add `mise run rust:check rust:clippy rust:fmt-check` (and
 
 ### Step 6 — Update the ledger
 
-Append/refresh `GAPS.md`: every finding with status, `file:line`, repro, fix, and
-test name. Keep a "verified clean" section so future runs don't re-investigate
-settled ground.
+Append/refresh the run's ledger under `docs/internal/audits/` (an ISO-dated file
+such as `2026-07-02-gap-hunt.md`): every finding with status, `file:line`, repro,
+fix, and test name. Keep a "verified clean" section so future runs don't
+re-investigate settled ground. The file's structure is **required, not
+freeform** — follow [Ledger file format](#ledger-file-format) exactly.
 
 ### What makes a run "clean"
 
@@ -182,6 +185,106 @@ A run is **clean** if and only if **all** of these hold:
 
 A run is **dirty** if it changed any file, **or** a gate failed, **or** `main`
 advanced with un-audited commits.
+
+## Ledger file format
+
+The ledger is **one Markdown file per audit**, named with the audit's
+**completion date** in ISO 8601 plus a short kebab-case slug, under the audits
+directory:
+
+```text
+docs/internal/audits/<YYYY-MM-DD>-<slug>.md      # e.g. 2026-07-02-gap-hunt.md
+```
+
+The structure is **required, not freeform** — every audit ledger has the same
+sections, in the same order, so any run (or reader) knows where each thing lives.
+[`2026-07-02-gap-hunt.md`](../internal/audits/2026-07-02-gap-hunt.md) is the worked
+reference.
+
+### Required sections, in order
+
+1. **Title + intro** — `# <Project> — <Audit name> Findings`, then one paragraph:
+   what was audited and the method (read-only fan-out hunters + adversary passes,
+   red→green proof).
+2. **Header metadata table** — a two-column key/value table:
+
+   | Field | Content |
+   | ----- | ------- |
+   | Branch | the audit branch |
+   | Base | the `origin/main` SHA it's rebased onto (and the SHA the audit opened at, if different) |
+   | Started / Completed | ISO 8601 dates; the **Completed** date is the filename date |
+   | Runs | number of audit runs (note any pre-loop batch) |
+   | Findings closed | count — each with a red→green test, or resolved by another fix |
+   | Result | e.g. `✅ N consecutive clean runs achieved (Runs X–Y)`, or `did not converge` |
+   | Gates at close | which gates were green (API/web test counts, tsc, lint, fmt, LOC, baselines, db:verify, Rust) |
+
+3. **Status legend** — define every label used: `FIXED` (red→green test landed),
+   `RESOLVED` (closed indirectly by another fix), `CATALOGUED`, `SUSPECTED`,
+   `COVERAGE`.
+4. **Everything fixed** — one table **per severity** (Critical → High → Medium →
+   Low), rows ordered by the run they were found in. Columns:
+
+   | Column | Content |
+   | ------ | ------- |
+   | ID | finding tag (`G##`, `R13-#`, `Adv-C#`, …) |
+   | Run | the run it landed in (`pre` for the pre-loop batch) |
+   | Area | subsystem / file family |
+   | Fix | one line — the wrong behaviour → the fix |
+   | Commit | the branch commit SHA that landed it |
+
+   Every `FIXED`/`RESOLVED` row **must** cite a commit. Findings fixed together in
+   one commit may share a row (e.g. `G54/G55`). An optional final **Also fixed
+   (gate, not a product finding)** table records fixes that kept a gate green but
+   weren't product findings (e.g. a drifted verifier); its columns are
+   `Item | Run | Fix | Commit`.
+5. **Open work** — everything still open, in three parts:
+   - a **Top open item** callout for the highest-severity unresolved work — its
+     fix spec + why it's deferred. It may cover a *group* of related findings that
+     form one deferred slice (e.g. `RS1 + GH-1 + GH-2`), not just a single ID.
+   - a **catalogued / suspected** table, columns `ID | Sev | Kind | Locus | Note`.
+     `Sev` uses the same Critical/High/Medium/Low scale as item 4 (hyphenated
+     blends like `Med-Low`, or `—` for an undecided/product call, are fine).
+     `Kind` is one of: `catalogued`, `suspected`, `open` (needs hardware/Postgres
+     to verify), `by-design`, `fail-closed`, `perf`, `product`, `residual`, or
+     `coverage`.
+   - a short **coverage gaps** list (no bug — missing tests).
+6. **Verified clean** — a prose list of areas checked and found sound, so future
+   runs don't re-investigate settled ground.
+7. **Run log** — the run table (below), **oldest run first**, followed by short
+   notes on the dirty runs and how the streak progressed. Each run's note must
+   enumerate any new `SUSPECTED` leads that run surfaced (which also get a row in
+   the catalogued / suspected table) — the [clean-run rule](#what-makes-a-run-clean)
+   requires new suspected leads to be listed explicitly.
+
+### Ordering & size rules
+
+- **Runs ascending.** Oldest first, newest last — scrolling to the end reaches the
+  latest run. **Never** insert newest-first; a descending log makes the last
+  heading in the file read as an early run.
+- **ISO 8601 dates** (`YYYY-MM-DD`) everywhere; store/display UTC.
+- **Truthful status** — `FIXED` only with a landed red→green test; otherwise
+  `CATALOGUED` / `SUSPECTED`.
+- **Stay under the 1000-LOC guard.** As the ledger grows, compact the oldest
+  settled runs into a one-line-per-finding archive block (full detail stays in the
+  commit messages), as the reference ledger did for its early runs.
+
+### Run log table
+
+Oldest run first. Record each run's date, what it swept, what it surfaced and
+fixed, and the resulting streak:
+
+| Run | Date | Focus | New confirmed | Fixed | Clean? | Streak |
+| --- | ---- | ----- | ------------- | ----- | ------ | ------ |
+| 1 | 2026-07-01 | authz, core, coverage, x-cut | G24, G25, G26 | 3 | no | 0 |
+| 2 | 2026-07-01 | core + live-listen (deep) | G4-1, G27, G28 | G4 + 4 | no | 0 |
+| … | … | … | … | … | … | … |
+| 26 | 2026-07-02 | channel-map plan/apply/rollback | — | — | yes | 4 |
+| 27 | 2026-07-02 | audit-store + metrics | — | — | yes | **5 ✅** |
+
+When `main` advances mid-loop, add a `main @` column (or note the new SHA in that
+run's note): a new base is un-audited surface and resets the streak (see
+[Part 2](#part-2--tracking-main)). If the base is static for the whole audit,
+record it once in the header and omit the column, as the reference ledger does.
 
 ## Part 2 — Tracking `main`
 
@@ -319,21 +422,15 @@ each a full [Part 1](#part-1--a-single-audit-run) pass, rebasing on `main` every
 run, fixing confirmed findings with red→green proof, cataloguing the rest, and
 resetting the streak on any dirty run — until `N` clean runs in a row (or the cap).
 
-**What the agent reports at the end:** the run log (below), total runs, the final
-clean streak, the converged `main` SHA, every `FIXED` finding with its test, and
-every `CATALOGUED`/`SUSPECTED` item left for a human call.
+**What the agent reports at the end:** the run log (the ascending table defined in
+[Run log table](#run-log-table)), total runs, the final clean streak, the
+converged `main` SHA, every `FIXED` finding with its test, and every
+`CATALOGUED`/`SUSPECTED` item left for a human call.
 
-### Run log template
-
-Maintain this table (in the ledger or the final report) so progress is legible:
-
-| Run | `main` @ | Dimensions swept | Findings (Conf/Cov/Susp) | Fixes landed | Gates | Clean? | Streak |
-| --- | -------- | ---------------- | ------------------------ | ------------ | ----- | ------ | ------ |
-| 1 | `844f6a8e` | authz, core, coverage, x-cut | 2 / 1 / 3 | G1, G7 | green | no | 0 |
-| 2 | `844f6a8e` | core, coverage (deep) | 1 / 0 / 1 | G1b | green | no | 0 |
-| 3 | `9c1d…` (main moved) | x-cut, authz | 0 / 0 / 1 | — | green | yes | 1 |
-| 4 | `9c1d…` | core, coverage | 0 / 0 / 0 | — | green | yes | 2 |
-| … | … | … | … | … | … | … | … |
+The full ledger structure — header, per-severity fix tables, open-work section,
+verified-clean list, and the run-log table — is specified once, canonically, in
+[Ledger file format](#ledger-file-format). The final report reuses that same run
+log.
 
 ### Clean-run checklist
 
