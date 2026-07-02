@@ -561,6 +561,32 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 27 — CLEAN (audit-store + metrics observability surface, direct) — 5/5 STREAK MET
+
+**No new finding**:
+- Audit store: MemoryAuditStore is append-only + bounded (`maxEvents = 500`,
+  truncated on append — no unbounded growth); Postgres path appends durably;
+  RBAC-scoping on read (`canReadAuditEvent`/`visibleHealthEvent`) verified in
+  Run 19. `list` paginates, `listAll` feeds scoped reads/exports.
+- Metrics: node/status-labelled gauges are bounded; the per-recording-id gauges
+  (`rakkr_recording_duration_seconds`/`_bytes_written`) are the already-catalogued
+  S1 (unbounded label cardinality, small-fleet by-design) and the capped-set
+  `*_total` counters are the catalogued C2 — no NEW issue.
+
+### 🎯 GOAL MET — 5 consecutive clean runs (23, 24, 25, 26, 27)
+Runs 23–27 each swept a distinct subsystem and surfaced no new confirmed fixes;
+gates green throughout (API 412/0, web 121/0, tsc api+web+shared, oxlint, oxfmt,
+LOC, baselines). Areas covered clean this streak: live-listen + node-lifecycle
+(23), auth/OIDC/session/password (24), health/watchdog reconciler lifecycle (25),
+channel-map assignment/plan flow (26), audit-store + metrics (27) — plus the
+GH-START-1 adversary (23) confirming the last code fix sound.
+
+**Convergence reached on the from-Windows-testable surface.** The remaining
+tracked work is the Linux-only capture-recovery segment slice (RS1 + GH-1 + GH-2)
+and the catalogued Low/deferred items (C2/G70 metrics aggregate, C4 number-input
+UX, NODE-ROT-1 create-then-revoke, DB-BOUND-1/2, Adv-C3 ≤5s audit-events, S1/S2) —
+none reachable/non-conditional bugs.
+
 ## Run 26 — CLEAN (channel-map assignment/plan/apply/rollback flow, direct)
 
 Traced the plan state machine + the apply/rollback routes. **No new finding**:
