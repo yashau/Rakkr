@@ -561,6 +561,22 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 26 — CLEAN (channel-map assignment/plan/apply/rollback flow, direct)
+
+Traced the plan state machine + the apply/rollback routes. **No new finding**:
+- Plan store `apply` guards `status !== "pending"` (single-apply) and is atomic
+  within a tick (no await between the check and the write); `create` dedups
+  targets; persist uses temp+rename.
+- The apply route guards `before.status !== "pending"` -> 409 BEFORE applying any
+  assignments, verifies the template exists, applies each target via
+  `assignChannelMapTemplate` (idempotent per-target upsert), then flips the plan
+  through the store's guarded apply. A concurrent double-apply is idempotent
+  (per-target upsert) + the plan flips once -> no duplication.
+- Rollback is `settings:manage`-gated with rollback_target_not_found handling;
+  all channel-map assign/bulk/plan/apply/rollback routes RBAC-verified (Run 19).
+
+**Clean-run streak: 4/5.**
+
 ## Run 25 — CLEAN (health/watchdog alert-reconciler lifecycle deep pass, direct)
 
 Traced the reconciler state machine (create -> repeat -> resolve -> suppress ->
