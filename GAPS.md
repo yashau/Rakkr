@@ -561,6 +561,28 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 24 — CLEAN (auth / OIDC / session / password deep pass, direct)
+
+Thorough security-critical pass (done directly to conserve usage), **no new
+finding**:
+- **OIDC login** (`oidc-login.ts`): PKCE (code_verifier/challenge) + state +
+  nonce, library-verified callback (expectedState/expectedNonce/pkce); login-state
+  store is single-use (`consume` deletes), TTL-pruned/bounded, state stored HASHED;
+  the Postgres path uses an atomic `DELETE ... RETURNING` with expiry/consumed
+  checks. No replay, no leak.
+- **Session tokens** (`auth-service.ts`): 256-bit random, stored as `hashToken`
+  (hashed at rest), 12h TTL; `authenticate` rejects expired/disabled on the memory
+  path AND the DB path filters `revokedAt IS NULL AND expiresAt > now` + disabled
+  in SQL. Logout revokes both. Sound.
+- **OIDC role mapping** (`oidc-sync.ts:65`): claim roles filtered to the known
+  `roles` allowlist from a library-verified ID token (no arbitrary-role injection).
+- **Password** (`password.ts`): scrypt; `verifyPassword("", "")` -> false
+  (empty/unset hash rejected, so OIDC users with no local password can't be
+  password-authed), malformed params -> false (no crash), length-checked
+  `timingSafeEqual`. No empty-credential bypass.
+
+**Clean-run streak: 2/5.**
+
 ## Run 23 — CLEAN (adversary-on-GH-START-1 + live-listen / node-lifecycle deep pass)
 
 Adversary-on-GH-START-1: **SOUND** — the per-node capture-start lock is provably
