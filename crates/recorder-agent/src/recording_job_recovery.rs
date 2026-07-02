@@ -17,7 +17,8 @@ use crate::health_log;
 use crate::recorder_cache_retention::{delete_recorder_cache_files, record_uploaded_cache_files};
 use crate::recording_job_recovery_chunk_total::recovered_chunk_total;
 use crate::recording_job_segments::{
-    RecoveredCaptureSegment, RuntimeCaptureRecovery, preserve_recovered_capture_segment,
+    RecoveredCaptureSegment, RestartStitchPlan, RuntimeCaptureRecovery, STITCH_FAILED_REASON,
+    StitchContext, plan_restart_stitch, preserve_recovered_capture_segment, runtime_segment,
 };
 use crate::recording_job_upload::{append_job_health_event, apply_recovered_upload_retention};
 use crate::state::{
@@ -109,14 +110,56 @@ pub(crate) async fn reconcile_previous_recording_job(
     }
 
     if let Some(output_path) = recoverable_restart_output_path(config, &state) {
-        let output_bytes = fs::metadata(&output_path)
+        // Recover the pre-loss audio: stitch the preserved segments with the final
+        // segment before upload rather than uploading (and leaking) only the final
+        // one (RS1). Owned locals back the stitch context so the persisted state can
+        // still be moved into a terminal snapshot below.
+        let segments: Vec<RecoveredCaptureSegment> =
+            state.recovered_segments.iter().map(runtime_segment).collect();
+        let recording_id = state.recording_id.clone();
+        let job_id = state.job_id.clone();
+        let render_command = config.channel_render_command.clone();
+        let stitch_ctx = StitchContext {
+            config,
+            token,
+            recording_id: &recording_id,
+            job_id: &job_id,
+            render_command: &render_command,
+            output_path: &output_path,
+        };
+        let (upload_path, raw_for_retention, stitched) =
+            match plan_restart_stitch(&stitch_ctx, &segments, state.raw_output_path.as_deref().map(Path::new))
+                .await?
+            {
+                RestartStitchPlan::Upload {
+                    upload_path,
+                    raw_for_retention,
+                    stitched,
+                } => (upload_path, raw_for_retention, stitched),
+                RestartStitchPlan::Failed => {
+                    // The pre-loss segments could not be merged; they are preserved on
+                    // disk and a critical event was emitted. Fail the job rather than
+                    // complete a recording missing its start.
+                    return write_job_state_snapshot(
+                        config,
+                        AgentJobState {
+                            reason: Some(STITCH_FAILED_REASON.to_string()),
+                            status: "failed".to_string(),
+                            updated_at: crate::telemetry::now_rfc3339(),
+                            ..state
+                        },
+                    );
+                }
+            };
+
+        let output_bytes = fs::metadata(&upload_path)
             .ok()
             .map(|metadata| metadata.len());
         let details = json!({
             "jobId": state.job_id.as_str(),
             "nodeId": state.node_id.as_str(),
             "outputBytes": output_bytes,
-            "outputPath": output_path.display().to_string(),
+            "outputPath": upload_path.display().to_string(),
             "previousStatus": state.status.as_str(),
             "recoveredSegmentCount": state.recovered_segments.len(),
             "recoveredSegments": state.recovered_segments.iter().map(|segment| {
@@ -128,6 +171,7 @@ pub(crate) async fn reconcile_previous_recording_job(
             }).collect::<Vec<_>>(),
             "recordingId": state.recording_id.as_str(),
             "stateUpdatedAt": state.updated_at.as_str(),
+            "stitchedRecoveredSegments": stitched,
             "willUpload": true,
         });
         let event = health_log::append_health_event_with_targets(
@@ -152,17 +196,17 @@ pub(crate) async fn reconcile_previous_recording_job(
             content_type: state
                 .upload_content_type
                 .as_deref()
-                .unwrap_or_else(|| content_type_for_codec(None, &output_path)),
+                .unwrap_or_else(|| content_type_for_codec(None, &upload_path)),
             controller_ca_cert_path: config.controller_ca_cert_path.as_deref(),
             controller_url: &config.controller_url,
             duration_seconds: state.upload_duration_seconds,
             file_name: state.upload_file_name.clone().or_else(|| {
-                output_path
+                upload_path
                     .file_name()
                     .and_then(|value| value.to_str())
                     .map(str::to_string)
             }),
-            file_path: &output_path,
+            file_path: &upload_path,
             job_id: Some(&state.job_id),
             recording_id: &state.recording_id,
             rendition: None,
@@ -181,6 +225,12 @@ pub(crate) async fn reconcile_previous_recording_job(
         write_job_state_snapshot(
             config,
             AgentJobState {
+                // Persist the file actually uploaded (the stitched output): the
+                // original final segment was consumed by the stitch, so a stale
+                // pre-stitch path would make a second restart's retention miss the
+                // stitched cache file (leak) or mis-track the manifest.
+                output_path: Some(upload_path.display().to_string()),
+                raw_output_path: Some(raw_for_retention.display().to_string()),
                 reason: None,
                 status: "uploaded".to_string(),
                 updated_at: crate::telemetry::now_rfc3339(),
@@ -192,20 +242,14 @@ pub(crate) async fn reconcile_previous_recording_job(
             return Ok(());
         };
 
-        let recovered_raw_output_path = state
-            .raw_output_path
-            .as_deref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| output_path.clone());
-
         if let Some(retention) = state.recorder_cache_retention.as_ref() {
             apply_recovered_upload_retention(
                 config,
                 token,
                 &state,
                 retention,
-                &recovered_raw_output_path,
-                &output_path,
+                &raw_for_retention,
+                &upload_path,
             )
             .await?;
         }

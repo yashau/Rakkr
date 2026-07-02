@@ -398,9 +398,10 @@ process.exit(32);
   return captureScript;
 }
 
-export async function writeFakeRecoveringDeviceLostCaptureCommand(directory) {
-  const captureScript = path.join(directory, "fake-recovering-device-lost-capture.mjs");
-  const stateFile = path.join(directory, "fake-recovering-device-lost-capture-state.txt");
+export async function writeFakeRecoveringDeviceLostCaptureCommand(directory, variant = "") {
+  const suffix = variant ? `-${variant}` : "";
+  const captureScript = path.join(directory, `fake-recovering-device-lost-capture${suffix}.mjs`);
+  const stateFile = path.join(directory, `fake-recovering-device-lost-capture${suffix}-state.txt`);
   await writeFile(
     captureScript,
     `#!/usr/bin/env node
@@ -457,7 +458,7 @@ function wavFile(channels, samples) {
   );
 
   if (process.platform === "win32") {
-    const commandPath = path.join(directory, "fake-recovering-device-lost-capture.cmd");
+    const commandPath = path.join(directory, `fake-recovering-device-lost-capture${suffix}.cmd`);
     await writeFile(commandPath, commandShim(captureScript));
 
     return commandPath;
@@ -712,6 +713,50 @@ writeFileSync(outputPath, payload);
 
   if (process.platform === "win32") {
     const commandPath = path.join(directory, "fake-render.cmd");
+    await writeFile(commandPath, commandShim(renderScript));
+
+    return commandPath;
+  }
+
+  await chmod(renderScript, 0o755);
+
+  return renderScript;
+}
+
+export async function writeFakeConcatFailingRenderCommand(directory) {
+  const renderScript = path.join(directory, "fake-render-concat-failure.mjs");
+  await writeFile(
+    renderScript,
+    `#!/usr/bin/env node
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const argv = process.argv.slice(2);
+
+// The capture-recovery stitch invokes the render command as an ffmpeg concat
+// ("-f concat ... -c copy"). Fail that step to exercise GH-1 (graceful stitch
+// failure); behave like the normal channel-map/codec render otherwise.
+if (argv.includes("concat")) {
+  console.error("simulated concat failure");
+  process.exit(1);
+}
+
+const inputIndex = argv.indexOf("-i");
+const inputPath = inputIndex >= 0 ? argv[inputIndex + 1] : undefined;
+const outputPath = argv.at(-1);
+
+if (!inputPath || !outputPath || outputPath.startsWith("-")) {
+  console.error("missing input or output path");
+  process.exit(2);
+}
+
+mkdirSync(path.dirname(outputPath), { recursive: true });
+writeFileSync(outputPath, Buffer.concat([Buffer.from("FAKE_MP3_VBR_128\\n"), readFileSync(inputPath)]));
+`,
+  );
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(directory, "fake-render-concat-failure.cmd");
     await writeFile(commandPath, commandShim(renderScript));
 
     return commandPath;

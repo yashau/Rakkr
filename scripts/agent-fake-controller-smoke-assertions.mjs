@@ -230,6 +230,53 @@ export function assertCaptureRuntimeRecoveryScenario({
   assertRenderedOutputScenario({ healthLogEvents, observed, renderedLocalEvent, scenario });
 }
 
+export function assertStitchFailureScenario({ healthLogEvents, job, observed, state }) {
+  // GH-1: when recovered pre-loss segments cannot be stitched, the agent must NOT
+  // silent-complete on the final segment alone. It fails the job, emits a critical
+  // "unrecoverable" event listing the preserved files, and uploads nothing.
+  const stitchFailedLocal = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.capture_segments_stitch_failed",
+  );
+  const unrecoverableLocal = healthLogEvents.find(
+    (event) => event.type === "agent.recording_job.capture_segments_unrecoverable",
+  );
+  const unrecoverableSynced = observed.healthEvents.find(
+    (event) => event.type === "agent.recording_job.capture_segments_unrecoverable",
+  );
+
+  invariant(job.status === "failed", "fake controller did not mark unstitchable job failed");
+  invariant(observed.failures === 1, "agent did not mark unstitchable job failed");
+  invariant(!observed.cacheUpload, "agent uploaded cache after unstitchable segments (silent complete)");
+  invariant(state.status === "failed", "unstitchable state file did not end failed");
+  invariant(
+    String(state.reason).includes("capture_segments_stitch_failed"),
+    "unstitchable state did not retain the stitch-failure reason",
+  );
+  invariant(
+    String(observed.failureReason).includes("capture_segments_stitch_failed"),
+    "unstitchable failed-job reason did not include the stitch failure",
+  );
+  invariant(stitchFailedLocal, "agent local health log did not include capture_segments_stitch_failed");
+  invariant(stitchFailedLocal.severity === "warning", "stitch failure event was not warning");
+  invariant(unrecoverableLocal, "agent local health log did not include capture_segments_unrecoverable");
+  invariant(unrecoverableLocal.severity === "critical", "unrecoverable segments event was not critical");
+  invariant(
+    Array.isArray(unrecoverableLocal.details?.preservedPaths) &&
+      unrecoverableLocal.details.preservedPaths.length >= 2,
+    "unrecoverable event did not list the preserved segment + final files",
+  );
+  invariant(
+    Array.isArray(unrecoverableLocal.details?.preservedBytes) &&
+      unrecoverableLocal.details.preservedBytes.every((bytes) => Number.isFinite(bytes) && bytes > 0),
+    "unrecoverable event did not record that the preserved files are on disk (byte evidence)",
+  );
+  invariant(unrecoverableSynced, "agent did not sync the unrecoverable segments health event");
+  invariant(
+    !healthLogEvents.some((event) => event.type === "agent.recording_job.output_rendered"),
+    "agent rendered output after an unstitchable recovery",
+  );
+}
+
 export function assertTinyCaptureFailureScenario({
   healthLogEvents,
   job,
