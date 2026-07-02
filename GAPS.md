@@ -561,6 +561,33 @@ end-to-end verification needs a Linux interrupted-capture scenario (ffmpeg +
 recorder rig); shipping an unverified change to the reliability-critical recovery
 path is higher-risk than the bug. Same class as G62/Rust-C2. Highest open item.
 
+## Run 23 — CLEAN (adversary-on-GH-START-1 + live-listen / node-lifecycle deep pass)
+
+Adversary-on-GH-START-1: **SOUND** — the per-node capture-start lock is provably
+correct (strict serialization, runs-after-settle, no wedge on throw, bounded
+race-free cleanup), no deadlock/re-entrancy, response/audit byte-identical.
+Live-listen + node-lifecycle pass (done directly; the subagent hit a usage limit
+mid-run): **SOUND** — listen chunk-ingest is node-scoped + bounded (44..524288) +
+audited; the session store is nodeId-scoped, evicts abandoned, bounded (G28);
+listen routes gate `listen:monitor` + scoped node (Run 19); node-lifecycle jobs
+carry a unique id so their running->succeeded/failed status is independent (no
+shared-status clobber, blind save is fine); bootstrap single-use holds. One
+catalogue-grade item below; no reachable/non-conditional bug -> run CLEAN.
+
+### Catalogued (Low-Med, conditional)
+- **NODE-ROT-1** - `PostgresNodeStore.rotateCredential` (`node-store.ts:449-457`)
+  revokes all active credentials THEN creates the new one. A sub-second
+  zero-credential window exists between the two (self-healing — the agent retries,
+  and rotation is paired with an env-rewrite+restart per RC1), and if
+  `createCredential` throws after the revoke succeeds (a DB blip in that window)
+  the node is left with zero valid credentials until a re-rotation (operator-
+  initiated, `node:manage`, recoverable). Same class as GH-START-2. Fix =
+  create-then-revoke, revoking all active EXCEPT the just-created id
+  (`... WHERE revokedAt IS NULL AND id != <new>`), so there's always >=1 valid
+  credential and a failed create leaves the old one intact.
+
+**Clean-run streak: 1/5.**
+
 ## Run 22 — DIRTY (adversary-on-G80 + "begin recording" flow deep pass)
 
 Adversary-on-G80: **SOUND** (traversal + collision closed, SMB/S3 symmetric, 0
