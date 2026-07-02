@@ -30,7 +30,7 @@ export function localDayIso(date: Date) {
 
 // Offset of `date` from the configured week-start day (0 … 6).
 function weekdayOffset(date: Date, weekStartsOn: number) {
-  return ((date.getDay() - weekStartsOn) % 7 + 7) % 7;
+  return (((date.getDay() - weekStartsOn) % 7) + 7) % 7;
 }
 
 // A fixed 6-week (42-day) grid whose first column is `weekStartsOn`, starting on

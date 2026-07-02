@@ -1,11 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { and, createDatabase, eq, inArray, or, roomRoster as roomRosterTable } from "@rakkr/db";
-import {
-  type RoomCapability,
-  type RoomRosterEntry,
-  roomCapabilitySchema,
-} from "@rakkr/shared";
+import { type RoomCapability, type RoomRosterEntry, roomCapabilitySchema } from "@rakkr/shared";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 
 type RoomRosterInsert = typeof roomRosterTable.$inferInsert;
@@ -36,11 +32,7 @@ export interface RoomRosterStore {
   listForRoom(roomId: string): Promise<RoomRosterEntry[]>;
   reconcileCalendar(input: CalendarReconcileInput): Promise<void>;
   removeForSchedule(scheduleId: string): Promise<void>;
-  replaceManual(
-    roomId: string,
-    entries: ManualEntry[],
-    grantedByUserId?: string,
-  ): Promise<void>;
+  replaceManual(roomId: string, entries: ManualEntry[], grantedByUserId?: string): Promise<void>;
   roomsForSubject(subject: RosterSubject): Promise<Map<string, Set<RoomCapability>>>;
 }
 
@@ -89,13 +81,13 @@ class JsonRoomRosterStore implements RoomRosterStore {
   }
 
   async listForRoom(roomId: string) {
-    return this.rows
-      .filter((row) => row.roomId === roomId)
-      .map(rosterEntryFromRecord);
+    return this.rows.filter((row) => row.roomId === roomId).map(rosterEntryFromRecord);
   }
 
   async reconcileCalendar(input: CalendarReconcileInput) {
-    this.removeWhere((row) => row.source === "calendar" && row.sourceScheduleId === input.scheduleId);
+    this.removeWhere(
+      (row) => row.source === "calendar" && row.sourceScheduleId === input.scheduleId,
+    );
 
     const capabilities = sanitizeCapabilities(input.capabilities);
 
@@ -295,9 +287,7 @@ class PostgresRoomRosterStore implements RoomRosterStore {
     }
 
     try {
-      await this.db
-        .delete(roomRosterTable)
-        .where(eq(roomRosterTable.sourceScheduleId, scheduleId));
+      await this.db.delete(roomRosterTable).where(eq(roomRosterTable.sourceScheduleId, scheduleId));
     } catch (error) {
       await this.failover("room roster schedule removal unavailable; using JSON store", error);
       return this.fallback.removeForSchedule(scheduleId);
@@ -403,9 +393,7 @@ function loadRoster(): RosterRecord[] {
     throw new Error("room_roster_store_invalid");
   }
 
-  return roster
-    .map(rosterRecordFromValue)
-    .filter((row): row is RosterRecord => row !== undefined);
+  return roster.map(rosterRecordFromValue).filter((row): row is RosterRecord => row !== undefined);
 }
 
 function rosterEntryFromRecord(row: RosterRecord): RoomRosterEntry {

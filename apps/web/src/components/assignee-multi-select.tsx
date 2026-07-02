@@ -46,13 +46,21 @@ export function AssigneeMultiSelect({
 
   function toggleUser(id: string) {
     const next = new Set(selectedUsers);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
     onChange({ groupIds: [...selectedGroups], userIds: [...next] });
   }
 
   function toggleGroup(id: string) {
     const next = new Set(selectedGroups);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
     onChange({ groupIds: [...next], userIds: [...selectedUsers] });
   }
 
@@ -75,9 +83,9 @@ export function AssigneeMultiSelect({
         <PopoverTrigger asChild>
           <Button
             aria-expanded={open}
+            aria-haspopup="listbox"
             className="justify-between font-normal"
             disabled={disabled}
-            role="combobox"
             type="button"
             variant="outline"
           >

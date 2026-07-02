@@ -44,7 +44,13 @@ import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
 import { createRoomRosterStore } from "./room-roster-store.js";
+import { registerRoomRoutes } from "./room-routes.js";
 import { createRoomStore } from "./room-store.js";
+import {
+  addChannelScopeTargets,
+  addInterfaceScopeTargets,
+  addNodeScopeTargets,
+} from "./scope-targets.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -109,7 +115,6 @@ export const {
   uploadDestinationStore,
 });
 type NodeRecord = RecorderNode;
-type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -404,60 +409,6 @@ async function addScheduleScopeTargets(
   addNodeScopeTargets(targets, schedule.nodeId, knownNodes);
 }
 
-function addNodeScopeTargets(targets: AuditTarget[], nodeId: string, knownNodes: NodeRecord[]) {
-  const node = knownNodes.find((candidate) => candidate.id === nodeId);
-
-  if (!node) {
-    return;
-  }
-
-  targets.push({ id: node.id, type: "node" });
-  addRoomScopeTargets(targets, node);
-}
-
-function addInterfaceScopeTargets(
-  targets: AuditTarget[],
-  interfaceId: string,
-  knownNodes: NodeRecord[],
-) {
-  const match = interfaceNode(interfaceId, knownNodes);
-
-  if (!match) {
-    return;
-  }
-
-  targets.push({ id: match.audioInterface.id, type: "interface" });
-  addNodeScopeTargets(targets, match.node.id, knownNodes);
-}
-
-function addChannelScopeTargets(
-  targets: AuditTarget[],
-  channelId: string,
-  knownNodes: NodeRecord[],
-) {
-  const match = channelNode(channelId, knownNodes);
-
-  if (!match) {
-    return;
-  }
-
-  targets.push({ id: match.channelId, type: "channel" });
-  addInterfaceScopeTargets(targets, match.audioInterface.id, knownNodes);
-}
-
-function addRoomScopeTargets(targets: AuditTarget[], node: NodeRecord) {
-  // Site remains an optional (metadata) scope target for site-wide admin grants;
-  // the room is now keyed on the node's first-class roomId rather than the
-  // free-text <site>/<room> string.
-  if (node.location.site) {
-    targets.push({ id: node.location.site, type: "site" });
-  }
-
-  if (node.roomId) {
-    targets.push({ id: node.roomId, type: "room" });
-  }
-}
-
 function rosterSubject(user: NonNullable<AuthResult["user"]>) {
   return { groupIds: user.groups.map((group) => group.id), userId: user.id };
 }
@@ -512,46 +463,6 @@ async function roomCapabilityAuthorizes(
   return false;
 }
 
-function interfaceNode(interfaceId: string, knownNodes: NodeRecord[]) {
-  for (const node of knownNodes) {
-    const audioInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
-
-    if (audioInterface) {
-      return { audioInterface, node };
-    }
-  }
-
-  return undefined;
-}
-
-function channelNode(channelId: string, knownNodes: NodeRecord[]) {
-  for (const node of knownNodes) {
-    for (const audioInterface of node.interfaces) {
-      const channel = audioInterface.channels.find((candidate) =>
-        channelScopeIds(node, audioInterface, candidate.index).includes(channelId),
-      );
-
-      if (channel) {
-        return {
-          audioInterface,
-          channel,
-          channelId: `${audioInterface.id}:${channel.index}`,
-          node,
-        };
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function channelScopeIds(node: NodeRecord, audioInterface: InterfaceRecord, channelIndex: number) {
-  return [
-    `${audioInterface.id}:${channelIndex}`,
-    `${node.id}:${audioInterface.id}:${channelIndex}`,
-  ];
-}
-
 function currentAuth(c: Context<AppBindings>) {
   return c.get("auth");
 }
@@ -598,6 +509,38 @@ async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
   }
 
   return result;
+}
+
+// Rooms visible to a user: everything for owner/admin, else rooms they hold a
+// roster capability in plus the rooms of any nodes they are otherwise scoped to.
+async function scopedRooms(user: NonNullable<AuthResult["user"]>) {
+  const allRooms = await roomStore.list();
+
+  if (user.roles.includes("owner") || user.roles.includes("admin")) {
+    return allRooms;
+  }
+
+  const roomIds = await rosterRoomIds(user);
+
+  for (const node of await scopedNodes(user)) {
+    if (node.roomId) {
+      roomIds.add(node.roomId);
+    }
+  }
+
+  return allRooms.filter((room) => roomIds.has(room.id));
+}
+
+// Resolves who created a schedule from its create audit event (schedules do not
+// store a creator); used for the room overview's "scheduled by" attribution.
+async function scheduledByName(scheduleId: string) {
+  const [event] = await auditStore.list({
+    action: "schedules.create.succeeded",
+    limit: 1,
+    target: scheduleId,
+  });
+
+  return event?.actor.name;
 }
 
 async function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
@@ -864,7 +807,10 @@ registerNodeRoutes({
 registerScheduleRoutes({
   app,
   assignmentIdReferences: async ({ groupIds, userIds }) => {
-    const [users, groups] = await Promise.all([authService.localUsers(), authService.localGroups()]);
+    const [users, groups] = await Promise.all([
+      authService.localUsers(),
+      authService.localGroups(),
+    ]);
     const knownUserIds = new Set(users.map((user) => user.id));
     const knownGroupIds = new Set(groups.map((group) => group.id));
 
@@ -901,6 +847,25 @@ registerScheduleRoutes({
   scopedNodes,
   scopedSchedules,
   settingsStore,
+});
+
+registerRoomRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  listGroups: async () =>
+    (await authService.localGroups()).map((group) => ({ id: group.id, name: group.name })),
+  listUsers: async () =>
+    (await authService.localUsers()).map((user) => ({ id: user.id, name: user.name })),
+  nodeStore,
+  recordAuditEvent,
+  recordingStore,
+  requirePermission,
+  roomRosterStore,
+  roomStore,
+  scheduledByName,
+  scheduleStore,
+  scopedRooms,
 });
 
 registerAgentMonitorRoutes({

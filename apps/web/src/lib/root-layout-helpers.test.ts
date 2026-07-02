@@ -18,6 +18,7 @@ test("root layout permissions are closed by default", () => {
     canReadJobs: false,
     canReadNodes: false,
     canReadRecordings: false,
+    canReadRooms: false,
     canReadSchedules: false,
     canReadSettings: false,
   });
@@ -33,6 +34,7 @@ test("root layout separates navigation and header action permissions", () => {
     canReadJobs: false,
     canReadNodes: true,
     canReadRecordings: false,
+    canReadRooms: true,
     canReadSchedules: false,
     canReadSettings: false,
   });
@@ -57,6 +59,7 @@ test("root layout separates navigation and header action permissions", () => {
       canReadJobs: true,
       canReadNodes: true,
       canReadRecordings: true,
+      canReadRooms: true,
       canReadSchedules: true,
       canReadSettings: true,
     },
@@ -81,6 +84,7 @@ test("root layout nav items only include permitted sections", () => {
     [
       { id: "dashboard", label: "Dashboard", to: "/" },
       { id: "nodes", label: "Nodes", to: "/nodes" },
+      { id: "rooms", label: "Rooms", to: "/rooms" },
       { id: "health", label: "Health", to: "/health" },
       { id: "recordings", label: "Recordings", to: "/recordings" },
       { id: "jobs", label: "Jobs", to: "/jobs" },

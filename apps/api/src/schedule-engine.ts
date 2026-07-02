@@ -530,7 +530,10 @@ function scheduledLocalDateFromRunAt(
   return localDate(scheduledAt, timeZone);
 }
 
-export function recurrenceWithSkip(recurrence: ScheduleRecurrence, date: string): ScheduleRecurrence {
+export function recurrenceWithSkip(
+  recurrence: ScheduleRecurrence,
+  date: string,
+): ScheduleRecurrence {
   const exceptions = [
     ...exceptionList(recurrence).filter(
       (exception) => !(exception.action === "skip" && exception.date === date),

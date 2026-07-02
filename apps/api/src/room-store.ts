@@ -253,11 +253,7 @@ class PostgresRoomStore implements RoomStore {
   }
 
   private async findRow(roomId: string) {
-    const [row] = await this.db
-      .select()
-      .from(roomsTable)
-      .where(eq(roomsTable.id, roomId))
-      .limit(1);
+    const [row] = await this.db.select().from(roomsTable).where(eq(roomsTable.id, roomId)).limit(1);
 
     return row;
   }

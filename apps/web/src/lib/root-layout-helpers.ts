@@ -11,6 +11,7 @@ export type RootNavItem = {
     | "jobs"
     | "nodes"
     | "recordings"
+    | "rooms"
     | "schedules"
     | "settings";
   label: string;
@@ -22,6 +23,7 @@ export type RootNavItem = {
     | "/jobs"
     | "/nodes"
     | "/recordings"
+    | "/rooms"
     | "/schedules"
     | "/settings";
 };
@@ -38,6 +40,7 @@ export function rootLayoutPermissions(user: CurrentUser | undefined) {
     canReadJobs: permissions.includes("recording:read"),
     canReadNodes: permissions.includes("node:read"),
     canReadRecordings: permissions.includes("recording:read"),
+    canReadRooms: permissions.includes("node:read"),
     canReadSchedules: permissions.includes("schedule:read"),
     canReadSettings: permissions.includes("settings:read"),
   };
@@ -47,6 +50,7 @@ export function rootLayoutNavItems(permissions: RootLayoutPermissions): RootNavI
   return [
     ...(permissions.canReadDashboard ? [navItem("dashboard", "Dashboard", "/")] : []),
     ...(permissions.canReadNodes ? [navItem("nodes", "Nodes", "/nodes")] : []),
+    ...(permissions.canReadRooms ? [navItem("rooms", "Rooms", "/rooms")] : []),
     ...(permissions.canReadHealth ? [navItem("health", "Health", "/health")] : []),
     ...(permissions.canReadSchedules ? [navItem("schedules", "Schedules", "/schedules")] : []),
     ...(permissions.canReadRecordings ? [navItem("recordings", "Recordings", "/recordings")] : []),

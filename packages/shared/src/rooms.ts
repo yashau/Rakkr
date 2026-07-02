@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { RecorderNode, RecordingSummary } from "./index.js";
 import { roomCapabilitySchema } from "./room-capabilities.js";
 
 // First-class room. `id` is the stable RBAC scope target; (site, name) is unique.
@@ -56,6 +57,24 @@ export const roomRosterUpdateSchema = z.object({
     )
     .max(500),
 });
+
+// Aggregated room-detail payload for the Room page. Server-produced, so it is a
+// plain type (not a validated schema) and uses type-only imports to avoid a
+// module cycle with the node/recording schemas defined in index.ts.
+export interface RoomUpcomingOccurrence {
+  recordingEndAt?: string;
+  recordingStartAt: string;
+  scheduleId: string;
+  scheduleName: string;
+  scheduledByName?: string;
+}
+
+export interface RoomOverview {
+  nodes: RecorderNode[];
+  recentRecordings: RecordingSummary[];
+  room: Room;
+  upcoming: RoomUpcomingOccurrence[];
+}
 
 export type Room = z.infer<typeof roomSchema>;
 export type RoomInput = z.infer<typeof roomInputSchema>;

@@ -62,7 +62,10 @@ test("groupByLocalDay buckets by local calendar day", () => {
 test("moveStartToDay keeps the local time-of-day on the new day", () => {
   const original = new Date(2026, JUNE, 15, 14, 30, 0).toISOString();
 
-  assert.equal(moveStartToDay(original, "2026-06-20"), new Date(2026, JUNE, 20, 14, 30, 0).toISOString());
+  assert.equal(
+    moveStartToDay(original, "2026-06-20"),
+    new Date(2026, JUNE, 20, 14, 30, 0).toISOString(),
+  );
 });
 
 test("addMonths wraps across year boundaries", () => {

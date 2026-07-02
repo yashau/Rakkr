@@ -36,6 +36,12 @@ import type {
   RetentionPolicyUpdate,
   ResourceGrant,
   Role,
+  Room,
+  RoomInput,
+  RoomOverview,
+  RoomRosterEntry,
+  RoomRosterUpdate,
+  RoomUpdate,
   ScheduleCalendarResponse,
   ScheduleInput,
   ScheduleOccurrencePreview,
@@ -53,21 +59,20 @@ import type {
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
-import { fileNameFromDisposition, withQuery } from "./api-http";
+import { apiBase, fetchBlob, fetchJson, withQuery } from "./api-http";
 import type { ControllerStatus } from "./status-types";
 import type {
   RecordingStartInput,
   WatchdogCalibrationInput,
   WatchdogCalibrationResult,
 } from "./api-types";
-import { ApiError } from "./api-error";
 
 export type { ControllerStatus } from "./status-types";
 export { ApiError, apiErrorStatus } from "./api-error";
+export type { RecordingFileBlob } from "./api-http";
+export { clearAuthToken, consumeOidcCallbackToken, getAuthToken, setAuthToken } from "./api-http";
 export type { WatchdogCalibrationInput, WatchdogCalibrationResult } from "./api-types";
 
-const apiBase = import.meta.env.VITE_API_BASE ?? "";
-const authTokenKey = "rakkr.authToken";
 const jsonHeaders = { "Content-Type": "application/json" };
 
 export interface AuditEventFilters {
@@ -125,11 +130,6 @@ export interface ListenMonitorSession {
 
 export interface ListenMonitorStoppedSession extends ListenMonitorSession {
   endedAt: string;
-}
-
-export interface RecordingFileBlob {
-  blob: Blob;
-  fileName: string;
 }
 
 export interface RecordingMetadataUpdate {
@@ -373,81 +373,33 @@ export interface NodeInterfaceMetadataUpdate {
   systemRef?: string;
 }
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  const token = getAuthToken();
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${apiBase}${path}`, {
-    ...init,
-    headers,
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
-}
-
-async function fetchBlob(path: string, init?: RequestInit): Promise<RecordingFileBlob> {
-  const headers = new Headers(init?.headers);
-  const token = getAuthToken();
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${apiBase}${path}`, {
-    ...init,
-    headers,
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status);
-  }
-
-  return {
-    blob: await response.blob(),
-    fileName: fileNameFromDisposition(response.headers.get("Content-Disposition")),
-  };
-}
-
-export function getAuthToken() {
-  return window.localStorage.getItem(authTokenKey);
-}
-
-export function consumeOidcCallbackToken() {
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const token = params.get("rakkr_token");
-
-  if (!token) {
-    return undefined;
-  }
-
-  setAuthToken(token);
-  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-
-  return token;
-}
-
-export function setAuthToken(token: string) {
-  window.localStorage.setItem(authTokenKey, token);
-}
-
-export function clearAuthToken() {
-  window.localStorage.removeItem(authTokenKey);
-}
-
 export const api = {
   accessGroups: () => fetchJson<{ data: AccessGroup[] }>("/api/v1/auth/groups"),
+  rooms: () => fetchJson<{ data: Room[] }>("/api/v1/rooms"),
+  room: (roomId: string) => fetchJson<{ data: Room }>(`/api/v1/rooms/${roomId}`),
+  roomOverview: (roomId: string) =>
+    fetchJson<{ data: RoomOverview }>(`/api/v1/rooms/${roomId}/overview`),
+  roomRoster: (roomId: string) =>
+    fetchJson<{ data: RoomRosterEntry[] }>(`/api/v1/rooms/${roomId}/roster`),
+  createRoom: (input: RoomInput) =>
+    fetchJson<{ data: Room }>("/api/v1/rooms", {
+      body: JSON.stringify(input),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
+  updateRoom: (roomId: string, input: RoomUpdate) =>
+    fetchJson<{ data: Room }>(`/api/v1/rooms/${roomId}`, {
+      body: JSON.stringify(input),
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+    }),
+  deleteRoom: (roomId: string) => fetchJson<void>(`/api/v1/rooms/${roomId}`, { method: "DELETE" }),
+  updateRoomRoster: (roomId: string, input: RoomRosterUpdate) =>
+    fetchJson<{ data: RoomRosterEntry[] }>(`/api/v1/rooms/${roomId}/roster`, {
+      body: JSON.stringify(input),
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+    }),
   accessPolicies: () => fetchJson<{ data: AccessPolicy[] }>("/api/v1/auth/access-policies"),
   auditEvents: (filters: AuditEventFilters = {}) =>
     fetchJson<PaginatedResponse<AuditEvent>>(withQuery("/api/v1/audit-events", filters)),
@@ -990,4 +942,3 @@ export const api = {
       method: "PATCH",
     }),
 };
-

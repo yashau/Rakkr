@@ -4,7 +4,12 @@ import { z } from "zod";
 import type { RecorderNode, ScheduleCalendarOccurrence, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
-import type { AppBindings, AuditTarget, RecordAuditEvent, RequirePermission } from "./http-types.js";
+import type {
+  AppBindings,
+  AuditTarget,
+  RecordAuditEvent,
+  RequirePermission,
+} from "./http-types.js";
 import { filterSchedules, scheduleFilters } from "./schedule-list-filters.js";
 import {
   nextRunAtForRecurrence,
@@ -136,7 +141,12 @@ export function registerScheduleCalendarRoutes({
           break;
         }
 
-        const windowed = windowScheduleOccurrences(schedule, window.start, window.end, remaining + 1);
+        const windowed = windowScheduleOccurrences(
+          schedule,
+          window.start,
+          window.end,
+          remaining + 1,
+        );
 
         for (const occurrence of windowed) {
           if (occurrences.length >= CALENDAR_OCCURRENCE_CAP) {
@@ -160,7 +170,9 @@ export function registerScheduleCalendarRoutes({
         }
       }
 
-      occurrences.sort((left, right) => left.recordingStartAt.localeCompare(right.recordingStartAt));
+      occurrences.sort((left, right) =>
+        left.recordingStartAt.localeCompare(right.recordingStartAt),
+      );
 
       const meta = {
         end: window.end.toISOString(),

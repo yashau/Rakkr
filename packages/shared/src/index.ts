@@ -478,12 +478,7 @@ export const scheduleRecurrenceSchema = z.discriminatedUnion("mode", [
     // Optional fixed recording length (seconds) for a single-fire schedule.
     // Set when a timed recurring occurrence is moved into a one-off so the
     // moved recording keeps its original duration; absent = open-ended.
-    durationSeconds: z
-      .number()
-      .int()
-      .positive()
-      .max(2_678_400)
-      .optional(),
+    durationSeconds: z.number().int().positive().max(2_678_400).optional(),
     mode: z.literal("once"),
     startsAt: isoDateTimeSchema,
     ...scheduleRecurrenceOptions,

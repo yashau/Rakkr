@@ -200,11 +200,7 @@ describe("schedule recurrence engine", () => {
 
     assert.deepEqual(
       occurrences.map((occurrence) => occurrence.recordingStartAt),
-      [
-        "2026-06-15T09:00:00.000Z",
-        "2026-06-16T09:00:00.000Z",
-        "2026-06-17T09:00:00.000Z",
-      ],
+      ["2026-06-15T09:00:00.000Z", "2026-06-16T09:00:00.000Z", "2026-06-17T09:00:00.000Z"],
     );
   });
 

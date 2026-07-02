@@ -15,6 +15,7 @@ import {
   useParams,
 } from "@tanstack/react-router";
 import {
+  Building2,
   CalendarDays,
   Database,
   Gauge,
@@ -65,6 +66,8 @@ import { HealthPage } from "@/pages/health";
 import { JobsPage } from "@/pages/jobs";
 import { NodesPage } from "@/pages/nodes";
 import { RecordingsPage } from "@/pages/recordings";
+import { RoomDetailPage } from "@/pages/room-detail";
+import { RoomsPage } from "@/pages/rooms";
 import { ScheduleDetailPage } from "@/pages/schedule-detail";
 import { SchedulesPage } from "@/pages/schedules";
 import { SettingsPage } from "@/pages/settings";
@@ -85,6 +88,7 @@ const navIcons: Record<RootNavItem["id"], typeof Gauge> = {
   jobs: ListChecks,
   nodes: Radio,
   recordings: Database,
+  rooms: Building2,
   schedules: CalendarDays,
   settings: Settings,
 };
@@ -460,6 +464,24 @@ const scheduleDetailRoute = createRoute({
   path: "/schedules/$scheduleId",
 });
 
+const roomsRoute = createRoute({
+  component: RoomsPage,
+  getParentRoute: () => rootRoute,
+  path: "/rooms",
+});
+
+function RoomDetailRouteComponent() {
+  const { roomId } = useParams({ from: "/rooms/$roomId" });
+
+  return <RoomDetailPage roomId={roomId} />;
+}
+
+const roomDetailRoute = createRoute({
+  component: RoomDetailRouteComponent,
+  getParentRoute: () => rootRoute,
+  path: "/rooms/$roomId",
+});
+
 const recordingsRoute = createRoute({
   component: RecordingsPage,
   getParentRoute: () => rootRoute,
@@ -496,6 +518,8 @@ const routeTree = rootRoute.addChildren([
   healthRoute,
   schedulesRoute,
   scheduleDetailRoute,
+  roomsRoute,
+  roomDetailRoute,
   recordingsRoute,
   jobsRoute,
   settingsRoute,
