@@ -11,8 +11,11 @@ import { registerAgentRoutes } from "./agent-routes.js";
 import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   type AuditEvent,
+  defaultCalendarGrantCapabilities,
   type Permission,
+  permissionRequiresCapability,
   type RecorderNode,
+  type RoomCapability,
   type ScheduleSummary,
 } from "@rakkr/shared";
 import { registerAuditRoutes } from "./audit-routes.js";
@@ -40,6 +43,14 @@ import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
+import { createRoomRosterStore } from "./room-roster-store.js";
+import { registerRoomRoutes } from "./room-routes.js";
+import { createRoomStore } from "./room-store.js";
+import {
+  addChannelScopeTargets,
+  addInterfaceScopeTargets,
+  addNodeScopeTargets,
+} from "./scope-targets.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -64,6 +75,8 @@ const nodeStore = createNodeStore(seedNodes);
 const sshCredentialStore = createNodeSshCredentialStore();
 const bootstrapStore = createNodeBootstrapStore();
 const recordingStore = createRecordingStore(recordings);
+const roomStore = createRoomStore();
+const roomRosterStore = createRoomRosterStore();
 const scheduleStore = createScheduleStore(seedSchedules);
 const settingsStore = createSettingsStore();
 const uploadDestinationStore = createUploadDestinationStore();
@@ -102,7 +115,6 @@ export const {
   uploadDestinationStore,
 });
 type NodeRecord = RecorderNode;
-type InterfaceRecord = NodeRecord["interfaces"][number];
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -171,21 +183,40 @@ function requirePermission(
     const scope = auth.user
       ? await resourceScopeDecision(auth.user, auditTarget)
       : { allowed: false, reason: "unauthenticated" };
-    const allowed = hasPermission && scope.allowed;
-    const reason = authorizationReason({
-      authenticated: Boolean(auth.user),
-      hasPermission,
-      hasScope: scope.allowed,
-      scopeReason: scope.reason,
-    });
+    let allowed = hasPermission && scope.allowed;
+
+    // A room roster (a manual grant or a calendar meeting-assignment) grants a
+    // per-action capability over its room even without the role permission — but
+    // never past an explicit deny policy.
+    let grantedViaRoomCapability = false;
+    const requiredCapability = permissionRequiresCapability(permission);
+    if (!allowed && auth.user && scope.reason !== "access_policy_denied" && requiredCapability) {
+      grantedViaRoomCapability = await roomCapabilityAuthorizes(
+        auth.user,
+        requiredCapability,
+        auditTarget,
+      );
+      allowed = grantedViaRoomCapability;
+    }
+
+    const reason = allowed
+      ? undefined
+      : authorizationReason({
+          authenticated: Boolean(auth.user),
+          hasPermission,
+          hasScope: scope.allowed,
+          scopeReason: scope.reason,
+        });
 
     await recordAuditEvent(c, {
       action,
       auth,
       details: {
+        grantedViaRoomCapability,
         requiredPermission: permission,
         resourceScope: auditTarget,
         resourceScopeDecision: scope.reason,
+        roomCapability: requiredCapability,
         roles: auth.user?.roles ?? [],
       },
       outcome: allowed ? "allowed" : "denied",
@@ -369,97 +400,67 @@ async function addScheduleScopeTargets(
     return;
   }
 
-  targets.push({ id: schedule.id, type: "schedule" }, { id: schedule.room, type: "room" });
+  targets.push({ id: schedule.id, type: "schedule" });
+
+  if (schedule.roomId) {
+    targets.push({ id: schedule.roomId, type: "room" });
+  }
+
   addNodeScopeTargets(targets, schedule.nodeId, knownNodes);
 }
 
-function addNodeScopeTargets(targets: AuditTarget[], nodeId: string, knownNodes: NodeRecord[]) {
-  const node = knownNodes.find((candidate) => candidate.id === nodeId);
-
-  if (!node) {
-    return;
-  }
-
-  targets.push({ id: node.id, type: "node" });
-  addRoomScopeTargets(targets, node);
+function rosterSubject(user: NonNullable<AuthResult["user"]>) {
+  return { groupIds: user.groups.map((group) => group.id), userId: user.id };
 }
 
-function addInterfaceScopeTargets(
-  targets: AuditTarget[],
-  interfaceId: string,
-  knownNodes: NodeRecord[],
-) {
-  const match = interfaceNode(interfaceId, knownNodes);
+// Room ids a target resolves into (via the shared hierarchy expansion).
+function roomIdsFromTargets(targets: AuditTarget[]) {
+  const roomIds: string[] = [];
 
-  if (!match) {
-    return;
-  }
-
-  targets.push({ id: match.audioInterface.id, type: "interface" });
-  addNodeScopeTargets(targets, match.node.id, knownNodes);
-}
-
-function addChannelScopeTargets(
-  targets: AuditTarget[],
-  channelId: string,
-  knownNodes: NodeRecord[],
-) {
-  const match = channelNode(channelId, knownNodes);
-
-  if (!match) {
-    return;
-  }
-
-  targets.push({ id: match.channelId, type: "channel" });
-  addInterfaceScopeTargets(targets, match.audioInterface.id, knownNodes);
-}
-
-function addRoomScopeTargets(targets: AuditTarget[], node: NodeRecord) {
-  targets.push({ id: node.location.site, type: "site" }, { id: node.location.room, type: "room" });
-
-  if (node.location.site && node.location.room) {
-    targets.push({ id: `${node.location.site}/${node.location.room}`, type: "room" });
-  }
-}
-
-function interfaceNode(interfaceId: string, knownNodes: NodeRecord[]) {
-  for (const node of knownNodes) {
-    const audioInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
-
-    if (audioInterface) {
-      return { audioInterface, node };
+  for (const target of targets) {
+    if (target.type === "room" && target.id) {
+      roomIds.push(target.id);
     }
   }
 
-  return undefined;
+  return roomIds;
 }
 
-function channelNode(channelId: string, knownNodes: NodeRecord[]) {
-  for (const node of knownNodes) {
-    for (const audioInterface of node.interfaces) {
-      const channel = audioInterface.channels.find((candidate) =>
-        channelScopeIds(node, audioInterface, candidate.index).includes(channelId),
-      );
+// The set of room ids the user holds any capability in (direct or via a group).
+async function rosterRoomIds(user: NonNullable<AuthResult["user"]>) {
+  return new Set((await roomRosterStore.roomsForSubject(rosterSubject(user))).keys());
+}
 
-      if (channel) {
-        return {
-          audioInterface,
-          channel,
-          channelId: `${audioInterface.id}:${channel.index}`,
-          node,
-        };
-      }
+// True when the user holds `capability` in a room that `target` resolves into,
+// via the room roster (a manual grant or a calendar meeting-assignment). Reuses
+// the same hierarchy expansion as role scoping, so a room grant covers that
+// room's nodes, interfaces, channels, schedules, and recordings.
+async function roomCapabilityAuthorizes(
+  user: NonNullable<AuthResult["user"]>,
+  capability: RoomCapability,
+  target: AuditTarget,
+) {
+  if (!target.id) {
+    return false;
+  }
+
+  const roomIds = roomIdsFromTargets(await resourceScopeTargets(target));
+
+  if (roomIds.length === 0) {
+    return false;
+  }
+
+  const subject = rosterSubject(user);
+
+  for (const roomId of roomIds) {
+    const capabilities = await roomRosterStore.effectiveCapabilities(subject, roomId);
+
+    if (capabilities.has(capability)) {
+      return true;
     }
   }
 
-  return undefined;
-}
-
-function channelScopeIds(node: NodeRecord, audioInterface: InterfaceRecord, channelIndex: number) {
-  return [
-    `${audioInterface.id}:${channelIndex}`,
-    `${node.id}:${audioInterface.id}:${channelIndex}`,
-  ];
+  return false;
 }
 
 function currentAuth(c: Context<AppBindings>) {
@@ -477,10 +478,14 @@ function currentUser(c: Context<AppBindings>) {
 }
 
 async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
+  const userRoomIds = await rosterRoomIds(user);
   const result: NodeRecord[] = [];
 
   for (const node of await nodeStore.list()) {
-    if (await hasResourceScope(user, { id: node.id, type: "node" })) {
+    if (
+      (node.roomId !== undefined && userRoomIds.has(node.roomId)) ||
+      (await hasResourceScope(user, { id: node.id, type: "node" }))
+    ) {
       result.push(node);
     }
   }
@@ -489,10 +494,16 @@ async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
 }
 
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
+  const userRoomIds = await rosterRoomIds(user);
+  const knownNodes = userRoomIds.size > 0 ? await nodeStore.list() : [];
   const result: ScheduleSummary[] = [];
 
   for (const schedule of await scheduleStore.list()) {
-    if (await hasResourceScope(user, { id: schedule.id, type: "schedule" })) {
+    const node = knownNodes.find((candidate) => candidate.id === schedule.nodeId);
+    const roomId = schedule.roomId ?? node?.roomId;
+    const inRosterRoom = roomId !== undefined && userRoomIds.has(roomId);
+
+    if (inRosterRoom || (await hasResourceScope(user, { id: schedule.id, type: "schedule" }))) {
       result.push(schedule);
     }
   }
@@ -500,11 +511,51 @@ async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
   return result;
 }
 
+// Rooms visible to a user: everything for owner/admin, else rooms they hold a
+// roster capability in plus the rooms of any nodes they are otherwise scoped to.
+async function scopedRooms(user: NonNullable<AuthResult["user"]>) {
+  const allRooms = await roomStore.list();
+
+  if (user.roles.includes("owner") || user.roles.includes("admin")) {
+    return allRooms;
+  }
+
+  const roomIds = await rosterRoomIds(user);
+
+  for (const node of await scopedNodes(user)) {
+    if (node.roomId) {
+      roomIds.add(node.roomId);
+    }
+  }
+
+  return allRooms.filter((room) => roomIds.has(room.id));
+}
+
+// Resolves who created a schedule from its create audit event (schedules do not
+// store a creator); used for the room overview's "scheduled by" attribution.
+async function scheduledByName(scheduleId: string) {
+  const [event] = await auditStore.list({
+    action: "schedules.create.succeeded",
+    limit: 1,
+    target: scheduleId,
+  });
+
+  return event?.actor.name;
+}
+
 async function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
+  const userRoomIds = await rosterRoomIds(user);
+  const knownNodes = userRoomIds.size > 0 ? await nodeStore.list() : [];
   const result = [];
 
   for (const recording of await recordingStore.list()) {
-    if (await hasResourceScope(user, { id: recording.id, type: "recording" })) {
+    const node = recording.nodeId
+      ? knownNodes.find((candidate) => candidate.id === recording.nodeId)
+      : undefined;
+    const roomId = node?.roomId;
+    const inRosterRoom = roomId !== undefined && userRoomIds.has(roomId);
+
+    if (inRosterRoom || (await hasResourceScope(user, { id: recording.id, type: "recording" }))) {
       result.push(recording);
     }
   }
@@ -755,17 +806,66 @@ registerNodeRoutes({
 
 registerScheduleRoutes({
   app,
+  assignmentIdReferences: async ({ groupIds, userIds }) => {
+    const [users, groups] = await Promise.all([
+      authService.localUsers(),
+      authService.localGroups(),
+    ]);
+    const knownUserIds = new Set(users.map((user) => user.id));
+    const knownGroupIds = new Set(groups.map((group) => group.id));
+
+    return {
+      unknownGroupIds: [...new Set(groupIds)].filter((groupId) => !knownGroupIds.has(groupId)),
+      unknownUserIds: [...new Set(userIds)].filter((userId) => !knownUserIds.has(userId)),
+    };
+  },
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   nodeStore,
   recordAuditEvent,
   recordingStore,
+  reconcileScheduleRoster: (schedule) =>
+    roomRosterStore.reconcileCalendar({
+      capabilities: [...defaultCalendarGrantCapabilities],
+      roomId: schedule.roomId,
+      scheduleId: schedule.id,
+      subjects: [
+        ...schedule.assignedUserIds.map((subjectId) => ({
+          subjectId,
+          subjectType: "user" as const,
+        })),
+        ...schedule.assignedGroupIds.map((subjectId) => ({
+          subjectId,
+          subjectType: "group" as const,
+        })),
+      ],
+    }),
+  removeScheduleRoster: (scheduleId) => roomRosterStore.removeForSchedule(scheduleId),
   requirePermission,
   scheduleStore,
   scopedNodes,
   scopedSchedules,
   settingsStore,
+});
+
+registerRoomRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  listGroups: async () =>
+    (await authService.localGroups()).map((group) => ({ id: group.id, name: group.name })),
+  listUsers: async () =>
+    (await authService.localUsers()).map((user) => ({ id: user.id, name: user.name })),
+  nodeStore,
+  recordAuditEvent,
+  recordingStore,
+  requirePermission,
+  roomRosterStore,
+  roomStore,
+  scheduledByName,
+  scheduleStore,
+  scopedRooms,
 });
 
 registerAgentMonitorRoutes({

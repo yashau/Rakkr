@@ -65,6 +65,12 @@ export const accessPolicySubjectTypeEnum = pgEnum("access_policy_subject_type", 
   "group",
   "everyone",
 ]);
+// Room roster subjects are always explicit (a user or a group); "everyone" is
+// deliberately not a roster subject.
+export const roomRosterSubjectTypeEnum = pgEnum("room_roster_subject_type", ["user", "group"]);
+// Provenance of a roster entry: operator-managed, or materialized from a
+// schedule/meeting assignment so calendar-derived grants reconcile independently.
+export const roomRosterSourceEnum = pgEnum("room_roster_source", ["manual", "calendar"]);
 
 export const roles = pgTable("roles", {
   description: text("description"),
@@ -251,6 +257,12 @@ export const nodes = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     notes: text("notes"),
+    // First-class room this node belongs to (source of truth for room identity;
+    // location jsonb is retained for building/floor + legacy display). Operator-
+    // set via node management; the agent never sets it.
+    roomId: varchar("room_id", { length: 160 }).references(() => rooms.id, {
+      onDelete: "set null",
+    }),
     status: nodeStatusEnum("status").notNull().default("offline"),
     tags: jsonb("tags")
       .notNull()
@@ -259,7 +271,64 @@ export const nodes = pgTable(
   },
   (table) => ({
     aliasIdx: index("nodes_alias_idx").on(table.alias),
+    roomIdx: index("nodes_room_idx").on(table.roomId),
     statusIdx: index("nodes_status_idx").on(table.status),
+  }),
+);
+
+// First-class room. `id` is the stable RBAC scope target (opaque); (site, name)
+// is unique so backfill from node locations dedupes and renames don't collide.
+export const rooms = pgTable(
+  "rooms",
+  {
+    building: varchar("building", { length: 160 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    description: text("description"),
+    floor: varchar("floor", { length: 160 }),
+    id: varchar("id", { length: 160 }).primaryKey(),
+    name: varchar("name", { length: 160 }).notNull(),
+    notes: text("notes"),
+    site: varchar("site", { length: 160 }).notNull().default("Unknown Site"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    siteIdx: index("rooms_site_idx").on(table.site),
+    siteNameIdx: uniqueIndex("rooms_site_name_idx").on(table.site, table.name),
+  }),
+);
+
+// Per-room access roster: one row per (room, subject, source[, sourceSchedule]).
+// `capabilities` is the independently-toggled per-action set. Effective access
+// for a user is the UNION of capabilities across their direct + group rows for a
+// room. Uniqueness is enforced in the store (Postgres treats NULL
+// sourceScheduleId as distinct, so a DB unique index would not dedupe manual rows).
+export const roomRoster = pgTable(
+  "room_roster",
+  {
+    capabilities: jsonb("capabilities")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    grantedByUserId: uuid("granted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: varchar("room_id", { length: 160 })
+      .notNull()
+      .references(() => rooms.id, { onDelete: "cascade" }),
+    source: roomRosterSourceEnum("source").notNull().default("manual"),
+    sourceScheduleId: varchar("source_schedule_id", { length: 160 }).references(
+      () => schedules.id,
+      { onDelete: "cascade" },
+    ),
+    subjectId: varchar("subject_id", { length: 160 }).notNull(),
+    subjectType: roomRosterSubjectTypeEnum("subject_type").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    roomIdx: index("room_roster_room_idx").on(table.roomId),
+    scheduleIdx: index("room_roster_schedule_idx").on(table.sourceScheduleId),
+    subjectIdx: index("room_roster_subject_idx").on(table.subjectType, table.subjectId),
   }),
 );
 
@@ -400,6 +469,7 @@ export const controllerSettings = pgTable("controller_settings", {
   controllerName: varchar("controller_name", { length: 160 }).notNull().default("Rakkr Controller"),
   id: varchar("id", { length: 64 }).primaryKey().default("controller"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  weekStartsOn: varchar("week_starts_on", { length: 16 }).notNull().default("monday"),
 });
 
 export const watchdogPolicies = pgTable("watchdog_policies", {
@@ -548,6 +618,17 @@ export const uploadQueueItems = pgTable(
 export const schedules = pgTable(
   "schedules",
   {
+    // Access-group ids assigned to this schedule. Membership in an assigned
+    // group confers scoped RBAC (see the assignment capability bundle in the
+    // API) over the schedule's room. Groups are evaluated dynamically.
+    assignedGroupIds: jsonb("assigned_group_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // User ids directly assigned to this schedule. Assignment confers scoped
+    // RBAC over the schedule's room without changing the user's role.
+    assignedUserIds: jsonb("assigned_user_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     captureBackend: varchar("capture_backend", { length: 32 }),
     // Ordered 1-based source channel indices selected from the capture
     // interface. Empty array = capture the whole interface (legacy behavior).
@@ -567,7 +648,12 @@ export const schedules = pgTable(
     recurrence: jsonb("recurrence").notNull(),
     recordingProfileId: varchar("recording_profile_id", { length: 160 }),
     retentionPolicyId: varchar("retention_policy_id", { length: 160 }),
+    // Denormalized room display name/template value; retained for one release.
+    // roomId is the source of truth for room identity and RBAC scope.
     room: varchar("room", { length: 160 }).notNull().default("Unknown Room"),
+    roomId: varchar("room_id", { length: 160 }).references(() => rooms.id, {
+      onDelete: "restrict",
+    }),
     tags: jsonb("tags")
       .notNull()
       .default(sql`'[]'::jsonb`),
@@ -584,6 +670,7 @@ export const schedules = pgTable(
   (table) => ({
     enabledIdx: index("schedules_enabled_idx").on(table.enabled),
     nodeIdx: index("schedules_node_idx").on(table.nodeId),
+    roomIdx: index("schedules_room_idx").on(table.roomId),
   }),
 );
 

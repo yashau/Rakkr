@@ -17,6 +17,8 @@ import type {
 import type { NodeStore } from "./node-store.js";
 import type { RecordingStore } from "./recording-store.js";
 import { registerScheduleActionRoutes } from "./schedule-action-routes.js";
+import { filterSchedules, scheduleFilters } from "./schedule-list-filters.js";
+import { registerScheduleCalendarRoutes } from "./schedule-occurrence-routes.js";
 import {
   previewScheduleOccurrences,
   recordingMetadataSnapshot,
@@ -25,14 +27,11 @@ import {
 } from "./schedule-engine.js";
 import {
   buildSchedule,
-  captureBackendFromQuery,
-  enabledFromQuery,
   isValidScheduleTiming,
   occurrenceLimit,
   sanitizeScheduleUpdate,
   scheduleChannelSelectionFailure,
   scheduleInterfaceIsValid,
-  trimmed,
 } from "./schedule-route-helpers.js";
 import {
   queueScheduledRecordings,
@@ -46,12 +45,22 @@ import type { SettingsStore } from "./settings-store.js";
 
 interface ScheduleRouteDependencies {
   app: Hono<AppBindings>;
+  // Resolves which of the given assignee ids do NOT exist, so schedule
+  // create/update can reject unknown users/groups. Defaults to "all known".
+  assignmentIdReferences?(input: {
+    groupIds: string[];
+    userIds: string[];
+  }): Promise<{ unknownGroupIds: string[]; unknownUserIds: string[] }>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
   nodeStore: NodeStore;
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
+  // Materializes a schedule's assignees into its room's calendar-source roster
+  // rows (and clears them when a schedule is removed). Default no-ops.
+  reconcileScheduleRoster?(schedule: ScheduleSummary): Promise<void>;
+  removeScheduleRoster?(scheduleId: string): Promise<void>;
   requirePermission: RequirePermission;
   scheduleStore: ScheduleStore;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
@@ -67,17 +76,34 @@ const scheduleSelectedExportSchema = z
 
 export function registerScheduleRoutes({
   app,
+  assignmentIdReferences = async () => ({ unknownGroupIds: [], unknownUserIds: [] }),
   currentAuth,
   currentUser,
   hasResourceScope = async () => true,
+  nodeStore,
   recordAuditEvent,
   recordingStore,
+  reconcileScheduleRoster = async () => {},
+  removeScheduleRoster = async () => {},
   requirePermission,
   scheduleStore,
   scopedNodes,
   scopedSchedules,
   settingsStore,
 }: ScheduleRouteDependencies) {
+  // Windowed calendar reads and per-occurrence drag-to-reschedule live in their
+  // own module; registered first so /schedules/calendar wins over /:scheduleId.
+  registerScheduleCalendarRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    recordAuditEvent,
+    requirePermission,
+    scheduleStore,
+    scopedNodes,
+    scopedSchedules,
+  });
+
   app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) => {
     const filters = scheduleFilters(c);
     const schedules = filterSchedules(await scopedSchedules(currentUser(c)), filters);
@@ -293,7 +319,14 @@ export function registerScheduleRoutes({
 
   app.post(
     "/api/v1/schedules",
-    requirePermission("schedule:manage", "schedules.create", () => ({ type: "schedule" })),
+    requirePermission("schedule:manage", "schedules.create", async (c) => {
+      // Gate creation on the target ROOM so a room BOOK grant authorizes it (not
+      // just a global schedule:manage role). Falls back to a generic target when
+      // the room cannot be resolved (only a role can then authorize).
+      const roomId = await resolveCreateRoomId(c);
+
+      return roomId ? { id: roomId, type: "room" } : { type: "schedule" };
+    }),
     async (c) => {
       const body = scheduleInputSchema.safeParse(await c.req.json().catch(() => ({})));
 
@@ -348,10 +381,23 @@ export function registerScheduleRoutes({
         return settingsFailure;
       }
 
-      const schedule = buildSchedule(body.data);
+      const assignmentError = await assignmentValidationError(
+        c,
+        "schedules.create.failed",
+        body.data.assignedUserIds,
+        body.data.assignedGroupIds,
+      );
+
+      if (assignmentError) {
+        return assignmentError;
+      }
+
+      // The schedule's room is the node's room unless the caller pins one.
+      const schedule = { ...buildSchedule(body.data), roomId: body.data.roomId ?? node.roomId };
 
       try {
         const created = await scheduleStore.create(schedule);
+        await reconcileScheduleRoster(created);
 
         await recordAuditEvent(c, {
           action: "schedules.create.succeeded",
@@ -478,10 +524,28 @@ export function registerScheduleRoutes({
         return settingsFailure;
       }
 
-      const updated = await scheduleStore.update(
-        scheduleId,
-        sanitizeScheduleUpdate(body.data, before),
-      );
+      if (body.data.assignedUserIds || body.data.assignedGroupIds) {
+        const assignmentError = await assignmentValidationError(
+          c,
+          "schedules.update.failed",
+          body.data.assignedUserIds ?? [],
+          body.data.assignedGroupIds ?? [],
+          before,
+        );
+
+        if (assignmentError) {
+          return assignmentError;
+        }
+      }
+
+      const updates = sanitizeScheduleUpdate(body.data, before);
+
+      // Follow the node's room when the node changes and no room is pinned.
+      if (updates.nodeId && body.data.roomId === undefined && targetNode.roomId) {
+        updates.roomId = targetNode.roomId;
+      }
+
+      const updated = await scheduleStore.update(scheduleId, updates);
 
       if (!updated) {
         await recordScheduleWriteFailure(
@@ -492,6 +556,8 @@ export function registerScheduleRoutes({
         );
         return c.json({ error: "Schedule not found" }, 404);
       }
+
+      await reconcileScheduleRoster(updated);
 
       await recordAuditEvent(c, {
         action: "schedules.update.succeeded",
@@ -706,6 +772,10 @@ export function registerScheduleRoutes({
         return c.json({ error: "Schedule not found" }, 404);
       }
 
+      // Clear the schedule's calendar-derived roster grants (room_roster cascades
+      // on the FK too, but the JSON fallback store needs the explicit removal).
+      await removeScheduleRoster(scheduleId);
+
       await recordAuditEvent(c, {
         action: "schedules.delete.succeeded",
         auth: currentAuth(c),
@@ -729,6 +799,61 @@ export function registerScheduleRoutes({
 
   async function findScopedNode(c: Context<AppBindings>, nodeId: string) {
     return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
+  }
+
+  // Resolves the room a create request targets (pinned roomId, else the selected
+  // node's room) so the create gate can authorize a room BOOK grant.
+  async function resolveCreateRoomId(c: Context<AppBindings>) {
+    const raw = (await c.req.json().catch(() => ({}))) as { nodeId?: unknown; roomId?: unknown };
+
+    if (typeof raw.roomId === "string" && raw.roomId.trim()) {
+      return raw.roomId.trim();
+    }
+
+    if (typeof raw.nodeId === "string" && raw.nodeId.trim()) {
+      return (await nodeStore.find(raw.nodeId.trim()))?.roomId;
+    }
+
+    return undefined;
+  }
+
+  // Rejects a create/update whose assignee ids do not resolve to real
+  // users/groups. Returns a 400 Response on failure, or undefined when valid.
+  async function assignmentValidationError(
+    c: Context<AppBindings>,
+    action: string,
+    userIds: string[],
+    groupIds: string[],
+    schedule?: Partial<ScheduleSummary>,
+  ) {
+    if (userIds.length === 0 && groupIds.length === 0) {
+      return undefined;
+    }
+
+    const { unknownGroupIds, unknownUserIds } = await assignmentIdReferences({ groupIds, userIds });
+
+    if (unknownUserIds.length === 0 && unknownGroupIds.length === 0) {
+      return undefined;
+    }
+
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      details: { unknownGroupIds, unknownUserIds },
+      outcome: "failed",
+      permission: "schedule:manage",
+      reason: "unknown_assignee",
+      target: {
+        id: schedule?.id,
+        name: schedule?.name,
+        type: "schedule",
+      },
+    });
+
+    return c.json(
+      { error: "Unknown assignee", reason: "unknown_assignee", unknownGroupIds, unknownUserIds },
+      400,
+    );
   }
 
   async function recordScheduleRunFailure(
@@ -829,76 +954,6 @@ export function registerScheduleRoutes({
       },
     });
   }
-}
-
-interface ScheduleFilters {
-  captureBackend?: NonNullable<ScheduleSummary["captureBackend"]>;
-  captureInterfaceId?: string;
-  enabled?: boolean;
-  nodeId?: string;
-  search?: string;
-}
-
-function scheduleFilters(c: Context<AppBindings>): ScheduleFilters {
-  const captureBackend = captureBackendFromQuery(c.req.query("captureBackend"));
-  const captureInterfaceId = trimmed(c.req.query("captureInterfaceId"));
-  const enabled = enabledFromQuery(c.req.query("enabled"));
-  const nodeId = trimmed(c.req.query("nodeId"));
-  const search = trimmed(c.req.query("search"));
-
-  return {
-    captureBackend,
-    captureInterfaceId,
-    enabled,
-    nodeId,
-    search,
-  };
-}
-
-function filterSchedules(schedules: ScheduleSummary[], filters: ScheduleFilters) {
-  const search = filters.search?.toLowerCase();
-
-  return schedules.filter((schedule) => {
-    if (filters.enabled !== undefined && schedule.enabled !== filters.enabled) {
-      return false;
-    }
-
-    if (filters.nodeId && schedule.nodeId !== filters.nodeId) {
-      return false;
-    }
-
-    if (filters.captureBackend && schedule.captureBackend !== filters.captureBackend) {
-      return false;
-    }
-
-    if (filters.captureInterfaceId && schedule.captureInterfaceId !== filters.captureInterfaceId) {
-      return false;
-    }
-
-    return search ? scheduleSearchText(schedule).includes(search) : true;
-  });
-}
-
-function scheduleSearchText(schedule: ScheduleSummary) {
-  return [
-    schedule.captureBackend,
-    schedule.captureInterfaceId,
-    schedule.folderTemplate,
-    schedule.id,
-    schedule.name,
-    schedule.nodeId,
-    schedule.recordingProfileId,
-    schedule.retentionPolicyId,
-    schedule.room,
-    schedule.tags.join(" "),
-    schedule.timezone,
-    schedule.titleTemplate,
-    schedule.uploadPolicyIds.join(" "),
-    schedule.watchdogPolicyId,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
 }
 
 function uniqueScheduleIds(scheduleIds: string[]) {

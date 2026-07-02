@@ -76,5 +76,5 @@ export function registerSettingsControllerRoutes({
 }
 
 function snapshot(settings: ControllerSettings) {
-  return { controllerName: settings.controllerName };
+  return { controllerName: settings.controllerName, weekStartsOn: settings.weekStartsOn };
 }

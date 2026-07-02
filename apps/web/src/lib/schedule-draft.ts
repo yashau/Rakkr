@@ -16,6 +16,8 @@ import {
 import { formatDateTime, isoFromLocalDateTime, localDateTimeInput } from "./dates";
 
 export interface ScheduleDraft {
+  assignedGroupIds: string[];
+  assignedUserIds: string[];
   captureBackend: "" | NonNullable<ScheduleSummary["captureBackend"]>;
   captureChannels: number[];
   captureInterfaceId: string;
@@ -62,6 +64,8 @@ const weekdayDays: ScheduleDayOfWeek[] = ["monday", "tuesday", "wednesday", "thu
 
 export function defaultDraft(node?: RecorderNode): ScheduleDraft {
   return {
+    assignedGroupIds: [],
+    assignedUserIds: [],
     captureBackend: "",
     captureChannels: [],
     captureInterfaceId: "",
@@ -98,6 +102,8 @@ export function defaultDraft(node?: RecorderNode): ScheduleDraft {
 export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
   const draft: ScheduleDraft = {
     ...defaultDraft(),
+    assignedGroupIds: schedule.assignedGroupIds,
+    assignedUserIds: schedule.assignedUserIds,
     captureBackend: schedule.captureBackend ?? "",
     captureChannels: schedule.captureChannelSelection ?? [],
     captureInterfaceId: schedule.captureInterfaceId ?? "",
@@ -128,6 +134,8 @@ export function draftToInput(draft: ScheduleDraft): ScheduleInput {
     : [];
 
   return {
+    assignedGroupIds: draft.assignedGroupIds,
+    assignedUserIds: draft.assignedUserIds,
     captureBackend: draft.captureBackend || null,
     captureChannelSelection: channels.length > 0 ? channels : null,
     captureInterfaceId: draft.captureInterfaceId || null,

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PlusCircle, Save, Sparkles, Trash2 } from "lucide-react";
 import { type AudioInterface, type RecorderNode, type ScheduleDayOfWeek } from "@rakkr/shared";
 
+import { AssigneeMultiSelect, type AssigneeOption } from "@/components/assignee-multi-select";
 import { ChannelSelectionField } from "@/components/channel-selection-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -89,8 +90,27 @@ export function ScheduleFormDialog({
     watchdogPoliciesQuery.data?.data ?? [],
     draft.watchdogPolicyId,
   );
+  const usersQuery = useQuery({
+    enabled: open,
+    queryFn: () => api.accessUsers({ limit: 500 }),
+    queryKey: ["access-users"],
+  });
+  const groupsQuery = useQuery({
+    enabled: open,
+    queryFn: api.accessGroups,
+    queryKey: ["access-groups"],
+  });
   const retentionPolicies = retentionPoliciesQuery.data?.data ?? [];
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];
+  const userOptions: AssigneeOption[] = (usersQuery.data?.data ?? []).map((user) => ({
+    id: user.id,
+    label: user.name,
+    sublabel: user.email,
+  }));
+  const groupOptions: AssigneeOption[] = (groupsQuery.data?.data ?? []).map((group) => ({
+    id: group.id,
+    label: group.name,
+  }));
 
   // Reset the quick-recurrence helper whenever the dialog opens or closes so a
   // stale phrase never carries between schedules.
@@ -194,6 +214,27 @@ export function ScheduleFormDialog({
                 required
                 value={draft.room}
               />
+            </div>
+
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Assignees</Label>
+              <AssigneeMultiSelect
+                groupOptions={groupOptions}
+                onChange={(next) =>
+                  onDraftChange({
+                    ...draft,
+                    assignedGroupIds: next.groupIds,
+                    assignedUserIds: next.userIds,
+                  })
+                }
+                selectedGroupIds={draft.assignedGroupIds}
+                selectedUserIds={draft.assignedUserIds}
+                userOptions={userOptions}
+              />
+              <p className="text-xs text-muted-foreground">
+                Assigned users and groups get scoped access to this schedule&apos;s room — listen,
+                playback, and operating its recordings — without changing their role.
+              </p>
             </div>
 
             <div className="grid gap-2">

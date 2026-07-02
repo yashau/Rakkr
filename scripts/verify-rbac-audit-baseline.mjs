@@ -13,6 +13,15 @@ const requiredPhrases = [
   "API enforces",
   "UI helpers mirror",
   "denied attempts",
+  "Room Roster Capabilities",
+  "per-action capabilities",
+  "explicit deny access-policy always overrides",
+  "grantedViaRoomCapability",
+];
+const requiredApiIdentifiers = [
+  "roomCapabilityAuthorizes",
+  "roomRosterStore",
+  "permissionRequiresCapability",
 ];
 const errors = [];
 
@@ -32,6 +41,12 @@ if (permissions.length === 0) {
 for (const phrase of requiredPhrases) {
   if (!baseline.toLowerCase().includes(phrase.toLowerCase())) {
     errors.push(`${baselineFile} must mention "${phrase}"`);
+  }
+}
+
+for (const identifier of requiredApiIdentifiers) {
+  if (!apiSourceText.includes(identifier)) {
+    errors.push(`API source must reference schedule-assignment identifier ${identifier}`);
   }
 }
 

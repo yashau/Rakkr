@@ -1,0 +1,1 @@
+ALTER TABLE "controller_settings" ADD COLUMN "week_starts_on" varchar(16) DEFAULT 'monday' NOT NULL;

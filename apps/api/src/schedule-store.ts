@@ -275,6 +275,8 @@ class PostgresScheduleStore implements ScheduleStore {
       .values(row)
       .onConflictDoUpdate({
         set: {
+          assignedGroupIds: row.assignedGroupIds,
+          assignedUserIds: row.assignedUserIds,
           captureBackend: row.captureBackend,
           captureChannelSelection: row.captureChannelSelection,
           captureInterfaceId: row.captureInterfaceId,
@@ -288,6 +290,7 @@ class PostgresScheduleStore implements ScheduleStore {
           recordingProfileId: row.recordingProfileId,
           retentionPolicyId: row.retentionPolicyId,
           room: row.room,
+          roomId: row.roomId,
           tags: row.tags,
           timezone: row.timezone,
           titleTemplate: row.titleTemplate,
@@ -319,6 +322,8 @@ function loadSchedules(seedSchedules: ScheduleSummary[]) {
 
 function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
   return {
+    assignedGroupIds: schedule.assignedGroupIds ?? [],
+    assignedUserIds: schedule.assignedUserIds ?? [],
     captureBackend: schedule.captureBackend ?? null,
     captureChannelSelection: schedule.captureChannelSelection ?? [],
     captureInterfaceId: schedule.captureInterfaceId ?? null,
@@ -333,6 +338,7 @@ function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
     recordingProfileId: schedule.recordingProfileId,
     retentionPolicyId: schedule.retentionPolicyId,
     room: schedule.room,
+    roomId: schedule.roomId ?? null,
     tags: schedule.tags,
     timezone: schedule.timezone,
     titleTemplate: schedule.titleTemplate,
@@ -345,6 +351,8 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
   const recurrence = recurrenceFromValue(row.recurrence);
 
   return {
+    assignedGroupIds: stringArray(row.assignedGroupIds),
+    assignedUserIds: stringArray(row.assignedUserIds),
     captureBackend: captureBackendFromValue(row.captureBackend),
     captureChannelSelection: channelSelectionFromValue(row.captureChannelSelection),
     captureInterfaceId: stringOrUndefined(row.captureInterfaceId),
@@ -359,6 +367,7 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
     recordingProfileId: row.recordingProfileId ?? defaultVoiceRecordingProfile.id,
     retentionPolicyId: row.retentionPolicyId ?? defaultKeepControllerCacheRetentionPolicy.id,
     room: row.room,
+    roomId: stringOrUndefined(row.roomId),
     tags: stringArray(row.tags),
     timezone: row.timezone,
     titleTemplate: row.titleTemplate,
@@ -380,6 +389,8 @@ function scheduleRecurrence(schedule: ScheduleSummary) {
 function cloneSchedule(schedule: ScheduleSummary) {
   return {
     ...schedule,
+    assignedGroupIds: [...(schedule.assignedGroupIds ?? [])],
+    assignedUserIds: [...(schedule.assignedUserIds ?? [])],
     recurrence: { ...schedule.recurrence },
     tags: [...schedule.tags],
   };

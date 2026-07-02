@@ -4,10 +4,12 @@ import type { ScheduleRecurrence, ScheduleSummary } from "@rakkr/shared";
 
 import {
   nextRunAtForRecurrence,
+  occurrenceLocalDateIso,
   previewScheduleOccurrences,
   scheduleRecordingTrackPlans,
   scheduleRecordingDurationSeconds,
   skipNextScheduleOccurrence,
+  windowScheduleOccurrences,
 } from "../src/schedule-engine";
 
 describe("schedule recurrence engine", () => {
@@ -179,10 +181,72 @@ describe("schedule recurrence engine", () => {
       { action: "skip", date: "2026-06-15" },
     ]);
   });
+
+  it("windows occurrences within [start, end] independent of now", () => {
+    const schedule = scheduleFixture({
+      recurrence: {
+        endTime: "10:00",
+        interval: 1,
+        mode: "daily",
+        startTime: "09:00",
+      },
+    });
+
+    const occurrences = windowScheduleOccurrences(
+      schedule,
+      new Date("2026-06-15T00:00:00.000Z"),
+      new Date("2026-06-17T23:59:59.000Z"),
+    );
+
+    assert.deepEqual(
+      occurrences.map((occurrence) => occurrence.recordingStartAt),
+      ["2026-06-15T09:00:00.000Z", "2026-06-16T09:00:00.000Z", "2026-06-17T09:00:00.000Z"],
+    );
+  });
+
+  it("windows return nothing for manual/always_on schedules", () => {
+    const start = new Date("2026-06-15T00:00:00.000Z");
+    const end = new Date("2026-07-15T00:00:00.000Z");
+
+    assert.deepEqual(windowScheduleOccurrences(scheduleFixture(), start, end), []);
+    assert.deepEqual(
+      windowScheduleOccurrences(scheduleFixture({ recurrence: { mode: "always_on" } }), start, end),
+      [],
+    );
+  });
+
+  it("treats a one-off duration as its recording length and end", () => {
+    const schedule = scheduleFixture({
+      recurrence: { durationSeconds: 3_600, mode: "once", startsAt: "2026-06-20T14:00:00.000Z" },
+    });
+
+    assert.equal(scheduleRecordingDurationSeconds(schedule), 3_600);
+
+    const [occurrence] = windowScheduleOccurrences(
+      schedule,
+      new Date("2026-06-20T00:00:00.000Z"),
+      new Date("2026-06-21T00:00:00.000Z"),
+    );
+
+    assert.equal(occurrence?.recordingStartAt, "2026-06-20T14:00:00.000Z");
+    assert.equal(occurrence?.recordingEndAt, "2026-06-20T15:00:00.000Z");
+  });
+
+  it("computes the local occurrence date for a run", () => {
+    const schedule = scheduleFixture({
+      recurrence: { endTime: "01:00", interval: 1, mode: "daily", startTime: "23:30" },
+      timezone: "America/New_York",
+    });
+
+    // 23:30 America/New_York on 2026-06-20 is 03:30Z the next day.
+    assert.equal(occurrenceLocalDateIso(schedule, "2026-06-21T03:30:00.000Z"), "2026-06-20");
+  });
 });
 
 function scheduleFixture(overrides: Partial<ScheduleSummary> = {}): ScheduleSummary {
   return {
+    assignedGroupIds: [],
+    assignedUserIds: [],
     enabled: true,
     folderTemplate: "Meetings/{{date}}",
     id: "sched_test",

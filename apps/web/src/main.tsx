@@ -15,6 +15,7 @@ import {
   useParams,
 } from "@tanstack/react-router";
 import {
+  Building2,
   CalendarDays,
   Database,
   Gauge,
@@ -65,7 +66,10 @@ import { HealthPage } from "@/pages/health";
 import { JobsPage } from "@/pages/jobs";
 import { NodesPage } from "@/pages/nodes";
 import { RecordingsPage } from "@/pages/recordings";
+import { RoomDetailPage } from "@/pages/room-detail";
+import { RoomsPage } from "@/pages/rooms";
 import { ScheduleDetailPage } from "@/pages/schedule-detail";
+import { SchedulesCalendarPage } from "@/pages/schedules-calendar";
 import { SchedulesPage } from "@/pages/schedules";
 import { SettingsPage } from "@/pages/settings";
 
@@ -85,6 +89,7 @@ const navIcons: Record<RootNavItem["id"], typeof Gauge> = {
   jobs: ListChecks,
   nodes: Radio,
   recordings: Database,
+  rooms: Building2,
   schedules: CalendarDays,
   settings: Settings,
 };
@@ -448,6 +453,12 @@ const schedulesRoute = createRoute({
   path: "/schedules",
 });
 
+const schedulesCalendarRoute = createRoute({
+  component: SchedulesCalendarPage,
+  getParentRoute: () => rootRoute,
+  path: "/schedules/calendar",
+});
+
 function ScheduleDetailRouteComponent() {
   const { scheduleId } = useParams({ from: "/schedules/$scheduleId" });
 
@@ -458,6 +469,24 @@ const scheduleDetailRoute = createRoute({
   component: ScheduleDetailRouteComponent,
   getParentRoute: () => rootRoute,
   path: "/schedules/$scheduleId",
+});
+
+const roomsRoute = createRoute({
+  component: RoomsPage,
+  getParentRoute: () => rootRoute,
+  path: "/rooms",
+});
+
+function RoomDetailRouteComponent() {
+  const { roomId } = useParams({ from: "/rooms/$roomId" });
+
+  return <RoomDetailPage roomId={roomId} />;
+}
+
+const roomDetailRoute = createRoute({
+  component: RoomDetailRouteComponent,
+  getParentRoute: () => rootRoute,
+  path: "/rooms/$roomId",
 });
 
 const recordingsRoute = createRoute({
@@ -495,7 +524,10 @@ const routeTree = rootRoute.addChildren([
   nodesRoute,
   healthRoute,
   schedulesRoute,
+  schedulesCalendarRoute,
   scheduleDetailRoute,
+  roomsRoute,
+  roomDetailRoute,
   recordingsRoute,
   jobsRoute,
   settingsRoute,

@@ -271,6 +271,8 @@ function recording(id: string, name: string): RecordingSummary {
 
 function schedule(id: string, name: string): ScheduleSummary {
   return {
+    assignedGroupIds: [],
+    assignedUserIds: [],
     enabled: true,
     folderTemplate: "Council",
     id,

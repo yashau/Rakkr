@@ -37,6 +37,9 @@ export function buildSchedule(input: ScheduleInput): ScheduleSummary {
   const recurrence = input.recurrence ?? recurrenceFromNextRun(input.nextRunAt);
 
   return {
+    assignedGroupIds: input.assignedGroupIds,
+    assignedUserIds: input.assignedUserIds,
+    roomId: input.roomId,
     captureBackend: input.captureBackend ?? undefined,
     captureChannelSelection: input.captureChannelSelection ?? undefined,
     captureInterfaceId: input.captureInterfaceId ?? undefined,
