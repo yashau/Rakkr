@@ -329,16 +329,29 @@ export function effectiveChunkSeconds(profile: RecordingProfile | undefined): nu
   const value = profile?.chunkSeconds ?? profile?.maxTrackSeconds ?? undefined;
   return typeof value === "number" && value > 0 ? value : undefined;
 }
+// Day the operator console's schedule calendar starts its week on.
+export const weekStartDaySchema = z.enum([
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+]);
 export const controllerSettingsSchema = z.object({
   controllerName: z.string().trim().min(1).max(160),
+  weekStartsOn: weekStartDaySchema.default("monday"),
 });
 export const controllerSettingsUpdateSchema = z
   .object({
     controllerName: z.string().trim().min(1).max(160).optional(),
+    weekStartsOn: weekStartDaySchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one controller setting is required");
 export const defaultControllerSettings = controllerSettingsSchema.parse({
   controllerName: "Rakkr Controller",
+  weekStartsOn: "monday",
 });
 export const channelMapEntrySchema = z.object({
   included: z.boolean(),

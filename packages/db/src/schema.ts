@@ -400,6 +400,7 @@ export const controllerSettings = pgTable("controller_settings", {
   controllerName: varchar("controller_name", { length: 160 }).notNull().default("Rakkr Controller"),
   id: varchar("id", { length: 64 }).primaryKey().default("controller"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  weekStartsOn: varchar("week_starts_on", { length: 16 }).notNull().default("monday"),
 });
 
 export const watchdogPolicies = pgTable("watchdog_policies", {

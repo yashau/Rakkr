@@ -9,7 +9,16 @@ export interface CalendarDayCell {
   isToday: boolean;
 }
 
-export const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// Sunday-first base labels, indexed by JS Date.getDay() (0 = Sunday).
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Weekday header labels ordered so the configured start day comes first.
+// weekStartsOn is a JS getDay() index (0 = Sunday … 6 = Saturday).
+export function orderedWeekdayLabels(weekStartsOn: number) {
+  const start = ((weekStartsOn % 7) + 7) % 7;
+
+  return Array.from({ length: 7 }, (_, index) => WEEKDAY_LABELS[(start + index) % 7]);
+}
 
 export function localDayIso(date: Date) {
   const year = date.getFullYear();
@@ -19,15 +28,21 @@ export function localDayIso(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-// Monday-first weekday index (0 = Monday … 6 = Sunday).
-function mondayIndex(date: Date) {
-  return (date.getDay() + 6) % 7;
+// Offset of `date` from the configured week-start day (0 … 6).
+function weekdayOffset(date: Date, weekStartsOn: number) {
+  return ((date.getDay() - weekStartsOn) % 7 + 7) % 7;
 }
 
-// A fixed 6-week (42-day) grid starting on the Monday on/before the 1st.
-export function buildMonthGrid(year: number, month: number, today = new Date()): CalendarDayCell[][] {
+// A fixed 6-week (42-day) grid whose first column is `weekStartsOn`, starting on
+// that weekday on/before the 1st of the month.
+export function buildMonthGrid(
+  year: number,
+  month: number,
+  weekStartsOn = 1,
+  today = new Date(),
+): CalendarDayCell[][] {
   const first = new Date(year, month, 1);
-  const start = new Date(year, month, 1 - mondayIndex(first));
+  const start = new Date(year, month, 1 - weekdayOffset(first, weekStartsOn));
   const todayIso = localDayIso(today);
   const weeks: CalendarDayCell[][] = [];
 
@@ -49,8 +64,8 @@ export function buildMonthGrid(year: number, month: number, today = new Date()):
 }
 
 // The [start, end] instants spanning the whole visible grid, for the API window.
-export function monthGridRange(year: number, month: number) {
-  const grid = buildMonthGrid(year, month);
+export function monthGridRange(year: number, month: number, weekStartsOn = 1) {
+  const grid = buildMonthGrid(year, month, weekStartsOn);
   const first = grid[0][0].date;
   const last = grid[grid.length - 1][6].date;
 

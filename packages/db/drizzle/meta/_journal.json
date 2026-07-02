@@ -260,6 +260,13 @@
       "when": 1783008326298,
       "tag": "0036_tricky_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783011635363,
+      "tag": "0037_bouncy_shriek",
+      "breakpoints": true
     }
   ]
 }

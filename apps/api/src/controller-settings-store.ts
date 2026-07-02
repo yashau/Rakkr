@@ -65,7 +65,10 @@ class PostgresControllerSettingsStore implements ControllerSettingsStore {
         .limit(1);
 
       return row
-        ? controllerSettingsSchema.parse({ controllerName: row.controllerName })
+        ? controllerSettingsSchema.parse({
+            controllerName: row.controllerName,
+            weekStartsOn: row.weekStartsOn,
+          })
         : { ...defaultControllerSettings };
     } catch (error) {
       this.failover("controller settings lookup unavailable; using JSON store", error);
@@ -87,9 +90,14 @@ class PostgresControllerSettingsStore implements ControllerSettingsStore {
           controllerName: merged.controllerName,
           id: controllerSettingsId,
           updatedAt: new Date(),
+          weekStartsOn: merged.weekStartsOn,
         })
         .onConflictDoUpdate({
-          set: { controllerName: merged.controllerName, updatedAt: new Date() },
+          set: {
+            controllerName: merged.controllerName,
+            updatedAt: new Date(),
+            weekStartsOn: merged.weekStartsOn,
+          },
           target: controllerSettingsTable.id,
         });
 
@@ -111,6 +119,7 @@ function mergeControllerSettings(
 ): ControllerSettings {
   return controllerSettingsSchema.parse({
     controllerName: update.controllerName ?? current.controllerName,
+    weekStartsOn: update.weekStartsOn ?? current.weekStartsOn,
   });
 }
 
