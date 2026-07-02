@@ -267,6 +267,13 @@
       "when": 1783011635363,
       "tag": "0037_bouncy_shriek",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783013020373,
+      "tag": "0038_nice_tigra",
+      "breakpoints": true
     }
   ]
 }

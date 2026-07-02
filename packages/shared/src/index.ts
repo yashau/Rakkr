@@ -18,6 +18,8 @@ export * from "./oidc.js";
 export * from "./pagination.js";
 export * from "./recording-chunks.js";
 export * from "./recording-job-summary.js";
+export * from "./room-capabilities.js";
+export * from "./rooms.js";
 export * from "./upload-providers.js";
 export * from "./watchdog-policy.js";
 
@@ -258,6 +260,9 @@ export const recorderNodeSchema = z.object({
     room: z.string().min(1),
     site: z.string().min(1),
   }),
+  // First-class room this node belongs to (source of truth for room identity;
+  // location above is retained for display). Optional during the rooms rollout.
+  roomId: z.string().min(1).optional(),
   notes: z.string().optional(),
   audioDefaults: nodeAudioCommandDefaultsSchema.optional(),
   recordingCapacity: nodeRecordingCapacitySchema.optional(),
@@ -529,6 +534,7 @@ export const scheduleSummarySchema = z.object({
   recordingProfileId: z.string().min(1),
   retentionPolicyId: z.string().min(1).default("retention-keep-controller-cache"),
   room: z.string().min(1),
+  roomId: z.string().min(1).optional(),
   tags: z.array(z.string().min(1)),
   timezone: z.string().min(1),
   titleTemplate: z.string().min(1),
@@ -552,6 +558,7 @@ export const scheduleInputSchema = z.object({
   recordingProfileId: z.string().trim().min(1).max(160),
   retentionPolicyId: z.string().trim().min(1).max(160).default("retention-keep-controller-cache"),
   room: z.string().trim().min(1).max(160),
+  roomId: z.string().trim().min(1).max(160).optional(),
   tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
   timezone: ianaTimeZoneSchema,
   titleTemplate: z.string().trim().min(1).max(500),
@@ -575,6 +582,7 @@ export const scheduleUpdateSchema = z
     recordingProfileId: z.string().trim().min(1).max(160).optional(),
     retentionPolicyId: z.string().trim().min(1).max(160).optional(),
     room: z.string().trim().min(1).max(160).optional(),
+    roomId: z.string().trim().min(1).max(160).optional(),
     tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
     timezone: ianaTimeZoneSchema.optional(),
     titleTemplate: z.string().trim().min(1).max(500).optional(),
