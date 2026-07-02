@@ -10,6 +10,7 @@ import { SettingsChannelMapsSection } from "@/components/settings-channel-maps-s
 import { Field } from "@/components/settings-fields";
 import { SettingsRecordingProfilesSection } from "@/components/settings-recording-profiles-section";
 import { SettingsRetentionPoliciesSection } from "@/components/settings-retention-policies-section";
+import { SettingsSwitchersSection } from "@/components/settings-switchers-section";
 import { SettingsUploadDestinationsSection } from "@/components/settings-upload-destinations-section";
 import { SettingsUploadPoliciesSection } from "@/components/settings-upload-policies-section";
 import { SettingsWatchdogPoliciesSection } from "@/components/settings-watchdog-policies-section";
@@ -26,6 +27,7 @@ import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { api } from "@/lib/api";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { settingsPagePermissions } from "@/lib/settings-page-helpers";
+import { switcherPagePermissions } from "@/lib/switcher-page-helpers";
 
 const weekStartDays: WeekStartDay[] = [
   "sunday",
@@ -46,6 +48,7 @@ export function SettingsPage() {
   const canReadNodes = pagePermissions.canReadNodes;
   const canReadSettings = pagePermissions.canReadSettings;
   const canManageSettings = pagePermissions.canManageSettings;
+  const switcherPermissions = switcherPagePermissions(currentUserQuery.data?.data);
   const controllerSettingsQuery = useQuery({
     enabled: canReadSettings,
     queryFn: api.controllerSettings,
@@ -112,6 +115,12 @@ export function SettingsPage() {
         canRead={canReadSettings}
         canReadNodes={canReadNodes}
         nodes={nodes}
+      />
+
+      <SettingsSwitchersSection
+        canManage={switcherPermissions.canManageSwitcher}
+        canMap={switcherPermissions.canMapSwitcher}
+        canRead={switcherPermissions.canReadSwitcher}
       />
     </div>
   );
