@@ -7,22 +7,22 @@ export type StatusTone = "critical" | "healthy" | "info" | "neutral" | "warning"
  */
 export function toneBadgeClass(tone: StatusTone): string {
   if (tone === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300";
   }
 
   if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300";
   }
 
   if (tone === "healthy") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300";
   }
 
   if (tone === "info") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return "border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300";
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return "border-slate-200 dark:border-slate-900 bg-slate-50 dark:bg-slate-950/40 text-slate-700 dark:text-slate-300";
 }
 
 /**
@@ -31,19 +31,19 @@ export function toneBadgeClass(tone: StatusTone): string {
  */
 export function toneTileClass(tone: StatusTone): string {
   if (tone === "critical") {
-    return "border-rose-200 bg-rose-50 text-rose-800";
+    return "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200";
   }
 
   if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-800";
+    return "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200";
   }
 
   if (tone === "healthy") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    return "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200";
   }
 
   if (tone === "info") {
-    return "border-sky-200 bg-sky-50 text-sky-800";
+    return "border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200";
   }
 
   return "border-border bg-background text-foreground";
@@ -51,20 +51,23 @@ export function toneTileClass(tone: StatusTone): string {
 
 /**
  * Filled-bar variant of the status tones (saturated translucent fill on a
- * tinted border) used for compact timeline segments.
+ * tinted border) used for compact timeline segments and severity badges. In
+ * dark mode it mirrors {@link toneTileClass} (dark tint + light text + dark
+ * border) so the text this class carries on badges stays legible — a saturated
+ * mid fill would leave both light and dark text below WCAG AA on dark surfaces.
  */
 export function toneFillClass(tone: StatusTone): string {
   if (tone === "critical") {
-    return "border-rose-200 bg-rose-500/80 text-rose-800";
+    return "border-rose-200 dark:border-rose-900 bg-rose-500/80 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200";
   }
 
   if (tone === "warning") {
-    return "border-amber-200 bg-amber-400/80 text-amber-800";
+    return "border-amber-200 dark:border-amber-900 bg-amber-400/80 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200";
   }
 
   if (tone === "healthy") {
-    return "border-emerald-200 bg-emerald-500/70 text-emerald-800";
+    return "border-emerald-200 dark:border-emerald-900 bg-emerald-500/70 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200";
   }
 
-  return "border-sky-200 bg-sky-400/75 text-sky-800";
+  return "border-sky-200 dark:border-sky-900 bg-sky-400/75 dark:bg-sky-950/50 text-sky-800 dark:text-sky-200";
 }

@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 
+/* Drive `dark:` utilities off a `.dark` class on <html> (toggled by next-themes)
+   instead of the OS media query, so the in-app switch can override the system
+   preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: 38 24% 96%;
   --border: 34 16% 82%;
@@ -24,6 +29,37 @@
   --panel-foreground: 24 10% 10%;
   --ring: 173 80% 30%;
   --radius: 0.5rem;
+}
+
+/* Warm-neutral dark theme paired with the light stone/paper palette above.
+   Background is the darkest surface; card/popover/panel lift off it, mirroring
+   the light theme where paper sits under white cards. `primary` inverts to a
+   light tone so primary buttons and the logo mark read as light-on-dark. */
+.dark {
+  --background: 24 10% 7%;
+  --border: 24 6% 20%;
+  --card: 24 9% 10%;
+  --card-foreground: 40 20% 92%;
+  --popover: 24 9% 10%;
+  --popover-foreground: 40 20% 92%;
+  --foreground: 40 20% 92%;
+  --primary: 40 20% 92%;
+  --primary-foreground: 24 10% 10%;
+  --secondary: 24 6% 16%;
+  --secondary-foreground: 40 20% 92%;
+  --muted: 24 6% 16%;
+  --muted-foreground: 34 10% 64%;
+  --accent: 24 6% 19%;
+  --accent-foreground: 40 20% 92%;
+  /* Bright enough that `text-destructive` clears WCAG AA (~4.5:1) as body text
+     on the dark card/panel/background surfaces; its foreground is dark so the
+     paired `bg-destructive` (buttons/badges) stays legible too. */
+  --destructive: 0 74% 60%;
+  --destructive-foreground: 30 12% 12%;
+  --input: 24 6% 22%;
+  --panel: 24 9% 10%;
+  --panel-foreground: 40 20% 92%;
+  --ring: 173 70% 42%;
 }
 
 @theme inline {

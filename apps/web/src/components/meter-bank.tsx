@@ -13,7 +13,7 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
     <section className="rounded-lg border border-border bg-panel p-4 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-md bg-sky-100 text-sky-700">
+          <span className="flex size-8 items-center justify-center rounded-md bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
             <Activity className="size-4" />
           </span>
           <div>
@@ -30,7 +30,7 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
               {summary.clippingChannels} clip
             </Badge>
           ) : null}
-          <RadioTower className="size-5 text-teal-600" />
+          <RadioTower className="size-5 text-teal-600 dark:text-teal-400" />
         </div>
       </div>
 
@@ -70,7 +70,7 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
                 </div>
               </div>
 
-              <div className="relative h-8 overflow-hidden rounded-md border border-stone-300 bg-stone-100">
+              <div className="relative h-8 overflow-hidden rounded-md border border-stone-300 bg-stone-100 dark:border-stone-700 dark:bg-stone-800">
                 <div
                   className={cn(
                     "absolute inset-y-0 left-0 rounded-sm bg-linear-to-r shadow-[0_0_16px_rgba(14,165,233,.18)] transition-[width] duration-300",
@@ -79,7 +79,7 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
                   style={{ width: `${channel.rmsPercent}%` }}
                 />
                 <div
-                  className="absolute inset-y-1 w-0.5 rounded-full bg-zinc-950/70 shadow-[0_0_10px_rgba(24,24,27,.35)]"
+                  className="absolute inset-y-1 w-0.5 rounded-full bg-zinc-950/70 shadow-[0_0_10px_rgba(24,24,27,.35)] dark:bg-white/70"
                   style={{ left: `${channel.peakPercent}%` }}
                 />
                 <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0,transparent_calc(20%-1px),rgba(0,0,0,.14)_20%,transparent_calc(20%+1px),transparent_calc(40%-1px),rgba(0,0,0,.14)_40%,transparent_calc(40%+1px),transparent_calc(60%-1px),rgba(0,0,0,.14)_60%,transparent_calc(60%+1px),transparent_calc(80%-1px),rgba(0,0,0,.14)_80%,transparent_calc(80%+1px))]" />
@@ -99,7 +99,7 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
                 <>
                   <span aria-hidden />
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <AudioWaveform className="size-4 text-sky-600" />
+                    <AudioWaveform className="size-4 text-sky-600 dark:text-sky-400" />
                     {channel.speechPercent !== undefined ? (
                       <span>speech {channel.speechPercent}%</span>
                     ) : null}

@@ -126,25 +126,25 @@ export function DashboardPage() {
     <div className="grid gap-5">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          icon={<CheckCircle2 className="size-7 text-emerald-600" />}
+          icon={<CheckCircle2 className="size-7 text-emerald-600 dark:text-emerald-400" />}
           label="Online nodes"
           to="/nodes"
           value={`${status?.onlineNodes ?? 0}/${status?.nodeCount ?? 0}`}
         />
         <StatCard
-          icon={<Radio className="size-7 text-teal-600" />}
+          icon={<Radio className="size-7 text-teal-600 dark:text-teal-400" />}
           label="Active recordings"
           to="/jobs"
           value={String(status?.activeRecordings ?? 0)}
         />
         <StatCard
-          icon={<HardDrive className="size-7 text-zinc-700" />}
+          icon={<HardDrive className="size-7 text-zinc-700 dark:text-zinc-300" />}
           label="Cached recordings"
           to="/recordings"
           value={String(status?.cachedRecordings ?? 0)}
         />
         <StatCard
-          icon={<AlertTriangle className="size-7 text-amber-600" />}
+          icon={<AlertTriangle className="size-7 text-amber-600 dark:text-amber-400" />}
           label="Critical alerts"
           to="/health"
           value={String(status?.criticalAlerts ?? 0)}
@@ -168,7 +168,7 @@ export function DashboardPage() {
                 {activeNodes.length} of {nodes.length} reporting
               </p>
             </div>
-            <Network className="size-5 text-teal-700" />
+            <Network className="size-5 text-teal-700 dark:text-teal-400" />
           </div>
 
           {activeNodes.length === 0 ? (
@@ -211,7 +211,7 @@ export function DashboardPage() {
                     : "Recording jobs unavailable"}
                 </p>
               </div>
-              <Radio className="size-5 text-teal-700" />
+              <Radio className="size-5 text-teal-700 dark:text-teal-400" />
             </div>
 
             {!pagePermissions.canReadRecordings ? (
@@ -280,7 +280,7 @@ export function DashboardPage() {
                     : "Health events unavailable"}
                 </p>
               </div>
-              <AlertTriangle className="size-5 text-amber-600" />
+              <AlertTriangle className="size-5 text-amber-600 dark:text-amber-400" />
             </div>
 
             {!pagePermissions.canReadHealth ? (

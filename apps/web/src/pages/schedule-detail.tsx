@@ -273,7 +273,7 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            <CalendarClock className="size-5 text-teal-700" />
+            <CalendarClock className="size-5 text-teal-700 dark:text-teal-400" />
             <h2 className="text-lg font-semibold">{schedule.name}</h2>
             <Badge variant={schedule.enabled ? "secondary" : "outline"}>
               {schedule.enabled ? "enabled" : "disabled"}
@@ -516,7 +516,7 @@ function SummaryTile({
 function SectionTitle({ icon: Icon, title }: { icon: typeof Activity; title: string }) {
   return (
     <div className="flex items-center gap-2">
-      <Icon className="size-5 text-teal-700" />
+      <Icon className="size-5 text-teal-700 dark:text-teal-400" />
       <h3 className="text-base font-semibold">{title}</h3>
     </div>
   );

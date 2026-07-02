@@ -227,7 +227,7 @@ export function HealthPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <HeartPulse className="size-5 text-teal-700" />
+              <HeartPulse className="size-5 text-teal-700 dark:text-teal-400" />
               <h2 className="text-lg font-semibold">Health Events</h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
