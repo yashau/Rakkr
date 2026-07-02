@@ -12,11 +12,6 @@ import type {
   ChannelMapTemplateUpdate,
   ControllerSettings,
   ControllerSettingsUpdate,
-  AccessGroupCreateRequest,
-  AccessGroupDetail,
-  AccessGroupMembersReplaceRequest,
-  AccessGroupSummary,
-  AccessGroupUpdateRequest,
   AccessPolicy,
   AccessPolicyInput,
   CurrentUser,
@@ -70,6 +65,7 @@ import type {
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
+import { accessGroupsApi } from "./access-groups-api";
 import { apiBase, fetchBlob, fetchJson, withQuery } from "./api-http";
 import type { ControllerStatus } from "./status-types";
 import type {
@@ -385,30 +381,7 @@ export interface NodeInterfaceMetadataUpdate {
 }
 
 export const api = {
-  accessGroups: (params: { limit?: number; offset?: number } = {}) =>
-    fetchJson<PaginatedResponse<AccessGroupSummary>>(withQuery("/api/v1/auth/groups", params)),
-  accessGroup: (groupId: string) =>
-    fetchJson<{ data: { group: AccessGroupDetail } }>(`/api/v1/auth/groups/${groupId}`),
-  createAccessGroup: (input: AccessGroupCreateRequest) =>
-    fetchJson<{ data: AccessGroupDetail }>("/api/v1/auth/groups", {
-      body: JSON.stringify(input),
-      headers: jsonHeaders,
-      method: "POST",
-    }),
-  updateAccessGroup: (groupId: string, input: AccessGroupUpdateRequest) =>
-    fetchJson<{ data: AccessGroupDetail }>(`/api/v1/auth/groups/${groupId}`, {
-      body: JSON.stringify(input),
-      headers: jsonHeaders,
-      method: "PATCH",
-    }),
-  updateAccessGroupMembers: (groupId: string, input: AccessGroupMembersReplaceRequest) =>
-    fetchJson<{ data: AccessGroupDetail }>(`/api/v1/auth/groups/${groupId}/members`, {
-      body: JSON.stringify(input),
-      headers: jsonHeaders,
-      method: "PUT",
-    }),
-  deleteAccessGroup: (groupId: string) =>
-    fetchJson<void>(`/api/v1/auth/groups/${groupId}`, { method: "DELETE" }),
+  ...accessGroupsApi,
   rooms: () => fetchJson<{ data: Room[] }>("/api/v1/rooms"),
   room: (roomId: string) => fetchJson<{ data: Room }>(`/api/v1/rooms/${roomId}`),
   roomOverview: (roomId: string) =>

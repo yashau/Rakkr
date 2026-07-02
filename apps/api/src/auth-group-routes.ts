@@ -7,8 +7,8 @@ import {
   type Permission,
 } from "@rakkr/shared";
 
+import { actionState } from "./auth-action-state.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
-import { actionState } from "./auth-management-routes.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 
 interface AuthGroupRouteDependencies {

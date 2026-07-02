@@ -9,10 +9,14 @@ import {
   type Permission,
 } from "@rakkr/shared";
 
+import { actionState } from "./auth-action-state.js";
+import { registerAuthGroupRoutes } from "./auth-group-routes.js";
 import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
 import { accessKeepsAuthManage, accessSnapshot, localAdminId } from "./auth-utils.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { PAGE_POLICY, numberFromQuery, paginate, parsePagination } from "./pagination.js";
+import type { RoomRosterStore } from "./room-roster-store.js";
+import type { ScheduleStore } from "./schedule-store.js";
 
 interface AuthManagementRouteDependencies {
   app: Hono<AppBindings>;
@@ -21,15 +25,9 @@ interface AuthManagementRouteDependencies {
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
-}
-
-export interface AuthActionState {
-  enabled: boolean;
-  href?: string;
-  method: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
-  payload?: Record<string, unknown>;
-  permission: Permission;
-  reason?: string;
+  // Group route cascade cleanup borrows these stores (see registerAuthGroupRoutes).
+  roomRosterStore: RoomRosterStore;
+  scheduleStore: ScheduleStore;
 }
 
 const userAccessRequestSchema = z
@@ -58,7 +56,35 @@ export function registerAuthManagementRoutes({
   currentUser,
   recordAuditEvent,
   requirePermission,
+  roomRosterStore,
+  scheduleStore,
 }: AuthManagementRouteDependencies) {
+  // Access groups are part of auth management; register their routes here so the
+  // composition root stays lean. The cascade callbacks strip a deleted group from
+  // room rosters and schedule assignments.
+  registerAuthGroupRoutes({
+    app,
+    authService,
+    currentAuth,
+    currentUser,
+    recordAuditEvent,
+    removeGroupFromRoster: (groupId) => roomRosterStore.removeGroupSubject(groupId),
+    removeGroupFromSchedules: async (groupId) => {
+      const affected = (await scheduleStore.list()).filter((schedule) =>
+        schedule.assignedGroupIds.includes(groupId),
+      );
+
+      for (const schedule of affected) {
+        await scheduleStore.update(schedule.id, {
+          assignedGroupIds: schedule.assignedGroupIds.filter((id) => id !== groupId),
+        });
+      }
+
+      return affected.length;
+    },
+    requirePermission,
+  });
+
   app.get(
     "/api/v1/auth/actions",
     requirePermission("auth:manage", "auth.actions.read", () => ({ type: "auth" })),
@@ -604,32 +630,6 @@ function accessPolicyActions(permissions: readonly Permission[]) {
       ready: true,
     }),
   };
-}
-
-export function actionState({
-  href,
-  method,
-  payload,
-  permission,
-  permissions,
-  ready,
-  reason,
-}: {
-  href?: string;
-  method: AuthActionState["method"];
-  payload?: Record<string, unknown>;
-  permission: Permission;
-  permissions: readonly Permission[];
-  ready: boolean;
-  reason?: string;
-}): AuthActionState {
-  if (!permissions.includes(permission)) {
-    return { enabled: false, method, permission, reason: "missing_permission" };
-  }
-
-  return ready
-    ? { enabled: true, href, method, payload, permission }
-    : { enabled: false, method, payload, permission, reason };
 }
 
 function authRootLinks() {

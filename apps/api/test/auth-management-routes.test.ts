@@ -13,6 +13,20 @@ const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAuthManagementRoutes } = await import("../src/auth-management-routes.js");
 const { LocalAuthService } = await import("../src/auth-service.js");
 
+// registerAuthManagementRoutes also wires the group routes, which borrow these
+// stores only for delete-cascade cleanup — never exercised by the tests here
+// (group route behavior is covered in auth-group-routes.test.ts).
+type ManagementDeps = Parameters<typeof registerAuthManagementRoutes>[0];
+const groupCascadeStubs = {
+  roomRosterStore: {
+    removeGroupSubject: async () => {},
+  } as unknown as ManagementDeps["roomRosterStore"],
+  scheduleStore: {
+    list: async () => [],
+    update: async () => undefined,
+  } as unknown as ManagementDeps["scheduleStore"],
+};
+
 test("auth management read and action-summary routes audit successes and missing users", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
@@ -27,6 +41,8 @@ test("auth management read and action-summary routes audit successes and missing
     currentUser: () => currentUser,
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
+    roomRosterStore: groupCascadeStubs.roomRosterStore,
+    scheduleStore: groupCascadeStubs.scheduleStore,
   });
 
   const rootResponse = await app.request("/api/v1/auth/actions");
@@ -106,6 +122,8 @@ test("auth users/groups list routes clamp pagination to the page policy", async 
     currentUser: () => currentUser,
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: allowPermission(),
+    roomRosterStore: groupCascadeStubs.roomRosterStore,
+    scheduleStore: groupCascadeStubs.scheduleStore,
   });
 
   for (const base of ["/api/v1/auth/users", "/api/v1/auth/groups"]) {

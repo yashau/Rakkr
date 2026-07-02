@@ -20,7 +20,6 @@ import {
 } from "@rakkr/shared";
 import { registerAuditRoutes } from "./audit-routes.js";
 import { createAuditStore } from "./audit-store.js";
-import { registerAuthGroupRoutes } from "./auth-group-routes.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { registerAuthManagementRoutes } from "./auth-management-routes.js";
 import { clearOidcLoginStateCookie, registerAuthOidcRoutes } from "./auth-oidc-routes.js";
@@ -807,29 +806,8 @@ registerAuthManagementRoutes({
   currentUser,
   recordAuditEvent,
   requirePermission,
-});
-
-registerAuthGroupRoutes({
-  app,
-  authService,
-  currentAuth,
-  currentUser,
-  recordAuditEvent,
-  removeGroupFromRoster: (groupId) => roomRosterStore.removeGroupSubject(groupId),
-  removeGroupFromSchedules: async (groupId) => {
-    const affected = (await scheduleStore.list()).filter((schedule) =>
-      schedule.assignedGroupIds.includes(groupId),
-    );
-
-    for (const schedule of affected) {
-      await scheduleStore.update(schedule.id, {
-        assignedGroupIds: schedule.assignedGroupIds.filter((id) => id !== groupId),
-      });
-    }
-
-    return affected.length;
-  },
-  requirePermission,
+  roomRosterStore,
+  scheduleStore,
 });
 
 registerAuthLifecycleRoutes({
