@@ -20,7 +20,10 @@ use crate::recording_job_recovery::{
     report_control_plane_sync_failure, spawn_capture_plan_with_recovery,
     write_recoverable_job_state,
 };
-use crate::recording_job_segments::stitch_recovered_capture_segments;
+use crate::recording_job_segments::{
+    STITCH_FAILED_REASON, StitchContext, StitchOutcome, report_unrecoverable_capture_segments,
+    stitch_recovered_capture_segments,
+};
 use crate::recording_job_upload::{
     RenditionUploadInputs, UploadCheckpoint, append_job_health_event, upload_recording_renditions,
     write_upload_checkpoint_state,
@@ -544,15 +547,36 @@ pub async fn run_next_recording_job(config: &AgentConfig) -> anyhow::Result<()> 
 
         tokio::time::sleep(Duration::from_secs(config.job_poll_seconds.max(1))).await;
     };
-    let raw_output_path = stitch_recovered_capture_segments(
+    let stitch_ctx = StitchContext {
         config,
         token,
-        &job,
-        &capture_plan,
-        &recovered_segments,
-        &raw_output_path,
-    )
-    .await?;
+        recording_id: &job.recording_id,
+        job_id: &job.id,
+        render_command: &capture_plan.render_command,
+        output_path: &capture_plan.output_path,
+    };
+    let raw_output_path =
+        match stitch_recovered_capture_segments(&stitch_ctx, &recovered_segments, &raw_output_path)
+            .await?
+        {
+            StitchOutcome::NoSegments => raw_output_path,
+            StitchOutcome::Stitched(stitched_path) => stitched_path,
+            StitchOutcome::Failed { preserved } => {
+                // The pre-loss segments could not be merged. Never silent-complete:
+                // preserve the audio on disk, emit a critical health event, and fail
+                // the job so the recording reflects the loss (GH-1).
+                report_unrecoverable_capture_segments(&stitch_ctx, &preserved).await?;
+                write_job_state(
+                    config,
+                    &job,
+                    "failed",
+                    Some(&raw_output_path),
+                    Some(STITCH_FAILED_REASON),
+                )?;
+
+                return Err(anyhow::anyhow!(STITCH_FAILED_REASON));
+            }
+        };
     let output_path = match render_capture_output(&capture_plan, &raw_output_path) {
         Ok(rendered_path) => {
             if rendered_path != raw_output_path {

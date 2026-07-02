@@ -345,6 +345,8 @@ async fn finish_chunked_capture(
         .max()
         .unwrap_or(*uploaded_chunks);
 
+    let mut delivered_total = false;
+
     for (offset, closed) in trailing.iter().enumerate() {
         // chunkTotal rides only the FINAL chunk's primary upload.
         let chunk_total = if offset + 1 == trailing.len() {
@@ -353,7 +355,7 @@ async fn finish_chunked_capture(
             None
         };
 
-        finalize_and_upload_chunk(
+        if finalize_and_upload_chunk(
             config,
             token,
             job,
@@ -364,41 +366,64 @@ async fn finish_chunked_capture(
             uploaded_chunks,
             pending,
         )
-        .await?;
+        .await?
+        {
+            delivered_total = true;
+        }
     }
 
-    if !pending.is_empty() {
-        // Some chunk uploads exhausted their retries; keep the recording as a
-        // partial with the leftover chunks persisted for restart recovery.
-        let reason = "chunk_upload_retries_exhausted";
+    match chunked_finish_action(delivered_total, pending.is_empty()) {
+        ChunkedFinishAction::PartialPending => {
+            // Some chunk uploads exhausted their retries; keep the recording as a
+            // partial with the leftover chunks persisted for restart recovery.
+            let reason = "chunk_upload_retries_exhausted";
 
-        write_chunked_job_state(
-            config,
-            job,
-            "partial",
-            *uploaded_chunks,
-            pending,
-            Some(reason),
-            Some(total_chunks),
-        )?;
-        append_job_health_event(
-            config,
-            token,
-            job,
-            "agent.recording_job.chunked_partial",
-            "warning",
-            json!({
-                "chunkTotal": total_chunks,
-                "jobId": job.id.as_str(),
-                "pendingChunkCount": pending.len(),
-                "reason": reason,
-                "recordingId": job.recording_id.as_str(),
-                "uploadedChunkCount": *uploaded_chunks,
-            }),
-        )
-        .await?;
+            write_chunked_job_state(
+                config,
+                job,
+                "partial",
+                *uploaded_chunks,
+                pending,
+                Some(reason),
+                Some(total_chunks),
+            )?;
+            append_job_health_event(
+                config,
+                token,
+                job,
+                "agent.recording_job.chunked_partial",
+                "warning",
+                json!({
+                    "chunkTotal": total_chunks,
+                    "jobId": job.id.as_str(),
+                    "pendingChunkCount": pending.len(),
+                    "reason": reason,
+                    "recordingId": job.recording_id.as_str(),
+                    "uploadedChunkCount": *uploaded_chunks,
+                }),
+            )
+            .await?;
 
-        return Ok(());
+            return Ok(());
+        }
+        ChunkedFinishAction::FinalizeUndelivered => {
+            // The chunkTotal never reached the controller: the FINAL trailing chunk
+            // failed to render (its audio is lost), or there was no trailing chunk to
+            // carry it. Nothing is pending to re-deliver on restart, so the recording
+            // would hang unfinalized on the controller until lease expiry. Finalize
+            // it now — the controller resolves it to `partial` (chunks preserved) or
+            // `failed` (none) (G62).
+            return finalize_undelivered_chunked_total(
+                config,
+                token,
+                job,
+                chunk_plan,
+                *uploaded_chunks,
+                total_chunks,
+            )
+            .await;
+        }
+        ChunkedFinishAction::Completed => {}
     }
 
     write_chunked_job_state(
@@ -429,6 +454,84 @@ async fn finish_chunked_capture(
     Ok(())
 }
 
+/// What a graceful finish should do once every trailing chunk has been processed,
+/// given whether the controller received the completing `chunkTotal` and whether any
+/// chunk is still pending. Pure so the branch is unit-testable without the capture or
+/// controller seams.
+#[derive(Debug, Eq, PartialEq)]
+enum ChunkedFinishAction {
+    /// The total reached the controller and nothing is pending — complete normally.
+    Completed,
+    /// Chunks are pending; persist them as a resumable partial.
+    PartialPending,
+    /// Nothing pending, but the total never reached the controller (final chunk's
+    /// render/upload never carried it) — finalize now so the recording is not left
+    /// hanging unfinalized.
+    FinalizeUndelivered,
+}
+
+fn chunked_finish_action(delivered_total: bool, pending_empty: bool) -> ChunkedFinishAction {
+    if !pending_empty {
+        ChunkedFinishAction::PartialPending
+    } else if delivered_total {
+        ChunkedFinishAction::Completed
+    } else {
+        ChunkedFinishAction::FinalizeUndelivered
+    }
+}
+
+/// Finalize a chunked recording whose completing `chunkTotal` was never delivered
+/// (the final chunk failed to render, or there was no trailing chunk to carry it) and
+/// which has nothing pending to re-deliver on restart. Marking the job terminal lets
+/// the controller resolve the recording from its secured chunks — `partial` when some
+/// chunks are preserved, `failed` when none are — instead of hanging it unfinalized
+/// until lease expiry (G62).
+async fn finalize_undelivered_chunked_total(
+    config: &AgentConfig,
+    token: &str,
+    job: &ControllerRecordingJob,
+    chunk_plan: &ChunkPlan,
+    uploaded_chunks: u32,
+    total_chunks: u32,
+) -> anyhow::Result<()> {
+    let reason = "final_chunk_total_undelivered";
+    let _ = mark_recording_job_failed(config, token, &job.id, reason).await;
+
+    let (status, event_type, severity) = if uploaded_chunks == 0 {
+        ("failed", "agent.recording_job.capture_failed", "critical")
+    } else {
+        ("partial", "agent.recording_job.chunked_partial", "warning")
+    };
+
+    write_chunked_job_state(
+        config,
+        job,
+        status,
+        uploaded_chunks,
+        &[],
+        Some(reason),
+        Some(total_chunks),
+    )?;
+    append_job_health_event(
+        config,
+        token,
+        job,
+        event_type,
+        severity,
+        json!({
+            "chunkSeconds": chunk_plan.chunk_seconds,
+            "chunkTotal": total_chunks,
+            "jobId": job.id.as_str(),
+            "reason": reason,
+            "recordingId": job.recording_id.as_str(),
+            "uploadedChunkCount": uploaded_chunks,
+        }),
+    )
+    .await?;
+
+    Ok(())
+}
+
 /// Render and upload a single closed chunk (raw + enhanced) with bounded retries.
 /// On a successful primary upload the chunk's local working files are deleted
 /// (per-chunk retention). On retry exhaustion a warning is emitted and the chunk is
@@ -445,7 +548,7 @@ async fn finalize_and_upload_chunk(
     chunk_total: Option<u32>,
     uploaded_chunks: &mut u32,
     pending: &mut Vec<PendingChunk>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let chunk_capture_plan = capture_plan.chunk_plan(
         &chunk_plan.dir,
         &chunk_plan.stem,
@@ -475,7 +578,11 @@ async fn finalize_and_upload_chunk(
             )
             .await?;
 
-            return Ok(());
+            // Render failed, so nothing was uploaded and the chunkTotal this chunk
+            // may have been carrying was not delivered. The caller detects an
+            // undelivered final total and finalizes the recording rather than
+            // hanging it (G62).
+            return Ok(false);
         }
     };
     let content_type = content_type_for_codec(job.command.output_codec.as_deref(), &output_path);
@@ -514,7 +621,7 @@ async fn finalize_and_upload_chunk(
         }
     };
 
-    match upload_result {
+    let delivered_total = match upload_result {
         Ok(()) => {
             *uploaded_chunks += 1;
             // Per-chunk retention: drop the local working files now the controller
@@ -537,6 +644,10 @@ async fn finalize_and_upload_chunk(
                 }),
             )
             .await?;
+
+            // The controller only learns the total (and finalizes) when the FINAL
+            // chunk's upload — the one carrying chunkTotal — succeeds.
+            chunk_total.is_some()
         }
         Err(error) => {
             warn!(
@@ -565,8 +676,13 @@ async fn finalize_and_upload_chunk(
                 }),
             )
             .await?;
+
+            // The upload exhausted retries and the chunk is now pending, so its
+            // total (if any) is undelivered — but it is resumable: restart recovery
+            // re-uploads pending chunks with the total. Not a hang.
+            false
         }
-    }
+    };
 
     write_chunked_job_state(
         config,
@@ -578,7 +694,7 @@ async fn finalize_and_upload_chunk(
         chunk_total,
     )?;
 
-    Ok(())
+    Ok(delivered_total)
 }
 
 /// Detect a terminal capture failure on the open segment: a stalled/disconnected
@@ -789,6 +905,40 @@ mod tests {
         assert_eq!(
             chunk_upload_file_name("recording", 1),
             "recording.chunk-0001.wav"
+        );
+    }
+
+    #[test]
+    fn chunked_finish_completes_only_when_the_total_was_delivered() {
+        // The completing chunkTotal reached the controller and nothing is pending.
+        assert_eq!(
+            chunked_finish_action(true, true),
+            ChunkedFinishAction::Completed
+        );
+    }
+
+    #[test]
+    fn chunked_finish_persists_a_partial_when_chunks_are_pending() {
+        // Pending chunks are resumable regardless of whether the total went out.
+        assert_eq!(
+            chunked_finish_action(false, false),
+            ChunkedFinishAction::PartialPending
+        );
+        assert_eq!(
+            chunked_finish_action(true, false),
+            ChunkedFinishAction::PartialPending
+        );
+    }
+
+    #[test]
+    fn chunked_finish_finalizes_when_total_undelivered_and_nothing_pending() {
+        // Regression for G62: the final chunk's render/upload never delivered the
+        // total and nothing is pending to re-deliver on restart. The old code
+        // wrote a terminal `completed` here, leaving the controller recording
+        // hanging unfinalized; it must finalize instead.
+        assert_eq!(
+            chunked_finish_action(false, true),
+            ChunkedFinishAction::FinalizeUndelivered
         );
     }
 }
