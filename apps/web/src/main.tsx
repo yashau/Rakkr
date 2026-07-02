@@ -29,12 +29,14 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { ThemeProvider } from "next-themes";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { toast } from "sonner";
 
 import { RecordingStartPanel } from "@/components/recording-start-panel";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,8 +97,8 @@ function NavLinks({ navItems, onNavigate }: { navItems: RootNavItem[]; onNavigat
 
         return (
           <Link
-            activeProps={{ className: "bg-stone-100 text-zinc-950" }}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100"
+            activeProps={{ className: "bg-accent text-accent-foreground" }}
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             key={item.to}
             onClick={onNavigate}
             to={item.to}
@@ -167,9 +169,9 @@ function RootLayout() {
 
   if (gate === "session-error") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-100 p-6">
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <div className="grid w-full max-w-sm gap-4 rounded-lg border border-border bg-panel p-6 text-center">
-          <div className="mx-auto flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+          <div className="mx-auto flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Radio className="size-5" />
           </div>
           <div className="grid gap-1">
@@ -187,10 +189,10 @@ function RootLayout() {
 
   if (!currentUserQuery.data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-100 p-6">
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <output aria-label="Loading Rakkr" className="grid w-full max-w-xs gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Radio className="size-5" />
             </div>
             <Skeleton className="h-5 w-28" />
@@ -208,10 +210,10 @@ function RootLayout() {
   const recordAction = rootLayoutRecordActionState(layoutPermissions);
 
   return (
-    <div className="min-h-screen bg-stone-100 text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-border bg-panel px-4 py-5 lg:block">
         <div className="mb-8 flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Radio className="size-5" />
           </div>
           <div>
@@ -228,7 +230,7 @@ function RootLayout() {
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-10 border-b border-border bg-stone-100/90 px-4 py-3 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-10 border-b border-border bg-background/90 px-4 py-3 backdrop-blur md:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Sheet onOpenChange={setMobileNavOpen} open={mobileNavOpen}>
@@ -248,6 +250,10 @@ function RootLayout() {
                     Rakkr
                   </SheetTitle>
                   <NavLinks navItems={navItems} onNavigate={() => setMobileNavOpen(false)} />
+                  <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+                    <span className="text-sm font-medium text-muted-foreground">Dark mode</span>
+                    <ThemeToggle />
+                  </div>
                 </SheetContent>
               </Sheet>
               <div>
@@ -262,6 +268,7 @@ function RootLayout() {
                 <div className="font-medium">{currentUser.name}</div>
                 <div className="text-xs text-muted-foreground">{currentUser.roles.join(", ")}</div>
               </div>
+              <ThemeToggle className="mr-1 hidden md:flex" />
               {canReadSettings ? (
                 <Button asChild variant="outline">
                   <Link to="/settings">
@@ -298,7 +305,7 @@ function RootLayout() {
         </header>
 
         {quickRecordOpen ? (
-          <section className="border-b border-border bg-stone-100 p-4 md:px-6">
+          <section className="border-b border-border bg-background p-4 md:px-6">
             <div className="mx-auto grid max-w-7xl gap-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -347,10 +354,10 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
   });
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-100 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
       <section className="w-full max-w-sm rounded-lg border border-border bg-panel p-5 shadow-sm">
         <div className="mb-5 flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-zinc-950 text-white">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Radio className="size-5" />
           </div>
           <div>
@@ -391,7 +398,7 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
           </div>
 
           {loginMutation.isError ? (
-            <p className="text-sm text-red-700">Invalid email or password.</p>
+            <p className="text-sm text-destructive">Invalid email or password.</p>
           ) : null}
 
           <Button disabled={loginMutation.isPending} type="submit">
@@ -506,11 +513,13 @@ declare module "@tanstack/react-router" {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={200}>
-        <RouterProvider router={router} />
-        <Toaster position="bottom-right" richColors />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange enableSystem>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider delayDuration={200}>
+          <RouterProvider router={router} />
+          <Toaster position="bottom-right" richColors />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 );

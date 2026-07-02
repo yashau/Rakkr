@@ -162,7 +162,7 @@ function SettingsAccessState({ description, title }: { description: string; titl
   return (
     <Card className="rounded-lg p-5 shadow-sm">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
           <ShieldAlert className="size-5" />
         </div>
         <div>

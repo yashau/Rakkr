@@ -29,7 +29,7 @@ export function QualityTimeline({
     <section className="mt-3 rounded-md border border-border bg-muted/20 p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-md bg-teal-100 text-teal-700">
+          <span className="flex size-7 items-center justify-center rounded-md bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
             <Gauge className="size-4" />
           </span>
           <div>
@@ -45,7 +45,7 @@ export function QualityTimeline({
         </Badge>
       </div>
 
-      <div className="relative h-9 overflow-hidden rounded-md border border-stone-300 bg-emerald-100">
+      <div className="relative h-9 overflow-hidden rounded-md border border-stone-300 bg-emerald-100 dark:border-stone-700 dark:bg-emerald-950/40">
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,.7)_0,transparent_1px,transparent_20%,rgba(255,255,255,.65)_calc(20%+1px),transparent_calc(20%+2px),transparent_40%,rgba(255,255,255,.65)_calc(40%+1px),transparent_calc(40%+2px),transparent_60%,rgba(255,255,255,.65)_calc(60%+1px),transparent_calc(60%+2px),transparent_80%,rgba(255,255,255,.65)_calc(80%+1px),transparent_calc(80%+2px))]" />
         {segments.map((segment) => (
           <Tooltip key={segment.event.id}>
@@ -65,7 +65,7 @@ export function QualityTimeline({
             <TooltipContent>{timelineTitle(segment.event)}</TooltipContent>
           </Tooltip>
         ))}
-        <div className="absolute right-2 bottom-1 rounded bg-white/80 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800">
+        <div className="absolute right-2 bottom-1 rounded bg-white/80 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-black/50 dark:text-emerald-200">
           healthy
         </div>
       </div>
@@ -97,7 +97,9 @@ function TimelineEventLine({ event }: { event: HealthEvent }) {
       <Icon
         className={cn(
           "size-4",
-          event.status === "resolved" ? "text-emerald-600" : "text-amber-600",
+          event.status === "resolved"
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-amber-600 dark:text-amber-400",
         )}
       />
       <Badge className={timelineSegmentClass(event)} variant="outline">
