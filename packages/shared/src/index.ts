@@ -945,6 +945,7 @@ export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
 export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
 export type ControllerSettings = z.infer<typeof controllerSettingsSchema>;
 export type ControllerSettingsUpdate = z.infer<typeof controllerSettingsUpdateSchema>;
+export type WeekStartDay = z.infer<typeof weekStartDaySchema>;
 export type RecordingJob = z.infer<typeof recordingJobSchema>;
 export type RecordingJobChannelMap = z.infer<typeof recordingJobChannelMapSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;

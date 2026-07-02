@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
+  CalendarDays,
   CalendarPlus,
   FileSearch,
   Pencil,
@@ -205,12 +206,20 @@ export function SchedulesPage() {
               {meta?.total ?? schedules.length} matching schedules
             </p>
           </div>
-          {actionPermissions.canManage ? (
-            <Button onClick={openCreate} type="button">
-              <PlusCircle className="size-4" />
-              Add schedule
+          <div className="flex flex-wrap gap-2">
+            <Button asChild type="button" variant="outline">
+              <Link to="/schedules/calendar">
+                <CalendarDays className="size-4" />
+                Calendar
+              </Link>
             </Button>
-          ) : null}
+            {actionPermissions.canManage ? (
+              <Button onClick={openCreate} type="button">
+                <PlusCircle className="size-4" />
+                Add schedule
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-4">

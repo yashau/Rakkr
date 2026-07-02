@@ -69,6 +69,7 @@ import { RecordingsPage } from "@/pages/recordings";
 import { RoomDetailPage } from "@/pages/room-detail";
 import { RoomsPage } from "@/pages/rooms";
 import { ScheduleDetailPage } from "@/pages/schedule-detail";
+import { SchedulesCalendarPage } from "@/pages/schedules-calendar";
 import { SchedulesPage } from "@/pages/schedules";
 import { SettingsPage } from "@/pages/settings";
 
@@ -452,6 +453,12 @@ const schedulesRoute = createRoute({
   path: "/schedules",
 });
 
+const schedulesCalendarRoute = createRoute({
+  component: SchedulesCalendarPage,
+  getParentRoute: () => rootRoute,
+  path: "/schedules/calendar",
+});
+
 function ScheduleDetailRouteComponent() {
   const { scheduleId } = useParams({ from: "/schedules/$scheduleId" });
 
@@ -517,6 +524,7 @@ const routeTree = rootRoute.addChildren([
   nodesRoute,
   healthRoute,
   schedulesRoute,
+  schedulesCalendarRoute,
   scheduleDetailRoute,
   roomsRoute,
   roomDetailRoute,

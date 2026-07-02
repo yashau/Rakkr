@@ -12,6 +12,23 @@ export interface CalendarDayCell {
 // Sunday-first base labels, indexed by JS Date.getDay() (0 = Sunday).
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const WEEK_START_INDEXES: Record<string, number> = {
+  friday: 5,
+  monday: 1,
+  saturday: 6,
+  sunday: 0,
+  thursday: 4,
+  tuesday: 2,
+  wednesday: 3,
+};
+
+// Maps a controller-settings week-start day name to the JS getDay() index
+// buildMonthGrid/monthGridRange/orderedWeekdayLabels expect. Defaults to
+// Monday (1) for an unset or unrecognized value.
+export function weekStartIndex(day: string | undefined): number {
+  return day !== undefined && day in WEEK_START_INDEXES ? WEEK_START_INDEXES[day] : 1;
+}
+
 // Weekday header labels ordered so the configured start day comes first.
 // weekStartsOn is a JS getDay() index (0 = Sunday … 6 = Saturday).
 export function orderedWeekdayLabels(weekStartsOn: number) {
