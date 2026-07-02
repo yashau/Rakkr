@@ -32,6 +32,9 @@ export interface RoomRosterStore {
   listForRoom(roomId: string): Promise<RoomRosterEntry[]>;
   reconcileCalendar(input: CalendarReconcileInput): Promise<void>;
   removeForSchedule(scheduleId: string): Promise<void>;
+  // Strips every roster row (manual AND calendar) for a group subject; used when a
+  // group is deleted so no dangling group grants remain.
+  removeGroupSubject(groupId: string): Promise<void>;
   replaceManual(roomId: string, entries: ManualEntry[], grantedByUserId?: string): Promise<void>;
   roomsForSubject(subject: RosterSubject): Promise<Map<string, Set<RoomCapability>>>;
 }
@@ -113,6 +116,11 @@ class JsonRoomRosterStore implements RoomRosterStore {
 
   async removeForSchedule(scheduleId: string) {
     this.removeWhere((row) => row.sourceScheduleId === scheduleId);
+    this.persist();
+  }
+
+  async removeGroupSubject(groupId: string) {
+    this.removeWhere((row) => row.subjectType === "group" && row.subjectId === groupId);
     this.persist();
   }
 
@@ -291,6 +299,23 @@ class PostgresRoomRosterStore implements RoomRosterStore {
     } catch (error) {
       await this.failover("room roster schedule removal unavailable; using JSON store", error);
       return this.fallback.removeForSchedule(scheduleId);
+    }
+  }
+
+  async removeGroupSubject(groupId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.removeGroupSubject(groupId);
+    }
+
+    try {
+      await this.db
+        .delete(roomRosterTable)
+        .where(
+          and(eq(roomRosterTable.subjectType, "group"), eq(roomRosterTable.subjectId, groupId)),
+        );
+    } catch (error) {
+      await this.failover("room roster group removal unavailable; using JSON store", error);
+      return this.fallback.removeGroupSubject(groupId);
     }
   }
 

@@ -20,6 +20,7 @@ import {
 } from "@rakkr/shared";
 import { registerAuditRoutes } from "./audit-routes.js";
 import { createAuditStore } from "./audit-store.js";
+import { registerAuthGroupRoutes } from "./auth-group-routes.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { registerAuthManagementRoutes } from "./auth-management-routes.js";
 import { clearOidcLoginStateCookie, registerAuthOidcRoutes } from "./auth-oidc-routes.js";
@@ -770,6 +771,29 @@ registerAuthManagementRoutes({
   requirePermission,
 });
 
+registerAuthGroupRoutes({
+  app,
+  authService,
+  currentAuth,
+  currentUser,
+  recordAuditEvent,
+  removeGroupFromRoster: (groupId) => roomRosterStore.removeGroupSubject(groupId),
+  removeGroupFromSchedules: async (groupId) => {
+    const affected = (await scheduleStore.list()).filter((schedule) =>
+      schedule.assignedGroupIds.includes(groupId),
+    );
+
+    for (const schedule of affected) {
+      await scheduleStore.update(schedule.id, {
+        assignedGroupIds: schedule.assignedGroupIds.filter((id) => id !== groupId),
+      });
+    }
+
+    return affected.length;
+  },
+  requirePermission,
+});
+
 registerAuthLifecycleRoutes({
   app,
   authService,
@@ -809,7 +833,7 @@ registerScheduleRoutes({
   assignmentIdReferences: async ({ groupIds, userIds }) => {
     const [users, groups] = await Promise.all([
       authService.localUsers(),
-      authService.localGroups(),
+      authService.groups.localGroups(),
     ]);
     const knownUserIds = new Set(users.map((user) => user.id));
     const knownGroupIds = new Set(groups.map((group) => group.id));
@@ -854,7 +878,7 @@ registerRoomRoutes({
   currentAuth,
   currentUser,
   listGroups: async () =>
-    (await authService.localGroups()).map((group) => ({ id: group.id, name: group.name })),
+    (await authService.groups.localGroups()).map((group) => ({ id: group.id, name: group.name })),
   listUsers: async () =>
     (await authService.localUsers()).map((user) => ({ id: user.id, name: user.name })),
   nodeStore,

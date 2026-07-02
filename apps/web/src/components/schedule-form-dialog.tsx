@@ -97,7 +97,7 @@ export function ScheduleFormDialog({
   });
   const groupsQuery = useQuery({
     enabled: open,
-    queryFn: api.accessGroups,
+    queryFn: () => api.accessGroups(),
     queryKey: ["access-groups"],
   });
   const retentionPolicies = retentionPoliciesQuery.data?.data ?? [];

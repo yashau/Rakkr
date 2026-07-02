@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { AccessCreateUserDialog } from "@/components/access-create-user-dialog";
 import { AccessEditDialog } from "@/components/access-edit-dialog";
+import { AccessGroupsSection } from "@/components/access-groups-section";
 import { AccessResetPasswordDialog } from "@/components/access-reset-password-dialog";
 import { AccessPolicyComposer } from "@/components/access-policy-composer";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -55,8 +56,13 @@ export function AccessPage() {
   });
   const groupsQuery = useQuery({
     enabled: permissions.canRead,
-    queryFn: api.accessGroups,
+    queryFn: () => api.accessGroups({ limit: 200 }),
     queryKey: ["access-groups"],
+  });
+  const userOptionsQuery = useQuery({
+    enabled: permissions.canRead,
+    queryFn: () => api.accessUsers({ limit: 200 }),
+    queryKey: ["access-users", { limit: 200 }],
   });
   const policiesQuery = useQuery({
     enabled: permissions.canRead,
@@ -140,7 +146,15 @@ export function AccessPage() {
       setPolicyError(undefined);
     },
   });
-  const groups = groupsQuery.data?.data ?? [];
+  const groupOptions = (groupsQuery.data?.data ?? []).map((group) => ({
+    id: group.id,
+    label: group.name,
+  }));
+  const userOptions = (userOptionsQuery.data?.data ?? []).map((user) => ({
+    id: user.id,
+    label: user.name,
+    sublabel: user.email,
+  }));
 
   useEffect(() => {
     if (policiesQuery.data) {
@@ -190,6 +204,7 @@ export function AccessPage() {
         </div>
         {permissions.canManage ? (
           <AccessCreateUserDialog
+            groupOptions={groupOptions}
             onSubmit={submitCreateUser}
             saving={createUserMutation.isPending}
           />
@@ -213,6 +228,8 @@ export function AccessPage() {
           pageSizes={pagination.pageSizes}
         />
       </section>
+
+      {permissions.canManage ? <AccessGroupsSection canManage={permissions.canManage} /> : null}
 
       {permissions.canManage ? (
         <Card className="rounded-lg p-4 shadow-sm">
@@ -244,21 +261,14 @@ export function AccessPage() {
               />
             </div>
             <AccessPolicyComposer
+              groupOptions={groupOptions}
               onAppend={(line) => {
                 setPoliciesText((current) => appendTextLine(current, line));
                 setPolicyError(undefined);
               }}
+              userOptions={userOptions}
             />
             {policyError ? <p className="text-sm text-destructive">{policyError}</p> : null}
-            {groups.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {groups.map((group) => (
-                  <Badge className="bg-background" key={group.id} variant="outline">
-                    {group.name}
-                  </Badge>
-                ))}
-              </div>
-            ) : null}
             <Button disabled={updatePoliciesMutation.isPending} type="submit">
               <Save className="size-4" />
               Save Policies
@@ -270,6 +280,7 @@ export function AccessPage() {
       {permissions.canManage ? (
         <>
           <AccessEditDialog
+            groupOptions={groupOptions}
             onOpenChange={(open) => (open ? undefined : setEditUser(undefined))}
             onSubmit={submitAccessUpdate}
             open={Boolean(editUser)}

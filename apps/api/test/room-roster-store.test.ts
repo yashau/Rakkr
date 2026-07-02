@@ -100,6 +100,36 @@ test("manual and calendar grants for the same subject/room merge", async () => {
   assert.deepEqual([...caps].sort(), ["book", "operate", "view"]);
 });
 
+test("removeGroupSubject strips manual and calendar group rows but keeps user rows", async () => {
+  await store.replaceManual("room_h", [
+    { capabilities: ["view"], subjectId: "user-8", subjectType: "user" },
+    { capabilities: ["operate"], subjectId: "group-doomed", subjectType: "group" },
+  ]);
+  await store.reconcileCalendar({
+    capabilities: ["view", "operate"],
+    roomId: "room_h",
+    scheduleId: "sched-3",
+    subjects: [{ subjectId: "group-doomed", subjectType: "group" }],
+  });
+
+  const before = await store.effectiveCapabilities(
+    { groupIds: ["group-doomed"], userId: "user-8" },
+    "room_h",
+  );
+  assert.deepEqual([...before].sort(), ["operate", "view"]);
+
+  await store.removeGroupSubject("group-doomed");
+
+  const groupAfter = await store.effectiveCapabilities(
+    { groupIds: ["group-doomed"], userId: "unrelated" },
+    "room_h",
+  );
+  assert.equal(groupAfter.size, 0, "all group rows are gone");
+
+  const userAfter = await store.effectiveCapabilities({ groupIds: [], userId: "user-8" }, "room_h");
+  assert.deepEqual([...userAfter], ["view"], "the user row is preserved");
+});
+
 test("roomsForSubject returns every room the subject holds a capability in", async () => {
   await store.replaceManual("room_f", [
     { capabilities: ["view"], subjectId: "user-7", subjectType: "user" },

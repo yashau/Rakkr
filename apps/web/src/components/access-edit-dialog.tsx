@@ -3,6 +3,8 @@ import { useForm } from "react-hook-form";
 import { Save } from "lucide-react";
 import { roles, type CurrentUser, type Role } from "@rakkr/shared";
 
+import type { AssigneeOption } from "@/components/assignee-multi-select";
+import { GroupMultiSelect } from "@/components/group-multi-select";
 import { ResourceGrantComposer } from "@/components/resource-grant-composer";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,12 +29,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { accessDraftFromUser, appendTextLine, type AccessDraft } from "@/lib/access-page-helpers";
 
 export function AccessEditDialog({
+  groupOptions,
   onOpenChange,
   onSubmit,
   open,
   saving,
   user,
 }: {
+  groupOptions: AssigneeOption[];
   onOpenChange: (open: boolean) => void;
   onSubmit: (userId: string, draft: AccessDraft) => void;
   open: boolean;
@@ -40,7 +44,7 @@ export function AccessEditDialog({
   user: CurrentUser | undefined;
 }) {
   const form = useForm<AccessDraft>({
-    defaultValues: { groupsText: "", grantsText: "", roles: [] },
+    defaultValues: { groupIds: [], grantsText: "", roles: [] },
   });
 
   // Reseed the form whenever the dialog opens for a (possibly different) user so
@@ -88,15 +92,15 @@ export function AccessEditDialog({
 
             <FormField
               control={form.control}
-              name="groupsText"
+              name="groupIds"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Groups</FormLabel>
                   <FormControl>
-                    <Textarea
-                      {...field}
-                      className="min-h-20 bg-background font-mono text-xs"
-                      placeholder="operators"
+                    <GroupMultiSelect
+                      groupOptions={groupOptions}
+                      onChange={field.onChange}
+                      selectedGroupIds={field.value}
                     />
                   </FormControl>
                   <FormMessage />

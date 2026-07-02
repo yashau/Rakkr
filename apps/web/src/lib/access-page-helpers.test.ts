@@ -13,8 +13,6 @@ import {
   createUserDraftValid,
   emptyCreateUserDraft,
   grantsFromText,
-  groupIdsFromText,
-  groupsToText,
   policiesFromText,
   policiesToText,
 } from "./access-page-helpers";
@@ -75,11 +73,6 @@ test("appendTextLine joins onto trimmed existing content", () => {
   assert.equal(appendTextLine("node:n1\n", "room:r1"), "node:n1\nroom:r1");
 });
 
-test("groupIdsFromText splits, trims, and de-duplicates", () => {
-  assert.deepEqual(groupIdsFromText("operators, viewers\noperators"), ["operators", "viewers"]);
-  assert.deepEqual(groupIdsFromText("  "), []);
-});
-
 test("grantsFromText parses typed tokens and defaults bare ids to node", () => {
   assert.deepEqual(grantsFromText("node:n1\nroom:r1"), [
     { resourceId: "n1", resourceType: "node" },
@@ -89,24 +82,17 @@ test("grantsFromText parses typed tokens and defaults bare ids to node", () => {
   assert.deepEqual(grantsFromText("\n  \n"), []);
 });
 
-test("groupsToText renders group ids one per line", () => {
-  assert.equal(
-    groupsToText([
-      { id: "g1", name: "Ops" },
-      { id: "g2", name: "Viewers" },
-    ]),
-    "g1\ng2",
-  );
-});
-
 test("accessUpdateFromDraft falls back to viewer when no roles selected", () => {
-  assert.deepEqual(accessUpdateFromDraft({ groupsText: "g1", grantsText: "node:n1", roles: [] }), {
-    groupIds: ["g1"],
-    resourceGrants: [{ resourceId: "n1", resourceType: "node" }],
-    roles: ["viewer"],
-  });
   assert.deepEqual(
-    accessUpdateFromDraft({ groupsText: "", grantsText: "", roles: ["admin"] }).roles,
+    accessUpdateFromDraft({ groupIds: ["g1", "g1"], grantsText: "node:n1", roles: [] }),
+    {
+      groupIds: ["g1"],
+      resourceGrants: [{ resourceId: "n1", resourceType: "node" }],
+      roles: ["viewer"],
+    },
+  );
+  assert.deepEqual(
+    accessUpdateFromDraft({ groupIds: [], grantsText: "", roles: ["admin"] }).roles,
     ["admin"],
   );
 });
@@ -115,7 +101,7 @@ test("createInputFromDraft trims identity fields and preserves the password", ()
   assert.deepEqual(
     createInputFromDraft({
       email: "  a@b.test ",
-      groupsText: "g1\ng1",
+      groupIds: ["g1", "g1"],
       grantsText: "node:n1",
       name: "  Ada ",
       password: "longenough",
@@ -141,7 +127,7 @@ test("accessDraftFromUser projects a user onto the editable draft", () => {
         roles: ["operator"],
       }),
     ),
-    { groupsText: "ops", grantsText: "node:n1", roles: ["operator"] },
+    { groupIds: ["ops"], grantsText: "node:n1", roles: ["operator"] },
   );
 });
 

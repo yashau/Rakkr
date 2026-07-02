@@ -22,19 +22,27 @@ export interface AssigneeOption {
 
 interface AssigneeMultiSelectProps {
   disabled?: boolean;
+  emptyLabel?: string;
   groupOptions: AssigneeOption[];
+  label?: string;
   onChange: (next: { groupIds: string[]; userIds: string[] }) => void;
+  searchPlaceholder?: string;
   selectedGroupIds: string[];
   selectedUserIds: string[];
   userOptions: AssigneeOption[];
 }
 
 // Canonical shadcn combobox (Popover + Command) composed for picking multiple
-// users and/or access groups. Selection is echoed as removable badges.
+// users and/or access groups. Selection is echoed as removable badges. The label
+// props let single-subject wrappers (users-only / groups-only) retune the copy
+// without duplicating the combobox.
 export function AssigneeMultiSelect({
   disabled = false,
+  emptyLabel = "No users or groups found.",
   groupOptions,
+  label = "Assign users or groups",
   onChange,
+  searchPlaceholder = "Search users and groups…",
   selectedGroupIds,
   selectedUserIds,
   userOptions,
@@ -91,7 +99,7 @@ export function AssigneeMultiSelect({
           >
             <span className={cn(totalSelected === 0 && "text-muted-foreground")}>
               {totalSelected === 0
-                ? "Assign users or groups"
+                ? label
                 : `${totalSelected} assignee${totalSelected === 1 ? "" : "s"}`}
             </span>
             <ChevronsUpDown className="size-4 opacity-50" />
@@ -99,9 +107,9 @@ export function AssigneeMultiSelect({
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
           <Command>
-            <CommandInput placeholder="Search users and groups…" />
+            <CommandInput placeholder={searchPlaceholder} />
             <CommandList>
-              <CommandEmpty>No users or groups found.</CommandEmpty>
+              <CommandEmpty>{emptyLabel}</CommandEmpty>
               {groupOptions.length > 0 ? (
                 <CommandGroup heading="Access groups">
                   {groupOptions.map((option) => (

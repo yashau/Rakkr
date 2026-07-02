@@ -11,6 +11,8 @@ import {
 import { captureChannelSelectionSchema, channelModeSchema } from "./channels.js";
 import { recordingEnhancementSchema } from "./enhancement.js";
 import { recordingChunkSchema } from "./recording-chunks.js";
+import { accessGroupIdSchema, accessGroupSchema } from "./access-groups.js";
+export * from "./access-groups.js";
 export * from "./base.js";
 export * from "./channels.js";
 export * from "./enhancement.js";
@@ -83,11 +85,6 @@ export const permissionSchema = z.enum(permissions);
 export const roleSchema = z.enum(roles);
 export const accessPolicyEffectSchema = z.enum(["allow", "deny"]);
 export const accessPolicySubjectTypeSchema = z.enum(["user", "group", "everyone"]);
-export const accessGroupSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-});
-export const accessGroupIdSchema = z.string().trim().min(1).max(120);
 export const resourceGrantSchema = z.object({
   resourceId: z.string().min(1),
   resourceType: z.string().min(1),
@@ -923,8 +920,6 @@ export type AuditActorType = z.infer<typeof auditActorTypeSchema>;
 export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AuditOutcome = z.infer<typeof auditOutcomeSchema>;
 export type AudioInterface = z.infer<typeof audioInterfaceSchema>;
-export type AccessGroup = z.infer<typeof accessGroupSchema>;
-export type AccessGroupId = z.infer<typeof accessGroupIdSchema>;
 export type AccessPolicy = z.infer<typeof accessPolicySchema>;
 export type AccessPolicyEffect = z.infer<typeof accessPolicyEffectSchema>;
 export type AccessPolicyInput = z.infer<typeof accessPolicyInputSchema>;

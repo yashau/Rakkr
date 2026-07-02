@@ -23,10 +23,10 @@ interface AuthManagementRouteDependencies {
   requirePermission: RequirePermission;
 }
 
-interface AuthActionState {
+export interface AuthActionState {
   enabled: boolean;
   href?: string;
-  method: "DELETE" | "GET" | "PATCH" | "POST";
+  method: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
   payload?: Record<string, unknown>;
   permission: Permission;
   reason?: string;
@@ -92,7 +92,7 @@ export function registerAuthManagementRoutes({
     requirePermission("auth:manage", "auth.groups.read", () => ({ type: "auth" })),
     async (c) => {
       const { data, meta } = paginate(
-        await authService.localGroups(),
+        await authService.groups.localGroups(),
         parsePagination(
           {
             limit: numberFromQuery(c.req.query("limit")),
@@ -482,6 +482,13 @@ export function registerAuthManagementRoutes({
 
 function authRootActions(permissions: readonly Permission[]) {
   return {
+    createGroup: actionState({
+      href: "/api/v1/auth/groups",
+      method: "POST",
+      permission: "auth:manage",
+      permissions,
+      ready: true,
+    }),
     createUser: actionState({
       href: "/api/v1/auth/users",
       method: "POST",
@@ -599,7 +606,7 @@ function accessPolicyActions(permissions: readonly Permission[]) {
   };
 }
 
-function actionState({
+export function actionState({
   href,
   method,
   payload,

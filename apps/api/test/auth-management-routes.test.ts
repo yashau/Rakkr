@@ -7,6 +7,7 @@ import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/ht
 
 process.env.DATABASE_URL = "";
 process.env.RAKKR_LOCAL_ACCESS_POLICIES = "";
+process.env.RAKKR_LOCAL_ADMIN_GROUPS = "";
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAuthManagementRoutes } = await import("../src/auth-management-routes.js");
@@ -60,7 +61,7 @@ test("auth management read and action-summary routes audit successes and missing
   assert.equal(
     successAudits.find((event) => event.action === "auth.actions.read.succeeded")?.details
       .visibleActionCount,
-    5,
+    6,
   );
   assert.deepEqual(
     successAudits.find((event) => event.action === "auth.access_policies.actions.read.succeeded")

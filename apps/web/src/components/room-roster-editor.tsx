@@ -41,7 +41,7 @@ export function RoomRosterEditor({ roomId }: { roomId: string }) {
   });
   const groupsQuery = useQuery({
     enabled: addOpen,
-    queryFn: api.accessGroups,
+    queryFn: () => api.accessGroups(),
     queryKey: ["access-groups"],
   });
   const saveMutation = useMutation({

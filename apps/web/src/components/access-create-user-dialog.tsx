@@ -3,6 +3,8 @@ import { useForm } from "react-hook-form";
 import { UserPlus } from "lucide-react";
 import { roles, type Role } from "@rakkr/shared";
 
+import type { AssigneeOption } from "@/components/assignee-multi-select";
+import { GroupMultiSelect } from "@/components/group-multi-select";
 import { ResourceGrantComposer } from "@/components/resource-grant-composer";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,9 +36,11 @@ import {
 } from "@/lib/access-page-helpers";
 
 export function AccessCreateUserDialog({
+  groupOptions,
   onSubmit,
   saving,
 }: {
+  groupOptions: AssigneeOption[];
   onSubmit: (draft: CreateUserDraft) => void;
   saving: boolean;
 }) {
@@ -134,15 +138,15 @@ export function AccessCreateUserDialog({
             <div className="grid gap-3 md:grid-cols-2">
               <FormField
                 control={form.control}
-                name="groupsText"
+                name="groupIds"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Groups</FormLabel>
                     <FormControl>
-                      <Textarea
-                        {...field}
-                        className="min-h-20 bg-background font-mono text-xs"
-                        placeholder="operators"
+                      <GroupMultiSelect
+                        groupOptions={groupOptions}
+                        onChange={field.onChange}
+                        selectedGroupIds={field.value}
                       />
                     </FormControl>
                     <FormMessage />
