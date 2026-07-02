@@ -12,7 +12,6 @@ import type {
   ChannelMapTemplateUpdate,
   ControllerSettings,
   ControllerSettingsUpdate,
-  AccessGroup,
   AccessPolicy,
   AccessPolicyInput,
   CurrentUser,
@@ -66,6 +65,7 @@ import type {
   WatchdogPolicy,
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
+import { accessGroupsApi } from "./access-groups-api";
 import { apiBase, fetchBlob, fetchJson, withQuery } from "./api-http";
 import type { ControllerStatus } from "./status-types";
 import type {
@@ -381,7 +381,7 @@ export interface NodeInterfaceMetadataUpdate {
 }
 
 export const api = {
-  accessGroups: () => fetchJson<{ data: AccessGroup[] }>("/api/v1/auth/groups"),
+  ...accessGroupsApi,
   rooms: () => fetchJson<{ data: Room[] }>("/api/v1/rooms"),
   room: (roomId: string) => fetchJson<{ data: Room }>(`/api/v1/rooms/${roomId}`),
   roomOverview: (roomId: string) =>

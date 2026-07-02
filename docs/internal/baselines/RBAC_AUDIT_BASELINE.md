@@ -48,6 +48,7 @@ Status: MVP baseline checked.
 - Room identity is a stable `roomId` (`nodes.room_id` / `schedules.room_id`); room grants, deny policies, and the roster all key on `roomId`, not the free-text `<site>/<room>` string.
 - A calendar meeting-assignment is one grant SOURCE: a schedule's assigned users/groups reconcile into `source='calendar'` roster rows for the schedule's room (default capabilities view+operate), separate from `source='manual'` operator grants.
 - Group roster entries are evaluated dynamically against live membership; no reconciliation runs on membership change.
+- Access groups are first-class and managed under `auth:manage`: create (name-derived immutable slug id), rename/describe, membership, and delete via `/api/v1/auth/groups` (`apps/api/src/auth-management-routes.ts`, `apps/api/src/auth-service.ts`). Deleting a group cascade-cleans it from access policies, room rosters, and schedule `assignedGroupIds`, and audits the removal; membership/rename changes only refresh affected sessions.
 - Two invariants bound a roster grant: an explicit deny access-policy always overrides it, and it only authorizes a permission when the request target resolves to that room, so collection/global targets are never authorized via the roster. The authorization decision records `grantedViaRoomCapability` and the `roomCapability`.
 - Evidence: `apps/api/src/room-roster-store.ts`, `apps/api/src/room-store.ts`, `apps/api/src/index.ts`, `packages/shared/src/room-capabilities.ts`.
 

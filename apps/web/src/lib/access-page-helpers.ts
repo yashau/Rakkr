@@ -1,5 +1,4 @@
 import type {
-  AccessGroup,
   AccessPolicy,
   AccessPolicyInput,
   CurrentUser,
@@ -15,14 +14,14 @@ export interface AccessPagePermissions {
 }
 
 export interface AccessDraft {
-  groupsText: string;
+  groupIds: string[];
   grantsText: string;
   roles: Role[];
 }
 
 export interface CreateUserDraft {
   email: string;
-  groupsText: string;
+  groupIds: string[];
   grantsText: string;
   name: string;
   password: string;
@@ -31,7 +30,7 @@ export interface CreateUserDraft {
 
 export const emptyCreateUserDraft: CreateUserDraft = {
   email: "",
-  groupsText: "",
+  groupIds: [],
   grantsText: "",
   name: "",
   password: "",
@@ -76,7 +75,7 @@ export function canResetUserPassword(user: CurrentUser): boolean {
 
 export function accessDraftFromUser(user: CurrentUser): AccessDraft {
   return {
-    groupsText: groupsToText(user.groups),
+    groupIds: user.groups.map((group) => group.id),
     grantsText: grantsToText(user.resourceGrants),
     roles: user.roles,
   };
@@ -202,17 +201,9 @@ export function grantsToText(grants: ResourceGrant[]) {
   return grants.map((grant) => `${grant.resourceType}:${grant.resourceId}`).join("\n");
 }
 
-export function groupsToText(groups: AccessGroup[]) {
-  return groups.map((group) => group.id).join("\n");
-}
-
-export function groupIdsFromText(value: string) {
-  return uniqueTextValues(value);
-}
-
 export function accessUpdateFromDraft(draft: AccessDraft): UserAccessUpdate {
   return {
-    groupIds: groupIdsFromText(draft.groupsText),
+    groupIds: [...new Set(draft.groupIds)],
     resourceGrants: grantsFromText(draft.grantsText),
     roles: draft.roles.length > 0 ? draft.roles : ["viewer"],
   };
@@ -221,7 +212,7 @@ export function accessUpdateFromDraft(draft: AccessDraft): UserAccessUpdate {
 export function createInputFromDraft(draft: CreateUserDraft): LocalUserCreateInput {
   return {
     email: draft.email.trim(),
-    groupIds: groupIdsFromText(draft.groupsText),
+    groupIds: [...new Set(draft.groupIds)],
     name: draft.name.trim(),
     password: draft.password,
     resourceGrants: grantsFromText(draft.grantsText),
@@ -248,15 +239,4 @@ export function grantsFromText(value: string): ResourceGrant[] {
           };
     })
     .filter((grant) => grant.resourceId && grant.resourceType);
-}
-
-function uniqueTextValues(value: string) {
-  return [
-    ...new Set(
-      value
-        .split(/[,\n]/)
-        .map((line) => line.trim())
-        .filter(Boolean),
-    ),
-  ];
 }

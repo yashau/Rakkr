@@ -12,9 +12,19 @@ const { app } = await import("../src/index.js");
 test("auth management routes deny users without auth manage", async () => {
   const deniedToken = await loginToken();
   const targetUserId = "00000000-0000-4000-8000-000000000001";
+  const targetGroupId = "group_denied";
   const requests = [
     { path: "/api/v1/auth/actions" },
     { path: "/api/v1/auth/groups" },
+    { body: { name: "Denied Group" }, method: "POST", path: "/api/v1/auth/groups" },
+    { path: `/api/v1/auth/groups/${targetGroupId}` },
+    { body: { name: "Denied" }, method: "PATCH", path: `/api/v1/auth/groups/${targetGroupId}` },
+    {
+      body: { memberIds: [] },
+      method: "PUT",
+      path: `/api/v1/auth/groups/${targetGroupId}/members`,
+    },
+    { method: "DELETE", path: `/api/v1/auth/groups/${targetGroupId}` },
     { path: "/api/v1/auth/users" },
     {
       body: {
@@ -85,7 +95,12 @@ test("auth management routes deny users without auth manage", async () => {
     "auth.access_policies.actions.read",
     "auth.access_policies.update",
     "auth.actions.read",
+    "auth.groups.create",
+    "auth.groups.delete",
+    "auth.groups.detail.read",
+    "auth.groups.members.update",
     "auth.groups.read",
+    "auth.groups.update",
     "auth.users.access.update",
     "auth.users.actions.read",
     "auth.users.create",

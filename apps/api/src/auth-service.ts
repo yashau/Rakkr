@@ -32,6 +32,7 @@ import type {
   SessionContext,
 } from "./auth-types.js";
 import { AuthError } from "./auth-errors.js";
+import { LocalGroupManager } from "./auth-group-manager.js";
 
 import {
   accessPoliciesWithIds,
@@ -51,7 +52,6 @@ import {
   policyMatchesTarget,
   roleName,
   uniqueAccessPolicyInputs,
-  uniqueGroups,
   uniqueResourceGrants,
   uniqueRoles,
 } from "./auth-utils.js";
@@ -87,10 +87,30 @@ export class LocalAuthService {
   private readonly db?: ReturnType<typeof createDatabase>;
   private dbAvailable: boolean;
   private localAdminPasswordHash?: string;
+  // First-party access-group management lives in its own module; the service lends
+  // it the shared session/override state it needs (see auth-group-manager.ts).
+  private readonly groupManager: LocalGroupManager;
 
   constructor(databaseUrl = process.env.DATABASE_URL) {
     this.db = databaseUrl ? createDatabase(databaseUrl) : undefined;
     this.dbAvailable = Boolean(this.db);
+    this.groupManager = new LocalGroupManager({
+      availableDatabase: () => this.availableDatabase(),
+      getAccessPolicyOverrides: () => this.accessPolicyOverrides,
+      localGroupOverrides: this.localGroupOverrides,
+      localUser: (userId) => this.localUser(userId),
+      localUsers: () => this.localUsers(),
+      markDatabaseUnavailable: (error) => this.markDatabaseUnavailable(error),
+      refreshUserSessions: (user) => this.refreshUserSessions(user),
+      setAccessPolicyOverrides: (policies) => {
+        this.accessPolicyOverrides = policies;
+      },
+    });
+  }
+
+  // Access-group CRUD + membership (create/rename/delete, members, list, detail).
+  get groups(): LocalGroupManager {
+    return this.groupManager;
   }
 
   async login(email: string, password: string, context: SessionContext = {}): Promise<LoginResult> {
@@ -219,30 +239,6 @@ export class LocalAuthService {
       this.markDatabaseUnavailable(error);
       return [await this.localAdmin()];
     }
-  }
-
-  async localGroups(): Promise<AccessGroup[]> {
-    const overrideGroups = [...this.localGroupOverrides.values()].flat();
-    const db = this.availableDatabase();
-
-    if (db) {
-      try {
-        const rows = await db
-          .select({
-            id: accessGroups.id,
-            name: accessGroups.name,
-          })
-          .from(accessGroups);
-
-        if (rows.length > 0) {
-          return uniqueGroups([...rows, ...overrideGroups]);
-        }
-      } catch (error) {
-        this.markDatabaseUnavailable(error);
-      }
-    }
-
-    return uniqueGroups([...localGroupsFromEnv(), ...overrideGroups]);
   }
 
   async localUser(userId: string): Promise<CurrentUser | undefined> {

@@ -806,6 +806,8 @@ registerAuthManagementRoutes({
   currentUser,
   recordAuditEvent,
   requirePermission,
+  roomRosterStore,
+  scheduleStore,
 });
 
 registerAuthLifecycleRoutes({
@@ -847,7 +849,7 @@ registerScheduleRoutes({
   assignmentIdReferences: async ({ groupIds, userIds }) => {
     const [users, groups] = await Promise.all([
       authService.localUsers(),
-      authService.localGroups(),
+      authService.groups.localGroups(),
     ]);
     const knownUserIds = new Set(users.map((user) => user.id));
     const knownGroupIds = new Set(groups.map((group) => group.id));
@@ -892,7 +894,7 @@ registerRoomRoutes({
   currentAuth,
   currentUser,
   listGroups: async () =>
-    (await authService.localGroups()).map((group) => ({ id: group.id, name: group.name })),
+    (await authService.groups.localGroups()).map((group) => ({ id: group.id, name: group.name })),
   listUsers: async () =>
     (await authService.localUsers()).map((user) => ({ id: user.id, name: user.name })),
   nodeStore,

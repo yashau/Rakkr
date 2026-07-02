@@ -97,9 +97,12 @@ Administrators (`auth:manage`) manage access on the **Access** page:
   builds these; explicit deny always takes precedence.
 - **Resource grants** — direct per-user scope grants (e.g. "this user can act on
   `node_x32_test`").
-- **Users, roles, groups** — create local users, assign roles/groups, reset
-  passwords, enable/disable, and delete (you cannot disable or delete your own
-  account).
+- **Users, roles, groups** — create local users, assign roles and access
+  groups (chosen from a searchable picker), reset passwords, enable/disable, and
+  delete (you cannot disable or delete your own account).
+- **Access groups** — create, rename/describe, manage membership, and delete
+  access groups from the Access page. A group can be assigned to schedules, room
+  rosters, and access policies; deleting a group removes it from all of them.
 
 For local development you can seed grants and policies with
 `RAKKR_LOCAL_RESOURCE_GRANTS` and `RAKKR_LOCAL_ACCESS_POLICIES`.

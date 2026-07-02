@@ -2,6 +2,8 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import type { AccessPolicyInput } from "@rakkr/shared";
 
+import type { AssigneeOption } from "@/components/assignee-multi-select";
+import { SubjectCombobox } from "@/components/subject-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +49,15 @@ const resourceTypes = [
   "*",
 ];
 
-export function AccessPolicyComposer({ onAppend }: { onAppend: (line: string) => void }) {
+export function AccessPolicyComposer({
+  groupOptions,
+  onAppend,
+  userOptions,
+}: {
+  groupOptions: AssigneeOption[];
+  onAppend: (line: string) => void;
+  userOptions: AssigneeOption[];
+}) {
   const [draft, setDraft] = useState<AccessPolicyDraft>(emptyPolicyDraft);
   const subjectIdRequired = draft.subjectType !== "everyone";
   const appendDisabled =
@@ -112,15 +122,17 @@ export function AccessPolicyComposer({ onAppend }: { onAppend: (line: string) =>
           </Select>
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="policy-subject-id">Subject ID</Label>
-          <Input
-            disabled={!subjectIdRequired}
-            id="policy-subject-id"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, subjectId: event.target.value }))
-            }
-            value={draft.subjectId}
-          />
+          <Label htmlFor="policy-subject-id">Subject</Label>
+          {draft.subjectType === "everyone" ? (
+            <Input disabled id="policy-subject-id" placeholder="everyone" value="" />
+          ) : (
+            <SubjectCombobox
+              onChange={(subjectId) => setDraft((current) => ({ ...current, subjectId }))}
+              options={draft.subjectType === "group" ? groupOptions : userOptions}
+              placeholder={draft.subjectType === "group" ? "Select group" : "Select user"}
+              value={draft.subjectId}
+            />
+          )}
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="policy-resource-type">Resource</Label>
