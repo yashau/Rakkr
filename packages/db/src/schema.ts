@@ -548,6 +548,17 @@ export const uploadQueueItems = pgTable(
 export const schedules = pgTable(
   "schedules",
   {
+    // Access-group ids assigned to this schedule. Membership in an assigned
+    // group confers scoped RBAC (see the assignment capability bundle in the
+    // API) over the schedule's room. Groups are evaluated dynamically.
+    assignedGroupIds: jsonb("assigned_group_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // User ids directly assigned to this schedule. Assignment confers scoped
+    // RBAC over the schedule's room without changing the user's role.
+    assignedUserIds: jsonb("assigned_user_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     captureBackend: varchar("capture_backend", { length: 32 }),
     // Ordered 1-based source channel indices selected from the capture
     // interface. Empty array = capture the whole interface (legacy behavior).

@@ -17,6 +17,8 @@ import type {
 import type { NodeStore } from "./node-store.js";
 import type { RecordingStore } from "./recording-store.js";
 import { registerScheduleActionRoutes } from "./schedule-action-routes.js";
+import { filterSchedules, scheduleFilters } from "./schedule-list-filters.js";
+import { registerScheduleCalendarRoutes } from "./schedule-occurrence-routes.js";
 import {
   previewScheduleOccurrences,
   recordingMetadataSnapshot,
@@ -25,14 +27,11 @@ import {
 } from "./schedule-engine.js";
 import {
   buildSchedule,
-  captureBackendFromQuery,
-  enabledFromQuery,
   isValidScheduleTiming,
   occurrenceLimit,
   sanitizeScheduleUpdate,
   scheduleChannelSelectionFailure,
   scheduleInterfaceIsValid,
-  trimmed,
 } from "./schedule-route-helpers.js";
 import {
   queueScheduledRecordings,
@@ -46,6 +45,12 @@ import type { SettingsStore } from "./settings-store.js";
 
 interface ScheduleRouteDependencies {
   app: Hono<AppBindings>;
+  // Resolves which of the given assignee ids do NOT exist, so schedule
+  // create/update can reject unknown users/groups. Defaults to "all known".
+  assignmentIdReferences?(input: {
+    groupIds: string[];
+    userIds: string[];
+  }): Promise<{ unknownGroupIds: string[]; unknownUserIds: string[] }>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
@@ -67,6 +72,7 @@ const scheduleSelectedExportSchema = z
 
 export function registerScheduleRoutes({
   app,
+  assignmentIdReferences = async () => ({ unknownGroupIds: [], unknownUserIds: [] }),
   currentAuth,
   currentUser,
   hasResourceScope = async () => true,
@@ -78,6 +84,19 @@ export function registerScheduleRoutes({
   scopedSchedules,
   settingsStore,
 }: ScheduleRouteDependencies) {
+  // Windowed calendar reads and per-occurrence drag-to-reschedule live in their
+  // own module; registered first so /schedules/calendar wins over /:scheduleId.
+  registerScheduleCalendarRoutes({
+    app,
+    currentAuth,
+    currentUser,
+    recordAuditEvent,
+    requirePermission,
+    scheduleStore,
+    scopedNodes,
+    scopedSchedules,
+  });
+
   app.get("/api/v1/schedules", requirePermission("schedule:read", "schedules.read"), async (c) => {
     const filters = scheduleFilters(c);
     const schedules = filterSchedules(await scopedSchedules(currentUser(c)), filters);
@@ -348,6 +367,17 @@ export function registerScheduleRoutes({
         return settingsFailure;
       }
 
+      const assignmentError = await assignmentValidationError(
+        c,
+        "schedules.create.failed",
+        body.data.assignedUserIds,
+        body.data.assignedGroupIds,
+      );
+
+      if (assignmentError) {
+        return assignmentError;
+      }
+
       const schedule = buildSchedule(body.data);
 
       try {
@@ -476,6 +506,20 @@ export function registerScheduleRoutes({
 
       if (settingsFailure) {
         return settingsFailure;
+      }
+
+      if (body.data.assignedUserIds || body.data.assignedGroupIds) {
+        const assignmentError = await assignmentValidationError(
+          c,
+          "schedules.update.failed",
+          body.data.assignedUserIds ?? [],
+          body.data.assignedGroupIds ?? [],
+          before,
+        );
+
+        if (assignmentError) {
+          return assignmentError;
+        }
       }
 
       const updated = await scheduleStore.update(
@@ -731,6 +775,45 @@ export function registerScheduleRoutes({
     return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
   }
 
+  // Rejects a create/update whose assignee ids do not resolve to real
+  // users/groups. Returns a 400 Response on failure, or undefined when valid.
+  async function assignmentValidationError(
+    c: Context<AppBindings>,
+    action: string,
+    userIds: string[],
+    groupIds: string[],
+    schedule?: Partial<ScheduleSummary>,
+  ) {
+    if (userIds.length === 0 && groupIds.length === 0) {
+      return undefined;
+    }
+
+    const { unknownGroupIds, unknownUserIds } = await assignmentIdReferences({ groupIds, userIds });
+
+    if (unknownUserIds.length === 0 && unknownGroupIds.length === 0) {
+      return undefined;
+    }
+
+    await recordAuditEvent(c, {
+      action,
+      auth: currentAuth(c),
+      details: { unknownGroupIds, unknownUserIds },
+      outcome: "failed",
+      permission: "schedule:manage",
+      reason: "unknown_assignee",
+      target: {
+        id: schedule?.id,
+        name: schedule?.name,
+        type: "schedule",
+      },
+    });
+
+    return c.json(
+      { error: "Unknown assignee", reason: "unknown_assignee", unknownGroupIds, unknownUserIds },
+      400,
+    );
+  }
+
   async function recordScheduleRunFailure(
     c: Context<AppBindings>,
     scheduleId: string,
@@ -829,76 +912,6 @@ export function registerScheduleRoutes({
       },
     });
   }
-}
-
-interface ScheduleFilters {
-  captureBackend?: NonNullable<ScheduleSummary["captureBackend"]>;
-  captureInterfaceId?: string;
-  enabled?: boolean;
-  nodeId?: string;
-  search?: string;
-}
-
-function scheduleFilters(c: Context<AppBindings>): ScheduleFilters {
-  const captureBackend = captureBackendFromQuery(c.req.query("captureBackend"));
-  const captureInterfaceId = trimmed(c.req.query("captureInterfaceId"));
-  const enabled = enabledFromQuery(c.req.query("enabled"));
-  const nodeId = trimmed(c.req.query("nodeId"));
-  const search = trimmed(c.req.query("search"));
-
-  return {
-    captureBackend,
-    captureInterfaceId,
-    enabled,
-    nodeId,
-    search,
-  };
-}
-
-function filterSchedules(schedules: ScheduleSummary[], filters: ScheduleFilters) {
-  const search = filters.search?.toLowerCase();
-
-  return schedules.filter((schedule) => {
-    if (filters.enabled !== undefined && schedule.enabled !== filters.enabled) {
-      return false;
-    }
-
-    if (filters.nodeId && schedule.nodeId !== filters.nodeId) {
-      return false;
-    }
-
-    if (filters.captureBackend && schedule.captureBackend !== filters.captureBackend) {
-      return false;
-    }
-
-    if (filters.captureInterfaceId && schedule.captureInterfaceId !== filters.captureInterfaceId) {
-      return false;
-    }
-
-    return search ? scheduleSearchText(schedule).includes(search) : true;
-  });
-}
-
-function scheduleSearchText(schedule: ScheduleSummary) {
-  return [
-    schedule.captureBackend,
-    schedule.captureInterfaceId,
-    schedule.folderTemplate,
-    schedule.id,
-    schedule.name,
-    schedule.nodeId,
-    schedule.recordingProfileId,
-    schedule.retentionPolicyId,
-    schedule.room,
-    schedule.tags.join(" "),
-    schedule.timezone,
-    schedule.titleTemplate,
-    schedule.uploadPolicyIds.join(" "),
-    schedule.watchdogPolicyId,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
 }
 
 function uniqueScheduleIds(scheduleIds: string[]) {

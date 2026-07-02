@@ -7,6 +7,7 @@ const sourceFiles = [
   "packages/db/drizzle/0021_true_midnight.sql",
   "apps/api/src/schedule-engine.ts",
   "apps/api/src/schedule-routes.ts",
+  "apps/api/src/schedule-occurrence-routes.ts",
   "apps/api/src/schedule-store.ts",
   "apps/api/src/schedule-runner.ts",
   "apps/api/src/scheduled-recordings.ts",
@@ -14,6 +15,7 @@ const sourceFiles = [
   "apps/api/test/schedule-engine.test.ts",
   "apps/api/test/schedule-runner.test.ts",
   "apps/api/test/schedule-routes.test.ts",
+  "apps/api/test/schedule-occurrence-routes.test.ts",
   "apps/web/src/lib/schedule-page-helpers.test.ts",
   "apps/web/src/lib/schedule-detail-page-helpers.test.ts",
   "apps/web/src/lib/schedule-draft.test.ts",
@@ -59,6 +61,13 @@ const sourceSnippets = [
   "schedule:read",
   "schedule:manage",
   "applyNaturalLanguageSchedule",
+  "windowScheduleOccurrences",
+  "schedules.calendar.read",
+  "schedules.occurrence.move",
+  "assignedUserIds",
+  "assignedGroupIds",
+  "assigned_user_ids",
+  "assigned_group_ids",
 ];
 const testSnippets = [
   "previews weekly interval windows with start-early and stop-late buffers",
@@ -73,6 +82,9 @@ const testSnippets = [
   "schedule routes deny users without required permissions",
   "schedule routes create update run-now and skip-next with audit events",
   "schedule quick phrases produce structured weekly recurrence",
+  "windows occurrences within [start, end] independent of now",
+  "calendar returns windowed occurrences for scoped, enabled schedules",
+  "move-occurrence splits a recurring instance into a duration-preserving one-off",
 ];
 const errors = [];
 

@@ -60,6 +60,8 @@ export const nodes: RecorderNode[] = [
 
 export const schedules: ScheduleSummary[] = [
   {
+    assignedGroupIds: [],
+    assignedUserIds: [],
     // Seeded as disabled: the demo node has no live recorder agent in dev/Docker,
     // so an enabled schedule would have the scheduler queue a recording + job on
     // every due run that nothing ever claims, accumulating stuck "recording" rows.

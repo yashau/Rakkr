@@ -13,7 +13,12 @@ const requiredPhrases = [
   "API enforces",
   "UI helpers mirror",
   "denied attempts",
+  "Schedule Assignment Scoped Grants",
+  "capability bundle",
+  "explicit deny access-policy always overrides an assignment",
+  "grantedViaAssignment",
 ];
+const requiredApiIdentifiers = ["ASSIGNMENT_CAPABILITIES", "assignmentAuthorizes", "assignedRoomKeys"];
 const errors = [];
 
 const [baseline, sharedSource] = await Promise.all([
@@ -32,6 +37,12 @@ if (permissions.length === 0) {
 for (const phrase of requiredPhrases) {
   if (!baseline.toLowerCase().includes(phrase.toLowerCase())) {
     errors.push(`${baselineFile} must mention "${phrase}"`);
+  }
+}
+
+for (const identifier of requiredApiIdentifiers) {
+  if (!apiSourceText.includes(identifier)) {
+    errors.push(`API source must reference schedule-assignment identifier ${identifier}`);
   }
 }
 

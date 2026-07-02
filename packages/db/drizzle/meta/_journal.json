@@ -253,6 +253,13 @@
       "when": 1782847252894,
       "tag": "0035_smiling_rick_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783008326298,
+      "tag": "0036_tricky_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

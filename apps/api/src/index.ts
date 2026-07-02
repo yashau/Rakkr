@@ -40,6 +40,13 @@ import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
+import {
+  ASSIGNMENT_CAPABILITIES,
+  assignedRoomKeysFor,
+  nodeInAssignedRoom,
+  roomTargetsMatchAssignedKeys,
+  scheduleAssignsUser,
+} from "./schedule-assignment.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -171,18 +178,35 @@ function requirePermission(
     const scope = auth.user
       ? await resourceScopeDecision(auth.user, auditTarget)
       : { allowed: false, reason: "unauthenticated" };
-    const allowed = hasPermission && scope.allowed;
-    const reason = authorizationReason({
-      authenticated: Boolean(auth.user),
-      hasPermission,
-      hasScope: scope.allowed,
-      scopeReason: scope.reason,
-    });
+    let allowed = hasPermission && scope.allowed;
+
+    // Schedule assignment grants the capability bundle over the assignee's room
+    // even without the role permission — but never past an explicit deny policy.
+    let grantedViaAssignment = false;
+    if (
+      !allowed &&
+      auth.user &&
+      scope.reason !== "access_policy_denied" &&
+      ASSIGNMENT_CAPABILITIES.has(permission)
+    ) {
+      grantedViaAssignment = await assignmentAuthorizes(auth.user, auditTarget);
+      allowed = grantedViaAssignment;
+    }
+
+    const reason = allowed
+      ? undefined
+      : authorizationReason({
+          authenticated: Boolean(auth.user),
+          hasPermission,
+          hasScope: scope.allowed,
+          scopeReason: scope.reason,
+        });
 
     await recordAuditEvent(c, {
       action,
       auth,
       details: {
+        grantedViaAssignment,
         requiredPermission: permission,
         resourceScope: auditTarget,
         resourceScopeDecision: scope.reason,
@@ -422,6 +446,37 @@ function addRoomScopeTargets(targets: AuditTarget[], node: NodeRecord) {
   }
 }
 
+// Composite `<site>/<room>` keys for every room the user is assigned to (via a
+// direct user assignment or an access-group assignment). Skips listing nodes
+// when the user is assigned to nothing. See schedule-assignment.ts for the
+// policy (capability bundle, room-keying, and its safety invariants).
+async function assignedRoomKeys(user: NonNullable<AuthResult["user"]>) {
+  const schedules = await scheduleStore.list();
+
+  if (!schedules.some((schedule) => scheduleAssignsUser(schedule, user))) {
+    return new Set<string>();
+  }
+
+  return assignedRoomKeysFor(schedules, await nodeStore.list(), user);
+}
+
+// True when the user is assigned to a room that `target` resolves into. Reuses
+// the same hierarchy expansion as role scoping, so an assignment on a room
+// authorizes that room's nodes, interfaces, channels, schedules, and recordings.
+async function assignmentAuthorizes(user: NonNullable<AuthResult["user"]>, target: AuditTarget) {
+  if (!target.id) {
+    return false;
+  }
+
+  const assignedKeys = await assignedRoomKeys(user);
+
+  if (assignedKeys.size === 0) {
+    return false;
+  }
+
+  return roomTargetsMatchAssignedKeys(await resourceScopeTargets(target), assignedKeys);
+}
+
 function interfaceNode(interfaceId: string, knownNodes: NodeRecord[]) {
   for (const node of knownNodes) {
     const audioInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
@@ -477,10 +532,14 @@ function currentUser(c: Context<AppBindings>) {
 }
 
 async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
+  const assignedKeys = await assignedRoomKeys(user);
   const result: NodeRecord[] = [];
 
   for (const node of await nodeStore.list()) {
-    if (await hasResourceScope(user, { id: node.id, type: "node" })) {
+    if (
+      nodeInAssignedRoom(node, assignedKeys) ||
+      (await hasResourceScope(user, { id: node.id, type: "node" }))
+    ) {
       result.push(node);
     }
   }
@@ -489,10 +548,19 @@ async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
 }
 
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
+  const assignedKeys = await assignedRoomKeys(user);
+  const knownNodes = assignedKeys.size > 0 ? await nodeStore.list() : [];
   const result: ScheduleSummary[] = [];
 
   for (const schedule of await scheduleStore.list()) {
-    if (await hasResourceScope(user, { id: schedule.id, type: "schedule" })) {
+    const node = knownNodes.find((candidate) => candidate.id === schedule.nodeId);
+    const inAssignedRoom = node ? nodeInAssignedRoom(node, assignedKeys) : false;
+
+    if (
+      scheduleAssignsUser(schedule, user) ||
+      inAssignedRoom ||
+      (await hasResourceScope(user, { id: schedule.id, type: "schedule" }))
+    ) {
       result.push(schedule);
     }
   }
@@ -501,10 +569,17 @@ async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
 }
 
 async function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
+  const assignedKeys = await assignedRoomKeys(user);
+  const knownNodes = assignedKeys.size > 0 ? await nodeStore.list() : [];
   const result = [];
 
   for (const recording of await recordingStore.list()) {
-    if (await hasResourceScope(user, { id: recording.id, type: "recording" })) {
+    const node = recording.nodeId
+      ? knownNodes.find((candidate) => candidate.id === recording.nodeId)
+      : undefined;
+    const inAssignedRoom = node ? nodeInAssignedRoom(node, assignedKeys) : false;
+
+    if (inAssignedRoom || (await hasResourceScope(user, { id: recording.id, type: "recording" }))) {
       result.push(recording);
     }
   }
@@ -755,6 +830,16 @@ registerNodeRoutes({
 
 registerScheduleRoutes({
   app,
+  assignmentIdReferences: async ({ groupIds, userIds }) => {
+    const [users, groups] = await Promise.all([authService.localUsers(), authService.localGroups()]);
+    const knownUserIds = new Set(users.map((user) => user.id));
+    const knownGroupIds = new Set(groups.map((group) => group.id));
+
+    return {
+      unknownGroupIds: [...new Set(groupIds)].filter((groupId) => !knownGroupIds.has(groupId)),
+      unknownUserIds: [...new Set(userIds)].filter((userId) => !knownUserIds.has(userId)),
+    };
+  },
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),

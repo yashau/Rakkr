@@ -395,6 +395,8 @@ function recordingProfile(): RecordingProfile {
 
 function schedule(): ScheduleSummary {
   return {
+    assignedGroupIds: [],
+    assignedUserIds: [],
     enabled: true,
     folderTemplate: "Meetings/{{date}}",
     id: "sched_council",

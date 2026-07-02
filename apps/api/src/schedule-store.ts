@@ -275,6 +275,8 @@ class PostgresScheduleStore implements ScheduleStore {
       .values(row)
       .onConflictDoUpdate({
         set: {
+          assignedGroupIds: row.assignedGroupIds,
+          assignedUserIds: row.assignedUserIds,
           captureBackend: row.captureBackend,
           captureChannelSelection: row.captureChannelSelection,
           captureInterfaceId: row.captureInterfaceId,
@@ -319,6 +321,8 @@ function loadSchedules(seedSchedules: ScheduleSummary[]) {
 
 function scheduleToRow(schedule: ScheduleSummary): ScheduleInsert {
   return {
+    assignedGroupIds: schedule.assignedGroupIds ?? [],
+    assignedUserIds: schedule.assignedUserIds ?? [],
     captureBackend: schedule.captureBackend ?? null,
     captureChannelSelection: schedule.captureChannelSelection ?? [],
     captureInterfaceId: schedule.captureInterfaceId ?? null,
@@ -345,6 +349,8 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
   const recurrence = recurrenceFromValue(row.recurrence);
 
   return {
+    assignedGroupIds: stringArray(row.assignedGroupIds),
+    assignedUserIds: stringArray(row.assignedUserIds),
     captureBackend: captureBackendFromValue(row.captureBackend),
     captureChannelSelection: channelSelectionFromValue(row.captureChannelSelection),
     captureInterfaceId: stringOrUndefined(row.captureInterfaceId),
@@ -380,6 +386,8 @@ function scheduleRecurrence(schedule: ScheduleSummary) {
 function cloneSchedule(schedule: ScheduleSummary) {
   return {
     ...schedule,
+    assignedGroupIds: [...(schedule.assignedGroupIds ?? [])],
+    assignedUserIds: [...(schedule.assignedUserIds ?? [])],
     recurrence: { ...schedule.recurrence },
     tags: [...schedule.tags],
   };

@@ -36,6 +36,7 @@ import type {
   RetentionPolicyUpdate,
   ResourceGrant,
   Role,
+  ScheduleCalendarResponse,
   ScheduleInput,
   ScheduleOccurrencePreview,
   ScheduleSummary,
@@ -854,6 +855,20 @@ export const api = {
     fetchJson<{ data: ScheduleSummary }>(`/api/v1/schedules/${scheduleId}`),
   schedules: (filters: ScheduleFilters & { limit?: number; offset?: number } = {}) =>
     fetchJson<PaginatedResponse<ScheduleSummary>>(withQuery("/api/v1/schedules", filters)),
+  scheduleCalendar: (params: ScheduleFilters & { end?: string; start?: string } = {}) =>
+    fetchJson<ScheduleCalendarResponse>(withQuery("/api/v1/schedules/calendar", params)),
+  moveScheduleOccurrence: (
+    scheduleId: string,
+    input: { newStartAt: string; occurrenceStartAt: string },
+  ) =>
+    fetchJson<{ data: ScheduleSummary; source?: ScheduleSummary }>(
+      `/api/v1/schedules/${scheduleId}/move-occurrence`,
+      {
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    ),
   startPlayback: (recordingId: string) =>
     fetchJson<{ data: RecordingPlaybackSession }>(`/api/v1/recordings/${recordingId}/playback`, {
       method: "POST",

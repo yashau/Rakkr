@@ -8,6 +8,7 @@ Status: MVP baseline checked.
 - Exact permission is required before a protected action can run.
 - Resource-scoped allow and deny policies apply to targeted node, schedule, recording, health, and settings actions.
 - Explicit deny wins across user, group, and everyone subjects.
+- Schedule assignment grants scoped access: assigning a user or access group to a schedule confers a fixed capability bundle over that schedule's room without changing roles or adding permissions.
 - The API enforces RBAC; UI helpers mirror permissions for operator ergonomics.
 - Privileged reads, writes, service actions, and denied attempts write audit events.
 
@@ -36,6 +37,16 @@ Status: MVP baseline checked.
 | `settings:manage`    | Recording profiles, watchdog policies, channel maps, upload settings writes                 | `apps/api/src/settings-routes.ts`, `apps/web/src/lib/settings-page-helpers.ts`                                              |
 | `settings:read`      | Settings reads and Settings shell visibility                                                | `apps/api/src/settings-routes.ts`, `apps/web/src/lib/settings-page-helpers.ts`                                              |
 | `system:admin`       | Owner-only system super permission; no public route grants it directly                      | `packages/shared/src/index.ts`                                                                                              |
+
+## Schedule Assignment Scoped Grants
+
+- Assigning a user (`assignedUserIds`) or access group (`assignedGroupIds`) to a schedule grants that subject a fixed capability bundle over the schedule's room, without editing roles or adding permissions to the catalog.
+- The capability bundle covers resource-scopable room operations (listen, playback/download, read, create/control/edit/delete recordings, node read/control, and managing that room's schedules) and excludes global/infrastructure permissions (`auth:manage`, `node:manage`, `settings:manage`, `settings:read`, `metrics:read`, `audit:read`, `system:admin`).
+- Group assignments are evaluated dynamically against live group membership; no reconciliation runs on assignment or membership change.
+- Two invariants bound the grant: an explicit deny access-policy always overrides an assignment, and assignment only authorizes a permission when the request target resolves to an assigned room, so collection/global targets are never authorized via assignment.
+- The room a schedule confers is keyed on the schedule node's physical `<site>/<room>`, so access follows hardware rather than a free-text label.
+- Assignment changes are captured in schedule create/update audit snapshots, and the authorization decision records `grantedViaAssignment`.
+- Evidence: `apps/api/src/schedule-assignment.ts`, `apps/api/src/index.ts`, `apps/api/src/schedule-routes.ts`, `apps/api/test/schedule-assignment.test.ts`.
 
 ## Checked By
 

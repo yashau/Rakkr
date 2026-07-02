@@ -973,6 +973,8 @@ function node(input: Partial<RecorderNode> = {}): RecorderNode {
 
 function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
   return {
+    assignedGroupIds: [],
+    assignedUserIds: [],
     enabled: true,
     folderTemplate: "meetings/{{date}}",
     id: "sched_route_test",

@@ -90,6 +90,12 @@ export function scheduleRecordingTrackPlans(schedule: ScheduleSummary): Schedule
 export function scheduleRecordingDurationSeconds(schedule: ScheduleSummary) {
   const recurrence = schedule.recurrence;
 
+  // A one-off carrying an explicit duration (e.g. a moved timed occurrence)
+  // records for exactly that length.
+  if (recurrence.mode === "once") {
+    return recurrence.durationSeconds;
+  }
+
   if (
     recurrence.mode !== "daily" &&
     recurrence.mode !== "weekly" &&
@@ -126,8 +132,72 @@ export function previewScheduleOccurrences(schedule: ScheduleSummary, limit = 5,
   return occurrences;
 }
 
+// Enumerate every occurrence whose recording start falls within [windowStart,
+// windowEnd], independent of "now" — so a calendar can render past days of the
+// current window too. manual/always_on schedules have no discrete occurrences.
+export function windowScheduleOccurrences(
+  schedule: ScheduleSummary,
+  windowStart: Date,
+  windowEnd: Date,
+  cap = 750,
+): ScheduleOccurrencePreview[] {
+  const occurrences: ScheduleOccurrencePreview[] = [];
+  const mode = schedule.recurrence.mode;
+
+  if (mode === "manual" || mode === "always_on" || windowEnd.getTime() < windowStart.getTime()) {
+    return occurrences;
+  }
+
+  const startMs = windowStart.getTime();
+  const endMs = windowEnd.getTime();
+  // Search from just before the window so an occurrence exactly at windowStart
+  // is found; nextRunAtForRecurrence scans forward from `after` regardless of now.
+  let nextRunAt = nextRunAtForRecurrence(
+    schedule.recurrence,
+    schedule.timezone,
+    undefined,
+    new Date(startMs - 1),
+  );
+
+  let guard = 0;
+  const guardLimit = cap * 4 + 8;
+
+  while (nextRunAt && occurrences.length < cap && guard < guardLimit) {
+    guard += 1;
+    const runMs = Date.parse(nextRunAt);
+
+    if (Number.isNaN(runMs) || runMs > endMs) {
+      break;
+    }
+
+    if (runMs >= startMs) {
+      occurrences.push(scheduleOccurrencePreview(schedule, nextRunAt));
+    }
+
+    const updates = advanceScheduleAfterRun({ ...schedule, nextRunAt }, new Date(runMs));
+
+    if (!updates.nextRunAt || updates.nextRunAt === nextRunAt) {
+      break;
+    }
+
+    nextRunAt = updates.nextRunAt;
+  }
+
+  return occurrences;
+}
+
+// The local calendar date (YYYY-MM-DD, in the schedule's timezone) that a given
+// run belongs to — used to add a skip exception when moving one occurrence.
+export function occurrenceLocalDateIso(schedule: ScheduleSummary, runAtIso: string) {
+  return localDateIso(
+    scheduledLocalDateFromRunAt(runAtIso, schedule.recurrence, schedule.timezone),
+  );
+}
+
 export function scheduleExecutionSnapshot(schedule: ScheduleSummary) {
   return {
+    assignedGroupIds: schedule.assignedGroupIds,
+    assignedUserIds: schedule.assignedUserIds,
     captureBackend: schedule.captureBackend,
     captureInterfaceId: schedule.captureInterfaceId,
     folderTemplate: schedule.folderTemplate,
@@ -427,6 +497,13 @@ function scheduleOccurrencePreview(
 }
 
 function scheduleRecordingEndAt(recurrence: ScheduleRecurrence, scheduledStartAt: Date) {
+  // A one-off with an explicit duration ends that many seconds after its start.
+  if (recurrence.mode === "once") {
+    return recurrence.durationSeconds
+      ? new Date(scheduledStartAt.getTime() + recurrence.durationSeconds * 1_000)
+      : undefined;
+  }
+
   if (
     recurrence.mode !== "daily" &&
     recurrence.mode !== "weekly" &&
@@ -453,7 +530,7 @@ function scheduledLocalDateFromRunAt(
   return localDate(scheduledAt, timeZone);
 }
 
-function recurrenceWithSkip(recurrence: ScheduleRecurrence, date: string): ScheduleRecurrence {
+export function recurrenceWithSkip(recurrence: ScheduleRecurrence, date: string): ScheduleRecurrence {
   const exceptions = [
     ...exceptionList(recurrence).filter(
       (exception) => !(exception.action === "skip" && exception.date === date),

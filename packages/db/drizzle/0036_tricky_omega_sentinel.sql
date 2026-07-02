@@ -1,0 +1,2 @@
+ALTER TABLE "schedules" ADD COLUMN "assigned_group_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "schedules" ADD COLUMN "assigned_user_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -115,6 +115,8 @@ test("schedule filters trim API filters and expose active chips", () => {
 
 function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
   return {
+    assignedGroupIds: [],
+    assignedUserIds: [],
     enabled: true,
     folderTemplate: "meetings/{yyyy}/{mm}",
     id: "sched_test",
