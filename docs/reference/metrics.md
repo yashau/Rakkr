@@ -23,6 +23,7 @@ gauge.
 | Metric                                | Meaning                            |
 | ------------------------------------- | ---------------------------------- |
 | `rakkr_controller_started_at_seconds` | Controller process start timestamp. |
+| `rakkr_database_unavailable`          | Controller database reachability (1 = unavailable); emitted so `/metrics` degrades instead of returning 503 during a database outage. |
 
 ## Nodes
 

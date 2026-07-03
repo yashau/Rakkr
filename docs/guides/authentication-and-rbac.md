@@ -107,6 +107,38 @@ Administrators (`auth:manage`) manage access on the **Access** page:
 For local development you can seed grants and policies with
 `RAKKR_LOCAL_RESOURCE_GRANTS` and `RAKKR_LOCAL_ACCESS_POLICIES`.
 
+## Room rosters & capabilities
+
+Beyond roles and scope, each room carries a **roster** that grants a subject (a
+user or a group) a subset of per-action **capabilities** on that room. A
+capability unlocks the catalog permissions below **only when the request target
+resolves to that room** — it never adds a new global permission.
+
+| Capability | Unlocks (when the target is this room)                             |
+| ---------- | ------------------------------------------------------------------ |
+| `view`     | `node:read`, `recording:read`, `recording:playback`, `schedule:read`, `health:read` |
+| `listen`   | `listen:monitor`                                                   |
+| `download` | `recording:download`                                               |
+| `operate`  | `recording:create`, `recording:control`                           |
+| `book`     | `schedule:manage`                                                  |
+| `edit`     | `recording:edit`                                                   |
+| `delete`   | `recording:delete`                                                 |
+
+Rules:
+
+- A capability authorizes only when the request target resolves to that room.
+- A subject's **effective capabilities** are the union across their direct roster
+  entry and any group roster entries for that room.
+- An explicit **deny** access policy still wins over any roster capability.
+- Rosters introduce **no new global permissions**. Node, settings, and onboarding
+  actions stay role-based and are never room-granted.
+- `node:control` (recorder-service lifecycle) is deliberately **not** part of
+  `operate`; `operate` covers start/stop recordings only.
+
+Calendar meeting-assignments auto-grant `view` + `operate` on the room to the
+schedule's assigned users and groups. Manage rosters and see how they combine
+from the room's page — see [Rooms](../guides/rooms.md).
+
 ## Audit
 
 Every privileged route writes an audit event — **including denied attempts and

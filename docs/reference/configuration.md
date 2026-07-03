@@ -25,6 +25,7 @@ separately in the [recorder agent CLI reference](recorder-agent.md).
 | `RAKKR_RECORDING_CACHE_DIR` | `data/recordings`       | Root directory for cached recording files.                                |
 | `RAKKR_API_VERSION`         | `0.0.0-dev`             | Controller version reported by `/healthz` and status routes (stamped at image build).        |
 | `RAKKR_API_NO_LISTEN`       | —                       | `1` skips binding a port (used by tests).                                 |
+| `RAKKR_LISTEN_SESSION_TTL_SECONDS` | `300`           | Live-listen session TTL before eviction.                                  |
 | `RAKKR_SEED_DEMO_DATA`      | enabled                 | Set `0` to disable demo data seeding.                                     |
 | `RAKKR_DEMO_METERS`         | disabled                | `1` lets meter endpoints emit synthetic frames when no agent frame is stored (demonstration / screenshots / tests only). Off by default — real usage never fabricates meters; an absent feed reads as empty. |
 | `RAKKR_DEMO_METER_DBFS`     | —                       | dBFS value for the synthetic demo meter data; only applies when `RAKKR_DEMO_METERS=1`.    |
@@ -118,6 +119,11 @@ Used when `DATABASE_URL` is unset; resolved relative to the working directory.
 | `RAKKR_UPLOAD_QUEUE_STORE_PATH`                | `data/upload-queue.json`                 |
 | `RAKKR_UPLOAD_DESTINATION_STORE_PATH`          | `data/upload-destinations.json`          |
 | `RAKKR_CONTROLLER_SETTINGS_STORE_PATH`         | `data/controller-settings.json`          |
+| `RAKKR_RECORDING_CHUNK_STORE_PATH`             | `data/recording-chunks.json`             |
+| `RAKKR_ROOM_STORE_PATH`                        | `data/rooms.json`                        |
+| `RAKKR_ROOM_ROSTER_STORE_PATH`                 | `data/room-roster.json`                  |
+| `RAKKR_SWITCHER_STORE_PATH`                    | `data/switchers.json`                    |
+| `RAKKR_SWITCHER_MAPPING_STORE_PATH`            | `data/switcher-mappings.json`            |
 
 ## Background runners & leases
 
@@ -140,8 +146,11 @@ Used when `DATABASE_URL` is unset; resolved relative to the working directory.
 | `RAKKR_WATCHDOG_RUNNER_ENABLED`                     | enabled | Set `0` to disable the watchdog runner.                        |
 | `RAKKR_WATCHDOG_RUNNER_INTERVAL_SECONDS`            | `30`    | Watchdog runner tick.                                          |
 | `RAKKR_WATCHDOG_MAX_SAMPLE_SPAN_SECONDS`            | `30`    | Watchdog max sample span.                                      |
+| `RAKKR_WATCHDOG_METER_MAX_AGE_SECONDS`              | —       | Watchdog meter freshness cutoff.                               |
 | `RAKKR_NODE_OFFLINE_AFTER_SECONDS`                  | `120`   | Heartbeat staleness before a node is `offline` (`0` disables). |
 | `RAKKR_METER_HISTORY_LIMIT`                         | `600`   | In-memory meter-frame history cap.                             |
+| `RAKKR_SWITCHER_ROUTING_RUNNER_ENABLED`            | enabled | Set `0` to disable the switcher routing runner.                |
+| `RAKKR_SWITCHER_ROUTING_RUNNER_INTERVAL_SECONDS`   | `20`    | Switcher routing runner tick.                                  |
 
 ## Audio tooling & recording-job defaults
 
@@ -177,6 +186,7 @@ kind may exist; an upload policy references one by id.
 | Variable           | Default                | Purpose                                                                                                                            |
 | ------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `RAKKR_SECRET_KEY` | dev fallback (insecure) | Master key used to encrypt/decrypt upload-destination secrets at rest. **Set this in production**; if unset, an insecure development key is used and a warning is logged. Rotating it makes previously stored secrets undecryptable (re-enter them). |
+| `RAKKR_REQUIRE_SECRET_KEY` | —                      | When set, refuses the insecure dev fallback key (requires a real `RAKKR_SECRET_KEY`). |
 
 ## Test-only
 

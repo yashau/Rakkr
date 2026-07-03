@@ -46,7 +46,10 @@ Conventions:
 | `GET /auth/users/:id`                                                   | `auth:manage` | User detail + action states.             |
 | `PATCH /auth/users/:id/access`                                          | `auth:manage` | Update roles/grants/groups.              |
 | `PATCH /auth/users/:id/password` · `/status` · `DELETE /auth/users/:id` | `auth:manage` | Lifecycle (reset/enable-disable/delete). |
-| `GET /auth/groups`                                                      | `auth:manage` | List groups.                             |
+| `GET /auth/groups` · `POST /auth/groups`                                | `auth:manage` | List / create groups.                    |
+| `GET /auth/groups/:id`                                                  | `auth:manage` | Group detail + members.                  |
+| `PATCH /auth/groups/:id` · `DELETE /auth/groups/:id`                    | `auth:manage` | Update name/description / delete (cascade). |
+| `PUT /auth/groups/:id/members`                                          | `auth:manage` | Replace membership by member ids.        |
 | `GET /auth/access-policies` · `PATCH /auth/access-policies`             | `auth:manage` | Read / replace access policies.          |
 
 ## Audit — `/api/v1/audit-events`
@@ -132,8 +135,26 @@ session — see [Node onboarding](../guides/node-onboarding.md).
 | Method & path                                                                         | Perm              | Purpose                           |
 | ------------------------------------------------------------------------------------- | ----------------- | --------------------------------- |
 | `GET /schedules` · `/:id` · `/:id/occurrences` · `/:id/actions` · `GET\|POST /export` | `schedule:read`   | Reads / occurrences / export.     |
+| `GET /schedules/calendar`                                                             | `schedule:read`   | Windowed occurrences across all schedules. |
 | `POST /schedules` · `PATCH /:id` · `DELETE /:id`                                      | `schedule:manage` | Create / update / delete.         |
 | `POST /schedules/:id/run-now` · `/skip-next`                                          | `schedule:manage` | Force / skip the next occurrence. |
+| `POST /schedules/:scheduleId/move-occurrence`                                                 | `schedule:manage` | Drag-to-reschedule a single occurrence. |
+
+## Rooms — `/api/v1/rooms`
+
+Room identity CRUD is inventory-adjacent (`node:read` / `node:manage`); the
+roster (access control) is `auth:manage`.
+
+| Method & path                    | Perm          | Purpose                          |
+| -------------------------------- | ------------- | -------------------------------- |
+| `GET /rooms`                     | `node:read`   | List rooms.                      |
+| `POST /rooms`                    | `node:manage` | Create a room.                   |
+| `GET /rooms/:roomId`             | `node:read`   | Room detail.                     |
+| `PATCH /rooms/:roomId`           | `node:manage` | Update a room.                   |
+| `DELETE /rooms/:roomId`          | `node:manage` | Delete a room.                   |
+| `GET /rooms/:roomId/overview`    | `node:read`   | Aggregated room page payload.    |
+| `GET /rooms/:roomId/roster`      | `auth:manage` | Read the room roster.            |
+| `PUT /rooms/:roomId/roster`      | `auth:manage` | Replace the manual room roster.  |
 
 ## Settings & retention — `/api/v1/settings/*`
 
@@ -147,6 +168,21 @@ reads under `settings:read`. Mutations require `settings:manage`.
 | Upload destinations / policies              | `settings:read` | `PATCH`/`POST` destinations & policies                                           |
 | Channel-map templates / assignments / plans | `settings:read` | create/update templates; `PUT` assignments (+ bulk, rollback); stage/apply plans |
 | Retention policies                          | `settings:read` | `POST` / `PATCH /settings/retention-policies/:id`                                |
+
+## Switchers — `/api/v1/settings/switchers`
+
+| Method & path                                   | Perm              | Purpose                              |
+| ----------------------------------------------- | ----------------- | ------------------------------------ |
+| `GET /settings/switchers` · `/:id`              | `switcher:read`   | List / read switcher config.         |
+| `GET /settings/switcher-mapping-options`        | `switcher:read`   | Rooms/users for the map editor.      |
+| `GET /settings/switchers/:id/mappings`          | `switcher:read`   | Read input→room / output→user maps.  |
+| `POST /settings/switchers`                      | `switcher:manage` | Create a switcher.                   |
+| `PATCH /settings/switchers/:id`                 | `switcher:manage` | Update a switcher.                   |
+| `DELETE /settings/switchers/:id`                | `switcher:manage` | Delete a switcher.                   |
+| `POST /settings/switchers/:id/test`             | `switcher:manage` | Connection test.                     |
+| `GET /settings/switchers/:id/config-snapshot`   | `switcher:manage` | Read a device config snapshot.       |
+| `POST /settings/switchers/:id/restore`          | `switcher:manage` | Restore a snapshot to the device.    |
+| `PUT /settings/switchers/:id/mappings`          | `switcher:map`    | Replace-all input/output mappings.   |
 
 ## Health — `/api/v1/health-events`
 

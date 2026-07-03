@@ -44,6 +44,9 @@ templates, tags, recording profile, capture backend/interface (or node defaults)
 watchdog policy, retention policy, and upload policy. This keeps a room's
 recordings consistent without per-run configuration.
 
+Each schedule is bound to a first-class [room](rooms.md), and its assigned
+users/groups auto-populate that room's roster.
+
 A schedule can also pin a **channel selection** and output mode on its interface
 (the same picker as ad-hoc starts), so different schedules can own different channel
 pairs of one device. When a due run's channels are already in use by another
@@ -81,6 +84,22 @@ demand; failures are retried after a configurable delay.
 All write and control actions (create, update, run-now, skip-next, delete) require
 `schedule:manage` and are audited; reads of related recordings, jobs, health, and
 node context mirror their own granular permissions.
+
+## Calendar view
+
+The **calendar page** (`/schedules/calendar`, `schedule:read`) renders windowed
+occurrences across all schedules — with room and assignee context and window
+navigation — complementing the list view on the Schedules page. The controller
+**Week starts on** setting (Settings → Controller; default Monday) sets the
+calendar's week start.
+
+Drag a single occurrence to reschedule it. This calls **move-occurrence**
+(`schedule:manage`):
+
+- A **one-off** schedule moves in place.
+- A **recurring** instance is rescheduled by skipping that instance and cloning a
+  duration-preserving one-off at the new time. If the clone fails, the change is
+  rolled back so no orphaned skip remains.
 
 The checked scheduler contract is the `SCHEDULER_BASELINE`, including recurrence
 tests for buffers, pauses, monthly clamping, overnight duration, and skip-next.

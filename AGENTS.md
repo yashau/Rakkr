@@ -351,6 +351,44 @@ available.
   checksum-verified; controller-cache retention runs only after a confirmed upload.
   `upload_providers`/`uploadPolicyId`/`provider`/`target` are legacy columns
   retained for backfill. See `docs/guides/storage-and-uploads.md`.
+- Rooms are a first-class entity (`rooms` table; `room-routes.ts`). The stable
+  `roomId` is the source of truth for room identity and RBAC scope; `nodes.roomId`
+  (SET NULL) and `schedules.roomId` (RESTRICT) bind resources to it, with legacy
+  `location`/`room` columns retained only for display. Room identity CRUD is
+  `node:read`/`node:manage` (inventory-adjacent), but the per-room **roster** is
+  `auth:manage` (access control): `GET`/`PUT /api/v1/rooms/:roomId/roster`. Roster
+  entries grant per-action capabilities (`packages/shared/src/room-capabilities.ts`:
+  view/listen/download/operate/book/edit/delete) that map onto existing catalog
+  permissions **only when the request target resolves to that room** — no new global
+  permissions, and node/settings/credential permissions stay role-based. Schedule
+  assignments auto-populate the roster as `source="calendar"` entries (default caps
+  `[view, operate]`), reconciled when schedules change.
+- Access groups are first-party (`access_groups`/`user_access_groups`), managed
+  under `auth:manage` at `/api/v1/auth/groups` (`auth-group-routes.ts`, mounted via
+  `auth-management-routes.ts`). The `id` is a server-derived immutable slug
+  (`accessGroupSlug`); the group is assignable to schedules (`assignedGroupIds`),
+  room rosters, and access policies, and deleting it cascade-cleans it from all
+  three. OIDC group claims sync into the same store (unified, not a separate group
+  system).
+- Switcher routing is controller-only, mounted as a settings sub-family under
+  `/api/v1/settings/switchers` (`switcher-routes.ts`) with mappings under
+  `/api/v1/settings/switchers/:id/mappings` (`switcher-mapping-routes.ts`). The
+  modular driver layer lives in `apps/api/src/switchers` (transport/driver/registry
+  + `avpro-ac-max.ts` for AVPro AC-MAX). The control-channel password
+  (`switchers.secrets.password`) is encrypted via secret-box AES-256-GCM keyed by
+  `RAKKR_SECRET_KEY` (`secret-box.ts`) and is never returned to the console. The
+  interval reconcile runner (`switcher-routing-runner.ts`, default 20s) has
+  `disabled`/`observe`/`enforce` modes and enforces owned-outputs-only +
+  live-meeting-only invariants, opening a `switcher.unreachable` health event on
+  failure. Permissions: `switcher:read` (view config/mappings), `switcher:map`
+  (replace-all mappings), `switcher:manage` (create/edit/delete + test/snapshot/
+  restore).
+- Schedule calendar/occurrences live in `schedule-occurrence-routes.ts`:
+  `GET /api/v1/schedules/calendar` (`schedule:read`, windowed occurrences) and
+  `POST /api/v1/schedules/:scheduleId/move-occurrence` (`schedule:manage`). Moving a
+  recurring instance skips it (recurrence skip exception) and clones a
+  duration-preserving one-off at the new time; the original series rolls back if the
+  clone create fails.
 - If adding new settings, recordings, schedules, health, upload, or node
   behavior, check whether a baseline doc and verifier script also need updates.
 
@@ -374,6 +412,23 @@ available.
   `apps/web/src/lib/node-lifecycle-api.ts`; preserve the node-card placement,
   `node:manage` boundary, compact operations-console styling, and accessible
   controls.
+- Rooms have a list page (`rooms.tsx`, all rooms) and a detail page
+  (`room-detail.tsx`, editable name/location/notes + node inventory + upcoming
+  scheduled occurrences + recent recordings + roster editor
+  `room-roster-editor.tsx`). The calendar view lives at `/schedules/calendar`
+  (`schedules-calendar.tsx`), rendering windowed occurrences with room + assignee
+  context; it complements the `/schedules` list.
+- Dark mode is wired via `next-themes`: `ThemeProvider` in `main.tsx`
+  (`attribute="class"`, `defaultTheme="system"`), the `theme-toggle.tsx` component,
+  and helpers in `theme-helpers.ts`. Style with tokens or `dark:` variants; never
+  hardcode light-only colors.
+- The Settings page (`settings.tsx`) has a **Switchers** section
+  (`SettingsSwitchersSection`) alongside the other settings sections, and a
+  "Week starts on" selector in the Controller section (the `weekStartsOn` controller
+  setting that drives the calendar grid).
+- A shared searchable user/group picker (`subject-combobox.tsx`,
+  `group-multi-select.tsx`, `user-multi-select.tsx`, `assignee-multi-select.tsx`) is
+  reused across schedules, room rosters, and the access-policy composer.
 - **Playwright is the canonical way to create screenshots** of the web console
   (docs imagery, PR evidence, visual checks). Drive the running app with
   Playwright and capture deterministic screenshots there — do not hand-craft or
@@ -439,6 +494,7 @@ mise run health:check-watchdog
 mise run storage:check
 mise run operations:check
 mise run time:check
+mise run switcher:check
 ```
 
 Do not mark source-of-truth status as complete unless code, tests/checks, docs,
