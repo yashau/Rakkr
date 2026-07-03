@@ -108,10 +108,77 @@ test("upload policy routes honor resource-scope denies", async () => {
   );
 });
 
+test("upload policy create rejects an out-of-scope or unknown destination reference", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer();
+  const uploadDestinationStore = createUploadDestinationStore();
+  const hidden = await uploadDestinationStore.create({
+    displayName: "Hidden Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "hidden.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const visible = await uploadDestinationStore.create({
+    displayName: "Visible Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "visible.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const isVisibleTarget = (target: AuditTarget) =>
+    !(target.type === "upload_destination" && target.id === hidden.id);
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async (_user, target) => isVisibleTarget(target),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
+    settingsStore: createSettingsStore(),
+    uploadDestinationStore,
+  });
+
+  const basePolicy = { enabled: true, maxAttempts: 3, trigger: "manual" };
+  const denied = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    ...basePolicy,
+    destinationId: hidden.id,
+    name: "Bind Hidden Destination",
+  });
+  const unknown = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    ...basePolicy,
+    destinationId: "dest_does_not_exist",
+    name: "Bind Unknown Destination",
+  });
+  const allowed = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    ...basePolicy,
+    destinationId: visible.id,
+    name: "Bind Visible Destination",
+  });
+
+  // A scoped-out destination is 403 (the caller can't reference what they can't
+  // see); a non-existent one is 400; an in-scope one succeeds.
+  assert.equal(denied.status, 403);
+  assert.equal(unknown.status, 400);
+  assert.equal(allowed.status, 201);
+
+  const denials = await auditStore.list({ outcome: "denied", permission: "settings:manage" });
+
+  assert.ok(
+    denials.some(
+      (event) =>
+        event.action === "settings.upload_policies.create.failed" &&
+        event.target.type === "upload_destination" &&
+        event.target.id === hidden.id,
+    ),
+  );
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   url: string,
-  method: "PATCH",
+  method: "PATCH" | "POST",
   body: Record<string, unknown>,
 ) {
   return app.request(url, {

@@ -121,8 +121,10 @@ export function registerSettingsRoutes({
   registerSettingsUploadPolicyRoutes({
     app,
     currentAuth,
+    hasResourceScope,
     recordAuditEvent,
     requirePermission,
+    uploadDestinationStore,
   });
   registerSettingsUploadDestinationRoutes({
     app,
