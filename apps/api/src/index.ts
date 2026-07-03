@@ -34,6 +34,7 @@ import { createListenSessionStore } from "./listen-session-store.js";
 import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
 import { createNodeBootstrapStore } from "./node-bootstrap-store.js";
+import { registerChannelRoomRoutes } from "./channel-room-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { createNodeSshCredentialStore } from "./node-ssh-credential-store.js";
@@ -842,6 +843,17 @@ registerNodeRoutes({
   requirePermission,
   scopedNodes,
   sshCredentialStore,
+});
+
+registerChannelRoomRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  nodeStore,
+  recordAuditEvent,
+  requirePermission,
+  roomStore,
+  scopedNodes,
 });
 
 registerScheduleRoutes({
