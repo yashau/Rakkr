@@ -56,6 +56,7 @@ import {
   nodePickerFilters,
 } from "@/lib/node-page-helpers";
 import { downloadBlob } from "@/lib/recording-page-helpers";
+import { schedulePickerFilters } from "@/lib/schedule-page-helpers";
 import { defaultPageSize } from "@/lib/server-pagination";
 import { useServerPagination } from "@/lib/use-server-pagination";
 
@@ -110,7 +111,7 @@ export function HealthPage() {
   });
   const schedulesQuery = useQuery({
     enabled: permissions.canReadSchedules,
-    queryFn: () => api.schedules(),
+    queryFn: () => api.schedules(schedulePickerFilters()),
     queryKey: ["schedules"],
   });
   const recordingsQuery = useQuery({

@@ -20,6 +20,7 @@ export * from "./oidc.js";
 export * from "./pagination.js";
 export * from "./recording-chunks.js";
 export * from "./recording-job-summary.js";
+export * from "./recording-profile.js";
 export * from "./room-capabilities.js";
 export * from "./rooms.js";
 export * from "./switchers.js";
@@ -303,49 +304,6 @@ export const meterFrameSchema = z.object({
   nodeId: z.string().min(1),
 });
 
-export const recordingProfileSchema = z.object({
-  // This schema also parses persisted rows (recordingProfileFromRow), so it
-  // stays permissive for any previously-stored value — the 512 kbps input
-  // ceiling lives on recordingProfileUpdateSchema / the create route, not here
-  // (a `.max` here would reject a legacy over-cap profile row on read).
-  bitrateKbps: z.number().int().positive(),
-  channelMode: channelModeSchema,
-  // Length of each recording chunk in seconds. When set, the recording is
-  // captured continuously and emitted as sequential chunk files that transfer
-  // and upload as they close. Supersedes the deprecated `maxTrackSeconds`; read
-  // both through `effectiveChunkSeconds`.
-  chunkSeconds: z.number().int().positive().max(604_800).optional(),
-  codec: z.enum(["mp3", "flac", "wav"]),
-  enhancement: recordingEnhancementSchema.optional(),
-  id: z.string().min(1),
-  /** @deprecated superseded by `chunkSeconds`; retained one release for backfill. */
-  maxTrackSeconds: z.number().int().positive().max(604_800).optional(),
-  name: z.string().min(1),
-  silenceDetectionEnabled: z.boolean(),
-  silenceSkipEnabled: z.boolean(),
-  vbr: z.boolean(),
-});
-export const recordingProfileUpdateSchema = z
-  .object({
-    bitrateKbps: z.number().int().positive().max(512).optional(),
-    channelMode: channelModeSchema.optional(),
-    chunkSeconds: z.number().int().positive().max(604_800).nullable().optional(),
-    codec: z.enum(["mp3", "flac", "wav"]).optional(),
-    enhancement: recordingEnhancementSchema.optional(),
-    maxTrackSeconds: z.number().int().positive().max(604_800).nullable().optional(),
-    name: z.string().trim().min(1).max(160).optional(),
-    silenceDetectionEnabled: z.boolean().optional(),
-    silenceSkipEnabled: z.boolean().optional(),
-    vbr: z.boolean().optional(),
-  })
-  .refine((value) => Object.keys(value).length > 0, "At least one profile field is required");
-// Resolve the active chunk length for a profile, preferring the new
-// `chunkSeconds` knob and falling back to the deprecated `maxTrackSeconds`.
-// Returns undefined when neither is set (recording stays a single file).
-export function effectiveChunkSeconds(profile: RecordingProfile | undefined): number | undefined {
-  const value = profile?.chunkSeconds ?? profile?.maxTrackSeconds ?? undefined;
-  return typeof value === "number" && value > 0 ? value : undefined;
-}
 // Day the operator console's schedule calendar starts its week on.
 export const weekStartDaySchema = z.enum([
   "sunday",
@@ -955,8 +913,6 @@ export type NodeAudioCommandDefaults = z.infer<typeof nodeAudioCommandDefaultsSc
 export type NodeRecordingCapacity = z.infer<typeof nodeRecordingCapacitySchema>;
 export type NodeRuntime = z.infer<typeof nodeRuntimeSchema>;
 export type RecorderNode = z.infer<typeof recorderNodeSchema>;
-export type RecordingProfile = z.infer<typeof recordingProfileSchema>;
-export type RecordingProfileUpdate = z.infer<typeof recordingProfileUpdateSchema>;
 export type ControllerSettings = z.infer<typeof controllerSettingsSchema>;
 export type ControllerSettingsUpdate = z.infer<typeof controllerSettingsUpdateSchema>;
 export type WeekStartDay = z.infer<typeof weekStartDaySchema>;

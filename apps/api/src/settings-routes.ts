@@ -6,10 +6,10 @@ import {
   channelMapTemplateAssignmentRollbackInputSchema,
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
-  recordingProfileSchema,
   recordingProfileUpdateSchema,
-  watchdogPolicySchema,
+  recordingProfileWritableSchema,
   watchdogPolicyUpdateSchema,
+  watchdogPolicyWritableSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
   type ChannelMapAssignmentPlan,
@@ -51,15 +51,12 @@ import {
   watchdogSettingsTarget,
 } from "./settings-scope.js";
 
-// Create bodies require only a name; the store fills the rest from the built-in template.
-const recordingProfileCreateSchema = recordingProfileSchema
-  .omit({ id: true })
-  .partial()
-  .required({ name: true });
-const watchdogPolicyCreateSchema = watchdogPolicySchema
-  .omit({ id: true })
-  .partial()
-  .required({ name: true });
+// Create bodies require only a name; the store fills the rest from the built-in
+// template. Derive from the same bounded writable schema the PATCH routes use so
+// create enforces identical input ceilings (a create off the permissive base
+// schema would accept an over-varchar(160) name and 500/latch on insert).
+const recordingProfileCreateSchema = recordingProfileWritableSchema.required({ name: true });
+const watchdogPolicyCreateSchema = watchdogPolicyWritableSchema.required({ name: true });
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
