@@ -96,11 +96,14 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
     },
   });
 
+  // Must run on every render, before any early return — hooks cannot be
+  // conditional (a pending→resolved transition would otherwise change the hook
+  // count and crash the page). Mirrors schedule-detail.tsx.
+  useDocumentTitle(overviewQuery.data?.data?.room.name);
+
   if (currentUserQuery.isPending) {
     return <LoadingSkeleton label="Loading room" />;
   }
-
-  useDocumentTitle(overviewQuery.data?.data?.room.name);
 
   if (!actionPermissions.canRead) {
     return (

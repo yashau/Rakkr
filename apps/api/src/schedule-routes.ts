@@ -119,6 +119,7 @@ export function registerScheduleRoutes({
     currentAuth,
     currentUser,
     recordAuditEvent,
+    reconcileScheduleRoster,
     requirePermission,
     scheduleStore,
     scopedNodes,

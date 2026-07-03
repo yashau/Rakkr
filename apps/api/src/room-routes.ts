@@ -311,9 +311,16 @@ export function registerRoomRoutes({
 
         return c.body(null, 204);
       } catch (error) {
-        // A genuine DB outage must surface as 503 (via the onError boundary), not be
-        // mislabeled "room in use". Any other error (e.g. a schedule created in the
-        // check→delete race tripping the FK) maps to 409.
+        // The schedule referential pre-check above is the real FK guard, so a store
+        // error here is treated as a DB-availability problem: surface it as 503 via
+        // the onError boundary rather than mislabeling it "room in use". NOTE: the
+        // rare check→delete race (a schedule created between the pre-check and the
+        // DELETE) trips the Postgres RESTRICT FK, which PostgresRoomStore wraps as
+        // DatabaseUnavailableError, so it also 503s here and self-heals on the
+        // client's retry (the pre-check then sees the schedule and returns 409). A
+        // precise 409 for that race needs the store to detect SQLSTATE 23503 — see
+        // the R3-FK-RACE ledger item. The 409 fallback below covers any other
+        // (non-DB) store error defensively.
         if (isDatabaseUnavailableError(error)) {
           throw error;
         }

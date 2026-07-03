@@ -197,6 +197,51 @@ test("move-occurrence splits a recurring instance into a duration-preserving one
   assert.deepEqual(body.source.recurrence.exceptions, [{ action: "skip", date: "2026-06-15" }]);
 });
 
+test("move-occurrence reconciles the cloned occurrence's room roster", async () => {
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:manage"]);
+  const daily = schedule({
+    assignedUserIds: ["user-vip"],
+    id: "sched_move_roster",
+    recurrence: { endTime: "10:00", interval: 1, mode: "daily", startTime: "09:00" },
+    roomId: "room-a",
+  });
+  const store = scheduleStore([daily]);
+  const reconciled: ScheduleSummary[] = [];
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    reconcileScheduleRoster: async (schedule) => {
+      reconciled.push(schedule);
+    },
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedNodes: async () => [node()],
+    scopedSchedules: () => store.list(),
+    settingsStore: createSettingsStore(),
+  });
+
+  const response = await requestJson(
+    app,
+    "/api/v1/schedules/sched_move_roster/move-occurrence",
+    "POST",
+    { newStartAt: "2026-06-15T14:00:00.000Z", occurrenceStartAt: "2026-06-15T09:00:00.000Z" },
+  );
+
+  assert.equal(response.status, 201);
+  // The cloned one-off (new id) is re-homed onto its room's calendar roster with
+  // the moved occurrence's assignees, like any other schedule create.
+  const cloneReconcile = reconciled.find((entry) => entry.id !== "sched_move_roster");
+  assert.ok(cloneReconcile, "expected the moved-occurrence clone to be reconciled");
+  assert.equal(cloneReconcile?.roomId, "room-a");
+  assert.deepEqual(cloneReconcile?.assignedUserIds, ["user-vip"]);
+});
+
 test("schedule update rejects unknown assignees and accepts known ones", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");

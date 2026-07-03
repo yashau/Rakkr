@@ -26,6 +26,10 @@ interface ScheduleCalendarRouteDependencies {
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   recordAuditEvent: RecordAuditEvent;
+  // Materializes the moved occurrence clone's assignees into its room's
+  // calendar-source roster (a move creates a new one-off schedule, so it must
+  // auto-populate the roster like any other schedule create). Default no-op.
+  reconcileScheduleRoster?(schedule: ScheduleSummary): Promise<void>;
   requirePermission: RequirePermission;
   scheduleStore: ScheduleStore;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
@@ -99,6 +103,7 @@ export function registerScheduleCalendarRoutes({
   currentAuth,
   currentUser,
   recordAuditEvent,
+  reconcileScheduleRoster = async () => {},
   requirePermission,
   scheduleStore,
   scopedNodes,
@@ -315,6 +320,12 @@ export function registerScheduleCalendarRoutes({
         await recordMoveFailure(c, reason, before);
         return c.json({ error: "Occurrence could not be moved" }, 503);
       }
+
+      // The clone is a new schedule carrying the occurrence's assignees, so
+      // auto-populate its room's calendar roster like any other schedule create —
+      // otherwise the moved occurrence's own roster attribution is missing (and the
+      // assignees would lose access if the original series is later removed).
+      await reconcileScheduleRoster(created);
 
       await recordAuditEvent(c, {
         action: "schedules.occurrence.move.succeeded",
