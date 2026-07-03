@@ -1,9 +1,46 @@
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
 import test from "node:test";
 import type { CurrentUser } from "@rakkr/shared";
 import { LocalAuthService } from "../src/auth-service.js";
 
 process.env.RAKKR_LOCAL_ADMIN_GROUPS = "";
+
+test("login runs a password KDF even for an unknown email (no user-enumeration timing oracle)", async () => {
+  const service = new LocalAuthService("");
+  const adminEmail = process.env.RAKKR_LOCAL_ADMIN_EMAIL ?? "admin@rakkr.local";
+
+  const timeReject = async (email: string, password: string) => {
+    const start = performance.now();
+    await assert.rejects(() => service.login(email, password));
+    return performance.now() - start;
+  };
+
+  // Warm up both paths so the lazy admin-hash / decoy-hash computation and JIT
+  // are not attributed to the first measured sample.
+  await timeReject(adminEmail, "warmup-wrong-password");
+  await timeReject("warmup-unknown@example.com", "warmup-wrong-password");
+
+  const samples = 5;
+  const knownWrong: number[] = [];
+  const unknown: number[] = [];
+
+  for (let index = 0; index < samples; index += 1) {
+    knownWrong.push(await timeReject(adminEmail, `wrong-${index}`));
+    unknown.push(await timeReject(`nobody-${index}@example.com`, `wrong-${index}`));
+  }
+
+  const knownMin = Math.min(...knownWrong);
+  const unknownMin = Math.min(...unknown);
+
+  // A real failed login pays one scrypt (~tens of ms). The pre-fix unknown-email
+  // path skipped scrypt entirely (sub-millisecond), so its cost must now be on the
+  // same order as a real failed login — otherwise timing reveals account existence.
+  assert.ok(
+    unknownMin >= knownMin * 0.5,
+    `unknown-email login (${unknownMin.toFixed(1)}ms) must not be materially faster than a real failed login (${knownMin.toFixed(1)}ms)`,
+  );
+});
 
 test("access policy decisions prefer denies over matching allows", async () => {
   const service = new LocalAuthService("");

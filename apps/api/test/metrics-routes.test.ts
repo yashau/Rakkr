@@ -261,6 +261,63 @@ test("metrics expose listen monitor chunks only for visible nodes", async () => 
   assert.doesNotMatch(output, /node_hidden/);
 });
 
+test("metrics filters per-channel meters and gates listen chunks for a partial-owner", async () => {
+  const listenMonitorStore = createListenMonitorStore();
+  const meterFrameStore = createMeterFrameStore();
+
+  await listenMonitorStore.save({
+    audio: new Uint8Array([82, 73, 70, 70]),
+    capturedAt: "2026-06-18T12:15:57.000Z",
+    contentType: "audio/wav",
+    durationMs: 1500,
+    nodeId: "node_shared",
+  });
+  // A frame with two channels; channel 2 belongs to a room the caller does not own.
+  await meterFrameStore.save({
+    capturedAt: "2026-06-18T12:00:00.000Z",
+    interfaceId: "iface_shared",
+    levels: [
+      { channelIndex: 1, clipping: false, label: "Ch 1", peakDbfs: -12, rmsDbfs: -22 },
+      { channelIndex: 2, clipping: false, label: "Ch 2", peakDbfs: -6, rmsDbfs: -14 },
+    ],
+    nodeId: "node_shared",
+  });
+
+  const app = new Hono<AppBindings>();
+  registerMetricsRoutes({
+    app,
+    auditStore: createAuditStore(""),
+    // Partial owner of a shared node: not authorized for the whole-node monitor.
+    canServeWholeNodeMonitor: async () => false,
+    currentUser: () => user(["metrics:read"]),
+    // Only channel 1 (the caller's room) survives the per-channel filter.
+    filterMeterFrame: async (_user, _node, frame) => ({
+      ...frame,
+      levels: frame.levels.filter((level) => level.channelIndex === 1),
+    }),
+    hasResourceScope: async () => true,
+    healthEventStore: createHealthEventStore("", []),
+    listenMonitorStore,
+    meterFrameStore,
+    nodeStore: createNodeStore([node("node_shared")]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: memoryRecordingStore([]),
+    requirePermission: allowPermission,
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+  });
+
+  const response = await app.request("/metrics");
+  const output = await response.text();
+
+  assert.equal(response.status, 200);
+  // The caller's own channel is emitted; the sibling room's channel is dropped.
+  assert.match(output, /rakkr_input_rms_dbfs\{channel="1"/);
+  assert.doesNotMatch(output, /channel="2"/);
+  // The whole-node monitor chunk metric data (per-node) is withheld from a partial
+  // owner — only the HELP/TYPE declarations remain, no node_shared sample line.
+  assert.doesNotMatch(output, /rakkr_listen_monitor_chunk_age_seconds\{/);
+});
+
 test("metrics successful reads are audited with scoped operational counts", async () => {
   const auditStore = createAuditStore("");
   const listenMonitorStore = createListenMonitorStore();

@@ -13,6 +13,7 @@
   "jsPlugins": ["oxlint-tailwindcss"],
   "rules": {
     "no-console": "off",
+    "react-hooks/rules-of-hooks": "error",
     "react/jsx-no-useless-fragment": "error",
     "tailwindcss/consistent-variant-order": "warn",
     "tailwindcss/enforce-canonical": "warn",

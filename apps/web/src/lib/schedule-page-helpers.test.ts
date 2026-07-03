@@ -8,7 +8,19 @@ import {
   scheduleFilterChips,
   scheduleFiltersFromDraft,
   schedulePageActionPermissions,
+  schedulePickerFilters,
 } from "./schedule-page-helpers";
+
+test("schedule pickers request the full set, not the default page", () => {
+  // The API's default schedule page is 50; recordings/health resolve schedule
+  // id -> name and populate filter dropdowns from this query, so omitting `limit`
+  // drops every schedule past the first page and leaves those recordings/events
+  // with an unresolved schedule label. The picker must fetch beyond one page.
+  const filters = schedulePickerFilters();
+
+  assert.ok(filters.limit > 50, "picker must fetch beyond the default 50-row page");
+  assert.equal(filters.limit, 200, "requests the API's max page size (PAGE_POLICY.default)");
+});
 
 test("schedule page permissions require schedule manage for write actions", () => {
   assert.deepEqual(schedulePageActionPermissions(["schedule:read"]), {

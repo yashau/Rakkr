@@ -13,6 +13,27 @@ import {
 } from "../src/schedule-engine";
 
 describe("schedule recurrence engine", () => {
+  it("does not crash previewing a schedule with a malformed nextRunAt", () => {
+    // A malformed nextRunAt (e.g. a corrupted row) must not throw a RangeError
+    // via new Date(NaN).toISOString() — it should break gracefully like
+    // windowScheduleOccurrences does.
+    const schedule = scheduleFixture({
+      nextRunAt: "not-a-valid-date",
+      recurrence: {
+        daysOfWeek: ["monday"],
+        endTime: "10:00",
+        interval: 1,
+        mode: "weekly",
+        startTime: "09:00",
+      },
+    });
+
+    assert.deepEqual(
+      previewScheduleOccurrences(schedule, 3, new Date("2026-06-15T08:00:00.000Z")),
+      [],
+    );
+  });
+
   it("previews weekly interval windows with start-early and stop-late buffers", () => {
     const schedule = scheduleFixture({
       recurrence: {

@@ -26,7 +26,7 @@ import {
   listRecordingChunksForJob,
   listRecordingChunksForRecording,
 } from "./recording-chunks.js";
-import { listUploadQueueItems } from "./upload-queue.js";
+import { deleteUploadQueueItemsForRecording, listUploadQueueItems } from "./upload-queue.js";
 import { recordingJobStatusSummary } from "./recording-job-status-summary.js";
 import { registerRecordingJobActionRoutes } from "./recording-job-action-routes.js";
 import { scopedRecordingJobs } from "./recording-job-scope.js";
@@ -841,9 +841,14 @@ function recordingForRetriedJob(recording: RecordingSummary, retriedAt: string) 
   };
 }
 
-// Sweep the failed attempt's chunk cache files and rows before a retry so the
-// re-capture starts clean — stale chunk rows/totals otherwise contaminate
-// chunkedRecordingFinalization and mis-finalize the retry as `partial`.
+// Sweep the failed attempt's chunk cache files/rows AND its upload-queue items
+// before a retry so the re-capture starts clean. Stale chunk rows/totals otherwise
+// contaminate chunkedRecordingFinalization and mis-finalize the retry as `partial`;
+// stale upload_queue_items (which carry no FK cascade) otherwise outlive the purged
+// chunks and either pin retention (a `failed` item keeps the recording in an
+// unsettled-upload state forever) or make the upload runner re-attempt a now-deleted
+// file and fire cache_path_missing health events — the same orphan hazard the delete
+// path sweeps (recording-delete.ts).
 async function purgeRetriedRecordingChunks(recording: RecordingSummary) {
   const chunks = await listRecordingChunksForRecording(recording.id);
 
@@ -854,6 +859,8 @@ async function purgeRetriedRecordingChunks(recording: RecordingSummary) {
   if (chunks.length > 0) {
     await deleteRecordingChunksForRecording(recording.id);
   }
+
+  await deleteUploadQueueItemsForRecording(recording.id);
 }
 
 function uniqueJobIds(jobIds: string[]) {

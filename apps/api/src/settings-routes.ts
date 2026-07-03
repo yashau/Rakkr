@@ -6,10 +6,10 @@ import {
   channelMapTemplateAssignmentRollbackInputSchema,
   channelMapTemplateInputSchema,
   channelMapTemplateUpdateSchema,
-  recordingProfileSchema,
   recordingProfileUpdateSchema,
-  watchdogPolicySchema,
+  recordingProfileWritableSchema,
   watchdogPolicyUpdateSchema,
+  watchdogPolicyWritableSchema,
   type ChannelMapTemplate,
   type ChannelMapTemplateAssignment,
   type ChannelMapAssignmentPlan,
@@ -51,15 +51,12 @@ import {
   watchdogSettingsTarget,
 } from "./settings-scope.js";
 
-// Create bodies require only a name; the store fills the rest from the built-in template.
-const recordingProfileCreateSchema = recordingProfileSchema
-  .omit({ id: true })
-  .partial()
-  .required({ name: true });
-const watchdogPolicyCreateSchema = watchdogPolicySchema
-  .omit({ id: true })
-  .partial()
-  .required({ name: true });
+// Create bodies require only a name; the store fills the rest from the built-in
+// template. Derive from the same bounded writable schema the PATCH routes use so
+// create enforces identical input ceilings (a create off the permissive base
+// schema would accept an over-varchar(160) name and 500/latch on insert).
+const recordingProfileCreateSchema = recordingProfileWritableSchema.required({ name: true });
+const watchdogPolicyCreateSchema = watchdogPolicyWritableSchema.required({ name: true });
 
 interface SettingsRouteDependencies {
   app: Hono<AppBindings>;
@@ -124,8 +121,10 @@ export function registerSettingsRoutes({
   registerSettingsUploadPolicyRoutes({
     app,
     currentAuth,
+    hasResourceScope,
     recordAuditEvent,
     requirePermission,
+    uploadDestinationStore,
   });
   registerSettingsUploadDestinationRoutes({
     app,
@@ -456,6 +455,16 @@ export function registerSettingsRoutes({
         return c.json({ error: "Channel map template not found" }, 404);
       }
 
+      const templateDenied = await denyHiddenTemplate(
+        c,
+        "settings.channel_map_assignments.update.failed",
+        template,
+      );
+
+      if (templateDenied) {
+        return templateDenied;
+      }
+
       const assignment = await settingsStore.assignChannelMapTemplate(
         body.data,
         currentAuth(c).user?.id,
@@ -517,6 +526,16 @@ export function registerSettingsRoutes({
           },
         );
         return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const templateDenied = await denyHiddenTemplate(
+        c,
+        "settings.channel_map_assignments.bulk_update.failed",
+        template,
+      );
+
+      if (templateDenied) {
+        return templateDenied;
       }
 
       const assignments: ChannelMapTemplateAssignment[] = [];
@@ -601,6 +620,16 @@ export function registerSettingsRoutes({
           },
         );
         return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const templateDenied = await denyHiddenTemplate(
+        c,
+        "settings.channel_map_assignment_plans.create.failed",
+        template,
+      );
+
+      if (templateDenied) {
+        return templateDenied;
       }
 
       const plan = await channelMapAssignmentPlanStore.create(
@@ -786,6 +815,27 @@ export function registerSettingsRoutes({
       return c.json({ data: rolledBack });
     },
   );
+
+  // Channel-map templates are resource-scoped, and an assignment/plan binds a
+  // body-supplied templateId. Reject binding a template the caller cannot see —
+  // existence alone is not enough (the same foreign-id-scope class as the
+  // upload-policy destination check), so a scoped-out template cannot be applied
+  // to a target the caller does own.
+  async function denyHiddenTemplate(
+    c: Context<AppBindings>,
+    action: string,
+    template: ChannelMapTemplate,
+  ): Promise<Response | undefined> {
+    const user = currentAuth(c).user;
+    const target = channelMapTemplateSettingsTarget(template);
+
+    if (user && !(await hasResourceScope(user, target))) {
+      await recordSettingsFailure(c, action, "missing_resource_scope", target);
+      return c.json({ error: "Forbidden", permission: "settings:manage" }, 403);
+    }
+
+    return undefined;
+  }
 
   async function denyHiddenAssignmentTargets(
     c: Context<AppBindings>,

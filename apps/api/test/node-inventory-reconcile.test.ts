@@ -97,6 +97,84 @@ test("reconcile preserves per-channel room assignments and leaves new channels u
   assert.equal(reconciled.channels[3].roomId, undefined);
 });
 
+test("reconcile drops a vanished channel's room on shrink and re-grows it unassigned", () => {
+  const existing: AudioInterface[] = [
+    {
+      alias: "X32 Console",
+      backend: "alsa",
+      channelCount: 4,
+      channels: [
+        { alias: "Keep", index: 1, roomId: "room-keep" },
+        { alias: "Chan 2", index: 2 },
+        { alias: "Doomed", index: 3, roomId: "room-doomed" },
+        { alias: "Chan 4", index: 4 },
+      ],
+      id: "iface-uuid-1",
+      sampleRates: [48000],
+      systemName: "X-USB USB Audio",
+      systemRef: "hw:CARD=X32,DEV=0",
+    },
+  ];
+
+  // Shrink: the agent now reports only 2 channels (a device-enumeration change).
+  const shrunk = reconcileSeedInterfaces(existing, [
+    agentInterface({
+      channelCount: 2,
+      channels: [
+        { alias: "Input 1", index: 1 },
+        { alias: "Input 2", index: 2 },
+      ],
+      systemName: "X-USB USB Audio",
+      systemRef: "hw:CARD=X32,DEV=0",
+    }),
+  ]).interfaces;
+
+  const shrunkChannels = shrunk[0].channels;
+  assert.deepEqual(
+    shrunkChannels.map((channel) => channel.index),
+    [1, 2],
+    "vanished channels are dropped",
+  );
+  // The surviving assigned channel keeps its room; the vanished channel's room is gone.
+  assert.equal(shrunkChannels[0].roomId, "room-keep");
+  assert.ok(
+    !shrunkChannels.some((channel) => channel.roomId === "room-doomed"),
+    "the vanished channel's room assignment is dropped",
+  );
+
+  // Re-grow: the channel reappears — but its prior room assignment is NOT restored
+  // (the agent owns hardware truth; a transient hiccup does not resurrect stale scope).
+  const regrown = reconcileSeedInterfaces(shrunk, [
+    agentInterface({
+      channelCount: 4,
+      channels: [
+        { alias: "Input 1", index: 1 },
+        { alias: "Input 2", index: 2 },
+        { alias: "Input 3", index: 3 },
+        { alias: "Input 4", index: 4 },
+      ],
+      systemName: "X-USB USB Audio",
+      systemRef: "hw:CARD=X32,DEV=0",
+    }),
+  ]).interfaces;
+
+  const regrownChannels = regrown[0].channels;
+  assert.deepEqual(
+    regrownChannels.map((channel) => channel.index),
+    [1, 2, 3, 4],
+  );
+  assert.equal(
+    regrownChannels[0].roomId,
+    "room-keep",
+    "surviving assignment persists across regrow",
+  );
+  assert.equal(
+    regrownChannels[2].roomId,
+    undefined,
+    "the re-grown channel comes back unassigned, not with its stale room",
+  );
+});
+
 test("reconcile flags interfaces the agent no longer reports as absent", () => {
   const existing: AudioInterface[] = [
     {

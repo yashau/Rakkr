@@ -9,7 +9,11 @@ import type {
 } from "@rakkr/shared";
 
 import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
-import { resolveSelectionRoom, type SelectionRoomResolution } from "./room-resolution.js";
+import {
+  effectiveCaptureInterfaceId,
+  resolveSelectionRoom,
+  type SelectionRoomResolution,
+} from "./room-resolution.js";
 import { nextRunAtForRecurrence, uniqueTags } from "./schedule-engine.js";
 
 export function captureBackendFromQuery(value: string | undefined) {
@@ -161,14 +165,17 @@ export function scheduleChannelSelectionFailure(
 
 // Resolves the single room a schedule captures from its selected channels (or the
 // whole capture interface). A schedule is one room only; returns ok:false when the
-// selection spans rooms so the caller can reject it. The capture interface defaults
-// to the node's first interface, matching how the recorder picks it.
+// selection spans rooms so the caller can reject it. The capture interface is
+// resolved via effectiveCaptureInterfaceId — the SAME precedence the recorder
+// runtime uses (explicit id, then the RAKKR_AGENT_CAPTURE_INTERFACE_ID env
+// default, then the node's first interface) — so the attributed room matches the
+// interface actually captured.
 export function resolveScheduleRoom(
   node: RecorderNode,
   captureInterfaceId: string | null | undefined,
   selection: number[] | null | undefined,
 ): SelectionRoomResolution {
-  const interfaceId = captureInterfaceId ?? node.interfaces[0]?.id;
+  const interfaceId = effectiveCaptureInterfaceId(node, captureInterfaceId);
 
   if (!interfaceId) {
     return { ok: true, roomId: node.roomId };

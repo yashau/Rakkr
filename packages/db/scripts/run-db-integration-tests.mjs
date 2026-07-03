@@ -9,7 +9,17 @@ import postgres from "postgres";
 // DATABASE_URL — migrates it, runs the tagged test files against it with
 // --test-force-exit (the api db client pool has no exposed close), then drops it.
 // Add DB-gated test files here so they run as part of `mise run check`.
-const dbBackedApiTests = ["test/oidc-groups-collision.test.ts"];
+const dbBackedApiTests = [
+  "test/oidc-groups-collision.test.ts",
+  "test/node-ssh-credential-rotation-atomic.test.ts",
+  "test/node-credential-rotation-atomic.test.ts",
+  "test/node-metadata-write-race.test.ts",
+  "test/recording-chunk-size-bigint.test.ts",
+  "test/upload-queue-write-race.test.ts",
+  "test/controller-settings-write-race.test.ts",
+  "test/room-delete-fk-race.test.ts",
+  "test/node-channel-room-pg.test.ts",
+];
 
 const DEFAULT_DATABASE_URL = "postgres://rakkr:rakkr@127.0.0.1:5432/rakkr";
 const baseUrl = new URL(process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL);

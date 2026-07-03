@@ -35,6 +35,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 import {
+  subjectPickerFilters,
+  subjectPickerGroupsQueryKey,
+  subjectPickerUsersQueryKey,
+} from "@/lib/access-page-helpers";
+import {
   addPauseRangeToDraft,
   applyNaturalLanguageSchedule,
   dayOptions,
@@ -101,13 +106,13 @@ export function ScheduleFormDialog({
   );
   const usersQuery = useQuery({
     enabled: open,
-    queryFn: () => api.accessUsers({ limit: 500 }),
-    queryKey: ["access-users"],
+    queryFn: () => api.accessUsers(subjectPickerFilters()),
+    queryKey: subjectPickerUsersQueryKey(),
   });
   const groupsQuery = useQuery({
     enabled: open,
-    queryFn: () => api.accessGroups(),
-    queryKey: ["access-groups"],
+    queryFn: () => api.accessGroups(subjectPickerFilters()),
+    queryKey: subjectPickerGroupsQueryKey(),
   });
   const retentionPolicies = retentionPoliciesQuery.data?.data ?? [];
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];

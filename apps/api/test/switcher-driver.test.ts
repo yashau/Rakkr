@@ -295,6 +295,47 @@ test("restore replays routing but skips device-network commands", async () => {
   }
 });
 
+test("session rejects a device response that floods past the size cap", async () => {
+  // The control channel is unauthenticated telnet, so a compromised or spoofed
+  // device can stream bytes continuously (resetting the idle timer) until the
+  // hard timeout. The session must abort on the size cap rather than buffer
+  // without bound.
+  const server = net.createServer((socket) => {
+    socket.on("error", () => undefined);
+    socket.on("data", () => {
+      const blob = `${"x".repeat(8_192)}\r\n`;
+
+      for (let i = 0; i < 64; i += 1) {
+        socket.write(blob);
+      }
+    });
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+
+  try {
+    const session = await openSwitcherSession(
+      { host: "127.0.0.1", port },
+      { ...sessionOptions, maxResponseBytes: 64 * 1_024 },
+    );
+
+    try {
+      await assert.rejects(() => session.send("STA"), /switcher_response_too_large/);
+    } finally {
+      await session.close();
+    }
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  }
+});
+
 // Live validation against a real AC-MAX. Skipped unless RAKKR_SWITCHER_LIVE_HOST
 // is set. Round-trips a single spare output and restores its original source, so
 // it is safe to run against a unit that is otherwise idle.

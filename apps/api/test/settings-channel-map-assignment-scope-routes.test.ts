@@ -228,6 +228,90 @@ test("channel map assignment routes honor target resource-scope denies", async (
   );
 });
 
+test("channel map assignment routes reject binding a scope-denied template", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer();
+  const settingsStore = createSettingsStore();
+  const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
+  const visibleTemplate = await settingsStore.createChannelMapTemplate(
+    channelMapInput("Visible Template"),
+  );
+  const hiddenTemplate = await settingsStore.createChannelMapTemplate(
+    channelMapInput("Hidden Template"),
+  );
+  // Only the hidden TEMPLATE is scoped out; all nodes/targets stay visible so the
+  // denial can only come from the template scope check, not the target check.
+  const isVisibleTarget = (target: AuditTarget) =>
+    !(target.type === "channel_map_template" && target.id === hiddenTemplate.id);
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    channelMapAssignmentPlanStore,
+    hasResourceScope: async (_user, target) => isVisibleTarget(target),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, isVisibleTarget),
+    settingsStore,
+    uploadDestinationStore: createUploadDestinationStore(),
+  });
+
+  const assignHidden = await requestJson(app, "/api/v1/settings/channel-map-assignments", "PUT", {
+    targetId: "node_assign_visible",
+    targetType: "node",
+    templateId: hiddenTemplate.id,
+  });
+  const bulkHidden = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-assignments/bulk",
+    "PUT",
+    {
+      targets: [{ targetId: "node_bulk_visible", targetType: "node" }],
+      templateId: hiddenTemplate.id,
+    },
+  );
+  const planHidden = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-assignment-plans",
+    "POST",
+    {
+      targets: [{ targetId: "node_plan_visible", targetType: "node" }],
+      templateId: hiddenTemplate.id,
+    },
+  );
+  const assignVisible = await requestJson(app, "/api/v1/settings/channel-map-assignments", "PUT", {
+    targetId: "node_assign_ok",
+    targetType: "node",
+    templateId: visibleTemplate.id,
+  });
+  const storedAssignments = await settingsStore.listChannelMapAssignments();
+  const manageDeniedEvents = await auditStore.list({
+    outcome: "denied",
+    permission: "settings:manage",
+  });
+
+  assert.equal(assignHidden.status, 403);
+  assert.equal(bulkHidden.status, 403);
+  assert.equal(planHidden.status, 403);
+  assert.equal(assignVisible.status, 200);
+  assert.equal(
+    storedAssignments.some((assignment) => assignment.templateId === hiddenTemplate.id),
+    false,
+    "a scope-denied template must not be bound to any target",
+  );
+  assert.deepEqual(manageDeniedEvents.map((event) => event.action).sort(), [
+    "settings.channel_map_assignment_plans.create.failed",
+    "settings.channel_map_assignments.bulk_update.failed",
+    "settings.channel_map_assignments.update.failed",
+  ]);
+  assert.ok(
+    manageDeniedEvents.every(
+      (event) =>
+        event.target.type === "channel_map_template" && event.target.id === hiddenTemplate.id,
+    ),
+  );
+});
+
 function channelMapInput(name: string) {
   return {
     channelMode: "mono_to_stereo_mix" as const,

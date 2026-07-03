@@ -50,6 +50,15 @@ test("caps derived OIDC group ids at the 120-character id budget", () => {
   assert.equal(normalized.groups[0]?.id.length, 120);
 });
 
+test("caps the OIDC group display name at the access_groups.name column budget", () => {
+  // An uncapped claim (e.g. a full group DN > 160 chars) would trip the
+  // access_groups.name varchar(160) constraint on insert, failing the login and
+  // latching the auth service into DB-unavailable memory-fallback.
+  const normalized = normalizeClaims({ ...identity, groups: ["CN=" + "x".repeat(200)] });
+
+  assert.ok((normalized.groups[0]?.name.length ?? 0) <= 160);
+});
+
 test("gives a symbol-only group claim a stable deterministic id", () => {
   const first = normalizeClaims({ ...identity, groups: ["✓✓✓"] });
   const second = normalizeClaims({ ...identity, groups: ["✓✓✓"] });

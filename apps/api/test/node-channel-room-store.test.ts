@@ -98,3 +98,40 @@ test("assignChannelRooms rejects a channel index out of range", async () => {
     (error) => error instanceof NodeStoreError && error.code === "channel_not_found",
   );
 });
+
+test("assignChannelRooms rejects a within-count index with no matching channel", async () => {
+  // channelCount says 4, but only channels 1 and 2 actually exist. Index 3 is
+  // within the count yet has no channel row — assigning it must be a hard error,
+  // not a silent no-op (a zero-row UPDATE / dropped map entry).
+  const skewNode = seedNode();
+  skewNode.interfaces[0].channels = [
+    { alias: "Ch 1", index: 1 },
+    { alias: "Ch 2", index: 2 },
+  ];
+  const store = createNodeStore([skewNode]);
+
+  await assert.rejects(
+    () =>
+      store.assignChannelRooms("node-shared", [
+        { channelIndex: 3, interfaceId: "iface-1", roomId: "room-a" },
+      ]),
+    (error) => error instanceof NodeStoreError && error.code === "channel_not_found",
+  );
+});
+
+test("assignChannelRooms accepts a real channel whose index exceeds channelCount", async () => {
+  // A real channel can carry an index above channelCount (sparse/non-contiguous).
+  // It must remain assignable rather than being rejected as out-of-range.
+  const sparseNode = seedNode();
+  sparseNode.interfaces[0].channels = [{ alias: "Ch 9", index: 9 }];
+  const store = createNodeStore([sparseNode]);
+
+  const updated = await store.assignChannelRooms("node-shared", [
+    { channelIndex: 9, interfaceId: "iface-1", roomId: "room-a" },
+  ]);
+
+  assert.equal(
+    updated?.interfaces[0].channels.find((channel) => channel.index === 9)?.roomId,
+    "room-a",
+  );
+});

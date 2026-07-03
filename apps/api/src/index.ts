@@ -12,7 +12,6 @@ import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   type AuditEvent,
   defaultCalendarGrantCapabilities,
-  type MeterFrame,
   type Permission,
   permissionRequiresCapability,
   type RecorderNode,
@@ -49,7 +48,8 @@ import { createRoomRosterStore } from "./room-roster-store.js";
 import { registerRoomRoutes } from "./room-routes.js";
 import { createRoomStore } from "./room-store.js";
 import { createResourceScopeTargets } from "./resource-scope-targets.js";
-import { channelRoomId, nodeRoomIds } from "./room-resolution.js";
+import { createMeterRoomAccess } from "./meter-room-access.js";
+import { nodeRoomIds } from "./room-resolution.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -238,7 +238,9 @@ function requirePermission(
 // the fine-grained per-room checks in recording/schedule handlers. A room roster
 // (a manual grant or a calendar meeting-assignment) grants a per-action capability
 // over its room even without the role permission — but never past an explicit deny.
-async function permissionDecision(
+// Exported for test coverage of the access-policy-DENY-beats-roster-grant
+// precedence (the `scope.reason !== "access_policy_denied"` guard below).
+export async function permissionDecision(
   user: AuthResult["user"],
   permission: Permission,
   target: AuditTarget,
@@ -445,46 +447,14 @@ function intersects(left: Set<string>, right: Set<string>) {
   return false;
 }
 
-// The rooms whose channel data a user may see on a node. "all" for owner/admin or
-// a direct node grant (full node authority); otherwise the user's rostered rooms,
-// so a shared node exposes only the caller's channels.
-async function meterRoomAccess(
-  user: NonNullable<AuthResult["user"]>,
-  node: NodeRecord,
-): Promise<Set<string> | "all"> {
-  if (user.roles.includes("owner") || user.roles.includes("admin")) {
-    return "all";
-  }
-
-  if (await hasResourceScope(user, { id: node.id, type: "node" })) {
-    return "all";
-  }
-
-  return rosterRoomIds(user);
-}
-
-// Strict per-channel meter filtering: drop level rows for channels the caller's
-// rooms do not own so a shared node never leaks another room's meters.
-async function filterMeterFrameForUser(
-  user: NonNullable<AuthResult["user"]>,
-  node: NodeRecord,
-  frame: MeterFrame,
-): Promise<MeterFrame> {
-  const access = await meterRoomAccess(user, node);
-
-  if (access === "all") {
-    return frame;
-  }
-
-  return {
-    ...frame,
-    levels: frame.levels.filter((level) => {
-      const roomId = channelRoomId(node, frame.interfaceId, level.channelIndex);
-
-      return roomId !== undefined && access.has(roomId);
-    }),
-  };
-}
+// Per-room meter/monitor access decisions (extracted to keep this file within the
+// LOC budget). Injected with this module's roster + scope helpers.
+const { canServeWholeNodeMonitor, filterMeterFrameForUser, hasFullNodeAuthority } =
+  createMeterRoomAccess({
+    accessPolicyDecision: (user, targets) => authService.accessPolicyDecision(user, targets),
+    hasResourceScope: (user, target) => hasResourceScope(user, target),
+    rosterRoomIds: (user) => rosterRoomIds(user),
+  });
 
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
   const userRoomIds = await rosterRoomIds(user);
@@ -513,11 +483,21 @@ async function scopedRooms(user: NonNullable<AuthResult["user"]>) {
 
   const roomIds = await rosterRoomIds(user);
 
-  // A DIRECT node grant confers full authority over that node, so surface every
-  // room that owns one of its channels. Roster-only access to a shared node does
-  // NOT add its sibling rooms — those stay filtered to the user's rostered rooms.
+  // Rooms the caller holds direct room authority on (a room grant or access-policy
+  // allow) — so a room-scoped principal still sees exactly its own room(s).
+  for (const room of allRooms) {
+    if (!roomIds.has(room.id) && (await hasResourceScope(user, { id: room.id, type: "room" }))) {
+      roomIds.add(room.id);
+    }
+  }
+
+  // FULL node authority (a direct node/site/wildcard grant or node/site policy —
+  // NOT a room-derived node scope) surfaces every room that owns one of the node's
+  // channels. Using hasFullNodeAuthority, not hasResourceScope on the node target
+  // (which expands to the room UNION), is what keeps a single-room grant from
+  // leaking a shared node's sibling rooms into the room list.
   for (const node of await nodeStore.list()) {
-    if (await hasResourceScope(user, { id: node.id, type: "node" })) {
+    if (await hasFullNodeAuthority(user, node)) {
       for (const roomId of nodeRoomIds(node)) {
         roomIds.add(roomId);
       }
@@ -589,7 +569,9 @@ app.onError((error, c) => {
 registerMetricsRoutes({
   app,
   auditStore,
+  canServeWholeNodeMonitor: (user, node) => canServeWholeNodeMonitor(user, node),
   currentUser,
+  filterMeterFrame: (user, node, frame) => filterMeterFrameForUser(user, node, frame),
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,
   listenMonitorStore,
@@ -810,6 +792,7 @@ registerAuditRoutes({
 registerNodeRoutes({
   app,
   bootstrapStore,
+  canServeWholeNodeMonitor: (user, node) => canServeWholeNodeMonitor(user, node),
   currentAuth,
   currentUser,
   filterMeterFrame: (user, node, frame) => filterMeterFrameForUser(user, node, frame),
@@ -824,14 +807,37 @@ registerNodeRoutes({
   sshCredentialStore,
 });
 
+// Materializes a schedule's assignees into its room's calendar-source roster rows
+// (and clears them when the resolved room is undefined). Shared by schedule
+// create/update and by channel-room reassignment, which re-homes a schedule when
+// its channels' room changes.
+const reconcileScheduleRoster = (schedule: ScheduleSummary) =>
+  roomRosterStore.reconcileCalendar({
+    capabilities: [...defaultCalendarGrantCapabilities],
+    roomId: schedule.roomId,
+    scheduleId: schedule.id,
+    subjects: [
+      ...schedule.assignedUserIds.map((subjectId) => ({
+        subjectId,
+        subjectType: "user" as const,
+      })),
+      ...schedule.assignedGroupIds.map((subjectId) => ({
+        subjectId,
+        subjectType: "group" as const,
+      })),
+    ],
+  });
+
 registerChannelRoomRoutes({
   app,
   currentAuth,
   currentUser,
   nodeStore,
+  reconcileScheduleRoster,
   recordAuditEvent,
   requirePermission,
   roomStore,
+  scheduleStore,
   scopedNodes,
 });
 
@@ -850,28 +856,14 @@ registerScheduleRoutes({
       unknownUserIds: [...new Set(userIds)].filter((userId) => !knownUserIds.has(userId)),
     };
   },
+  authorizeTarget: (user, permission, target) => authorizeTargetForUser(user, permission, target),
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   nodeStore,
   recordAuditEvent,
   recordingStore,
-  reconcileScheduleRoster: (schedule) =>
-    roomRosterStore.reconcileCalendar({
-      capabilities: [...defaultCalendarGrantCapabilities],
-      roomId: schedule.roomId,
-      scheduleId: schedule.id,
-      subjects: [
-        ...schedule.assignedUserIds.map((subjectId) => ({
-          subjectId,
-          subjectType: "user" as const,
-        })),
-        ...schedule.assignedGroupIds.map((subjectId) => ({
-          subjectId,
-          subjectType: "group" as const,
-        })),
-      ],
-    }),
+  reconcileScheduleRoster,
   removeScheduleRoster: (scheduleId) => roomRosterStore.removeForSchedule(scheduleId),
   requirePermission,
   scheduleStore,

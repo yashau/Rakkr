@@ -12,7 +12,7 @@ import type { AuthResult } from "./auth-service.js";
 import { withCaptureStartLock } from "./capture-start-lock.js";
 import { buildCaptureClaims, evaluateAdHocCapture } from "./channel-conflicts.js";
 import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
-import { resolveSelectionRoom } from "./room-resolution.js";
+import { effectiveCaptureInterfaceId, resolveSelectionRoom } from "./room-resolution.js";
 import type { RoomStore } from "./room-store.js";
 import {
   adHocCaptureSeconds,
@@ -515,10 +515,10 @@ export function registerRecordingRoutes({
         return c.json({ error: "Recording interface not found" }, 409);
       }
 
-      const resolvedCaptureInterfaceId =
-        body.data.captureInterfaceId ??
-        process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
-        node.interfaces[0]?.id;
+      const resolvedCaptureInterfaceId = effectiveCaptureInterfaceId(
+        node,
+        body.data.captureInterfaceId,
+      );
       const captureInterface = node.interfaces.find(
         (candidate) => candidate.id === resolvedCaptureInterfaceId,
       );
@@ -573,17 +573,26 @@ export function registerRecordingRoutes({
 
       const captureRoomId = captureRoom.roomId;
 
-      if (
-        captureRoomId &&
-        !(await authorizeTarget(currentUser(c), "recording:create", {
-          id: captureRoomId,
-          type: "room",
-        }))
-      ) {
-        await recordRecordingStartFailure(c, "missing_resource_scope", node.id, node.alias, {
-          id: captureRoomId,
-          type: "room",
-        });
+      if (captureRoomId) {
+        if (
+          !(await authorizeTarget(currentUser(c), "recording:create", {
+            id: captureRoomId,
+            type: "room",
+          }))
+        ) {
+          await recordRecordingStartFailure(c, "missing_resource_scope", node.id, node.alias, {
+            id: captureRoomId,
+            type: "room",
+          });
+          return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+        }
+      } else if (!(await hasResourceScope(currentUser(c), { id: node.id, type: "node" }))) {
+        // No room owns this capture (a room-less node with unassigned channels).
+        // With no room to check, a roster-only operator must NOT slip through — the
+        // node target's room union already let them past the outer gate. Require
+        // role/grant authority over the node (roster-blind), mirroring how a
+        // room-less schedule falls back to a role-only target.
+        await recordRecordingStartFailure(c, "missing_resource_scope", node.id, node.alias);
         return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
       }
 

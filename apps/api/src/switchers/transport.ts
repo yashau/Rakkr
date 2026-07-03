@@ -22,6 +22,12 @@ export interface SwitcherSessionOptions {
   connectTimeoutMs?: number;
   // Quiet gap after the last received byte that marks a response complete.
   idleMs?: number;
+  // Ceiling on a single command's accumulated response. The control channel is
+  // unauthenticated (telnet), so a compromised or spoofed device could stream
+  // bytes continuously (resetting the idle timer) until the hard timeout,
+  // growing the buffer without bound; cap it so an over-large response fails
+  // fast instead of exhausting memory.
+  maxResponseBytes?: number;
 }
 
 export interface SwitcherSession {
@@ -90,6 +96,7 @@ export async function openSwitcherSession(
   const connectTimeoutMs = options.connectTimeoutMs ?? 5_000;
   const idleMs = options.idleMs ?? 250;
   const commandTimeoutMs = options.commandTimeoutMs ?? 6_000;
+  const maxResponseBytes = options.maxResponseBytes ?? 1_048_576;
 
   const socket = new net.Socket();
   socket.setNoDelay(true);
@@ -155,6 +162,13 @@ export async function openSwitcherSession(
 
       onData = (chunk: string) => {
         buffer += chunk;
+        // Fail fast if the device floods past the response ceiling rather than
+        // letting the buffer grow until the hard timeout (unbounded memory).
+        if (buffer.length > maxResponseBytes) {
+          cleanup();
+          reject(new Error("switcher_response_too_large"));
+          return;
+        }
         if (idleTimer) {
           clearTimeout(idleTimer);
         }

@@ -1,6 +1,7 @@
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 
+import { readBoundedBody } from "./agent-cache-upload-body.js";
 import { nodeActor } from "./agent-route-helpers.js";
 import { bearerToken } from "./auth-utils.js";
 import type { AppBindings, AuditTarget, RecordAuditEvent } from "./http-types.js";
@@ -19,6 +20,11 @@ const monitorHeaderSchema = z.object({
   contentType: z.literal("audio/wav"),
   durationMs: z.coerce.number().int().min(1).max(10_000),
 });
+
+// A monitor chunk is a short WAV snippet (<= 512 KiB). Bound the read so a
+// compromised node credential cannot stream an unbounded body and exhaust
+// controller memory before the size check — the sibling of the cache-file cap.
+const MONITOR_CHUNK_MAX_BYTES = 524_288;
 
 export function registerAgentMonitorRoutes({
   app,
@@ -57,9 +63,19 @@ export function registerAgentMonitorRoutes({
       return c.json({ error: "Invalid monitor chunk headers", issues: headers.error.issues }, 400);
     }
 
-    const audio = new Uint8Array(await c.req.arrayBuffer());
+    const body = await readBoundedBody(c.req.raw, MONITOR_CHUNK_MAX_BYTES);
 
-    if (audio.byteLength < 44 || audio.byteLength > 524_288) {
+    if (body === "too_large") {
+      await recordFailure(c, recordAuditEvent, "invalid_request", {
+        actor: auth.credential,
+        target,
+      });
+      return c.json({ error: "Monitor chunk exceeds the maximum size" }, 413);
+    }
+
+    const audio = body;
+
+    if (audio.byteLength < 44) {
       await recordFailure(c, recordAuditEvent, "invalid_request", {
         actor: auth.credential,
         target,

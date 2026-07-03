@@ -35,36 +35,43 @@ export const watchdogPolicySchema = z.object({
   thresholdDbfs: dbfsSchema,
   windowSeconds: z.number().int().positive(),
 });
-export const watchdogPolicyUpdateSchema = z
-  .object({
-    activeDuring: z.enum(["always", "scheduled_recording", "recording"]).optional(),
-    broadbandNoiseScoreThreshold: z.number().min(0).max(1).optional(),
-    channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
-    channelCorrelationThreshold: z.number().min(0).max(1).optional(),
-    clippingMode: z.enum(["off", "alert_on_clipping"]).optional(),
-    flatlineMode: z.enum(["off", "alert_on_flatline"]).optional(),
-    flatlineThresholdDbfs: dbfsSchema.optional(),
-    graceSeconds: z.number().int().nonnegative().max(86_400).optional(),
-    humScoreThreshold: z.number().min(0).max(1).optional(),
-    metric: z.enum(["peak", "rms", "percentile_95"]).optional(),
-    minCumulativeChannelCorrelationSeconds: z.number().nonnegative().max(86_400).optional(),
-    minCumulativeClippingSeconds: z.number().nonnegative().max(86_400).optional(),
-    minCumulativeFlatlineSeconds: z.number().nonnegative().max(86_400).optional(),
-    minCumulativeQualitySeconds: z.number().nonnegative().max(86_400).optional(),
-    minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400).optional(),
-    minCumulativeSpeechSeconds: z.number().nonnegative().max(86_400).optional(),
-    minSpeechScore: z.number().min(0).max(1).optional(),
-    name: z.string().trim().min(1).max(160).optional(),
-    noiseScoreThreshold: z.number().min(0).max(1).optional(),
-    qualityAlertMode: z.enum(["off", "alert_on_noise_hum_static"]).optional(),
-    qualityMode: z.enum(["signal_only", "speech_required"]).optional(),
-    repeatEverySeconds: z.number().int().positive().max(86_400).optional(),
-    severity: healthSeveritySchema.optional(),
-    staticScoreThreshold: z.number().min(0).max(1).optional(),
-    thresholdDbfs: dbfsSchema.optional(),
-    windowSeconds: z.number().int().positive().max(86_400).optional(),
-  })
-  .refine((value) => Object.keys(value).length > 0, "At least one watchdog field is required");
+// Bounded, all-optional field set shared by the PATCH update schema and the
+// create schema (settings-routes derives create as `.required({ name: true })`).
+// Input ceilings (varchar(160) names, 86_400s durations) live here — NOT on
+// watchdogPolicySchema, which must stay permissive to parse legacy stored rows.
+// Keeping create and update on one definition stops the two from drifting.
+export const watchdogPolicyWritableSchema = z.object({
+  activeDuring: z.enum(["always", "scheduled_recording", "recording"]).optional(),
+  broadbandNoiseScoreThreshold: z.number().min(0).max(1).optional(),
+  channelCorrelationMode: z.enum(["off", "alert_on_high"]).optional(),
+  channelCorrelationThreshold: z.number().min(0).max(1).optional(),
+  clippingMode: z.enum(["off", "alert_on_clipping"]).optional(),
+  flatlineMode: z.enum(["off", "alert_on_flatline"]).optional(),
+  flatlineThresholdDbfs: dbfsSchema.optional(),
+  graceSeconds: z.number().int().nonnegative().max(86_400).optional(),
+  humScoreThreshold: z.number().min(0).max(1).optional(),
+  metric: z.enum(["peak", "rms", "percentile_95"]).optional(),
+  minCumulativeChannelCorrelationSeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeClippingSeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeFlatlineSeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeQualitySeconds: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeSecondsAboveThreshold: z.number().nonnegative().max(86_400).optional(),
+  minCumulativeSpeechSeconds: z.number().nonnegative().max(86_400).optional(),
+  minSpeechScore: z.number().min(0).max(1).optional(),
+  name: z.string().trim().min(1).max(160).optional(),
+  noiseScoreThreshold: z.number().min(0).max(1).optional(),
+  qualityAlertMode: z.enum(["off", "alert_on_noise_hum_static"]).optional(),
+  qualityMode: z.enum(["signal_only", "speech_required"]).optional(),
+  repeatEverySeconds: z.number().int().positive().max(86_400).optional(),
+  severity: healthSeveritySchema.optional(),
+  staticScoreThreshold: z.number().min(0).max(1).optional(),
+  thresholdDbfs: dbfsSchema.optional(),
+  windowSeconds: z.number().int().positive().max(86_400).optional(),
+});
+export const watchdogPolicyUpdateSchema = watchdogPolicyWritableSchema.refine(
+  (value) => Object.keys(value).length > 0,
+  "At least one watchdog field is required",
+);
 
 export type WatchdogPolicy = z.infer<typeof watchdogPolicySchema>;
 export type WatchdogPolicyUpdate = z.infer<typeof watchdogPolicyUpdateSchema>;

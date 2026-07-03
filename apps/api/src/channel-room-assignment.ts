@@ -21,8 +21,12 @@ export function channelRoomAssignmentMap(
   );
 }
 
-// Rejects assignments whose interface is not on this node or whose channel index
-// is out of range, so a channel-room assignment can never point off-node.
+// Rejects assignments whose interface is not on this node or whose channel does
+// not actually exist on that interface, so a channel-room assignment can never
+// point off-node. Validating against the interface's real channel index set (not
+// the 1..channelCount range) matters when the two disagree: a within-count index
+// with no channel row would otherwise be a silent no-op, and a real channel whose
+// index exceeds channelCount would be wrongly rejected as un-assignable.
 export function assertAssignmentsBelongToNode(
   node: RecorderNode,
   assignments: ChannelRoomAssignment[],
@@ -41,7 +45,9 @@ export function assertAssignmentsBelongToNode(
       );
     }
 
-    if (assignment.channelIndex < 1 || assignment.channelIndex > audioInterface.channelCount) {
+    const channelIndexes = new Set(audioInterface.channels.map((channel) => channel.index));
+
+    if (!channelIndexes.has(assignment.channelIndex)) {
       throw new NodeStoreError(
         `Channel ${assignment.channelIndex} is out of range for interface ${assignment.interfaceId}`,
         "channel_not_found",

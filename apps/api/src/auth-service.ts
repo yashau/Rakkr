@@ -9,15 +9,11 @@ import {
   eq,
   gt,
   isNull,
-  permissions as permissionRows,
-  rolePermissions as rolePermissionRows,
-  roles as roleRows,
   userResourceGrants,
   userRoles,
   userAccessGroups,
   users,
 } from "@rakkr/db";
-import { permissions, rolePermissions, roles } from "@rakkr/shared";
 import type {
   AccessGroup,
   AccessPolicy,
@@ -37,8 +33,10 @@ import { LocalGroupManager } from "./auth-group-manager.js";
 import {
   accessPoliciesWithIds,
   bearerToken,
+  dbOutageGraceExceeded,
   groupsFromIds,
   hashToken,
+  isPgConstraintError,
   isPgErrorCode,
   isUuid,
   localAccessPoliciesFromEnv,
@@ -46,11 +44,9 @@ import {
   localGroupsFromEnv,
   localResourceGrantsFromEnv,
   localRole,
-  permissionName,
   permissionsForRoles,
   policyMatchesSubject,
   policyMatchesTarget,
-  roleName,
   uniqueAccessPolicyInputs,
   uniqueResourceGrants,
   uniqueRoles,
@@ -63,6 +59,13 @@ import {
   updateLocalUserDisabled as updateLocalUserDisabledRecord,
   type LocalUserRecord,
 } from "./auth-user-lifecycle.js";
+import {
+  authFallbackGraceMs,
+  authProvider,
+  defaultLocalPassword,
+  ensureSecurityCatalog,
+  upsertGroups,
+} from "./auth-persistence-helpers.js";
 import { OidcSyncError, type AzureAdOidcUserSyncInput } from "./oidc-sync.js";
 import { syncAzureAdOidcUser as syncOidcUser } from "./oidc-user-sync.js";
 import { hashPassword, verifyPassword } from "./password.js";
@@ -86,14 +89,20 @@ export class LocalAuthService {
   private readonly sessions = new Map<string, AuthSession>();
   private readonly db?: ReturnType<typeof createDatabase>;
   private dbAvailable: boolean;
+  // Epoch ms of the ongoing DB-outage start (undefined when the DB is reachable),
+  // used to bound how long the memory-fallback keeps serving login-time perms.
+  private dbUnavailableSince?: number;
+  private readonly fallbackGraceMs: number;
   private localAdminPasswordHash?: string;
+  private decoyPasswordHashPromise?: Promise<string>;
   // First-party access-group management lives in its own module; the service lends
   // it the shared session/override state it needs (see auth-group-manager.ts).
   private readonly groupManager: LocalGroupManager;
 
-  constructor(databaseUrl = process.env.DATABASE_URL) {
+  constructor(databaseUrl = process.env.DATABASE_URL, fallbackGraceMs = authFallbackGraceMs()) {
     this.db = databaseUrl ? createDatabase(databaseUrl) : undefined;
     this.dbAvailable = Boolean(this.db);
+    this.fallbackGraceMs = fallbackGraceMs;
     this.groupManager = new LocalGroupManager({
       availableDatabase: () => this.availableDatabase(),
       getAccessPolicyOverrides: () => this.accessPolicyOverrides,
@@ -115,33 +124,38 @@ export class LocalAuthService {
 
   async login(email: string, password: string, context: SessionContext = {}): Promise<LoginResult> {
     const persistedUser = await this.localUserRecordByEmail(email);
+    const admin = await this.localAdmin();
+    const matchesAdmin = email.toLowerCase() === admin.email.toLowerCase();
+
+    // Always run exactly one scrypt verification, even when the email is unknown
+    // or the account has no local password — otherwise the fast (no-KDF) reject
+    // path leaks, via response time, whether an email is registered (a login
+    // user-enumeration timing oracle). When nothing matches we verify against a
+    // decoy hash whose comparison is guaranteed to fail.
+    const targetHash = persistedUser?.passwordHash
+      ? persistedUser.passwordHash
+      : matchesAdmin
+        ? await this.localAdminHash()
+        : await this.decoyPasswordHash();
+    const valid = await verifyPassword(password, targetHash);
 
     if (persistedUser) {
       if (persistedUser.disabledAt) {
         throw new AuthError("Local user is disabled", "user_disabled");
       }
 
-      const valid =
-        Boolean(persistedUser.passwordHash) &&
-        (await verifyPassword(password, persistedUser.passwordHash ?? ""));
-
-      if (!valid) {
+      if (!persistedUser.passwordHash || !valid) {
         throw new AuthError("Invalid credentials", "invalid_credentials");
       }
 
       return this.createSession(await this.currentUserFromRecord(persistedUser), context);
     }
 
-    const user = await this.localAdmin();
-
-    if (
-      email.toLowerCase() !== user.email.toLowerCase() ||
-      !(await verifyPassword(password, await this.localAdminHash()))
-    ) {
+    if (!matchesAdmin || !valid) {
       throw new AuthError("Invalid credentials", "invalid_credentials");
     }
 
-    return this.createSession(user, context);
+    return this.createSession(admin, context);
   }
 
   async createSession(user: CurrentUser, context: SessionContext = {}): Promise<LoginResult> {
@@ -174,11 +188,32 @@ export class LocalAuthService {
     }
 
     const tokenHash = hashToken(token);
+    const now = Date.now();
+
+    // If a configured DB has been latched unavailable past the fallback grace,
+    // probe it once here so a recovered DB restores fresh permissions instead of
+    // the memory cache serving login-time perms indefinitely.
+    if (this.staleFallbackTripped(now)) {
+      this.dbAvailable = true;
+    }
 
     const persistedSession = await this.authenticateFromDatabase(tokenHash);
 
+    // A reachable DB (probe succeeded or it was never down) clears the outage clock.
+    if (this.dbAvailable) {
+      this.dbUnavailableSince = undefined;
+    }
+
     if (persistedSession) {
       return persistedSession;
+    }
+
+    // Bounded staleness: once the outage has exceeded the grace we can no longer
+    // confirm current access, so refuse to keep honoring the login-time permissions
+    // cached in memory (a revoked user would otherwise retain access for the whole
+    // outage). No-DB deployments (memory authoritative) are never tripped.
+    if (this.staleFallbackTripped(now)) {
+      return {};
     }
 
     const session = this.sessions.get(tokenHash);
@@ -507,6 +542,16 @@ export class LocalAuthService {
     return this.localAdminPasswordHash;
   }
 
+  // A stable, valid scrypt hash (of a random, never-matching password) used as the
+  // verify() target when no real account/hash applies, so an unknown-email login
+  // still pays the full KDF cost and cannot be distinguished by timing from a real
+  // failed login. Computed once and cached (its own scrypt is amortized away).
+  private decoyPasswordHash() {
+    this.decoyPasswordHashPromise ??= hashPassword(randomBytes(32).toString("base64url"));
+
+    return this.decoyPasswordHashPromise;
+  }
+
   private async localUserRecordByEmail(email: string) {
     const db = this.availableDatabase();
 
@@ -748,7 +793,7 @@ export class LocalAuthService {
     }
 
     try {
-      await this.upsertGroups(user.groups);
+      await upsertGroups(db, user.groups);
       await db
         .insert(userAccessGroups)
         .values(user.groups.map((group) => ({ groupId: group.id, userId: user.id })))
@@ -862,8 +907,8 @@ export class LocalAuthService {
     }
 
     try {
-      await this.ensureSecurityCatalog();
-      await this.upsertGroups(groups);
+      await ensureSecurityCatalog(db);
+      await upsertGroups(db, groups);
 
       await db.delete(userRoles).where(eq(userRoles.userId, userId));
       await db.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
@@ -905,52 +950,20 @@ export class LocalAuthService {
     }
   }
 
-  private async upsertGroups(groups: AccessGroup[]) {
-    const db = this.availableDatabase();
-
-    if (!db || groups.length === 0) {
-      return;
-    }
-
-    // Create groups that don't exist yet (JIT from OIDC claims or user access
-    // assignment) but never overwrite an existing group's display name — rename
-    // is owned by createGroup/updateGroup, not membership sync. Otherwise every
-    // login would clobber the operator-curated name back to the raw claim value.
-    for (const group of groups) {
-      await db.insert(accessGroups).values(group).onConflictDoNothing();
-    }
-  }
-
-  private async ensureSecurityCatalog() {
-    const db = this.availableDatabase();
-
-    if (!db) {
-      return;
-    }
-
-    await db
-      .insert(roleRows)
-      .values(roles.map((id) => ({ id, name: roleName(id) })))
-      .onConflictDoNothing();
-    await db
-      .insert(permissionRows)
-      .values(permissions.map((id) => ({ id, name: permissionName(id) })))
-      .onConflictDoNothing();
-    await db
-      .insert(rolePermissionRows)
-      .values(
-        roles.flatMap((roleId) =>
-          rolePermissions[roleId].map((permissionId) => ({
-            permissionId,
-            roleId,
-          })),
-        ),
-      )
-      .onConflictDoNothing();
-  }
-
   private availableDatabase() {
     return this.dbAvailable ? this.db : undefined;
+  }
+
+  // True when a configured DB has been unavailable past the fallback grace window
+  // — the point at which cached login-time permissions may no longer be trusted.
+  private staleFallbackTripped(now: number): boolean {
+    return dbOutageGraceExceeded({
+      databaseAvailable: this.dbAvailable,
+      databaseConfigured: this.db !== undefined,
+      graceMs: this.fallbackGraceMs,
+      now,
+      unavailableSince: this.dbUnavailableSince,
+    });
   }
 
   private requiredDatabase() {
@@ -963,23 +976,21 @@ export class LocalAuthService {
     return db;
   }
 
-  private markDatabaseUnavailable(error: unknown) {
+  private markDatabaseUnavailable(error: unknown): never | void {
+    // A data-integrity error (constraint violation / data exception) is NOT a
+    // connectivity failure — this specific write was rejected for bad data. Do NOT
+    // latch into the memory store (which silently drops every later DB write, incl.
+    // access changes, until process restart); re-throw so the caller surfaces the
+    // failed write and the service stays DB-backed.
+    if (isPgConstraintError(error)) {
+      throw error;
+    }
+
+    // Stamp the outage start once (kept across probe re-latches; cleared only when
+    // the DB is confirmed reachable again) so the fallback grace is measured from
+    // the genuine outage start, not reset on every failed request.
+    this.dbUnavailableSince ??= Date.now();
     this.dbAvailable = false;
     console.warn("auth session persistence unavailable; using memory store", error);
   }
-}
-
-function defaultLocalPassword() {
-  if (process.env.NODE_ENV === "production") {
-    throw new AuthError(
-      "RAKKR_LOCAL_ADMIN_PASSWORD is required in production",
-      "missing_local_password",
-    );
-  }
-
-  return "rakkr-local-dev-password";
-}
-
-function authProvider(value: string): CurrentUser["provider"] {
-  return value === "oidc" ? "oidc" : "local";
 }

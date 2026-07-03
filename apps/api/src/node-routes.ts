@@ -21,6 +21,7 @@ import type {
 } from "./http-types.js";
 import type { ListenMonitorStore, StoredListenMonitorChunk } from "./listen-monitor-store.js";
 import type { ListenSessionStore } from "./listen-session-store.js";
+import { resolveVisibleMeterFrame } from "./meter-room-access.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { registerNodeActionRoutes } from "./node-action-routes.js";
 import { registerNodeInventoryRoutes } from "./node-inventory-routes.js";
@@ -38,6 +39,14 @@ interface NodeRouteDependencies {
   bootstrapStore: NodeBootstrapStore;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  // Whether the caller may receive the whole-node live monitor audio. The monitor
+  // chunk is a single pre-mixed WAV that cannot be filtered per-channel like a
+  // meter frame, so a shared-node partial owner must be refused. Defaults to
+  // allow (single-room/full-authority behavior) for tests.
+  canServeWholeNodeMonitor?: (
+    user: NonNullable<AuthResult["user"]>,
+    node: RecorderNode,
+  ) => Promise<boolean>;
   // Strict per-channel meter filtering: drops levels for channels the caller's
   // rooms do not own. Defaults to identity (no filtering) for tests.
   filterMeterFrame?: (
@@ -146,6 +155,7 @@ const monitorChunkSampleRate = 16_000;
 export function registerNodeRoutes({
   app,
   bootstrapStore,
+  canServeWholeNodeMonitor = async () => true,
   currentAuth,
   currentUser,
   filterMeterFrame = async (_user, _node, frame) => frame,
@@ -539,6 +549,24 @@ export function registerNodeRoutes({
         return c.json({ error: "Node not found" }, 404);
       }
 
+      // The monitor chunk is a single whole-node mix, so a caller who does not own
+      // every channel's room must not receive it (they would hear another room's
+      // live audio on a shared node). Meters are filtered per-channel; audio cannot
+      // be, so it is refused instead.
+      if (!(await canServeWholeNodeMonitor(currentUser(c), node))) {
+        await recordNodeFailure(
+          c,
+          "listen.monitor.start.failed",
+          "missing_resource_scope",
+          nodeId,
+          {
+            permission: "listen:monitor",
+            targetId: node.id,
+          },
+        );
+        return c.json({ error: "Forbidden", permission: "listen:monitor" }, 403);
+      }
+
       const requestBody = (await c.req.json().catch(() => undefined)) as
         | { enhance?: unknown }
         | undefined;
@@ -615,6 +643,19 @@ export function registerNodeRoutes({
           targetId: nodeId,
         });
         return c.json({ error: "Node not found" }, 404);
+      }
+
+      // Same whole-node-mix isolation guard as listen start: refuse the audio to a
+      // caller who does not own every channel's room on a shared node.
+      if (!(await canServeWholeNodeMonitor(currentUser(c), node))) {
+        await recordNodeFailure(
+          c,
+          "listen.monitor.stream.failed",
+          "missing_resource_scope",
+          nodeId,
+          { permission: "listen:monitor", targetId: node.id },
+        );
+        return c.json({ error: "Forbidden", permission: "listen:monitor" }, 403);
       }
 
       const sessionId = c.req.query("sessionId");
@@ -748,10 +789,20 @@ export function registerNodeRoutes({
     return streamSSE(c, async (stream) => {
       while (true) {
         const frame = await liveMeterFrame();
+        // Strict per-channel filtering (mirrors /meters): the node-scope gate expands
+        // to the room union, so on a shared node a caller scoped to only some rooms
+        // must not receive sibling-room channel levels.
+        const visibleFrame = frame
+          ? await resolveVisibleMeterFrame(user, frame, {
+              filterMeterFrame,
+              hasResourceScope,
+              nodeStore,
+            })
+          : undefined;
 
-        if (frame && (await hasResourceScope(user, { id: frame.nodeId, type: "node" }))) {
+        if (visibleFrame) {
           await stream.writeSSE({
-            data: JSON.stringify(frame),
+            data: JSON.stringify(visibleFrame),
             event: "meter",
           });
         }

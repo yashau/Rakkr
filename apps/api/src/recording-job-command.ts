@@ -66,6 +66,14 @@ function stringOrUndefined(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function nullableNumber(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  return typeof value === "number" ? value : undefined;
+}
+
 function channelMapFromValue(value: unknown): RecordingJobCommand["channelMap"] {
   if (!isRecord(value)) {
     return undefined;
@@ -153,6 +161,12 @@ function recorderCacheRetentionFromValue(
 
   return {
     deleteAfterUpload: value.deleteAfterUpload,
+    // Preserve the deferred-cleanup thresholds too — dropping them here left the
+    // agent with an incomplete recorder-cache retention policy on reload, so
+    // age/bytes/free-disk sweeps silently never ran (unbounded recorder cache).
+    maxAgeDays: nullableNumber(value.maxAgeDays),
+    maxBytes: nullableNumber(value.maxBytes),
+    minFreeDiskPercent: nullableNumber(value.minFreeDiskPercent),
     policyId,
   };
 }

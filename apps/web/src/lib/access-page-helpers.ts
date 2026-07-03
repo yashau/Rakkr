@@ -220,6 +220,28 @@ export function createInputFromDraft(draft: CreateUserDraft): LocalUserCreateInp
   };
 }
 
+/**
+ * Assignable-subject pickers (room roster, schedule assignees) fetch the full
+ * user/group list up to the server cap (`PAGE_POLICY.default.maxLimit`), not a
+ * 50-row page — otherwise groups/users beyond the first page are unreachable in
+ * the combobox. The query keys are params-suffixed so the pickers do NOT share a
+ * TanStack Query cache slot with the paginated management views: a shared bare
+ * `["access-groups"]` slot let whichever query ran last clamp the other's list.
+ */
+export const SUBJECT_PICKER_LIMIT = 200;
+
+export function subjectPickerFilters(): { limit: number } {
+  return { limit: SUBJECT_PICKER_LIMIT };
+}
+
+export function subjectPickerGroupsQueryKey() {
+  return ["access-groups", subjectPickerFilters()] as const;
+}
+
+export function subjectPickerUsersQueryKey() {
+  return ["access-users", subjectPickerFilters()] as const;
+}
+
 export function grantsFromText(value: string): ResourceGrant[] {
   return value
     .split(/\r?\n/)

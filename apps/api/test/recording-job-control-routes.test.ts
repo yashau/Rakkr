@@ -20,10 +20,12 @@ process.env.DATABASE_URL = "";
 process.env.RAKKR_RECORDING_JOB_STORE_PATH = path.join(routeRoot, "jobs.json");
 process.env.RAKKR_RETENTION_POLICY_STORE_PATH = path.join(routeRoot, "retention-policies.json");
 process.env.RAKKR_RECORDING_CHUNK_STORE_PATH = path.join(routeRoot, "chunks.json");
+process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(routeRoot, "upload-queue.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createRecordingJob, failRecordingJob } = await import("../src/recording-jobs.js");
 const { registerRecordingJobRoutes } = await import("../src/recording-job-routes.js");
+const { enqueueRecordingUpload, listUploadQueueItems } = await import("../src/upload-queue.js");
 const { listRecordingChunksForRecording, recordingChunkId, upsertRecordingChunk } =
   await import("../src/recording-chunks.js");
 
@@ -120,6 +122,43 @@ test("G56: retry clears supplementary renditions and sweeps stale chunk rows", a
   assert.equal(updated?.rawCachePath, undefined);
   assert.equal(updated?.enhancedCachePath, undefined);
   assert.equal(remainingChunks.length, 0);
+});
+
+test("retry sweeps the prior attempt's orphaned upload-queue items", async () => {
+  const auditStore = createAuditStore("");
+  const rec = recording({
+    id: `rec_retry_upload_${randomUUID()}`,
+    name: "Upload Retry",
+    status: "partial",
+  });
+  const recordingStore = memoryRecordingStore([rec]);
+  const sourceJob = await createRecordingJob(rec);
+
+  await failRecordingJob(sourceJob.id, "capture_failed");
+  await enqueueRecordingUpload(rec);
+
+  // Precondition: the failed attempt left an upload-queue item for the recording.
+  assert.equal(
+    (await listUploadQueueItems()).filter((item) => item.recordingId === rec.id).length,
+    1,
+  );
+
+  const app = recordingJobApp({
+    auditStore,
+    recordingStore,
+    scopedRecordingSnapshots: [rec],
+  });
+  const response = await app.request(`/api/v1/recording-jobs/${sourceJob.id}/retry`, {
+    method: "POST",
+  });
+
+  assert.equal(response.status, 201);
+  // The retry sweeps the orphaned item so it cannot pin retention (a stale `failed`
+  // item) or make the upload runner re-attempt a purged file (cache_path_missing).
+  assert.equal(
+    (await listUploadQueueItems()).filter((item) => item.recordingId === rec.id).length,
+    0,
+  );
 });
 
 test("recording job bulk stop route uses scoped recording context for updates", async () => {

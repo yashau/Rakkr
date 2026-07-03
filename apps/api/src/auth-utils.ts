@@ -127,7 +127,11 @@ export function oidcGroupsFromClaims(values: readonly string[]) {
       .filter(Boolean)
       .map((value) => ({
         id: accessGroupSlug(value) || `group-${hashToken(value).slice(0, 12)}`,
-        name: value,
+        // Cap to the access_groups.name varchar(160) budget (matching the operator
+        // create schema). An uncapped IdP claim (e.g. a full group DN) would trip a
+        // Postgres length constraint on insert, failing the login and latching the
+        // auth service into DB-unavailable memory-fallback.
+        name: value.slice(0, 160),
       })),
   );
 }
@@ -243,13 +247,57 @@ export function isUuid(value: string) {
   return /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
 }
 
-export function isPgErrorCode(error: unknown, code: string) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === code
-  );
+export function isPgErrorCode(error: unknown, code: string): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const record = error as { cause?: unknown; code?: unknown };
+
+  // Drizzle wraps the driver's PostgresError as `.cause` ("Failed query: …"), so
+  // the SQLSTATE lives on the cause, not the top-level error — walk the chain.
+  return record.code === code || isPgErrorCode(record.cause, code);
+}
+
+// SQLSTATE class 22 (data exception, e.g. 22001 string-too-long) and 23 (integrity
+// constraint violation, e.g. 23505 unique / 23503 FK / 23502 not-null / 23514
+// check) mean the write was rejected for BAD DATA — not that the database is
+// unreachable. Walks the `cause` chain like isPgErrorCode.
+export function isPgConstraintError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const record = error as { cause?: unknown; code?: unknown };
+  const code = typeof record.code === "string" ? record.code : "";
+
+  return code.startsWith("22") || code.startsWith("23") || isPgConstraintError(record.cause);
+}
+
+// Bounded staleness for the auth memory-fallback. Once a CONFIGURED database has
+// been unavailable longer than the grace window, the controller can no longer
+// confirm current access, so it must stop honoring the login-time permissions
+// cached in memory (a revoked user would otherwise keep access for the whole
+// outage). Returns true only for a configured-but-currently-unavailable DB whose
+// outage has exceeded the grace; no-DB deployments (memory is authoritative) and
+// healthy/short-blip DBs are never tripped. Drives both the recovery probe and
+// the deny decision in authenticate().
+export function dbOutageGraceExceeded(input: {
+  databaseConfigured: boolean;
+  databaseAvailable: boolean;
+  unavailableSince: number | undefined;
+  now: number;
+  graceMs: number;
+}): boolean {
+  if (
+    !input.databaseConfigured ||
+    input.databaseAvailable ||
+    input.unavailableSince === undefined
+  ) {
+    return false;
+  }
+
+  return input.now - input.unavailableSince > input.graceMs;
 }
 
 function isRole(value: unknown): value is Role {

@@ -10,6 +10,11 @@ import { Combobox, type ComboboxGroup } from "@/components/searchable-combobox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
+import {
+  subjectPickerFilters,
+  subjectPickerGroupsQueryKey,
+  subjectPickerUsersQueryKey,
+} from "@/lib/access-page-helpers";
 
 interface ManualEntryDraft {
   capabilities: RoomCapability[];
@@ -28,13 +33,13 @@ export function RoomRosterEditor({ roomId }: { roomId: string }) {
   });
   const usersQuery = useQuery({
     enabled: addOpen,
-    queryFn: () => api.accessUsers({ limit: 500 }),
-    queryKey: ["access-users"],
+    queryFn: () => api.accessUsers(subjectPickerFilters()),
+    queryKey: subjectPickerUsersQueryKey(),
   });
   const groupsQuery = useQuery({
     enabled: addOpen,
-    queryFn: () => api.accessGroups(),
-    queryKey: ["access-groups"],
+    queryFn: () => api.accessGroups(subjectPickerFilters()),
+    queryKey: subjectPickerGroupsQueryKey(),
   });
   const saveMutation = useMutation({
     mutationFn: (entries: ManualEntryDraft[]) =>

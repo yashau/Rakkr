@@ -36,12 +36,12 @@ import {
   nodeRecordingCapacityFromMetadata,
   nodeRuntimeFromInput,
   nodeRuntimeFromMetadata,
-  nonEmptyAudioDefaults,
   numberArray,
   record,
   stringArray,
   stringOrUndefined,
 } from "./node-metadata.js";
+import { updatedNode, updatedNodeHeartbeat, updatedNodeInterface } from "./node-store-updates.js";
 
 type AudioChannelRow = typeof audioChannels.$inferSelect;
 type AudioInterfaceRow = typeof audioInterfaces.$inferSelect;
@@ -317,9 +317,14 @@ class SeedOnlyNodeStore implements NodeStore {
   }
 }
 
+type NodeDatabase = ReturnType<typeof createDatabase>;
+// The db handle or a transaction handle — both expose the query builders
+// createCredential needs, so it can run inside rotateCredential's transaction.
+type NodeDbExecutor = NodeDatabase | Parameters<Parameters<NodeDatabase["transaction"]>[0]>[0];
+
 class PostgresNodeStore implements NodeStore {
   private dbAvailable = true;
-  private readonly db;
+  private readonly db: NodeDatabase;
 
   constructor(
     databaseUrl: string,
@@ -429,26 +434,35 @@ class PostgresNodeStore implements NodeStore {
       throw new NodeStoreError("Node heartbeat storage is unavailable", "database_unavailable");
     }
 
-    const [row] = await db.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).limit(1);
+    // heartbeat() and update() both read-modify-write the metadata JSONB. Under a
+    // plain read-then-write, a concurrent operator update() and a (frequent) agent
+    // heartbeat() race: the later writer clobbers the other's metadata changes
+    // (last-writer-wins), silently reverting e.g. an operator's audioDefaults edit.
+    // Lock the row for the read-modify-write so the two serialize per node.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).for("update");
 
-    if (!row) {
-      return undefined;
-    }
+      if (!row) {
+        return false;
+      }
 
-    await db
-      .update(nodeRows)
-      .set({
-        agentVersion: input.agentVersion,
-        hostname: input.hostname,
-        lastSeenAt: new Date(),
-        metadata: nodeMetadata(row.metadata, nodeRuntimeFromInput(input.runtime, row.metadata)),
-        network: { ipAddresses: input.ipAddresses },
-        status: input.status,
-        updatedAt: new Date(),
-      })
-      .where(eq(nodeRows.id, nodeId));
+      await tx
+        .update(nodeRows)
+        .set({
+          agentVersion: input.agentVersion,
+          hostname: input.hostname,
+          lastSeenAt: new Date(),
+          metadata: nodeMetadata(row.metadata, nodeRuntimeFromInput(input.runtime, row.metadata)),
+          network: { ipAddresses: input.ipAddresses },
+          status: input.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(nodeRows.id, nodeId));
 
-    return this.find(nodeId);
+      return true;
+    });
+
+    return updated ? this.find(nodeId) : undefined;
   }
 
   async list() {
@@ -530,13 +544,22 @@ class PostgresNodeStore implements NodeStore {
       return undefined;
     }
 
-    await db
-      .update(nodeCredentials)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(nodeCredentials.nodeId, nodeId), isNull(nodeCredentials.revokedAt)));
+    // Revoke prior credential(s) + issue the new one ATOMICALLY: a failed insert
+    // after the revoke would leave the node with zero active credentials (locked
+    // out), and concurrent rotations could both insert an active row. The
+    // transaction + `node_credentials_active_node_idx` partial unique index keep
+    // exactly one active credential — a failed/racing rotation rolls back.
+    const credential = await db.transaction(async (tx) => {
+      await tx
+        .update(nodeCredentials)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(nodeCredentials.nodeId, nodeId), isNull(nodeCredentials.revokedAt)));
+
+      return this.createCredential(nodeId, actorUserId, tx);
+    });
 
     return {
-      credential: await this.createCredential(nodeId, actorUserId),
+      credential,
       node: (await this.find(nodeId)) ?? nodeFromRows(node, [], []),
     };
   }
@@ -636,40 +659,51 @@ class PostgresNodeStore implements NodeStore {
       throw new NodeStoreError("Node storage is unavailable", "database_unavailable");
     }
 
-    const [row] = await db.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).limit(1);
+    // Lock the row for the read-modify-write so a concurrent heartbeat() cannot
+    // clobber this operator update's metadata changes (and vice versa) — see the
+    // heartbeat() note. The two serialize per node.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).for("update");
 
-    if (!row) {
-      return undefined;
-    }
+      if (!row) {
+        return false;
+      }
 
-    const existing = nodeFromRows(row, [], []);
-    const next = updatedNode(existing, input);
+      const existing = nodeFromRows(row, [], []);
+      const next = updatedNode(existing, input);
 
-    await db
-      .update(nodeRows)
-      .set({
-        alias: next.alias,
-        hostname: next.hostname,
-        location: next.location,
-        metadata: nodeMetadata(
-          row.metadata,
-          next.runtime,
-          next.recordingCapacity,
-          next.audioDefaults,
-        ),
-        network: { ipAddresses: next.ipAddresses },
-        notes: next.notes ?? null,
-        tags: next.tags,
-        updatedAt: new Date(),
-      })
-      .where(eq(nodeRows.id, nodeId));
+      await tx
+        .update(nodeRows)
+        .set({
+          alias: next.alias,
+          hostname: next.hostname,
+          location: next.location,
+          metadata: nodeMetadata(
+            row.metadata,
+            next.runtime,
+            next.recordingCapacity,
+            next.audioDefaults,
+          ),
+          network: { ipAddresses: next.ipAddresses },
+          notes: next.notes ?? null,
+          tags: next.tags,
+          updatedAt: new Date(),
+        })
+        .where(eq(nodeRows.id, nodeId));
 
-    return this.find(nodeId);
+      return true;
+    });
+
+    return updated ? this.find(nodeId) : undefined;
   }
 
-  private async createCredential(nodeId: string, actorUserId?: string) {
+  private async createCredential(
+    nodeId: string,
+    actorUserId?: string,
+    executor: NodeDbExecutor = this.db,
+  ) {
     const token = `rakkr_node_${randomBytes(32).toString("base64url")}`;
-    const [row] = await this.db
+    const [row] = await executor
       .insert(nodeCredentials)
       .values({
         createdByUserId: actorUserId && isUuid(actorUserId) ? actorUserId : null,
@@ -831,105 +865,6 @@ function nodeFromRows(
     status: node.status,
     tags: stringArray(node.tags),
   };
-}
-
-function updatedNodeHeartbeat(node: RecorderNode, input: NodeHeartbeatInput): RecorderNode {
-  return {
-    ...node,
-    agentVersion: input.agentVersion,
-    hostname: input.hostname,
-    ipAddresses: input.ipAddresses,
-    lastSeenAt: new Date().toISOString(),
-    runtime: input.runtime ?? node.runtime,
-    status: input.status,
-  };
-}
-
-function updatedNode(node: RecorderNode, input: NodeUpdateInput): RecorderNode {
-  return {
-    ...node,
-    alias: input.alias ?? node.alias,
-    hostname: input.hostname ?? node.hostname,
-    ipAddresses: input.ipAddresses ?? node.ipAddresses,
-    location: {
-      ...node.location,
-      ...definedLocation(input.location),
-    },
-    notes: input.notes === undefined ? node.notes : (input.notes ?? undefined),
-    audioDefaults:
-      input.audioDefaults === undefined
-        ? node.audioDefaults
-        : nonEmptyAudioDefaults(input.audioDefaults),
-    recordingCapacity: input.recordingCapacity ?? node.recordingCapacity,
-    tags: input.tags ?? node.tags,
-  };
-}
-
-function updatedNodeInterface(
-  node: RecorderNode,
-  interfaceId: string,
-  input: NodeInterfaceUpdateInput,
-): RecorderNode | undefined {
-  const interfaceIndex = node.interfaces.findIndex(
-    (audioInterface) => audioInterface.id === interfaceId,
-  );
-
-  if (interfaceIndex < 0) {
-    return undefined;
-  }
-
-  const audioInterface = node.interfaces[interfaceIndex];
-  const nextInterfaces = [...node.interfaces];
-
-  nextInterfaces[interfaceIndex] = {
-    ...audioInterface,
-    alias: input.alias ?? audioInterface.alias,
-    channels: input.channels
-      ? updatedChannels(audioInterface.channels, input.channels)
-      : audioInterface.channels,
-    hardwarePath:
-      input.hardwarePath === undefined
-        ? audioInterface.hardwarePath
-        : (input.hardwarePath ?? undefined),
-    sampleRates: input.sampleRates ?? audioInterface.sampleRates,
-    serialNumber:
-      input.serialNumber === undefined
-        ? audioInterface.serialNumber
-        : (input.serialNumber ?? undefined),
-    systemName: input.systemName ?? audioInterface.systemName,
-    systemRef: input.systemRef ?? audioInterface.systemRef,
-  };
-
-  return {
-    ...node,
-    interfaces: nextInterfaces,
-  };
-}
-
-function updatedChannels(
-  channels: AudioInterface["channels"],
-  updates: NonNullable<NodeInterfaceUpdateInput["channels"]>,
-) {
-  const updateByIndex = new Map(updates.map((channel) => [channel.index, channel.alias]));
-
-  return channels.map((channel) => ({
-    ...channel,
-    alias: updateByIndex.get(channel.index) ?? channel.alias,
-  }));
-}
-
-function definedLocation(location: NodeUpdateInput["location"]) {
-  const next: Partial<RecorderNode["location"]> = {};
-
-  for (const [key, value] of Object.entries(location ?? {}) as Array<
-    [keyof RecorderNode["location"], string | null | undefined]
-  >) {
-    if (value !== undefined) {
-      next[key] = value ?? undefined;
-    }
-  }
-
-  return next;
 }
 
 function interfaceFromRows(

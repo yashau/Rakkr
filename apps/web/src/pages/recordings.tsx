@@ -62,6 +62,7 @@ import {
   uploadQueueStatusSummary,
 } from "@/lib/recording-page-helpers";
 import { useRecordingPlaybackMutation } from "@/lib/recording-playback";
+import { schedulePickerFilters } from "@/lib/schedule-page-helpers";
 import { useServerPagination } from "@/lib/use-server-pagination";
 
 export function RecordingsPage() {
@@ -128,7 +129,7 @@ export function RecordingsPage() {
   });
   const schedulesQuery = useQuery({
     enabled: pagePermissions.canReadSchedules,
-    queryFn: () => api.schedules(),
+    queryFn: () => api.schedules(schedulePickerFilters()),
     queryKey: ["schedules"],
   });
   const uploadPoliciesQuery = useQuery({

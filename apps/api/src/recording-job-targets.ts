@@ -11,6 +11,7 @@ import type {
 } from "@rakkr/shared";
 
 import { channelMapFromSelection, resolveChannelMode } from "./channel-selection.js";
+import { effectiveCaptureInterfaceId } from "./room-resolution.js";
 import type { SettingsStore } from "./settings-store.js";
 
 interface RecordingJobTargetInput {
@@ -38,10 +39,7 @@ export async function recordingJobTargetOptions({
   recordingProfileId,
   settingsStore,
 }: RecordingJobTargetInput) {
-  const captureInterfaceId =
-    requestedCaptureInterfaceId ??
-    process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
-    node?.interfaces[0]?.id;
+  const captureInterfaceId = effectiveCaptureInterfaceId(node, requestedCaptureInterfaceId);
   const captureInterface = node?.interfaces.find(
     (candidate) => candidate.id === captureInterfaceId,
   );

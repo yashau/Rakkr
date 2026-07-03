@@ -45,8 +45,10 @@ point at — so getting rooms right is the foundation for who can reach what.
 1. On the **Rooms** page, click a room to open its detail page.
 2. Use **Edit** (pencil) to change the identity fields, or **Delete** (trash) to
    remove it.
-   - Deleting a room clears it from any node that pointed at it and removes it
-     everywhere it was referenced in access.
+   - Deleting a room clears it from any node or channel that pointed at it, drops
+     any recording's room attribution, and removes its access-roster entries.
+   - A room that is still referenced by a **schedule** cannot be deleted — the
+     delete is refused until you reassign or remove those schedules first.
 
 ## What's on the room detail page
 

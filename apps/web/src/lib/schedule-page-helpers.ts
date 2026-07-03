@@ -40,6 +40,22 @@ export const emptySchedulePageFilters: SchedulePageFilterDraft = {
   search: "",
 };
 
+/**
+ * Schedules feed id -> name label maps and filter dropdowns on the recordings
+ * and health pages. Fetching without a limit falls back to the list route's
+ * server default (50), silently dropping the 51st+ schedule so its recordings
+ * and health events render with an unresolved schedule label. 200 is the API's
+ * max page size (`PAGE_POLICY.default.maxLimit`); requesting it fetches the full
+ * schedule set up to that cap. Deployments beyond 200 schedules need a paginated
+ * picker (tracked). Mirrors `nodePickerFilters`.
+ */
+export const SCHEDULE_PICKER_LIMIT = 200;
+
+/** Query filters for schedule pickers/labels — fetch the full set, not a page. */
+export function schedulePickerFilters(): { limit: number } {
+  return { limit: SCHEDULE_PICKER_LIMIT };
+}
+
 export function schedulePageActionPermissions(permissions: readonly Permission[]) {
   return {
     canRead: permissions.includes("schedule:read"),

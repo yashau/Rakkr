@@ -120,6 +120,13 @@ export function previewScheduleOccurrences(schedule: ScheduleSummary, limit = 5,
     nextRunAtForRecurrence(schedule.recurrence, schedule.timezone, undefined, now);
 
   while (nextRunAt && occurrences.length < safeLimit) {
+    // Guard a malformed/unparseable nextRunAt (matches windowScheduleOccurrences):
+    // otherwise Date.parse -> NaN flows into new Date(NaN).toISOString() and throws
+    // a RangeError that crashes the preview (and the switcher/calendar callers).
+    if (Number.isNaN(Date.parse(nextRunAt))) {
+      break;
+    }
+
     occurrences.push(scheduleOccurrencePreview(schedule, nextRunAt));
 
     const updates = advanceScheduleAfterRun(

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import path from "node:path";
 import { and, createDatabase, eq, rooms as roomsTable } from "@rakkr/db";
 import { type Room, type RoomUpdate, roomSchema } from "@rakkr/shared";
+import { isPgErrorCode } from "./auth-utils.js";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 
 type RoomInsert = typeof roomsTable.$inferInsert;
@@ -10,7 +11,7 @@ type RoomRow = typeof roomsTable.$inferSelect;
 export class RoomStoreError extends Error {
   constructor(
     message: string,
-    readonly code: "room_exists",
+    readonly code: "room_exists" | "room_in_use",
   ) {
     super(message);
   }
@@ -169,6 +170,18 @@ class PostgresRoomStore implements RoomStore {
 
       return roomFromRow(existing);
     } catch (error) {
+      // A schedule created between the route's referential pre-check and this DELETE
+      // trips the schedules.roomId RESTRICT FK (SQLSTATE 23503). Surface it as a
+      // distinct constraint error (RoomStoreError room_in_use) so the route returns
+      // 409 room_in_use rather than mislabeling the race as a DB outage (503).
+      if (error instanceof RoomStoreError) {
+        throw error;
+      }
+
+      if (isPgErrorCode(error, "23503")) {
+        throw new RoomStoreError("Room is still referenced by schedules", "room_in_use");
+      }
+
       await this.failover("room delete unavailable; using JSON store", error);
       return this.fallback.delete(roomId);
     }

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -418,6 +419,14 @@ export const nodeCredentials = pgTable(
   (table) => ({
     nodeIdx: index("node_credentials_node_idx").on(table.nodeId),
     tokenPrefixIdx: index("node_credentials_token_prefix_idx").on(table.tokenPrefix),
+    // At most one un-revoked (active) credential per node — the DB-level guard for
+    // the invariant rotateCredential intends (revoke prior, then insert one). The
+    // revoke+insert is not atomic on its own, so two concurrent rotations could
+    // otherwise both insert an active credential (an un-revoked, still-valid stale
+    // token); this partial unique index makes the second insert fail closed.
+    activeNodeIdx: uniqueIndex("node_credentials_active_node_idx")
+      .on(table.nodeId)
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 
@@ -444,6 +453,14 @@ export const nodeSshCredentials = pgTable(
   },
   (table) => ({
     nodeIdx: index("node_ssh_credentials_node_idx").on(table.nodeId),
+    // At most one un-revoked (active) credential per node — the DB-level guard for
+    // the "one active key per node" invariant. Revoke-then-insert in persistActive
+    // is not atomic on its own, so two concurrent rotations could otherwise both
+    // insert an active credential; this partial unique index makes the second
+    // insert fail (rolled back with its transaction) instead.
+    activeNodeIdx: uniqueIndex("node_ssh_credentials_active_node_idx")
+      .on(table.nodeId)
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 
@@ -836,7 +853,10 @@ export const recordingChunks = pgTable(
     offsetSeconds: integer("offset_seconds").notNull().default(0),
     rawCachePath: text("raw_cache_path"),
     recordingId: varchar("recording_id", { length: 160 }).notNull(),
-    sizeBytes: integer("size_bytes"),
+    // A single chunk of multichannel/uncompressed audio (e.g. 32-ch X32 WAV) can
+    // exceed the 2 GiB signed-int32 ceiling, which threw "integer out of range" on
+    // upsert and failed the chunk. bigint (JS number, exact to 2^53 = 8 PiB) holds it.
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
     status: recordingChunkStatusEnum("status").notNull(),
     total: integer("total"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
