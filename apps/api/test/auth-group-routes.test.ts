@@ -1,17 +1,27 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser } from "@rakkr/shared";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 
+const rosterStoreRoot = await mkdtemp(path.join(tmpdir(), "rakkr-auth-group-roster-"));
 process.env.DATABASE_URL = "";
 process.env.RAKKR_LOCAL_ACCESS_POLICIES = "";
 process.env.RAKKR_LOCAL_ADMIN_GROUPS = "";
+process.env.RAKKR_ROOM_ROSTER_STORE_PATH = path.join(rosterStoreRoot, "room-roster.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerAuthGroupRoutes } = await import("../src/auth-group-routes.js");
 const { LocalAuthService } = await import("../src/auth-service.js");
+const { createRoomRosterStore } = await import("../src/room-roster-store.js");
+
+test.after(async () => {
+  await rm(rosterStoreRoot, { force: true, recursive: true });
+});
 
 test("group routes support create with slug, membership, and cascade-clean delete", async () => {
   const app = new Hono<AppBindings>();
@@ -108,6 +118,62 @@ test("group routes support create with slug, membership, and cascade-clean delet
   ]) {
     assert.ok(successActions.includes(action), `expected audit ${action}`);
   }
+});
+
+test("deleting a group cascade-cleans its room roster grants end-to-end", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const authService = new LocalAuthService("");
+  const currentUser = manager(await authService.localAdmin());
+  const rosterStore = createRoomRosterStore();
+
+  registerAuthGroupRoutes({
+    app,
+    authService,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    // Wire the REAL roster store (not a stub) so the delete → cascade composition
+    // is exercised end-to-end, not just the fact that the callback is invoked.
+    removeGroupFromRoster: (groupId) => rosterStore.removeGroupSubject(groupId),
+    removeGroupFromSchedules: async () => 0,
+    requirePermission: allowPermission(),
+  });
+
+  const createResponse = await app.request("/api/v1/auth/groups", {
+    body: JSON.stringify({ memberIds: [], name: "Doomed" }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const { data: created } = (await createResponse.json()) as { data: { id: string } };
+
+  await rosterStore.replaceManual("room_cascade", [
+    { capabilities: ["operate"], subjectId: created.id, subjectType: "group" },
+    { capabilities: ["view"], subjectId: "user_keep", subjectType: "user" },
+  ]);
+
+  const before = await rosterStore.effectiveCapabilities(
+    { groupIds: [created.id], userId: "member" },
+    "room_cascade",
+  );
+  assert.deepEqual([...before], ["operate"], "the group's roster grant is live before delete");
+
+  const deleteResponse = await app.request(`/api/v1/auth/groups/${created.id}`, {
+    method: "DELETE",
+  });
+  assert.equal(deleteResponse.status, 200);
+
+  const groupAfter = await rosterStore.effectiveCapabilities(
+    { groupIds: [created.id], userId: "member" },
+    "room_cascade",
+  );
+  assert.equal(groupAfter.size, 0, "the deleted group's roster grant is cascade-cleaned");
+
+  const userAfter = await rosterStore.effectiveCapabilities(
+    { groupIds: [], userId: "user_keep" },
+    "room_cascade",
+  );
+  assert.deepEqual([...userAfter], ["view"], "unrelated user roster rows survive");
 });
 
 function allowPermission(): RequirePermission {
