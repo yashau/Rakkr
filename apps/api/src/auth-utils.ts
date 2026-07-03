@@ -247,7 +247,7 @@ export function isUuid(value: string) {
   return /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
 }
 
-export function isPgErrorCode(error: unknown, code: string) {
+export function isPgErrorCode(error: unknown, code: string): boolean {
   if (typeof error !== "object" || error === null) {
     return false;
   }
@@ -257,6 +257,21 @@ export function isPgErrorCode(error: unknown, code: string) {
   // Drizzle wraps the driver's PostgresError as `.cause` ("Failed query: …"), so
   // the SQLSTATE lives on the cause, not the top-level error — walk the chain.
   return record.code === code || isPgErrorCode(record.cause, code);
+}
+
+// SQLSTATE class 22 (data exception, e.g. 22001 string-too-long) and 23 (integrity
+// constraint violation, e.g. 23505 unique / 23503 FK / 23502 not-null / 23514
+// check) mean the write was rejected for BAD DATA — not that the database is
+// unreachable. Walks the `cause` chain like isPgErrorCode.
+export function isPgConstraintError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const record = error as { cause?: unknown; code?: unknown };
+  const code = typeof record.code === "string" ? record.code : "";
+
+  return code.startsWith("22") || code.startsWith("23") || isPgConstraintError(record.cause);
 }
 
 function isRole(value: unknown): value is Role {

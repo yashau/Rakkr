@@ -39,6 +39,7 @@ import {
   bearerToken,
   groupsFromIds,
   hashToken,
+  isPgConstraintError,
   isPgErrorCode,
   isUuid,
   localAccessPoliciesFromEnv,
@@ -963,7 +964,16 @@ export class LocalAuthService {
     return db;
   }
 
-  private markDatabaseUnavailable(error: unknown) {
+  private markDatabaseUnavailable(error: unknown): never | void {
+    // A data-integrity error (constraint violation / data exception) is NOT a
+    // connectivity failure — this specific write was rejected for bad data. Do NOT
+    // latch into the memory store (which silently drops every later DB write, incl.
+    // access changes, until process restart); re-throw so the caller surfaces the
+    // failed write and the service stays DB-backed.
+    if (isPgConstraintError(error)) {
+      throw error;
+    }
+
     this.dbAvailable = false;
     console.warn("auth session persistence unavailable; using memory store", error);
   }
