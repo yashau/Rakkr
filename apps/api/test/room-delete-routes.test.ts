@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
 import type {
@@ -12,14 +15,22 @@ import type {
 } from "@rakkr/shared";
 import type { AuthResult } from "../src/auth-service.js";
 import type { AppBindings, RecordAuditEvent } from "../src/http-types.js";
+import type { RoomRosterStore } from "../src/room-roster-store.js";
 import type { RoomStore } from "../src/room-store.js";
 import type { ScheduleStore } from "../src/schedule-store.js";
 
+const rosterStoreRoot = await mkdtemp(path.join(tmpdir(), "rakkr-room-routes-roster-"));
 process.env.DATABASE_URL = "";
+process.env.RAKKR_ROOM_ROSTER_STORE_PATH = path.join(rosterStoreRoot, "room-roster.json");
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { registerRoomRoutes } = await import("../src/room-routes.js");
 const { DatabaseUnavailableError } = await import("../src/database-unavailable.js");
+const { createRoomRosterStore } = await import("../src/room-roster-store.js");
+
+test.after(async () => {
+  await rm(rosterStoreRoot, { force: true, recursive: true });
+});
 
 test("deleting a room referenced by a schedule is rejected 409, room + schedule intact", async () => {
   const auditStore = createAuditStore("");
@@ -112,22 +123,95 @@ test("room overview isolates recordings and occurrences by room on a shared node
   );
 });
 
+test("roster PUT rejects an unknown room with 404 (room-scoped)", async () => {
+  const auditStore = createAuditStore("");
+  const { app } = roomApp({
+    auditStore,
+    roomRosterStore: createRoomRosterStore(),
+    rooms: [room("room-a")],
+    schedules: [],
+  });
+
+  const response = await app.request("/api/v1/rooms/room-ghost/roster", {
+    body: JSON.stringify({ entries: [] }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  const [failed] = await auditStore.list({ action: "rooms.roster.update.failed" });
+
+  assert.equal(response.status, 404);
+  assert.equal(failed?.reason, "room_not_found");
+});
+
+test("roster PUT replaces manual entries for the target room and round-trips (bogus subject stays inert)", async () => {
+  const rosterStore = createRoomRosterStore();
+  const { app } = roomApp({
+    groups: [{ id: "group_av", name: "AV Team" }],
+    roomRosterStore: rosterStore,
+    rooms: [room("room-a"), room("room-b")],
+    schedules: [],
+    users: [{ id: "user_op", name: "Operator" }],
+  });
+
+  const putResponse = await app.request("/api/v1/rooms/room-a/roster", {
+    body: JSON.stringify({
+      entries: [
+        { capabilities: ["view", "operate"], subjectId: "user_op", subjectType: "user" },
+        // A subject that matches no user/group: the route does not reject it, it is
+        // stored as an inert row (documents the fail-inert contract).
+        { capabilities: ["view"], subjectId: "group_ghost", subjectType: "group" },
+      ],
+    }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  const putBody = (await putResponse.json()) as {
+    data: Array<{ capabilities: string[]; subjectId: string; subjectType: string }>;
+  };
+
+  assert.equal(putResponse.status, 200);
+  assert.deepEqual(
+    putBody.data.map((entry) => entry.subjectId).sort(),
+    ["group_ghost", "user_op"],
+    "both the real and the inert subject are stored",
+  );
+
+  // The write is scoped to room-a only: room-b's roster is untouched.
+  const roomBGet = await app.request("/api/v1/rooms/room-b/roster");
+  const roomBBody = (await roomBGet.json()) as { data: unknown[] };
+  assert.deepEqual(roomBBody.data, [], "the PUT did not touch a sibling room's roster");
+
+  // And the persisted room-a roster round-trips through GET.
+  const roomAGet = await app.request("/api/v1/rooms/room-a/roster");
+  const roomABody = (await roomAGet.json()) as { data: Array<{ subjectId: string }> };
+  assert.deepEqual(roomABody.data.map((entry) => entry.subjectId).sort(), [
+    "group_ghost",
+    "user_op",
+  ]);
+});
+
 function roomApp({
   auditStore = createAuditStore(""),
   deleteError,
+  groups = [],
   nodes = [],
   recordings = [],
   removedRooms = [],
   rooms,
+  roomRosterStore: providedRosterStore,
   schedules,
+  users = [],
 }: {
   auditStore?: ReturnType<typeof createAuditStore>;
   deleteError?: Error;
+  groups?: Array<{ id: string; name: string }>;
   nodes?: RecorderNode[];
   recordings?: RecordingSummary[];
   removedRooms?: string[];
   rooms: Room[];
+  roomRosterStore?: RoomRosterStore;
   schedules: ScheduleSummary[];
+  users?: Array<{ id: string; name: string }>;
 }) {
   const app = new Hono<AppBindings>();
   // Mirror the production onError mapping so a rethrown DatabaseUnavailableError
@@ -144,8 +228,8 @@ function roomApp({
     app,
     currentAuth: () => auth(),
     currentUser: () => user(),
-    listGroups: async () => [],
-    listUsers: async () => [],
+    listGroups: async () => groups,
+    listUsers: async () => users,
     nodeStore: {
       async list() {
         return nodes;
@@ -160,11 +244,13 @@ function roomApp({
     requirePermission: () => async (_c, next) => {
       await next();
     },
-    roomRosterStore: {
-      async removeForRoom(roomId: string) {
-        removedRooms.push(roomId);
-      },
-    } as never,
+    roomRosterStore:
+      providedRosterStore ??
+      ({
+        async removeForRoom(roomId: string) {
+          removedRooms.push(roomId);
+        },
+      } as never),
     roomStore: roomStore(rooms, deleteError),
     scheduleStore: scheduleStore(schedules),
     scheduledByName: async () => undefined,
