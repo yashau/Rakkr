@@ -434,26 +434,35 @@ class PostgresNodeStore implements NodeStore {
       throw new NodeStoreError("Node heartbeat storage is unavailable", "database_unavailable");
     }
 
-    const [row] = await db.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).limit(1);
+    // heartbeat() and update() both read-modify-write the metadata JSONB. Under a
+    // plain read-then-write, a concurrent operator update() and a (frequent) agent
+    // heartbeat() race: the later writer clobbers the other's metadata changes
+    // (last-writer-wins), silently reverting e.g. an operator's audioDefaults edit.
+    // Lock the row for the read-modify-write so the two serialize per node.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).for("update");
 
-    if (!row) {
-      return undefined;
-    }
+      if (!row) {
+        return false;
+      }
 
-    await db
-      .update(nodeRows)
-      .set({
-        agentVersion: input.agentVersion,
-        hostname: input.hostname,
-        lastSeenAt: new Date(),
-        metadata: nodeMetadata(row.metadata, nodeRuntimeFromInput(input.runtime, row.metadata)),
-        network: { ipAddresses: input.ipAddresses },
-        status: input.status,
-        updatedAt: new Date(),
-      })
-      .where(eq(nodeRows.id, nodeId));
+      await tx
+        .update(nodeRows)
+        .set({
+          agentVersion: input.agentVersion,
+          hostname: input.hostname,
+          lastSeenAt: new Date(),
+          metadata: nodeMetadata(row.metadata, nodeRuntimeFromInput(input.runtime, row.metadata)),
+          network: { ipAddresses: input.ipAddresses },
+          status: input.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(nodeRows.id, nodeId));
 
-    return this.find(nodeId);
+      return true;
+    });
+
+    return updated ? this.find(nodeId) : undefined;
   }
 
   async list() {
@@ -650,35 +659,42 @@ class PostgresNodeStore implements NodeStore {
       throw new NodeStoreError("Node storage is unavailable", "database_unavailable");
     }
 
-    const [row] = await db.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).limit(1);
+    // Lock the row for the read-modify-write so a concurrent heartbeat() cannot
+    // clobber this operator update's metadata changes (and vice versa) — see the
+    // heartbeat() note. The two serialize per node.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(nodeRows).where(eq(nodeRows.id, nodeId)).for("update");
 
-    if (!row) {
-      return undefined;
-    }
+      if (!row) {
+        return false;
+      }
 
-    const existing = nodeFromRows(row, [], []);
-    const next = updatedNode(existing, input);
+      const existing = nodeFromRows(row, [], []);
+      const next = updatedNode(existing, input);
 
-    await db
-      .update(nodeRows)
-      .set({
-        alias: next.alias,
-        hostname: next.hostname,
-        location: next.location,
-        metadata: nodeMetadata(
-          row.metadata,
-          next.runtime,
-          next.recordingCapacity,
-          next.audioDefaults,
-        ),
-        network: { ipAddresses: next.ipAddresses },
-        notes: next.notes ?? null,
-        tags: next.tags,
-        updatedAt: new Date(),
-      })
-      .where(eq(nodeRows.id, nodeId));
+      await tx
+        .update(nodeRows)
+        .set({
+          alias: next.alias,
+          hostname: next.hostname,
+          location: next.location,
+          metadata: nodeMetadata(
+            row.metadata,
+            next.runtime,
+            next.recordingCapacity,
+            next.audioDefaults,
+          ),
+          network: { ipAddresses: next.ipAddresses },
+          notes: next.notes ?? null,
+          tags: next.tags,
+          updatedAt: new Date(),
+        })
+        .where(eq(nodeRows.id, nodeId));
 
-    return this.find(nodeId);
+      return true;
+    });
+
+    return updated ? this.find(nodeId) : undefined;
   }
 
   private async createCredential(
