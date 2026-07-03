@@ -21,7 +21,8 @@ all RBAC-gated by `node:read` (view) and `node:manage` (change).
 - **Runtime:** agent version, uptime, last-seen, OS/kernel, audio backends.
 - **Hardware:** audio interfaces with USB/hardware paths and serials where
   available, plus per-channel aliases and each channel's owning **room** (assign
-  channels to rooms from the node's Configure dialog; channels may span rooms).
+  channels to rooms from the node's Configure dialog; a node's channels can be
+  split across several rooms, each channel owned by one room).
 - **Status:** `online` / `offline` / `recording` / `degraded` / `alerting`.
 
 ## Enrolling a node
