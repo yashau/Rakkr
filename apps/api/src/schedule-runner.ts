@@ -195,19 +195,33 @@ export async function runDueSchedules(
         if (result.reason === "cross_room") {
           // The schedule's channels were reassigned to span multiple rooms after
           // it was created; it can no longer capture as a single-room recording.
+          // This is a PERMANENT misconfiguration (only an operator channel
+          // reassignment clears it), so dedupe against an already-open event —
+          // otherwise every retry tick opens a fresh warning forever (the
+          // watchdog uses the same active-event guard for repeated evaluations).
           if (healthEventStore) {
-            await healthEventStore.create({
-              details: {
-                captureInterfaceId: schedule.captureInterfaceId,
+            const openCrossRoomEvent = (
+              await healthEventStore.list({
+                limit: 500,
+                scheduleId: schedule.id,
+                type: "schedule.capture_channels_cross_room",
+              })
+            ).some((event) => event.status !== "resolved");
+
+            if (!openCrossRoomEvent) {
+              await healthEventStore.create({
+                details: {
+                  captureInterfaceId: schedule.captureInterfaceId,
+                  nodeId: node.id,
+                  scheduleName: schedule.name,
+                },
                 nodeId: node.id,
-                scheduleName: schedule.name,
-              },
-              nodeId: node.id,
-              openedAt: now,
-              scheduleId: schedule.id,
-              severity: "warning",
-              type: "schedule.capture_channels_cross_room",
-            });
+                openedAt: now,
+                scheduleId: schedule.id,
+                severity: "warning",
+                type: "schedule.capture_channels_cross_room",
+              });
+            }
           }
 
           await appendScheduleAudit(auditStore, {

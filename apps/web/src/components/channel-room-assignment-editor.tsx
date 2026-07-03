@@ -44,6 +44,14 @@ export function NodeChannelRoomEditor({
       void queryClient.invalidateQueries({ queryKey: ["rooms"] });
       void queryClient.invalidateQueries({ queryKey: ["status"] });
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+      // Reassigning a channel's room re-homes schedules + calendar rosters
+      // server-side, so refresh those views too (they key off the room that just
+      // changed): the room roster, calendar occurrences, schedule list, and the
+      // room overview tiles.
+      void queryClient.invalidateQueries({ queryKey: ["room-roster"] });
+      void queryClient.invalidateQueries({ queryKey: ["schedule-calendar"] });
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["room-overview"] });
     },
   });
 

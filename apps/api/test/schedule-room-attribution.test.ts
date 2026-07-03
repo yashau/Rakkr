@@ -95,9 +95,61 @@ test("schedule update within the same room does not require new-room authority",
   assert.equal(body.data.roomId, "room-a");
 });
 
+test("schedule update onto room-less channels is denied without node authority", async () => {
+  const auditStore = createAuditStore("");
+  // Room-less node: channel 1 belongs to room-a, channel 2 is unassigned. A room-A
+  // booker (roster grants authorizeTarget, but hasResourceScope=false — no node
+  // role/grant) tries to repoint the schedule onto the unowned channel 2.
+  const store = scheduleStore([roomASchedule()]);
+  const { app } = scheduleApp({
+    auditStore,
+    authorizeTarget: async () => true,
+    hasResourceScope: async () => false,
+    node: roomlessNode(),
+    store,
+  });
+
+  const response = await app.request("/api/v1/schedules/sched_room_a", {
+    body: JSON.stringify({ captureChannelSelection: [2], channelMode: "mono" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const [denied] = await auditStore.list({ action: "schedules.update.failed" });
+  const persisted = await store.find("sched_room_a");
+
+  assert.equal(response.status, 403);
+  assert.equal(denied?.outcome, "denied");
+  assert.equal(denied?.target.type, "node");
+  // Unchanged — still room-a's channel 1.
+  assert.equal(persisted?.roomId, "room-a");
+  assert.deepEqual(persisted?.captureChannelSelection, [1]);
+});
+
+test("schedule update onto room-less channels succeeds with node authority", async () => {
+  const store = scheduleStore([roomASchedule()]);
+  const { app } = scheduleApp({
+    authorizeTarget: async () => true,
+    hasResourceScope: async () => true,
+    node: roomlessNode(),
+    store,
+  });
+
+  const response = await app.request("/api/v1/schedules/sched_room_a", {
+    body: JSON.stringify({ captureChannelSelection: [2], channelMode: "mono" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+  const body = (await response.json()) as { data: ScheduleSummary };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.roomId, undefined);
+});
+
 function scheduleApp({
   auditStore = createAuditStore(""),
   authorizeTarget = async () => true,
+  hasResourceScope = async () => true,
+  node = sharedNode(),
   store,
 }: {
   auditStore?: ReturnType<typeof createAuditStore>;
@@ -106,16 +158,19 @@ function scheduleApp({
     permission: Permission,
     target: AuditTarget,
   ) => Promise<boolean>;
+  hasResourceScope?: (user: CurrentUser, target: AuditTarget) => Promise<boolean>;
+  node?: RecorderNode;
   store: ScheduleStore;
 }) {
   const app = new Hono<AppBindings>();
-  const nodes = [sharedNode()];
+  const nodes = [node];
 
   registerScheduleRoutes({
     app,
     authorizeTarget,
     currentAuth: () => auth(),
     currentUser: () => bookerUser(),
+    hasResourceScope,
     nodeStore: createNodeStore(nodes),
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: recordingStore(),
@@ -249,6 +304,39 @@ function roomASchedule(): ScheduleSummary {
     titleTemplate: "{{date}} Room A Meeting",
     uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
+  };
+}
+
+// Room-less node (no default room): channel 1 → room-a, channel 2 unassigned. A
+// selection of [2] resolves to no room, so updateRoom.roomId is undefined.
+function roomlessNode(): RecorderNode {
+  return {
+    agentVersion: "2026.1.1-1",
+    alias: "Roomless Node",
+    hostname: "roomless-node",
+    id: "node-shared",
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1, roomId: "room-a" },
+          { alias: "Ch 2", index: 2 },
+          { alias: "Ch 3", index: 3 },
+          { alias: "Ch 4", index: 4 },
+        ],
+        id: "iface-1",
+        sampleRates: [48000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+    ipAddresses: ["10.0.0.9"],
+    lastSeenAt: "2026-01-01T00:00:00.000Z",
+    location: { room: "Install Rack", site: "HQ" },
+    status: "online",
+    tags: [],
   };
 }
 

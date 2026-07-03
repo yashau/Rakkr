@@ -575,27 +575,31 @@ export function registerScheduleRoutes({
         return rejectCrossRoomSelection(c, "schedules.update.failed", before);
       }
 
-      // Repointing the schedule onto a DIFFERENT room's channels must re-authorize
-      // against that new room. The PATCH gate only proves authority over the
-      // schedule's CURRENT room, so without this a room-A booker could move a
-      // schedule onto room B's channels on a shared node (mirrors the ad-hoc
-      // recording-start room check).
-      if (
-        updateRoom.roomId &&
-        updateRoom.roomId !== before.roomId &&
-        !(await authorizeTarget(currentUser(c), "schedule:manage", {
-          id: updateRoom.roomId,
-          type: "room",
-        }))
-      ) {
-        await recordScheduleWriteFailure(
-          c,
-          "schedules.update.failed",
-          "missing_resource_scope",
-          before,
-          { id: updateRoom.roomId, type: "room" },
-        );
-        return c.json({ error: "Forbidden", permission: "schedule:manage" }, 403);
+      // Repointing the schedule onto a DIFFERENT room must re-authorize against that
+      // new room. The PATCH gate only proves authority over the schedule's CURRENT
+      // room, so without this a room-A booker could move a schedule onto room B's
+      // channels on a shared node. When the new selection resolves room-less (no
+      // owning room), fall back to role/grant node authority — a roster-only booker
+      // must not repoint a schedule onto unowned channels either (mirrors the
+      // ad-hoc recording-start room check and the room-less create fallback).
+      if (updateRoom.roomId !== before.roomId) {
+        const newRoomTarget: AuditTarget = updateRoom.roomId
+          ? { id: updateRoom.roomId, type: "room" }
+          : { id: targetNode.id, type: "node" };
+        const authorized = updateRoom.roomId
+          ? await authorizeTarget(currentUser(c), "schedule:manage", newRoomTarget)
+          : await hasResourceScope(currentUser(c), newRoomTarget);
+
+        if (!authorized) {
+          await recordScheduleWriteFailure(
+            c,
+            "schedules.update.failed",
+            "missing_resource_scope",
+            before,
+            newRoomTarget,
+          );
+          return c.json({ error: "Forbidden", permission: "schedule:manage" }, 403);
+        }
       }
 
       const updates = sanitizeScheduleUpdate(body.data, before);

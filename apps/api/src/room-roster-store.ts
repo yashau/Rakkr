@@ -31,6 +31,10 @@ export interface RoomRosterStore {
   effectiveCapabilities(subject: RosterSubject, roomId: string): Promise<Set<RoomCapability>>;
   listForRoom(roomId: string): Promise<RoomRosterEntry[]>;
   reconcileCalendar(input: CalendarReconcileInput): Promise<void>;
+  // Strips every roster row (manual AND calendar) for a room; used when the room is
+  // deleted so no dangling grants remain (and a reused slug cannot inherit them).
+  // Backend-independent so the JSON fallback matches the Postgres FK cascade.
+  removeForRoom(roomId: string): Promise<void>;
   removeForSchedule(scheduleId: string): Promise<void>;
   // Strips every roster row (manual AND calendar) for a group subject; used when a
   // group is deleted so no dangling group grants remain.
@@ -111,6 +115,11 @@ class JsonRoomRosterStore implements RoomRosterStore {
       });
     }
 
+    this.persist();
+  }
+
+  async removeForRoom(roomId: string) {
+    this.removeWhere((row) => row.roomId === roomId);
     this.persist();
   }
 
@@ -286,6 +295,19 @@ class PostgresRoomRosterStore implements RoomRosterStore {
     } catch (error) {
       await this.failover("room roster reconcile unavailable; using JSON store", error);
       return this.fallback.reconcileCalendar(input);
+    }
+  }
+
+  async removeForRoom(roomId: string) {
+    if (!this.dbAvailable) {
+      return this.fallback.removeForRoom(roomId);
+    }
+
+    try {
+      await this.db.delete(roomRosterTable).where(eq(roomRosterTable.roomId, roomId));
+    } catch (error) {
+      await this.failover("room roster room removal unavailable; using JSON store", error);
+      return this.fallback.removeForRoom(roomId);
     }
   }
 

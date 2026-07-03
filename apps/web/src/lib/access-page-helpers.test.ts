@@ -15,12 +15,27 @@ import {
   grantsFromText,
   policiesFromText,
   policiesToText,
+  SUBJECT_PICKER_LIMIT,
+  subjectPickerFilters,
+  subjectPickerGroupsQueryKey,
+  subjectPickerUsersQueryKey,
 } from "./access-page-helpers";
 
 test("access page management requires auth manage permission", () => {
   assert.equal(canManageAccessPage(undefined), false);
   assert.equal(canManageAccessPage(user(["audit:read"])), false);
   assert.equal(canManageAccessPage(user(["auth:manage"])), true);
+});
+
+test("subject pickers fetch the full list and use collision-safe query keys", () => {
+  // Must fetch up to the server cap (200), not the 50-row default page, so groups
+  // and users beyond the first page are reachable in the picker.
+  assert.equal(SUBJECT_PICKER_LIMIT, 200);
+  assert.deepEqual(subjectPickerFilters(), { limit: 200 });
+  // Keys are params-suffixed (length 2), so they do NOT share the bare
+  // ["access-groups"] / ["access-users"] slot used by the management views.
+  assert.deepEqual(subjectPickerGroupsQueryKey(), ["access-groups", { limit: 200 }]);
+  assert.deepEqual(subjectPickerUsersQueryKey(), ["access-users", { limit: 200 }]);
 });
 
 test("access page permissions track the auth manage permission", () => {

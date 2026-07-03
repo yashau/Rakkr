@@ -665,6 +665,54 @@ test("due schedule whose channels now span rooms is deferred, not captured cross
   assert.ok(Date.parse(updated?.nextRunAt ?? "") > now.getTime());
 });
 
+test("a permanently cross-room recurring schedule opens one health event, not one per tick", async () => {
+  const healthEventStore = createHealthEventStore("");
+  const crossNode = node({
+    interfaces: [
+      {
+        alias: "Rooms",
+        backend: "alsa",
+        channelCount: 2,
+        channels: [
+          { alias: "A", index: 1, roomId: "room-a" },
+          { alias: "B", index: 2, roomId: "room-b" },
+        ],
+        id: "iface_rooms",
+        sampleRates: [48_000],
+        systemName: "hw:2,0",
+        systemRef: "usb-rooms",
+      },
+    ],
+  });
+  const crossSchedule = schedule({
+    captureChannelSelection: [1, 2],
+    captureInterfaceId: "iface_rooms",
+    channelMode: "stereo",
+    id: "sched_cross_recurring",
+    recurrence: { endTime: "23:00", interval: 1, mode: "daily", startTime: "09:00" },
+  });
+  const scheduleStore = memoryScheduleStore([crossSchedule]);
+  const deps = {
+    auditStore: createAuditStore(""),
+    healthEventStore,
+    nodeStore: memoryNodeStore([crossNode]),
+    recordingStore: memoryRecordingStore(),
+    scheduleStore,
+    settingsStore: memorySettingsStore([splitProfile()]),
+  };
+
+  // Two due ticks past the retry window; the cross-room condition is permanent.
+  await runDueSchedules(deps, new Date("2026-06-18T09:00:00.000Z"));
+  await runDueSchedules(deps, new Date("2026-06-18T09:10:00.000Z"));
+
+  const events = await healthEventStore.listAll({
+    type: "schedule.capture_channels_cross_room",
+  });
+
+  // Deduped: one open event for the schedule, not one per retry tick.
+  assert.equal(events.length, 1);
+});
+
 function schedule(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
   return {
     enabled: true,

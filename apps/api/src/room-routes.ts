@@ -14,6 +14,7 @@ import {
 } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
+import { isDatabaseUnavailableError } from "./database-unavailable.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -252,6 +253,29 @@ export function registerRoomRoutes({
         return c.json({ error: "Room not found" }, 404);
       }
 
+      // A schedule references the room via schedules.roomId (RESTRICT in Postgres).
+      // Enforce it in the route so BOTH the Postgres and JSON-fallback stores reject
+      // uniformly — the JSON store has no FK, so relying on the store to throw let a
+      // JSON-mode delete strand a dangling schedule.roomId.
+      const referencingSchedule = (await scheduleStore.list()).some(
+        (schedule) => schedule.roomId === roomId,
+      );
+
+      if (referencingSchedule) {
+        await recordRoomFailure(
+          c,
+          "rooms.delete.failed",
+          "node:manage",
+          "room_in_use",
+          roomId,
+          before.name,
+        );
+        return c.json(
+          { error: "Room is still referenced by schedules", reason: "room_in_use" },
+          409,
+        );
+      }
+
       try {
         const deleted = await roomStore.delete(roomId);
 
@@ -266,6 +290,11 @@ export function registerRoomRoutes({
           );
           return c.json({ error: "Room not found" }, 404);
         }
+
+        // Cascade the roster cleanup explicitly so it is backend-independent (the
+        // Postgres FK cascade covers the DB, but the JSON fallback would otherwise
+        // orphan roster rows that a reused room slug could silently inherit).
+        await roomRosterStore.removeForRoom(roomId);
 
         await recordAuditEvent(c, {
           action: "rooms.delete.succeeded",
@@ -282,9 +311,13 @@ export function registerRoomRoutes({
 
         return c.body(null, 204);
       } catch (error) {
-        // A foreign-key restriction means schedules still reference this room, so
-        // the room cannot be removed until they are reassigned or deleted.
-        void error;
+        // A genuine DB outage must surface as 503 (via the onError boundary), not be
+        // mislabeled "room in use". Any other error (e.g. a schedule created in the
+        // check→delete race tripping the FK) maps to 409.
+        if (isDatabaseUnavailableError(error)) {
+          throw error;
+        }
+
         await recordRoomFailure(
           c,
           "rooms.delete.failed",
