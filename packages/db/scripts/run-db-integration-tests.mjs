@@ -18,6 +18,7 @@ const dbBackedApiTests = [
   "test/upload-queue-write-race.test.ts",
   "test/controller-settings-write-race.test.ts",
   "test/room-delete-fk-race.test.ts",
+  "test/node-channel-room-pg.test.ts",
 ];
 
 const DEFAULT_DATABASE_URL = "postgres://rakkr:rakkr@127.0.0.1:5432/rakkr";
