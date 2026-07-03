@@ -12,7 +12,6 @@ import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   type AuditEvent,
   defaultCalendarGrantCapabilities,
-  type MeterFrame,
   type Permission,
   permissionRequiresCapability,
   type RecorderNode,
@@ -49,7 +48,8 @@ import { createRoomRosterStore } from "./room-roster-store.js";
 import { registerRoomRoutes } from "./room-routes.js";
 import { createRoomStore } from "./room-store.js";
 import { createResourceScopeTargets } from "./resource-scope-targets.js";
-import { channelRoomId, nodeRoomIds } from "./room-resolution.js";
+import { createMeterRoomAccess } from "./meter-room-access.js";
+import { nodeRoomIds } from "./room-resolution.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -445,46 +445,12 @@ function intersects(left: Set<string>, right: Set<string>) {
   return false;
 }
 
-// The rooms whose channel data a user may see on a node. "all" for owner/admin or
-// a direct node grant (full node authority); otherwise the user's rostered rooms,
-// so a shared node exposes only the caller's channels.
-async function meterRoomAccess(
-  user: NonNullable<AuthResult["user"]>,
-  node: NodeRecord,
-): Promise<Set<string> | "all"> {
-  if (user.roles.includes("owner") || user.roles.includes("admin")) {
-    return "all";
-  }
-
-  if (await hasResourceScope(user, { id: node.id, type: "node" })) {
-    return "all";
-  }
-
-  return rosterRoomIds(user);
-}
-
-// Strict per-channel meter filtering: drop level rows for channels the caller's
-// rooms do not own so a shared node never leaks another room's meters.
-async function filterMeterFrameForUser(
-  user: NonNullable<AuthResult["user"]>,
-  node: NodeRecord,
-  frame: MeterFrame,
-): Promise<MeterFrame> {
-  const access = await meterRoomAccess(user, node);
-
-  if (access === "all") {
-    return frame;
-  }
-
-  return {
-    ...frame,
-    levels: frame.levels.filter((level) => {
-      const roomId = channelRoomId(node, frame.interfaceId, level.channelIndex);
-
-      return roomId !== undefined && access.has(roomId);
-    }),
-  };
-}
+// Per-room meter/monitor access decisions (extracted to keep this file within the
+// LOC budget). Injected with this module's roster + scope helpers.
+const { canServeWholeNodeMonitor, filterMeterFrameForUser } = createMeterRoomAccess({
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
+  rosterRoomIds: (user) => rosterRoomIds(user),
+});
 
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
   const userRoomIds = await rosterRoomIds(user);
@@ -810,6 +776,7 @@ registerAuditRoutes({
 registerNodeRoutes({
   app,
   bootstrapStore,
+  canServeWholeNodeMonitor: (user, node) => canServeWholeNodeMonitor(user, node),
   currentAuth,
   currentUser,
   filterMeterFrame: (user, node, frame) => filterMeterFrameForUser(user, node, frame),

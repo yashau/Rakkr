@@ -257,6 +257,42 @@ test("listen stream returns a short wav preview derived from meter levels", asyn
   assert.equal(event?.details.mode, "controller_meter_preview");
 });
 
+test("listen refuses a shared-node partial owner (cross-room audio isolation)", async () => {
+  const auditStore = createAuditStore("");
+  const listenMonitorStore = createListenMonitorStore();
+  const app = nodeApp({
+    auditStore,
+    // Simulate a room-scoped caller who does not own every channel's room on a
+    // shared node: the whole-node monitor mix would leak another room's audio.
+    canServeWholeNodeMonitor: async () => false,
+    frames: [meterFrame()],
+    listenMonitorStore,
+    nodes: [node()],
+    permissionCalls: [],
+  });
+
+  await listenMonitorStore.save({
+    audio: wavChunk(),
+    capturedAt: new Date().toISOString(),
+    contentType: "audio/wav",
+    durationMs: 900,
+    nodeId: node().id,
+  });
+
+  const startResponse = await app.request(`/api/v1/nodes/${node().id}/listen`, { method: "POST" });
+  const streamResponse = await app.request(
+    `/api/v1/nodes/${node().id}/listen/stream?sessionId=listen_probe`,
+  );
+  const [startFailure] = await auditStore.list({ action: "listen.monitor.start.failed" });
+  const [streamFailure] = await auditStore.list({ action: "listen.monitor.stream.failed" });
+
+  // No whole-node audio is served on either path; the isolation guard refuses.
+  assert.equal(startResponse.status, 403);
+  assert.equal(streamResponse.status, 403);
+  assert.equal(startFailure?.reason, "missing_resource_scope");
+  assert.equal(streamFailure?.reason, "missing_resource_scope");
+});
+
 test("listen stream prefers agent audio chunks when available", async () => {
   const auditStore = createAuditStore("");
   const listenMonitorStore = createListenMonitorStore();
@@ -627,6 +663,7 @@ interface PermissionCall {
 
 function nodeApp({
   auditStore,
+  canServeWholeNodeMonitor,
   currentUser = user(),
   frames,
   listenMonitorStore,
@@ -637,6 +674,7 @@ function nodeApp({
   scopedNodeIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
+  canServeWholeNodeMonitor?: (user: CurrentUser, node: RecorderNode) => Promise<boolean>;
   currentUser?: CurrentUser;
   frames: MeterFrame[];
   listenMonitorStore?: ReturnType<typeof createListenMonitorStore>;
@@ -650,6 +688,7 @@ function nodeApp({
 
   registerNodeRoutes({
     app,
+    canServeWholeNodeMonitor,
     currentAuth: () => auth(currentUser),
     currentUser: () => currentUser,
     hasResourceScope: async () => true,
