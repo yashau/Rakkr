@@ -14,9 +14,11 @@ contracts in `packages/shared` and to tables in the
 ## Topology
 
 **Room** — a first-class location entity with a stable ID, unique per site and
-name. Nodes and schedules belong to a room, and it is the RBAC scope target for
-room-level access. Legacy free-text location/room fields are retained for display,
-but the room's ID is the source of truth for room identity.
+name, and the RBAC scope target for room-level access. Ownership is per-channel:
+a node's audio channels (and the schedules and recordings that capture them)
+belong to rooms, so one node's channels can serve several rooms. Legacy free-text
+location/room fields are retained for display, but the room's ID is the source of
+truth for room identity.
 
 **Node** — a Linux machine running the recorder agent. Identified by a stable ID
 and described by alias, site/building/floor/room, hostname and IPs, agent
@@ -29,7 +31,10 @@ backend, channel count, hardware path, serial, system reference, and supported
 sample rates.
 
 **Audio channel** — a single channel within an interface, with an operator-facing
-alias.
+alias and an owning **room**. Room ownership is per-channel: any set of a node's
+channels can belong to a room, and a node's channels may span several rooms — so
+two rooms can record from one node at the same time on their own channels. A
+channel with no room of its own inherits the node's default room.
 
 ## Capture
 

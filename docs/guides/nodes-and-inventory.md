@@ -14,11 +14,14 @@ all RBAC-gated by `node:read` (view) and `node:manage` (change).
 ## What a node record holds
 
 - **Identity:** stable ID, alias, tags, notes.
-- **Location:** site, building, floor, room.
+- **Location:** site, building, floor, and a default room. Room ownership is
+  per-channel (see Hardware), so `room` here is the node's install location /
+  default room, not the sole owner of its channels.
 - **Network:** hostname and IP addresses.
 - **Runtime:** agent version, uptime, last-seen, OS/kernel, audio backends.
 - **Hardware:** audio interfaces with USB/hardware paths and serials where
-  available, plus per-channel aliases.
+  available, plus per-channel aliases and each channel's owning **room** (assign
+  channels to rooms from the node's Configure dialog; channels may span rooms).
 - **Status:** `online` / `offline` / `recording` / `degraded` / `alerting`.
 
 ## Enrolling a node

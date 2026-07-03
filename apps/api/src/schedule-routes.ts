@@ -393,8 +393,6 @@ export function registerScheduleRoutes({
         return assignmentError;
       }
 
-      // The schedule's room follows its selected channels (one room per schedule);
-      // reject a selection spanning rooms.
       const createRoom = resolveScheduleRoom(
         node,
         body.data.captureInterfaceId,
@@ -402,14 +400,7 @@ export function registerScheduleRoutes({
       );
 
       if (!createRoom.ok) {
-        await recordScheduleWriteFailure(c, "schedules.create.failed", "schedule_channel_cross_room");
-        return c.json(
-          {
-            error: "Channel selection spans multiple rooms",
-            reason: "schedule_channel_cross_room",
-          },
-          400,
-        );
+        return rejectCrossRoomSelection(c, "schedules.create.failed");
       }
 
       const schedule = { ...buildSchedule(body.data), roomId: createRoom.roomId };
@@ -557,28 +548,14 @@ export function registerScheduleRoutes({
         }
       }
 
-      // The schedule's room follows its selected channels; reject a cross-room
-      // selection and re-derive the room whenever node/interface/selection change.
+      // The schedule's room follows its selected channels (re-derived on change).
       const updateRoom = resolveScheduleRoom(targetNode, targetInterfaceId, targetSelection);
 
       if (!updateRoom.ok) {
-        await recordScheduleWriteFailure(
-          c,
-          "schedules.update.failed",
-          "schedule_channel_cross_room",
-          before,
-        );
-        return c.json(
-          {
-            error: "Channel selection spans multiple rooms",
-            reason: "schedule_channel_cross_room",
-          },
-          400,
-        );
+        return rejectCrossRoomSelection(c, "schedules.update.failed", before);
       }
 
       const updates = sanitizeScheduleUpdate(body.data, before);
-
       updates.roomId = updateRoom.roomId;
 
       const updated = await scheduleStore.update(scheduleId, updates);
@@ -837,23 +814,17 @@ export function registerScheduleRoutes({
     return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
   }
 
-  // Resolves the room a create request targets from its selected channels (the
-  // room follows the channels, not the node) so the create gate authorizes a room
-  // BOOK grant in the right room. Returns undefined when it can't resolve to a
-  // single room (unknown node, or a cross-room selection the handler rejects) so
-  // only a schedule:manage role can then authorize.
+  // Resolves the create gate's room from the selected channels (room follows the
+  // channels, not the node). Returns undefined when it can't resolve to a single
+  // room (unknown node or cross-room selection) so only a role can then authorize.
   async function resolveCreateRoomId(c: Context<AppBindings>) {
     const raw = (await c.req.json().catch(() => ({}))) as {
       captureChannelSelection?: unknown;
       captureInterfaceId?: unknown;
       nodeId?: unknown;
     };
-
-    if (typeof raw.nodeId !== "string" || !raw.nodeId.trim()) {
-      return undefined;
-    }
-
-    const node = await nodeStore.find(raw.nodeId.trim());
+    const nodeId = typeof raw.nodeId === "string" ? raw.nodeId.trim() : "";
+    const node = nodeId ? await nodeStore.find(nodeId) : undefined;
 
     if (!node) {
       return undefined;
@@ -928,6 +899,19 @@ export function registerScheduleRoutes({
         type: "schedule",
       },
     });
+  }
+
+  // Shared 400 for a create/update whose channel selection spans rooms.
+  async function rejectCrossRoomSelection(
+    c: Context<AppBindings>,
+    action: string,
+    schedule?: Partial<ScheduleSummary>,
+  ) {
+    await recordScheduleWriteFailure(c, action, "schedule_channel_cross_room", schedule);
+    return c.json(
+      { error: "Channel selection spans multiple rooms", reason: "schedule_channel_cross_room" },
+      400,
+    );
   }
 
   async function recordScheduleWriteFailure(

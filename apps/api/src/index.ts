@@ -41,19 +41,14 @@ import { createNodeStore } from "./node-store.js";
 import { createNodeSshCredentialStore } from "./node-ssh-credential-store.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
 import { isDatabaseUnavailableError } from "./database-unavailable.js";
-import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
+import { onRecordingJobLeaseExpired } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
 import { createRoomRosterStore } from "./room-roster-store.js";
 import { registerRoomRoutes } from "./room-routes.js";
 import { createRoomStore } from "./room-store.js";
-import {
-  addChannelScopeTargets,
-  addInterfaceScopeTargets,
-  addNodeResourceTargets,
-  addNodeScopeTargets,
-} from "./scope-targets.js";
+import { createResourceScopeTargets } from "./resource-scope-targets.js";
 import { channelRoomId, nodeRoomIds } from "./room-resolution.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
@@ -346,128 +341,12 @@ async function resourceScopeDecision(user: AuthResult["user"], target: AuditTarg
   };
 }
 
-async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]> {
-  const targets = [target];
-  const knownNodes = await nodeStore.list();
-
-  if (target.type === "recording" && target.id) {
-    await addRecordingScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "recording_job" && target.id) {
-    const job = await recordingJob(target.id);
-
-    if (job) {
-      await addRecordingScopeTargets(targets, job.recordingId, knownNodes);
-
-      // Node resource (no room union) so a node grant still authorizes the job,
-      // but the room stays the recording's single room resolved above.
-      const node = knownNodes.find((candidate) => candidate.id === job.nodeId);
-
-      if (node) {
-        addNodeResourceTargets(targets, node);
-      }
-    }
-  }
-
-  if (target.type === "schedule" && target.id) {
-    await addScheduleScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "node" && target.id) {
-    addNodeScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "health_event" && target.id) {
-    const event = await healthEventStore.find(target.id);
-
-    // A recording-scoped health event follows its recording's single room (strict
-    // on a shared node). A node-level event (no recording) is visible to the
-    // node's rooms so both rooms sharing a node see e.g. an offline alert.
-    if (event?.recordingId) {
-      await addRecordingScopeTargets(targets, event.recordingId, knownNodes);
-    } else if (event?.nodeId) {
-      addNodeScopeTargets(targets, event.nodeId, knownNodes);
-    }
-
-    if (event?.scheduleId) {
-      await addScheduleScopeTargets(targets, event.scheduleId, knownNodes);
-    }
-  }
-
-  if (target.type === "interface" && target.id) {
-    addInterfaceScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "channel" && target.id) {
-    addChannelScopeTargets(targets, target.id, knownNodes);
-  }
-
-  return targets.filter(
-    (candidate, index, allTargets) =>
-      candidate.id &&
-      allTargets.findIndex(
-        (other) => other.type === candidate.type && other.id === candidate.id,
-      ) === index,
-  );
-}
-
-async function addRecordingScopeTargets(
-  targets: AuditTarget[],
-  recordingId: string,
-  knownNodes: NodeRecord[],
-) {
-  const recording = await recordingStore.find(recordingId);
-
-  if (!recording) {
-    return;
-  }
-
-  targets.push({ id: recording.id, type: "recording" });
-
-  // The recording's own persisted room is the single room it resolves to — never
-  // the node's room union — so a shared node cannot leak one room's recordings.
-  if (recording.roomId) {
-    targets.push({ id: recording.roomId, type: "room" });
-  }
-
-  if (recording.scheduleId) {
-    await addScheduleScopeTargets(targets, recording.scheduleId, knownNodes);
-  }
-
-  if (recording.nodeId) {
-    const node = knownNodes.find((candidate) => candidate.id === recording.nodeId);
-
-    if (node) {
-      addNodeResourceTargets(targets, node);
-    }
-  }
-}
-
-async function addScheduleScopeTargets(
-  targets: AuditTarget[],
-  scheduleId: string,
-  knownNodes: NodeRecord[],
-) {
-  const schedule = await scheduleStore.find(scheduleId);
-
-  if (!schedule) {
-    return;
-  }
-
-  targets.push({ id: schedule.id, type: "schedule" });
-
-  // A schedule resolves to its own single room; node resource (no room union).
-  if (schedule.roomId) {
-    targets.push({ id: schedule.roomId, type: "room" });
-  }
-
-  const node = knownNodes.find((candidate) => candidate.id === schedule.nodeId);
-
-  if (node) {
-    addNodeResourceTargets(targets, node);
-  }
-}
+const resourceScopeTargets = createResourceScopeTargets({
+  healthEventStore,
+  nodeStore,
+  recordingStore,
+  scheduleStore,
+});
 
 function rosterSubject(user: NonNullable<AuthResult["user"]>) {
   return { groupIds: user.groups.map((group) => group.id), userId: user.id };
