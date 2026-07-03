@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   scheduleInputSchema,
   scheduleUpdateSchema,
+  type Permission,
   type RecorderNode,
   type ScheduleSummary,
 } from "@rakkr/shared";
@@ -17,6 +18,7 @@ import type {
 import type { NodeStore } from "./node-store.js";
 import type { RecordingStore } from "./recording-store.js";
 import { registerScheduleActionRoutes } from "./schedule-action-routes.js";
+import { createScheduleRouteAudit } from "./schedule-route-audit.js";
 import { filterSchedules, scheduleFilters } from "./schedule-list-filters.js";
 import { registerScheduleCalendarRoutes } from "./schedule-occurrence-routes.js";
 import {
@@ -52,6 +54,15 @@ interface ScheduleRouteDependencies {
     groupIds: string[];
     userIds: string[];
   }): Promise<{ unknownGroupIds: string[]; unknownUserIds: string[] }>;
+  // Roster-aware per-room authorization (mirrors the recording-start check). Used
+  // to re-authorize an update that repoints a schedule onto another room's
+  // channels, so the schedule-target gate (which resolves to the CURRENT room)
+  // cannot be used to seize a room the caller has no capability in.
+  authorizeTarget?(
+    user: NonNullable<AuthResult["user"]>,
+    permission: Permission,
+    target: AuditTarget,
+  ): Promise<boolean>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
@@ -78,6 +89,7 @@ const scheduleSelectedExportSchema = z
 export function registerScheduleRoutes({
   app,
   assignmentIdReferences = async () => ({ unknownGroupIds: [], unknownUserIds: [] }),
+  authorizeTarget = async () => true,
   currentAuth,
   currentUser,
   hasResourceScope = async () => true,
@@ -92,6 +104,14 @@ export function registerScheduleRoutes({
   scopedSchedules,
   settingsStore,
 }: ScheduleRouteDependencies) {
+  const {
+    recordScheduleReadFailure,
+    recordScheduleRunFailure,
+    recordScheduleWriteFailure,
+    recordSelectedScheduleExportFailure,
+    rejectCrossRoomSelection,
+  } = createScheduleRouteAudit({ currentAuth, recordAuditEvent });
+
   // Windowed calendar reads and per-occurrence drag-to-reschedule live in their
   // own module; registered first so /schedules/calendar wins over /:scheduleId.
   registerScheduleCalendarRoutes({
@@ -555,6 +575,29 @@ export function registerScheduleRoutes({
         return rejectCrossRoomSelection(c, "schedules.update.failed", before);
       }
 
+      // Repointing the schedule onto a DIFFERENT room's channels must re-authorize
+      // against that new room. The PATCH gate only proves authority over the
+      // schedule's CURRENT room, so without this a room-A booker could move a
+      // schedule onto room B's channels on a shared node (mirrors the ad-hoc
+      // recording-start room check).
+      if (
+        updateRoom.roomId &&
+        updateRoom.roomId !== before.roomId &&
+        !(await authorizeTarget(currentUser(c), "schedule:manage", {
+          id: updateRoom.roomId,
+          type: "room",
+        }))
+      ) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.update.failed",
+          "missing_resource_scope",
+          before,
+          { id: updateRoom.roomId, type: "room" },
+        );
+        return c.json({ error: "Forbidden", permission: "schedule:manage" }, 403);
+      }
+
       const updates = sanitizeScheduleUpdate(body.data, before);
       updates.roomId = updateRoom.roomId;
 
@@ -626,6 +669,22 @@ export function registerScheduleRoutes({
       const before = scheduleExecutionSnapshot(schedule);
 
       if (result.status === "deferred") {
+        if (result.reason === "cross_room") {
+          await recordScheduleRunFailure(
+            c,
+            scheduleId,
+            "channel_selection_cross_room",
+            schedule.name,
+          );
+          return c.json(
+            {
+              error: "Schedule channels span multiple rooms",
+              reason: "channel_selection_cross_room",
+            },
+            409,
+          );
+        }
+
         await recordScheduleRunFailure(c, scheduleId, "capture_channels_busy", schedule.name);
         return c.json(
           {
@@ -881,80 +940,6 @@ export function registerScheduleRoutes({
     );
   }
 
-  async function recordScheduleRunFailure(
-    c: Context<AppBindings>,
-    scheduleId: string,
-    reason: string,
-    name?: string,
-  ) {
-    await recordAuditEvent(c, {
-      action: "schedules.run_now.failed",
-      auth: currentAuth(c),
-      outcome: "failed",
-      permission: "schedule:manage",
-      reason,
-      target: {
-        id: scheduleId,
-        name,
-        type: "schedule",
-      },
-    });
-  }
-
-  // Shared 400 for a create/update whose channel selection spans rooms.
-  async function rejectCrossRoomSelection(
-    c: Context<AppBindings>,
-    action: string,
-    schedule?: Partial<ScheduleSummary>,
-  ) {
-    await recordScheduleWriteFailure(c, action, "schedule_channel_cross_room", schedule);
-    return c.json(
-      { error: "Channel selection spans multiple rooms", reason: "schedule_channel_cross_room" },
-      400,
-    );
-  }
-
-  async function recordScheduleWriteFailure(
-    c: Context<AppBindings>,
-    action: string,
-    reason: string,
-    schedule?: Partial<ScheduleSummary>,
-    target?: AuditTarget,
-  ) {
-    await recordAuditEvent(c, {
-      action,
-      auth: currentAuth(c),
-      outcome: reason === "missing_resource_scope" ? "denied" : "failed",
-      permission: "schedule:manage",
-      reason,
-      target: target ?? {
-        id: schedule?.id,
-        name: schedule?.name,
-        type: "schedule",
-      },
-    });
-  }
-
-  async function recordScheduleReadFailure(
-    c: Context<AppBindings>,
-    action: string,
-    reason: string,
-    schedule?: Partial<ScheduleSummary>,
-  ) {
-    await recordAuditEvent(c, {
-      action,
-      auth: currentAuth(c),
-      outcome: "failed",
-      permission: "schedule:read",
-      reason,
-      target: {
-        id: schedule?.id,
-        name: schedule?.name,
-        type: "schedule",
-      },
-    });
-  }
-
   async function recordScheduleSettingsFailure(
     c: Context<AppBindings>,
     action: string,
@@ -972,25 +957,6 @@ export function registerScheduleRoutes({
 
     await recordScheduleWriteFailure(c, action, failure.reason, schedule, failure.target);
     return c.json({ error: failure.error, permission: "schedule:manage" }, failure.status);
-  }
-
-  async function recordSelectedScheduleExportFailure(
-    c: Context<AppBindings>,
-    reason: string,
-    details: Record<string, unknown> = {},
-  ) {
-    await recordAuditEvent(c, {
-      action: "schedules.export_selected.failed",
-      auth: currentAuth(c),
-      details,
-      outcome: reason === "schedule_not_visible" ? "denied" : "failed",
-      permission: "schedule:read",
-      reason,
-      target: {
-        id: "schedule_collection",
-        type: "schedule_collection",
-      },
-    });
   }
 }
 

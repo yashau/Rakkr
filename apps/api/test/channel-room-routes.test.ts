@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
-import type { AuditEvent, CurrentUser, Permission, RecorderNode, Room } from "@rakkr/shared";
+import type {
+  AuditEvent,
+  CurrentUser,
+  Permission,
+  RecorderNode,
+  Room,
+  ScheduleSummary,
+} from "@rakkr/shared";
 import type { AuthResult } from "../src/auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "../src/http-types.js";
 import type { RoomStore } from "../src/room-store.js";
+import type { ScheduleStore } from "../src/schedule-store.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createNodeStore } = await import("../src/node-store.js");
@@ -42,6 +50,104 @@ test("assigns channels to rooms and audits before/after", async () => {
   });
   assert.equal(event?.details.channelCount, 3);
   assert.deepEqual(event?.details.assignedRoomIds, ["room-a", "room-b"]);
+});
+
+test("reassigning a channel re-homes the schedules that captured it", async () => {
+  const auditStore = createAuditStore("");
+  const reconciledRosters: ScheduleSummary[] = [];
+  // Node channel 1 currently belongs to room-a; a schedule captures it (roomId room-a).
+  const node = sharedNode({
+    roomId: undefined,
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1, roomId: "room-a" },
+          { alias: "Ch 2", index: 2 },
+          { alias: "Ch 3", index: 3 },
+          { alias: "Ch 4", index: 4 },
+        ],
+        id: "iface-1",
+        sampleRates: [48000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+  });
+  const scheduleStore = memoryScheduleStore([roomScheduleFixture()]);
+  const app = channelRoomApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    reconciledRosters,
+    scheduleStore,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node.id}/channel-rooms`, {
+    body: JSON.stringify({
+      assignments: [{ channelIndexes: [1], interfaceId: "iface-1", roomId: "room-b" }],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PUT",
+  });
+  const [event] = await auditStore.list({ action: "nodes.channel-rooms.assign.succeeded" });
+  const reconciled = await scheduleStore.find("sched_reconcile");
+
+  assert.equal(response.status, 200);
+  // The schedule follows the channel to room-b — no longer stranded in room-a.
+  assert.equal(reconciled?.roomId, "room-b");
+  // Its calendar roster was re-homed (reconcileScheduleRoster called with room-b).
+  assert.deepEqual(
+    reconciledRosters.map((schedule) => schedule.roomId),
+    ["room-b"],
+  );
+  assert.deepEqual(event?.details.reassignedScheduleIds, ["sched_reconcile"]);
+});
+
+test("reassigning a channel that splits a schedule across rooms makes it room-less", async () => {
+  const auditStore = createAuditStore("");
+  const node = sharedNode({
+    roomId: undefined,
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1, roomId: "room-a" },
+          { alias: "Ch 2", index: 2, roomId: "room-a" },
+          { alias: "Ch 3", index: 3 },
+          { alias: "Ch 4", index: 4 },
+        ],
+        id: "iface-1",
+        sampleRates: [48000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+  });
+  // Schedule captures channels 1 and 2, both room-a today.
+  const scheduleStore = memoryScheduleStore([
+    roomScheduleFixture({ captureChannelSelection: [1, 2], channelMode: "stereo" }),
+  ]);
+  const app = channelRoomApp({ auditStore, nodes: [node], permissionCalls: [], scheduleStore });
+
+  // Move channel 2 to room-b — the schedule now spans two rooms.
+  const response = await app.request(`/api/v1/nodes/${node.id}/channel-rooms`, {
+    body: JSON.stringify({
+      assignments: [{ channelIndexes: [2], interfaceId: "iface-1", roomId: "room-b" }],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PUT",
+  });
+  const reconciled = await scheduleStore.find("sched_reconcile");
+
+  assert.equal(response.status, 200);
+  // No single room owns the selection, so the schedule is left room-less (the run
+  // path then defers it) rather than silently retaining the stale room-a.
+  assert.equal(reconciled?.roomId, undefined);
 });
 
 test("clears a channel room with a null assignment", async () => {
@@ -158,12 +264,16 @@ function channelRoomApp({
   nodes,
   permissionCalls,
   permissionMiddleware,
+  reconciledRosters,
+  scheduleStore = memoryScheduleStore([]),
   scopedNodeIds,
 }: {
   auditStore: ReturnType<typeof createAuditStore>;
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
   permissionMiddleware?: RequirePermission;
+  reconciledRosters?: ScheduleSummary[];
+  scheduleStore?: ScheduleStore;
   scopedNodeIds?: string[];
 }) {
   const app = new Hono<AppBindings>();
@@ -173,9 +283,13 @@ function channelRoomApp({
     currentAuth: () => auth(),
     currentUser: () => user(),
     nodeStore: createNodeStore(nodes),
+    reconcileScheduleRoster: async (schedule) => {
+      reconciledRosters?.push(schedule);
+    },
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: permissionMiddleware ?? requirePermission(permissionCalls),
     roomStore: memoryRoomStore([room("room-a"), room("room-b")]),
+    scheduleStore,
     scopedNodes: async () =>
       nodes.filter(
         (candidate) => scopedNodeIds === undefined || scopedNodeIds.includes(candidate.id),
@@ -235,6 +349,63 @@ function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): Reco
     await auditStore.append(event);
 
     return event;
+  };
+}
+
+function memoryScheduleStore(schedules: ScheduleSummary[]): ScheduleStore {
+  return {
+    async create(schedule) {
+      schedules.unshift(schedule);
+      return schedule;
+    },
+    async delete(scheduleId) {
+      const index = schedules.findIndex((candidate) => candidate.id === scheduleId);
+      const [deleted] = index >= 0 ? schedules.splice(index, 1) : [];
+      return deleted;
+    },
+    async find(scheduleId) {
+      return schedules.find((candidate) => candidate.id === scheduleId);
+    },
+    async list() {
+      return schedules;
+    },
+    async update(scheduleId, update) {
+      const index = schedules.findIndex((candidate) => candidate.id === scheduleId);
+
+      if (index < 0) {
+        return undefined;
+      }
+
+      schedules[index] = { ...schedules[index], ...update };
+
+      return schedules[index];
+    },
+  };
+}
+
+function roomScheduleFixture(input: Partial<ScheduleSummary> = {}): ScheduleSummary {
+  return {
+    assignedGroupIds: [],
+    assignedUserIds: ["user_assignee"],
+    captureChannelSelection: [1],
+    captureInterfaceId: "iface-1",
+    channelMode: "mono",
+    enabled: true,
+    folderTemplate: "meetings/{{date}}",
+    id: "sched_reconcile",
+    name: "Reconcile Meeting",
+    nextRunAt: "2026-06-18T09:00:00.000Z",
+    nodeId: "node-shared",
+    recurrence: { mode: "manual" },
+    recordingProfileId: "voice-mp3-vbr",
+    retentionPolicyId: "retention-keep-controller-cache",
+    roomId: "room-a",
+    tags: [],
+    timezone: "UTC",
+    titleTemplate: "{{date}} Reconcile Meeting",
+    uploadPolicyIds: ["upload-policy-stub"],
+    watchdogPolicyId: "scheduled-voice-watchdog",
+    ...input,
   };
 }
 

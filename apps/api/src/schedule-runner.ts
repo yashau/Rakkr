@@ -185,12 +185,48 @@ export async function runDueSchedules(
       });
 
       if (result.status === "deferred") {
-        // A channel conflict is transient, so retry the deferred occurrence soon
-        // instead of advancing the schedule as if it had run — advancing a
-        // one-time (or always_on) schedule here silently drops its only
-        // occurrence forever. Mirrors the node-not-found retry above.
+        // A channel conflict OR a cross-room selection is a reason NOT to advance
+        // the schedule as if it had run — advancing a one-time (or always_on)
+        // schedule here silently drops its only occurrence forever. Retry soon,
+        // mirroring the node-not-found retry above.
         const updates = { nextRunAt: retryScheduleAfterFailure(now) };
         const updated = await scheduleStore.update(schedule.id, updates);
+
+        if (result.reason === "cross_room") {
+          // The schedule's channels were reassigned to span multiple rooms after
+          // it was created; it can no longer capture as a single-room recording.
+          if (healthEventStore) {
+            await healthEventStore.create({
+              details: {
+                captureInterfaceId: schedule.captureInterfaceId,
+                nodeId: node.id,
+                scheduleName: schedule.name,
+              },
+              nodeId: node.id,
+              openedAt: now,
+              scheduleId: schedule.id,
+              severity: "warning",
+              type: "schedule.capture_channels_cross_room",
+            });
+          }
+
+          await appendScheduleAudit(auditStore, {
+            action: "schedules.due_run.deferred",
+            after: { nextSchedule: updated ? scheduleExecutionSnapshot(updated) : updates },
+            before,
+            correlationIds: { scheduleId: schedule.id },
+            details: { captureInterfaceId: schedule.captureInterfaceId, nodeId: node.id },
+            outcome: "partial",
+            reason: "channel_selection_cross_room",
+            schedule,
+          });
+          results.push({
+            outcome: "deferred",
+            reason: "channel_selection_cross_room",
+            scheduleId: schedule.id,
+          });
+          continue;
+        }
 
         if (healthEventStore) {
           await healthEventStore.create({

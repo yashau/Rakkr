@@ -9,6 +9,7 @@ import {
 } from "./channel-conflicts.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob, listRecordingJobs } from "./recording-jobs.js";
+import { resolveSelectionRoom } from "./room-resolution.js";
 import type { RecordingStore } from "./recording-store.js";
 import {
   materializeScheduledRecording,
@@ -32,7 +33,8 @@ export interface ScheduledRecordingConflict {
 
 export type QueueScheduledRecordingsResult =
   | { queued: QueuedScheduledRecording[]; status: "queued" }
-  | { conflict: ScheduledRecordingConflict; status: "deferred" };
+  | { conflict: ScheduledRecordingConflict; reason: "channel_conflict"; status: "deferred" }
+  | { reason: "cross_room"; status: "deferred" };
 
 export async function queueScheduledRecordings({
   node,
@@ -58,6 +60,24 @@ export async function queueScheduledRecordings({
     schedule.captureChannelSelection && schedule.captureChannelSelection.length > 0
       ? schedule.captureChannelSelection
       : "all";
+
+  // Attribute the occurrence to the room its selected channels CURRENTLY own,
+  // re-resolved live from the node exactly like the ad-hoc start path — never the
+  // schedule's persisted roomId snapshot, which goes stale when channels are
+  // reassigned to another room after the schedule was created.
+  const captureRoom =
+    resolvedInterfaceId !== undefined
+      ? resolveSelectionRoom(node, resolvedInterfaceId, channels)
+      : { ok: true as const, roomId: node.roomId };
+
+  if (!captureRoom.ok) {
+    // A post-creation reassignment split the selection across rooms. Fail closed:
+    // defer rather than capture cross-room audio attributed to a single room.
+    return { reason: "cross_room", status: "deferred" };
+  }
+
+  const roomSchedule =
+    captureRoom.roomId === schedule.roomId ? schedule : { ...schedule, roomId: captureRoom.roomId };
 
   // Serialize the conflict check -> create per node (shared with the ad-hoc
   // start route) so a scheduled occurrence and a concurrent ad-hoc/scheduled
@@ -97,6 +117,7 @@ export async function queueScheduledRecordings({
           conflictingJobId: conflictingClaim.jobId,
           conflictingRecordingId: conflictingClaim.recordingId,
         },
+        reason: "channel_conflict",
         status: "deferred",
       };
     }
@@ -104,7 +125,7 @@ export async function queueScheduledRecordings({
     const queued: QueuedScheduledRecording[] = [];
 
     for (const track of tracks) {
-      const recording = materializeScheduledRecording(schedule, node, now, track);
+      const recording = materializeScheduledRecording(roomSchedule, node, now, track);
       const trackStartMs = startMs + track.offsetSeconds * 1_000;
       // Each track joins an overlapping capture session on the interface (so
       // disjoint-channel schedules share one device capture) or opens a new one.

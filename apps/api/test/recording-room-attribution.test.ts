@@ -142,9 +142,67 @@ test("two rooms record disjoint channels on one shared node", async () => {
   assert.equal((await recordingStore.list()).length, 2);
 });
 
+test("ad hoc recording of unassigned channels on a room-less node needs node authority", async () => {
+  const auditStore = createAuditStore("");
+  const recordingStore = memoryRecordingStore();
+  // A room-scoped-only caller (roster grants authorizeTarget, but no node role/grant
+  // so hasResourceScope is false) selects the node's UNASSIGNED channels — which
+  // resolve to no room. With no room to check, the node authority gate must apply.
+  const { app, nodeId } = recordingApp({
+    auditStore,
+    authorizeTarget: async () => true,
+    buildNode: partiallyAssignedNode,
+    hasResourceScope: async () => false,
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      captureChannelSelection: [1, 2],
+      captureInterfaceId: "iface-1",
+      channelMode: "stereo",
+      nodeId,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const [event] = await auditStore.list({ action: "recordings.start.failed" });
+
+  assert.equal(response.status, 403);
+  assert.equal(event?.outcome, "denied");
+  assert.equal(event?.target.type, "node");
+  assert.equal((await recordingStore.list()).length, 0);
+});
+
+test("ad hoc recording of unassigned channels succeeds with node authority", async () => {
+  const recordingStore = memoryRecordingStore();
+  const { app, nodeId } = recordingApp({
+    buildNode: partiallyAssignedNode,
+    hasResourceScope: async () => true,
+    recordingStore,
+  });
+
+  const response = await app.request("/api/v1/recordings", {
+    body: JSON.stringify({
+      captureChannelSelection: [1, 2],
+      captureInterfaceId: "iface-1",
+      channelMode: "stereo",
+      nodeId,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json()) as { data: RecordingSummary };
+
+  assert.equal(response.status, 202);
+  assert.equal(body.data.roomId, undefined);
+});
+
 function recordingApp({
   auditStore = createAuditStore(""),
   authorizeTarget = async () => true,
+  buildNode = sharedNode,
+  hasResourceScope = async () => true,
   recordingStore,
 }: {
   auditStore?: ReturnType<typeof createAuditStore>;
@@ -153,19 +211,21 @@ function recordingApp({
     permission: Permission,
     target: AuditTarget,
   ) => Promise<boolean>;
+  buildNode?: (id: string) => RecorderNode;
+  hasResourceScope?: (user: CurrentUser, target: AuditTarget) => Promise<boolean>;
   recordingStore: RecordingStore;
 }) {
   const app = new Hono<AppBindings>();
   // A unique node id per app isolates the shared on-disk job store between tests.
   const nodeId = `node-shared-${randomUUID()}`;
-  const nodes = [sharedNode(nodeId)];
+  const nodes = [buildNode(nodeId)];
 
   registerRecordingRoutes({
     app,
     authorizeTarget,
     currentAuth: () => auth(),
     currentUser: () => user(),
-    hasResourceScope: async () => true,
+    hasResourceScope,
     nodeStore: createNodeStore(nodes),
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore,
@@ -328,6 +388,40 @@ function sharedNode(id: string): RecorderNode {
         channels: [
           { alias: "Ch 1", index: 1, roomId: "room-a" },
           { alias: "Ch 2", index: 2, roomId: "room-a" },
+          { alias: "Ch 3", index: 3, roomId: "room-b" },
+          { alias: "Ch 4", index: 4, roomId: "room-b" },
+        ],
+        id: "iface-1",
+        sampleRates: [48000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+    ipAddresses: ["10.0.0.9"],
+    lastSeenAt: "2026-01-01T00:00:00.000Z",
+    location: { room: "Install Rack", site: "HQ" },
+    status: "online",
+    tags: [],
+  };
+}
+
+// A room-less node (no default room) whose channels 1-2 are unassigned and 3-4
+// belong to room-b. Selecting 1-2 resolves to no room, so captureRoomId is
+// undefined — the case the per-room check used to skip.
+function partiallyAssignedNode(id: string): RecorderNode {
+  return {
+    agentVersion: "2026.1.1-1",
+    alias: "Partial Node",
+    hostname: "partial-node",
+    id,
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1 },
+          { alias: "Ch 2", index: 2 },
           { alias: "Ch 3", index: 3, roomId: "room-b" },
           { alias: "Ch 4", index: 4, roomId: "room-b" },
         ],

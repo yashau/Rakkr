@@ -1,10 +1,12 @@
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import type { RecorderNode } from "@rakkr/shared";
+import type { RecorderNode, ScheduleSummary } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import type { RoomStore } from "./room-store.js";
+import { resolveScheduleRoom } from "./schedule-route-helpers.js";
+import type { ScheduleStore } from "./schedule-store.js";
 import { NodeStoreError, type ChannelRoomAssignment, type NodeStore } from "./node-store.js";
 
 interface ChannelRoomRouteDependencies {
@@ -12,9 +14,13 @@ interface ChannelRoomRouteDependencies {
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   nodeStore: NodeStore;
+  // Re-homes a schedule's calendar-source roster rows after its room changes.
+  // Default no-op keeps the route usable without the roster subsystem wired.
+  reconcileScheduleRoster?(schedule: ScheduleSummary): Promise<void>;
   recordAuditEvent: RecordAuditEvent;
   requirePermission: RequirePermission;
   roomStore: RoomStore;
+  scheduleStore: ScheduleStore;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
 }
 
@@ -40,9 +46,11 @@ export function registerChannelRoomRoutes({
   currentAuth,
   currentUser,
   nodeStore,
+  reconcileScheduleRoster = async () => {},
   recordAuditEvent,
   requirePermission,
   roomStore,
+  scheduleStore,
   scopedNodes,
 }: ChannelRoomRouteDependencies) {
   app.put(
@@ -112,6 +120,13 @@ export function registerChannelRoomRoutes({
         return c.json({ error: "Node not found" }, 404);
       }
 
+      // A schedule's room is a denormalized snapshot of its channels' room, so
+      // reassigning channels must re-home every affected schedule (and its
+      // calendar roster) — otherwise the schedule stays scoped/visible to the OLD
+      // room and its RBAC edit-gate keys off a stale room. A selection that now
+      // spans rooms resolves to no single room (undefined); the run path defers it.
+      const reassignedSchedules = await reconcileNodeSchedules(updated);
+
       await recordAuditEvent(c, {
         action: "nodes.channel-rooms.assign.succeeded",
         after: { channelRooms: channelRoomSnapshot(updated) },
@@ -120,6 +135,7 @@ export function registerChannelRoomRoutes({
         details: {
           assignedRoomIds: requestedRoomIds,
           channelCount: flattened.length,
+          reassignedScheduleIds: reassignedSchedules,
         },
         outcome: "succeeded",
         permission: "node:manage",
@@ -129,6 +145,39 @@ export function registerChannelRoomRoutes({
       return c.json({ data: updated });
     },
   );
+
+  // Re-resolves every schedule on the node against its now-current channel rooms.
+  // Returns the ids whose room changed (for the audit trail). A schedule whose
+  // channels no longer resolve to a single room is set room-less (undefined).
+  async function reconcileNodeSchedules(node: RecorderNode) {
+    const changed: string[] = [];
+
+    for (const schedule of await scheduleStore.list()) {
+      if (schedule.nodeId !== node.id) {
+        continue;
+      }
+
+      const resolution = resolveScheduleRoom(
+        node,
+        schedule.captureInterfaceId,
+        schedule.captureChannelSelection,
+      );
+      const nextRoomId = resolution.ok ? resolution.roomId : undefined;
+
+      if (nextRoomId === schedule.roomId) {
+        continue;
+      }
+
+      const reconciled = await scheduleStore.update(schedule.id, { roomId: nextRoomId });
+
+      if (reconciled) {
+        await reconcileScheduleRoster(reconciled);
+        changed.push(schedule.id);
+      }
+    }
+
+    return changed;
+  }
 
   async function recordFailure(
     c: Context<AppBindings>,

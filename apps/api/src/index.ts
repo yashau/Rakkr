@@ -824,14 +824,37 @@ registerNodeRoutes({
   sshCredentialStore,
 });
 
+// Materializes a schedule's assignees into its room's calendar-source roster rows
+// (and clears them when the resolved room is undefined). Shared by schedule
+// create/update and by channel-room reassignment, which re-homes a schedule when
+// its channels' room changes.
+const reconcileScheduleRoster = (schedule: ScheduleSummary) =>
+  roomRosterStore.reconcileCalendar({
+    capabilities: [...defaultCalendarGrantCapabilities],
+    roomId: schedule.roomId,
+    scheduleId: schedule.id,
+    subjects: [
+      ...schedule.assignedUserIds.map((subjectId) => ({
+        subjectId,
+        subjectType: "user" as const,
+      })),
+      ...schedule.assignedGroupIds.map((subjectId) => ({
+        subjectId,
+        subjectType: "group" as const,
+      })),
+    ],
+  });
+
 registerChannelRoomRoutes({
   app,
   currentAuth,
   currentUser,
   nodeStore,
+  reconcileScheduleRoster,
   recordAuditEvent,
   requirePermission,
   roomStore,
+  scheduleStore,
   scopedNodes,
 });
 
@@ -850,28 +873,14 @@ registerScheduleRoutes({
       unknownUserIds: [...new Set(userIds)].filter((userId) => !knownUserIds.has(userId)),
     };
   },
+  authorizeTarget: (user, permission, target) => authorizeTargetForUser(user, permission, target),
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   nodeStore,
   recordAuditEvent,
   recordingStore,
-  reconcileScheduleRoster: (schedule) =>
-    roomRosterStore.reconcileCalendar({
-      capabilities: [...defaultCalendarGrantCapabilities],
-      roomId: schedule.roomId,
-      scheduleId: schedule.id,
-      subjects: [
-        ...schedule.assignedUserIds.map((subjectId) => ({
-          subjectId,
-          subjectType: "user" as const,
-        })),
-        ...schedule.assignedGroupIds.map((subjectId) => ({
-          subjectId,
-          subjectType: "group" as const,
-        })),
-      ],
-    }),
+  reconcileScheduleRoster,
   removeScheduleRoster: (scheduleId) => roomRosterStore.removeForSchedule(scheduleId),
   requirePermission,
   scheduleStore,
