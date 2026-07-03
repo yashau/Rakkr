@@ -125,6 +125,36 @@ test("agent monitor chunk route blocks credentials from writing other node chunk
   assert.equal(event?.target.type, "node");
 });
 
+test("agent monitor chunk route rejects an over-cap body without buffering it", async () => {
+  const auditStore = createAuditStore("");
+  const listenMonitorStore = createListenMonitorStore();
+  const app = new Hono<AppBindings>();
+
+  registerAgentMonitorRoutes({
+    app,
+    listenMonitorStore,
+    nodeStore: memoryNodeStore(),
+    recordAuditEvent: recordAuditEvent(auditStore),
+  });
+
+  // A compromised node credential must not be able to exhaust controller memory
+  // with an unbounded monitor chunk; the bounded reader aborts past 512 KiB.
+  const response = await app.request("/api/v1/nodes/node_agent_test/listen/chunk", {
+    body: new Uint8Array(600_000),
+    headers: {
+      authorization: "Bearer node-token",
+      "content-type": "audio/wav",
+      "x-rakkr-captured-at": "2026-06-20T08:30:00.000Z",
+      "x-rakkr-duration-ms": "1000",
+    },
+    method: "POST",
+  });
+  const stored = await listenMonitorStore.latest("node_agent_test");
+
+  assert.equal(response.status, 413);
+  assert.equal(stored, undefined, "an over-cap chunk must not be stored");
+});
+
 function memoryNodeStore(): NodeStore {
   return {
     async authenticateCredential(token) {
