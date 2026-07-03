@@ -8,30 +8,80 @@ import type { MeterFrame, RecorderNode } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AuditTarget } from "./http-types.js";
-import { channelRoomId } from "./room-resolution.js";
+import { channelRoomId, nodeRoomIds } from "./room-resolution.js";
 
 type User = NonNullable<AuthResult["user"]>;
 
 export function createMeterRoomAccess({
+  accessPolicyDecision,
   hasResourceScope,
   rosterRoomIds,
 }: {
+  // Access-policy decision for a target set (no room expansion). Used to detect
+  // node/site-level authority distinctly from room-derived node scope.
+  accessPolicyDecision: (
+    user: User,
+    targets: AuditTarget[],
+  ) => Promise<{ effect?: string } | undefined | null>;
+  // Whether the user is scoped to a single target (role/grant/policy). Used per
+  // room to build the caller's owned-room set.
   hasResourceScope: (user: User, target: AuditTarget) => Promise<boolean>;
   rosterRoomIds: (user: User) => Promise<Set<string>>;
 }) {
-  // The rooms whose channel data a user may see on a node. "all" for owner/admin or
-  // a direct node grant (full node authority); otherwise the user's rostered rooms,
-  // so a shared node exposes only the caller's channels.
-  async function meterRoomAccess(user: User, node: RecorderNode): Promise<Set<string> | "all"> {
+  // FULL-node authority: the caller may see EVERY channel regardless of room. This
+  // is owner/admin, or a node/site/wildcard grant or a node/site access-policy
+  // allow — NOT a room-scoped grant/policy. Critically, this must NOT reuse a
+  // node-target resource-scope check: that expands to the node's room UNION, so a
+  // single owned room would falsely confer whole-node authority and leak the other
+  // rooms' meters/audio on a shared node.
+  async function hasFullNodeAuthority(user: User, node: RecorderNode): Promise<boolean> {
     if (user.roles.includes("owner") || user.roles.includes("admin")) {
+      return true;
+    }
+
+    const targets: AuditTarget[] = [{ id: node.id, type: "node" }];
+
+    if (node.location.site) {
+      targets.push({ id: node.location.site, type: "site" });
+    }
+
+    const policyDecision = await accessPolicyDecision(user, targets);
+
+    if (policyDecision?.effect === "deny") {
+      return false;
+    }
+
+    if (policyDecision?.effect === "allow") {
+      return true;
+    }
+
+    return targets.some((candidate) =>
+      user.resourceGrants.some(
+        (grant) =>
+          (grant.resourceType === candidate.type || grant.resourceType === "*") &&
+          (grant.resourceId === candidate.id || grant.resourceId === "*"),
+      ),
+    );
+  }
+
+  // The rooms whose channel data a user may see on a node. "all" for full-node
+  // authority; otherwise the caller's rostered rooms plus any of the node's rooms
+  // they hold direct room authority on (a room grant/policy), so a shared node
+  // exposes only the caller's own channels.
+  async function meterRoomAccess(user: User, node: RecorderNode): Promise<Set<string> | "all"> {
+    if (await hasFullNodeAuthority(user, node)) {
       return "all";
     }
 
-    if (await hasResourceScope(user, { id: node.id, type: "node" })) {
-      return "all";
+    const owned = new Set(await rosterRoomIds(user));
+
+    for (const roomId of nodeRoomIds(node)) {
+      if (!owned.has(roomId) && (await hasResourceScope(user, { id: roomId, type: "room" }))) {
+        owned.add(roomId);
+      }
     }
 
-    return rosterRoomIds(user);
+    return owned;
   }
 
   // Strict per-channel meter filtering: drop level rows for channels the caller's
@@ -61,7 +111,7 @@ export function createMeterRoomAccess({
   // frame (filtered per-channel), the monitor chunk is a single pre-mixed WAV that
   // cannot be partitioned per room after the fact — so it may only be served when
   // the caller owns every channel's audio: full node authority ("all"), or their
-  // rostered rooms cover every channel's room (a channel with no room, or one in a
+  // owned rooms cover every channel's room (a channel with no room, or one in a
   // room the caller lacks, would leak). Fail-closed on a shared node.
   async function canServeWholeNodeMonitor(user: User, node: RecorderNode): Promise<boolean> {
     const access = await meterRoomAccess(user, node);

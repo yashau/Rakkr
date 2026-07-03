@@ -448,6 +448,7 @@ function intersects(left: Set<string>, right: Set<string>) {
 // Per-room meter/monitor access decisions (extracted to keep this file within the
 // LOC budget). Injected with this module's roster + scope helpers.
 const { canServeWholeNodeMonitor, filterMeterFrameForUser } = createMeterRoomAccess({
+  accessPolicyDecision: (user, targets) => authService.accessPolicyDecision(user, targets),
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   rosterRoomIds: (user) => rosterRoomIds(user),
 });
