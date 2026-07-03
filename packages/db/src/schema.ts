@@ -511,9 +511,18 @@ export const audioChannels = pgTable(
     metadata: jsonb("metadata")
       .notNull()
       .default(sql`'{}'::jsonb`),
+    // Room that owns this channel. Room ownership lives at the channel level: any
+    // set of a node's channels can belong to a room, and each channel belongs to
+    // at most one room. NULL inherits the node default (nodes.room_id). Set null on
+    // room delete so hardware rows survive. Preserved across inventory reconcile
+    // (matched on interface + channel_index).
+    roomId: varchar("room_id", { length: 160 }).references(() => rooms.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => ({
     interfaceIdx: index("audio_channels_interface_idx").on(table.interfaceId),
+    roomIdx: index("audio_channels_room_idx").on(table.roomId),
   }),
 );
 
@@ -762,6 +771,12 @@ export const recordings = pgTable(
     name: text("name").notNull(),
     nodeId: varchar("node_id", { length: 160 }),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    // Room that owns this recording, captured at create time from the room of the
+    // selected channels. Persisted (not derived) so a later channel reassignment
+    // never retroactively moves a completed recording or its RBAC visibility.
+    roomId: varchar("room_id", { length: 160 }).references(() => rooms.id, {
+      onDelete: "set null",
+    }),
     scheduleId: varchar("schedule_id", { length: 160 }),
     source: recordingSourceEnum("source").notNull(),
     status: recordingStatusEnum("status").notNull(),
@@ -771,6 +786,7 @@ export const recordings = pgTable(
   },
   (table) => ({
     recordedAtIdx: index("recordings_recorded_at_idx").on(table.recordedAt),
+    roomIdx: index("recordings_room_idx").on(table.roomId),
     scheduleIdx: index("recordings_schedule_idx").on(table.scheduleId),
     statusIdx: index("recordings_status_idx").on(table.status),
   }),
