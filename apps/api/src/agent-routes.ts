@@ -11,6 +11,7 @@ import {
   nodeHeartbeatSnapshot,
   recordingFileSnapshot,
 } from "./agent-route-helpers.js";
+import { readBoundedBody, recordingCacheUploadMaxBytes } from "./agent-cache-upload-body.js";
 import { nodeHealthEventScopeFailure } from "./agent-health-event-scope.js";
 import { bearerToken } from "./auth-utils.js";
 import { registerAgentChannelMapRoute } from "./agent-channel-map-route.js";
@@ -547,6 +548,24 @@ export function registerAgentRoutes({
       return c.json({ error: "Node credential cannot access this recording" }, 403);
     }
 
+    const maxUploadBytes = recordingCacheUploadMaxBytes();
+    const declaredLength = Number(c.req.header("content-length"));
+
+    // Fast path: reject an over-cap upload from its declared Content-Length before
+    // buffering a byte (the streaming read below is the backstop for a chunked
+    // body that omits or lies about it).
+    if (Number.isFinite(declaredLength) && declaredLength > maxUploadBytes) {
+      await recordRecordingFileFailure(c, {
+        actor: auth.credential,
+        createHealthEvent: true,
+        reason: "file_too_large",
+        recordingId,
+        severity: "warning",
+        targetName: recording.name,
+      });
+      return c.json({ error: "Recording cache file exceeds the maximum size" }, 413);
+    }
+
     // The controller already decided this recording terminally failed (e.g. a
     // lease expiry with no secured chunks). A late/replayed cache upload must
     // not silently resurrect it back to `cached` via applyStoredRendition.
@@ -578,7 +597,21 @@ export function registerAgentRoutes({
       return c.json({ error: scopedJob.error }, scopedJob.status);
     }
 
-    const bytes = Buffer.from(await c.req.arrayBuffer());
+    const body = await readBoundedBody(c.req.raw, maxUploadBytes);
+
+    if (body === "too_large") {
+      await recordRecordingFileFailure(c, {
+        actor: auth.credential,
+        createHealthEvent: true,
+        reason: "file_too_large",
+        recordingId,
+        severity: "warning",
+        targetName: recording.name,
+      });
+      return c.json({ error: "Recording cache file exceeds the maximum size" }, 413);
+    }
+
+    const bytes = Buffer.from(body);
 
     if (bytes.byteLength === 0) {
       await recordRecordingFileFailure(c, {
