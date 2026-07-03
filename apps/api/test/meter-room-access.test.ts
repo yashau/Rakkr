@@ -3,7 +3,8 @@ import test from "node:test";
 import type { CurrentUser, MeterFrame, RecorderNode } from "@rakkr/shared";
 import type { AuditTarget } from "../src/http-types.js";
 
-const { createMeterRoomAccess } = await import("../src/meter-room-access.js");
+const { createMeterRoomAccess, resolveVisibleMeterFrame } =
+  await import("../src/meter-room-access.js");
 
 // A shared node: interface if1 channel 1 -> room-a, channel 2 -> room-b.
 function sharedNode(): RecorderNode {
@@ -97,6 +98,48 @@ test("room-scoped caller is refused whole-node monitor audio and gets filtered m
     filtered.levels.map((level) => level.channelIndex),
     [1],
   );
+});
+
+test("resolveVisibleMeterFrame streams only the caller's room channels (SSE per-channel filter)", async () => {
+  const access = roomAAccess();
+  const roomAUser = user({ resourceGrants: [{ resourceId: "room-a", resourceType: "room" }] });
+  const nodeStore = { find: async (id: string) => (id === "node-1" ? sharedNode() : undefined) };
+
+  // The node-scope gate passes (a room-a grant expands to the node's room union),
+  // then the same strict per-channel filter as /meters keeps only the room-a channel.
+  const visible = await resolveVisibleMeterFrame(roomAUser, frame(), {
+    filterMeterFrame: access.filterMeterFrameForUser,
+    hasResourceScope: async () => true,
+    nodeStore,
+  });
+
+  assert.deepEqual(
+    visible?.levels.map((level) => level.channelIndex),
+    [1],
+    "sibling-room channel levels are stripped before streaming",
+  );
+
+  // No node scope -> the stream emits nothing.
+  const denied = await resolveVisibleMeterFrame(roomAUser, frame(), {
+    filterMeterFrame: access.filterMeterFrameForUser,
+    hasResourceScope: async () => false,
+    nodeStore,
+  });
+
+  assert.equal(denied, undefined, "no node scope streams nothing");
+
+  // An unresolvable node -> never a fall-back to the unfiltered frame.
+  const missing = await resolveVisibleMeterFrame(
+    roomAUser,
+    { ...frame(), nodeId: "ghost" },
+    {
+      filterMeterFrame: access.filterMeterFrameForUser,
+      hasResourceScope: async () => true,
+      nodeStore,
+    },
+  );
+
+  assert.equal(missing, undefined, "an unresolvable node never yields an unfiltered frame");
 });
 
 test("a direct node grant confers whole-node authority", async () => {

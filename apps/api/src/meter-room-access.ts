@@ -8,9 +8,38 @@ import type { MeterFrame, RecorderNode } from "@rakkr/shared";
 
 import type { AuthResult } from "./auth-service.js";
 import type { AuditTarget } from "./http-types.js";
+import type { NodeStore } from "./node-store.js";
 import { channelRoomId, nodeRoomIds } from "./room-resolution.js";
 
 type User = NonNullable<AuthResult["user"]>;
+
+// Computes the meter frame a caller may receive for a live meter event (the
+// /meter-events SSE stream): enforces node-scope authority, resolves the node,
+// then applies strict per-channel filtering (mirroring /meters). Returns undefined
+// when the caller lacks scope or the node can't be resolved, so the stream emits
+// nothing rather than an unfiltered frame that would leak sibling-room levels on a
+// shared node.
+export async function resolveVisibleMeterFrame(
+  user: User,
+  frame: MeterFrame,
+  deps: {
+    filterMeterFrame: (user: User, node: RecorderNode, frame: MeterFrame) => Promise<MeterFrame>;
+    hasResourceScope: (user: User, target: AuditTarget) => Promise<boolean>;
+    nodeStore: Pick<NodeStore, "find">;
+  },
+): Promise<MeterFrame | undefined> {
+  if (!(await deps.hasResourceScope(user, { id: frame.nodeId, type: "node" }))) {
+    return undefined;
+  }
+
+  const node = await deps.nodeStore.find(frame.nodeId);
+
+  if (!node) {
+    return undefined;
+  }
+
+  return deps.filterMeterFrame(user, node, frame);
+}
 
 export function createMeterRoomAccess({
   accessPolicyDecision,

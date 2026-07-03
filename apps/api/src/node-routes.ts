@@ -21,6 +21,7 @@ import type {
 } from "./http-types.js";
 import type { ListenMonitorStore, StoredListenMonitorChunk } from "./listen-monitor-store.js";
 import type { ListenSessionStore } from "./listen-session-store.js";
+import { resolveVisibleMeterFrame } from "./meter-room-access.js";
 import type { MeterFrameStore } from "./meter-store.js";
 import { registerNodeActionRoutes } from "./node-action-routes.js";
 import { registerNodeInventoryRoutes } from "./node-inventory-routes.js";
@@ -788,10 +789,20 @@ export function registerNodeRoutes({
     return streamSSE(c, async (stream) => {
       while (true) {
         const frame = await liveMeterFrame();
+        // Strict per-channel filtering (mirrors /meters): the node-scope gate expands
+        // to the room union, so on a shared node a caller scoped to only some rooms
+        // must not receive sibling-room channel levels.
+        const visibleFrame = frame
+          ? await resolveVisibleMeterFrame(user, frame, {
+              filterMeterFrame,
+              hasResourceScope,
+              nodeStore,
+            })
+          : undefined;
 
-        if (frame && (await hasResourceScope(user, { id: frame.nodeId, type: "node" }))) {
+        if (visibleFrame) {
           await stream.writeSSE({
-            data: JSON.stringify(frame),
+            data: JSON.stringify(visibleFrame),
             event: "meter",
           });
         }
