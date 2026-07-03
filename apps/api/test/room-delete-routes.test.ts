@@ -75,15 +75,56 @@ test("a DB outage during room delete surfaces as 503, not a false 409 room_in_us
   assert.equal(failures.length, 0);
 });
 
+test("room overview isolates recordings and occurrences by room on a shared node", async () => {
+  const rooms = [room("room-a"), room("room-b")];
+  const { app } = roomApp({
+    nodes: [sharedNode()],
+    recordings: [recording("rec_a", "room-a"), recording("rec_b", "room-b")],
+    rooms,
+    schedules: [scheduleFor("room-a", "sched_a"), scheduleFor("room-b", "sched_b")],
+  });
+
+  const response = await app.request("/api/v1/rooms/room-a/overview");
+  const { data } = (await response.json()) as {
+    data: {
+      nodes: RecorderNode[];
+      recentRecordings: RecordingSummary[];
+      upcoming: Array<{ scheduleId: string }>;
+    };
+  };
+
+  assert.equal(response.status, 200);
+  // The shared node serves both rooms, so it appears in room-a's overview.
+  assert.deepEqual(
+    data.nodes.map((node) => node.id),
+    ["node_shared"],
+  );
+  // Recordings and occurrences are room-scoped: room-b's must not leak into room-a.
+  assert.deepEqual(
+    data.recentRecordings.map((r) => r.id),
+    ["rec_a"],
+    "only room-a recordings are shown",
+  );
+  assert.deepEqual(
+    data.upcoming.map((occurrence) => occurrence.scheduleId),
+    ["sched_a"],
+    "only room-a occurrences are shown",
+  );
+});
+
 function roomApp({
   auditStore = createAuditStore(""),
   deleteError,
+  nodes = [],
+  recordings = [],
   removedRooms = [],
   rooms,
   schedules,
 }: {
   auditStore?: ReturnType<typeof createAuditStore>;
   deleteError?: Error;
+  nodes?: RecorderNode[];
+  recordings?: RecordingSummary[];
   removedRooms?: string[];
   rooms: Room[];
   schedules: ScheduleSummary[];
@@ -107,13 +148,13 @@ function roomApp({
     listUsers: async () => [],
     nodeStore: {
       async list() {
-        return [] as RecorderNode[];
+        return nodes;
       },
     } as never,
     recordAuditEvent: recordAuditEvent(auditStore),
     recordingStore: {
       async list() {
-        return [] as RecordingSummary[];
+        return recordings;
       },
     } as never,
     requirePermission: () => async (_c, next) => {
@@ -226,15 +267,15 @@ function room(id: string): Room {
   return { id, name: id, site: "HQ" };
 }
 
-function scheduleFor(roomId: string): ScheduleSummary {
+function scheduleFor(roomId: string, id = "sched_ref"): ScheduleSummary {
   return {
     assignedGroupIds: [],
     assignedUserIds: [],
     enabled: true,
     folderTemplate: "meetings/{{date}}",
-    id: "sched_ref",
-    name: "Referencing Schedule",
-    nextRunAt: "2026-06-18T09:00:00.000Z",
+    id,
+    name: `${id} for ${roomId}`,
+    nextRunAt: "2026-08-01T09:00:00.000Z",
     nodeId: "node-x",
     recurrence: { mode: "manual" },
     recordingProfileId: "voice-mp3-vbr",
@@ -245,5 +286,53 @@ function scheduleFor(roomId: string): ScheduleSummary {
     titleTemplate: "{{date}} Referencing Schedule",
     uploadPolicyIds: ["upload-policy-stub"],
     watchdogPolicyId: "scheduled-voice-watchdog",
+  };
+}
+
+// A shared node whose interface has one channel in each room, so it belongs to
+// (appears in) both rooms' overviews.
+function sharedNode(): RecorderNode {
+  return {
+    agentVersion: "2026.1.1-1",
+    alias: "Shared Rig",
+    hostname: "shared-rig",
+    id: "node_shared",
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 2,
+        channels: [
+          { alias: "A", index: 1, roomId: "room-a" },
+          { alias: "B", index: 2, roomId: "room-b" },
+        ],
+        id: "if1",
+        sampleRates: [48_000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+    ipAddresses: ["10.0.0.9"],
+    lastSeenAt: "2026-06-18T12:00:00.000Z",
+    location: { room: "Rack", site: "HQ" },
+    status: "online",
+    tags: [],
+  };
+}
+
+function recording(id: string, roomId: string): RecordingSummary {
+  return {
+    cached: true,
+    durationSeconds: 60,
+    folder: "meetings/2026-06-18",
+    healthStatus: "healthy",
+    id,
+    name: `${id} in ${roomId}`,
+    nodeId: "node_shared",
+    recordedAt: "2026-06-18T09:00:00.000Z",
+    roomId,
+    source: "schedule",
+    status: "completed",
+    tags: [],
   };
 }
