@@ -148,6 +148,62 @@ async fn meter_health_logs_low_signal_and_recovery() {
     assert_json_f32(&low_signal["details"]["quality"]["minEstimatedSnrDb"], 8.0);
 }
 
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn tick_health_updates_survive_health_log_write_failures() {
+    // Point the health log at a path whose parent is a regular FILE, so every
+    // append fails at create_dir_all — a deterministic stand-in for an unwritable
+    // evidence sink (full disk, permission loss) on both Windows and Linux.
+    let process_id = std::process::id();
+    let directory =
+        std::path::PathBuf::from("target").join(format!("rakkr-agent-health-fatal-{process_id}"));
+    std::fs::create_dir_all(&directory).expect("create temp directory");
+    let blocker = directory.join("blocker");
+    std::fs::write(&blocker, b"x").expect("write blocker file");
+    let health_log_file = blocker.join("health-events.jsonl");
+
+    let config = AgentConfig::parse_from([
+        "rakkr-recorder-agent",
+        "--agent-health-log-file",
+        health_log_file.to_str().expect("utf8 health log path"),
+        "--meter-low-signal-dbfs=-55",
+    ]);
+    let inventory = inventory::collect(&config);
+    let low_frame = meter_frame(vec![
+        level_with_signal(1, -62.0, 0.2),
+        level_with_signal(2, -64.0, 0.4),
+    ]);
+    let mut meter_state = MeterHealthState::default();
+    let mut system_state = system_health::SystemHealthState::default();
+
+    // Sustain the low-signal condition so its debounced edge fires and attempts a
+    // health-event append — which hits the unwritable sink. A best-effort tick
+    // swallows and counts the failure instead of propagating and killing the loop.
+    let mut total_failures = 0u32;
+    for _ in 0..meter_health::METER_HEALTH_MIN_CONSECUTIVE_FRAMES {
+        total_failures += apply_tick_health_updates(
+            &config,
+            None,
+            &low_frame,
+            &inventory,
+            &mut meter_state,
+            &mut system_state,
+        )
+        .await;
+    }
+
+    assert!(
+        total_failures >= 1,
+        "expected at least one health-append failure to be swallowed and counted"
+    );
+    assert!(
+        !health_log_file.exists(),
+        "the unwritable health sink must not have been created"
+    );
+
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
 fn level_with_correlation(
     channel_index: u16,
     peer_channel_index: u16,

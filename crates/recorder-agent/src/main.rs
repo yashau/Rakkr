@@ -258,19 +258,14 @@ async fn main() -> anyhow::Result<()> {
                     "recorder heartbeat"
                 );
 
-                update_meter_health(
+                apply_tick_health_updates(
                     &active_config,
                     token,
                     frame,
-                    &mut meter_health_state,
-                ).await?;
-
-                update_system_health(
-                    &active_config,
-                    token,
                     &inventory,
+                    &mut meter_health_state,
                     &mut system_health_state,
-                ).await?;
+                ).await;
 
                 reap_recording_job_workers(&mut recording_jobs);
 
@@ -826,6 +821,35 @@ fn meter_capture_backend(config: &AgentConfig) -> CaptureBackend {
         MeterBackend::Jack => CaptureBackend::Jack,
         MeterBackend::Pipewire => CaptureBackend::Pipewire,
     }
+}
+
+// Runs the per-tick meter and system health updates as best-effort work. A
+// transient health-evidence write failure (full disk, unwritable path, poisoned
+// lock) must not abort the heartbeat/meter/job loop and take the whole node dark
+// — a node that stops heartbeating is worse than a gap in local evidence, and the
+// controller's stale-heartbeat watchdog is the backstop for a genuinely dead node.
+// Failures are logged and counted rather than propagated; returns the count.
+async fn apply_tick_health_updates(
+    config: &AgentConfig,
+    token: Option<&str>,
+    frame: &MeterFrame,
+    inventory: &inventory::NodeInventory,
+    meter_state: &mut MeterHealthState,
+    system_state: &mut system_health::SystemHealthState,
+) -> u32 {
+    let mut failures = 0;
+
+    if let Err(error) = update_meter_health(config, token, frame, meter_state).await {
+        failures += 1;
+        warn!(error = %error, "failed to update meter health; continuing heartbeat");
+    }
+
+    if let Err(error) = update_system_health(config, token, inventory, system_state).await {
+        failures += 1;
+        warn!(error = %error, "failed to update system health; continuing heartbeat");
+    }
+
+    failures
 }
 
 async fn update_system_health(
