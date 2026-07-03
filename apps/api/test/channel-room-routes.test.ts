@@ -147,6 +147,82 @@ test("channel-room reconcile isolates a per-schedule failure and still reconcile
   assert.deepEqual(event?.details.reconcileFailedScheduleIds, ["sched_fail"]);
 });
 
+test("a retry PUT re-runs a schedule roster reconcile that failed on the first pass", async () => {
+  const auditStore = createAuditStore("");
+  // Channel 1 belongs to room-a; a schedule captures it.
+  const node = sharedNode({
+    roomId: undefined,
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1, roomId: "room-a" },
+          { alias: "Ch 2", index: 2 },
+          { alias: "Ch 3", index: 3 },
+          { alias: "Ch 4", index: 4 },
+        ],
+        id: "iface-1",
+        sampleRates: [48000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+  });
+  const scheduleStore = memoryScheduleStore([roomScheduleFixture()]);
+  const reconciledRosters: ScheduleSummary[] = [];
+  let rosterAttempts = 0;
+  // The roster reconcile fails the first time (a transient store blip), then succeeds.
+  const reconcileScheduleRoster = async (schedule: ScheduleSummary) => {
+    rosterAttempts += 1;
+
+    if (rosterAttempts === 1) {
+      throw new Error("simulated roster reconcile failure");
+    }
+
+    reconciledRosters.push(schedule);
+  };
+  const app = channelRoomApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    reconcileScheduleRoster,
+    scheduleStore,
+  });
+  const body = JSON.stringify({
+    assignments: [{ channelIndexes: [1], interfaceId: "iface-1", roomId: "room-b" }],
+  });
+  const request = () =>
+    app.request(`/api/v1/nodes/${node.id}/channel-rooms`, {
+      body,
+      headers: { "content-type": "application/json" },
+      method: "PUT",
+    });
+
+  // First PUT: the roster reconcile throws, so the schedule must NOT be committed to
+  // room-b (roomId is the commit point) — otherwise a retry would see it already at
+  // room-b and skip it, stranding the roster forever.
+  const first = await request();
+  assert.equal(first.status, 200);
+  assert.equal(
+    (await scheduleStore.find("sched_reconcile"))?.roomId,
+    "room-a",
+    "a failed roster reconcile must not leave the schedule committed to the new room",
+  );
+
+  // Second PUT: re-detects the pending move and re-runs the roster reconcile, which
+  // now succeeds — the schedule and its roster both land in room-b.
+  const second = await request();
+  assert.equal(second.status, 200);
+  assert.equal((await scheduleStore.find("sched_reconcile"))?.roomId, "room-b");
+  assert.deepEqual(
+    reconciledRosters.map((schedule) => schedule.roomId),
+    ["room-b"],
+    "the retry re-ran the roster reconcile into room-b",
+  );
+});
+
 test("reassigning a channel that splits a schedule across rooms makes it room-less", async () => {
   const auditStore = createAuditStore("");
   const node = sharedNode({
@@ -305,6 +381,7 @@ function channelRoomApp({
   nodes,
   permissionCalls,
   permissionMiddleware,
+  reconcileScheduleRoster,
   reconciledRosters,
   scheduleStore = memoryScheduleStore([]),
   scopedNodeIds,
@@ -313,6 +390,7 @@ function channelRoomApp({
   nodes: RecorderNode[];
   permissionCalls: PermissionCall[];
   permissionMiddleware?: RequirePermission;
+  reconcileScheduleRoster?: (schedule: ScheduleSummary) => Promise<void>;
   reconciledRosters?: ScheduleSummary[];
   scheduleStore?: ScheduleStore;
   scopedNodeIds?: string[];
@@ -324,9 +402,11 @@ function channelRoomApp({
     currentAuth: () => auth(),
     currentUser: () => user(),
     nodeStore: createNodeStore(nodes),
-    reconcileScheduleRoster: async (schedule) => {
-      reconciledRosters?.push(schedule);
-    },
+    reconcileScheduleRoster:
+      reconcileScheduleRoster ??
+      (async (schedule) => {
+        reconciledRosters?.push(schedule);
+      }),
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: permissionMiddleware ?? requirePermission(permissionCalls),
     roomStore: memoryRoomStore([room("room-a"), room("room-b")]),

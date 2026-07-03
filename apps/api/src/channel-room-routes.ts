@@ -173,13 +173,20 @@ export function registerChannelRoomRoutes({
 
       // Best-effort per schedule: the node channel-rooms are already committed, so
       // one schedule's reconcile throwing must NOT abort the loop and leave the
-      // remaining schedules stale. Record the failure and continue; the reconcile
-      // is idempotent, so a retry PUT re-runs it over all the node's schedules.
+      // remaining schedules stale. Record the failure and continue.
+      //
+      // Reconcile the roster into the target room FIRST, and persist the schedule's
+      // new roomId only after that succeeds — the roomId write is the commit point.
+      // A retry PUT re-detects the schedule (nextRoomId !== schedule.roomId) and
+      // re-runs BOTH writes, so a failed roster reconcile self-heals. (Persisting
+      // roomId first would leave the schedule pointing at the new room with its
+      // roster stranded in the old one, and the retry would then skip the schedule
+      // because its roomId already matched — the stale roster never healed.)
       try {
+        await reconcileScheduleRoster({ ...schedule, roomId: nextRoomId });
         const reconciled = await scheduleStore.update(schedule.id, { roomId: nextRoomId });
 
         if (reconciled) {
-          await reconcileScheduleRoster(reconciled);
           changed.push(schedule.id);
         }
       } catch (error) {
