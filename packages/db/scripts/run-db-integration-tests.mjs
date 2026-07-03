@@ -14,6 +14,7 @@ const dbBackedApiTests = [
   "test/node-ssh-credential-rotation-atomic.test.ts",
   "test/node-credential-rotation-atomic.test.ts",
   "test/node-metadata-write-race.test.ts",
+  "test/recording-chunk-size-bigint.test.ts",
 ];
 
 const DEFAULT_DATABASE_URL = "postgres://rakkr:rakkr@127.0.0.1:5432/rakkr";

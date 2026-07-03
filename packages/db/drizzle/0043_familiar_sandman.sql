@@ -1,0 +1,1 @@
+ALTER TABLE "recording_chunks" ALTER COLUMN "size_bytes" SET DATA TYPE bigint;

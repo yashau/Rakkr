@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -852,7 +853,10 @@ export const recordingChunks = pgTable(
     offsetSeconds: integer("offset_seconds").notNull().default(0),
     rawCachePath: text("raw_cache_path"),
     recordingId: varchar("recording_id", { length: 160 }).notNull(),
-    sizeBytes: integer("size_bytes"),
+    // A single chunk of multichannel/uncompressed audio (e.g. 32-ch X32 WAV) can
+    // exceed the 2 GiB signed-int32 ceiling, which threw "integer out of range" on
+    // upsert and failed the chunk. bigint (JS number, exact to 2^53 = 8 PiB) holds it.
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
     status: recordingChunkStatusEnum("status").notNull(),
     total: integer("total"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
