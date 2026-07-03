@@ -19,9 +19,13 @@ point at — so getting rooms right is the foundation for who can reach what.
 
 - **They are the access scope.** You grant people access *to a room*, and that
   access follows the room's schedules and recordings.
-- **Ownership is per channel.** Each of a node's audio channels is assigned to a
-  room, so one node's channels can serve several rooms — and two rooms can record
-  from one node at the same time on their own channels.
+- **A room is made of channels.** A room owns one or more of a node's audio
+  **channels**. A node usually has many more channels than any single room needs,
+  so its channels are divided among rooms — each channel belongs to at most one
+  room (a channel with no room of its own inherits the node's default). Because
+  different channels of one node can belong to different rooms, that node can feed
+  several rooms at once, and two rooms can record from it at the same time on their
+  own channels.
 - **They're unique per site + name**, so two sites can each have a "Committee
   Room A" without collision.
 

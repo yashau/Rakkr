@@ -48,8 +48,9 @@ you edit:
 - **Location** — site, building, floor, default room.
 - **Network** — hostname and IPs.
 - **Interface & channel aliases**, hardware paths, serials, sample rates.
-- **The room each channel belongs to** — channels may span rooms, so one node can
-  feed several rooms at once.
+- **The room each channel belongs to** — a room is one or more channels, and a
+  node usually has more channels than any one room, so its channels can be split
+  across several rooms (each channel belongs to just one room).
 - **Audio command defaults** (capture backend, device, format, rate, channels)
   and the node's **recording capacity**.
 
