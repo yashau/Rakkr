@@ -48,6 +48,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { api, type NodeFilters } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
+import { useDocumentTitle } from "@/lib/document-title";
 import {
   nextNodeSelection,
   nodeFilterChips,
@@ -78,6 +79,8 @@ const nodeFilterDraftKeys: Record<NodeFilterKey, keyof typeof emptyNodeInventory
 };
 
 export function NodesPage() {
+  useDocumentTitle("Nodes");
+
   const queryClient = useQueryClient();
   const [nodeFilterDraft, setNodeFilterDraft] = useState(emptyNodeInventoryFilters);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
@@ -222,7 +225,7 @@ export function NodesPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <Network className="size-5 text-teal-700 dark:text-teal-400" />
+              <Network className="size-5 text-primary" />
               <h2 className="text-lg font-semibold">Recorder Nodes</h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">

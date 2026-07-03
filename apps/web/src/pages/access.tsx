@@ -21,6 +21,7 @@ import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type UserAccessUpdate } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import {
   accessPagePermissions,
   accessUpdateFromDraft,
@@ -36,6 +37,8 @@ import { defaultPageSize } from "@/lib/server-pagination";
 import { useServerPagination } from "@/lib/use-server-pagination";
 
 export function AccessPage() {
+  useDocumentTitle("Access");
+
   const queryClient = useQueryClient();
   const [policyError, setPolicyError] = useState<string>();
   const [policiesText, setPoliciesText] = useState("");
@@ -196,7 +199,7 @@ export function AccessPage() {
     <div className="grid gap-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="size-5 text-teal-700 dark:text-teal-400" />
+          <ShieldCheck className="size-5 text-primary" />
           <div>
             <h2 className="text-lg font-semibold">Access</h2>
             <p className="text-sm text-muted-foreground">{meta?.total ?? users.length} users</p>

@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
+import { useDocumentTitle } from "@/lib/document-title";
 import {
   emptyJobsPageFilters,
   jobsPagePermissions,
@@ -78,6 +79,8 @@ const recordingJobFilterDraftKeys: Record<RecordingJobFilterKey, keyof JobsPageF
 };
 
 export function JobsPage() {
+  useDocumentTitle("Jobs");
+
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<JobsPageFilters>(emptyJobsPageFilters);
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
@@ -233,7 +236,7 @@ export function JobsPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <ListChecks className="size-5 text-teal-700 dark:text-teal-400" />
+              <ListChecks className="size-5 text-primary" />
               <h2 className="text-lg font-semibold">Recording Jobs</h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -601,17 +604,13 @@ function recordingJobColumns({
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-1">
           {row.original.claimedBy ? (
-            <Badge className="gap-1 bg-background" variant="outline">
+            <Badge className="gap-1" variant="outline">
               <span className="text-muted-foreground">claimed</span>
               <span className="truncate font-mono">{row.original.claimedBy}</span>
             </Badge>
           ) : null}
           {recordingJobCaptureDetails(row.original).map((item) => (
-            <Badge
-              className="gap-1 bg-background"
-              key={`${row.original.id}-${item.label}`}
-              variant="outline"
-            >
+            <Badge className="gap-1" key={`${row.original.id}-${item.label}`} variant="outline">
               <span className="text-muted-foreground">{item.label}</span>
               <span className="truncate font-mono">{item.value}</span>
             </Badge>

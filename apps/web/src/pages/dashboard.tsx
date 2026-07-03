@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  AudioLines,
   CheckCircle2,
   HardDrive,
   Network,
-  Radio,
   ShieldCheck,
   Square,
 } from "lucide-react";
@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import {
   dashboardActiveRecordingJobs,
   dashboardActiveHealthEvents,
@@ -35,6 +36,8 @@ import { nodeStatusBadgeClass } from "@/lib/node-status";
 import { toneBadgeClass } from "@/lib/status-colors";
 
 export function DashboardPage() {
+  useDocumentTitle("Dashboard");
+
   const queryClient = useQueryClient();
   const setNotice = (next: { detail: string; title: string }) =>
     toast(next.title, { description: next.detail });
@@ -132,13 +135,13 @@ export function DashboardPage() {
           value={`${status?.onlineNodes ?? 0}/${status?.nodeCount ?? 0}`}
         />
         <StatCard
-          icon={<Radio className="size-7 text-teal-600 dark:text-teal-400" />}
+          icon={<AudioLines className="size-7 text-primary" />}
           label="Active recordings"
           to="/jobs"
           value={String(status?.activeRecordings ?? 0)}
         />
         <StatCard
-          icon={<HardDrive className="size-7 text-zinc-700 dark:text-zinc-300" />}
+          icon={<HardDrive className="size-7 text-muted-foreground" />}
           label="Cached recordings"
           to="/recordings"
           value={String(status?.cachedRecordings ?? 0)}
@@ -168,7 +171,7 @@ export function DashboardPage() {
                 {activeNodes.length} of {nodes.length} reporting
               </p>
             </div>
-            <Network className="size-5 text-teal-700 dark:text-teal-400" />
+            <Network className="size-5 text-primary" />
           </div>
 
           {activeNodes.length === 0 ? (
@@ -211,7 +214,7 @@ export function DashboardPage() {
                     : "Recording jobs unavailable"}
                 </p>
               </div>
-              <Radio className="size-5 text-teal-700 dark:text-teal-400" />
+              <AudioLines className="size-5 text-primary" />
             </div>
 
             {!pagePermissions.canReadRecordings ? (
@@ -246,9 +249,7 @@ export function DashboardPage() {
                           : `Created ${formatDateTime(job.createdAt)}`}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Badge className="bg-background" variant="outline">
-                          {job.command.captureBackend ?? "alsa"}
-                        </Badge>
+                        <Badge variant="outline">{job.command.captureBackend ?? "alsa"}</Badge>
                         {pagePermissions.canControlRecordings ? (
                           <HintButton
                             disabled={!stopAction.canStop || stopRecordingMutation.isPending}

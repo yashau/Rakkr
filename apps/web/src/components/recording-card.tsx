@@ -400,7 +400,7 @@ function WaveformPreview({ recording }: { recording: RecordingSummary }) {
     >
       {peaks.map((peak, index) => (
         <span
-          className="w-1 shrink-0 rounded-full bg-sky-500"
+          className="w-1 shrink-0 rounded-full bg-primary"
           key={`${recording.id}-${index}`}
           style={{ height: waveformBarHeightPercent(peak) }}
         />

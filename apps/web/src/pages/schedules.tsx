@@ -27,6 +27,7 @@ import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { useDocumentTitle } from "@/lib/document-title";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
 import {
   emptySchedulePageFilters,
@@ -57,6 +58,8 @@ const scheduleFilterDraftKeys: Record<ScheduleFilterKey, keyof SchedulePageFilte
 };
 
 export function SchedulesPage() {
+  useDocumentTitle("Schedules");
+
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string>();

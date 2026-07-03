@@ -6,60 +6,65 @@
    preference. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Rakkr brand palette — mirrors the docs/marketing color system: a cool
+   navy-blue ink, a blue "signal" accent for primary actions and focus, and the
+   brand recording-red for destructive. Light is paper-cool; dark is deep ink
+   with surfaces lifting off the background (background < card/panel < accent).
+   Tokens are `H S% L%` triplets consumed via `hsl(var(--x))` in @theme inline. */
 :root {
-  --background: 38 24% 96%;
-  --border: 34 16% 82%;
+  --background: 220 37% 97%;
+  --foreground: 214 59% 11%;
   --card: 0 0% 100%;
-  --card-foreground: 24 10% 10%;
+  --card-foreground: 214 59% 11%;
   --popover: 0 0% 100%;
-  --popover-foreground: 24 10% 10%;
-  --foreground: 24 10% 10%;
-  --primary: 240 6% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 34 15% 88%;
-  --secondary-foreground: 24 10% 10%;
-  --muted: 34 15% 88%;
-  --muted-foreground: 25 8% 42%;
-  --accent: 38 24% 91%;
-  --accent-foreground: 24 10% 10%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 98%;
-  --input: 34 16% 82%;
+  --popover-foreground: 214 59% 11%;
+  --primary: 207 75% 34%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 216 29% 93%;
+  --secondary-foreground: 214 47% 16%;
+  --muted: 218 31% 95%;
+  --muted-foreground: 216 20% 40%;
+  --accent: 214 39% 93%;
+  --accent-foreground: 214 59% 11%;
+  --destructive: 358 58% 49%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 217 24% 89%;
+  --input: 218 24% 87%;
   --panel: 0 0% 100%;
-  --panel-foreground: 24 10% 10%;
-  --ring: 173 80% 30%;
+  --panel-foreground: 214 59% 11%;
+  --ring: 207 75% 34%;
   --radius: 0.5rem;
 }
 
-/* Warm-neutral dark theme paired with the light stone/paper palette above.
-   Background is the darkest surface; card/popover/panel lift off it, mirroring
-   the light theme where paper sits under white cards. `primary` inverts to a
-   light tone so primary buttons and the logo mark read as light-on-dark. */
+/* Deep navy-ink dark theme. `background` is the darkest surface; card/popover/
+   panel lift one step, accent lifts again for hover/active fills. `primary` is
+   the brand signal-blue with a near-black foreground so buttons and the focus
+   ring read as branded light-on-dark. */
 .dark {
-  --background: 24 10% 7%;
-  --border: 24 6% 20%;
-  --card: 24 9% 10%;
-  --card-foreground: 40 20% 92%;
-  --popover: 24 9% 10%;
-  --popover-foreground: 40 20% 92%;
-  --foreground: 40 20% 92%;
-  --primary: 40 20% 92%;
-  --primary-foreground: 24 10% 10%;
-  --secondary: 24 6% 16%;
-  --secondary-foreground: 40 20% 92%;
-  --muted: 24 6% 16%;
-  --muted-foreground: 34 10% 64%;
-  --accent: 24 6% 19%;
-  --accent-foreground: 40 20% 92%;
-  /* Bright enough that `text-destructive` clears WCAG AA (~4.5:1) as body text
-     on the dark card/panel/background surfaces; its foreground is dark so the
+  --background: 222 39% 6%;
+  --foreground: 220 33% 93%;
+  --card: 223 38% 11%;
+  --card-foreground: 220 33% 93%;
+  --popover: 223 38% 11%;
+  --popover-foreground: 220 33% 93%;
+  --primary: 208 77% 64%;
+  --primary-foreground: 207 56% 6%;
+  --secondary: 220 31% 15%;
+  --secondary-foreground: 220 33% 93%;
+  --muted: 220 31% 15%;
+  --muted-foreground: 219 16% 66%;
+  --accent: 219 31% 18%;
+  --accent-foreground: 218 35% 94%;
+  /* Brand recording-red. Bright enough that `text-destructive` clears WCAG AA
+     as body text on the dark surfaces; its foreground is near-black so the
      paired `bg-destructive` (buttons/badges) stays legible too. */
-  --destructive: 0 74% 60%;
-  --destructive-foreground: 30 12% 12%;
-  --input: 24 6% 22%;
-  --panel: 24 9% 10%;
-  --panel-foreground: 40 20% 92%;
-  --ring: 173 70% 42%;
+  --destructive: 358 82% 67%;
+  --destructive-foreground: 356 60% 9%;
+  --border: 219 27% 20%;
+  --input: 219 24% 23%;
+  --panel: 223 38% 11%;
+  --panel-foreground: 220 33% 93%;
+  --ring: 208 77% 64%;
 }
 
 @theme inline {
@@ -95,15 +100,64 @@
   box-sizing: border-box;
 }
 
-/* Always reserve the scrollbar gutter so a page gaining/losing its scrollbar
-   never shifts layout (the viewport root is the scroll container here). */
-html {
-  scrollbar-gutter: stable;
-}
+@layer base {
+  /* Default every border to the subtle `--border` token. Without this, bare
+     `border` utilities (shadcn dialogs, popovers, menus) fall back to the light
+     `currentColor` and draw an ugly bright edge on dark surfaces. Utilities like
+     `border-input`/`border-border` still override it since utilities layer last. */
+  *,
+  ::before,
+  ::after {
+    border-color: hsl(var(--border));
+  }
 
-body {
-  margin: 0;
-  min-width: 320px;
+  /* Paint the base surface from tokens at the root — not only on the app-shell
+     wrapper — so rubber-band overscroll and the pre-hydration paint match the
+     theme instead of flashing white against the deep-ink dark surface. Always
+     reserve the scrollbar gutter so pages don't shift when it appears. */
+  html {
+    background-color: hsl(var(--background));
+    scrollbar-gutter: stable;
+  }
+
+  /* Apply the brand font + rendering globally (Tailwind v4 does not auto-apply
+     --font-sans), mirroring the docs/marketing type treatment so the console
+     reads as the same product. */
+  body {
+    margin: 0;
+    min-width: 320px;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Brand display tracking; per-element utilities still override. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: -0.012em;
+  }
+
+  /* Brand-tinted text selection instead of the OS default blue. */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.28);
+  }
+
+  /* Branded keyboard focus for bare interactive elements (e.g. sidebar nav
+     links) that don't ship their own focus-visible ring. */
+  a:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
 }
 
 button,

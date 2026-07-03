@@ -1,18 +1,7 @@
-import { Check, ChevronsUpDown, Users, UserRound, X } from "lucide-react";
-import { useState } from "react";
+import { Users, UserRound, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { Combobox, type ComboboxGroup } from "@/components/ui/combobox";
 
 export interface AssigneeOption {
   id: string;
@@ -32,10 +21,11 @@ interface AssigneeMultiSelectProps {
   userOptions: AssigneeOption[];
 }
 
-// Canonical shadcn combobox (Popover + Command) composed for picking multiple
-// users and/or access groups. Selection is echoed as removable badges. The label
-// props let single-subject wrappers (users-only / groups-only) retune the copy
-// without duplicating the combobox.
+// Inline combobox for picking multiple users and/or access groups: the field
+// itself filters as you type, picks toggle (the list stays open), and selection
+// is echoed as removable badges. Ids are namespaced so one combobox routes both
+// kinds. The label/emptyLabel/searchPlaceholder props let single-subject
+// wrappers (users-only / groups-only) retune the copy without duplicating it.
 export function AssigneeMultiSelect({
   disabled = false,
   emptyLabel = "No users or groups found.",
@@ -47,10 +37,8 @@ export function AssigneeMultiSelect({
   selectedUserIds,
   userOptions,
 }: AssigneeMultiSelectProps) {
-  const [open, setOpen] = useState(false);
   const selectedUsers = new Set(selectedUserIds);
   const selectedGroups = new Set(selectedGroupIds);
-  const totalSelected = selectedUsers.size + selectedGroups.size;
 
   function toggleUser(id: string) {
     const next = new Set(selectedUsers);
@@ -72,6 +60,34 @@ export function AssigneeMultiSelect({
     onChange({ groupIds: [...next], userIds: [...selectedUsers] });
   }
 
+  const comboboxGroups: ComboboxGroup[] = [
+    {
+      heading: "Access groups",
+      icon: Users,
+      options: groupOptions.map((option) => ({
+        id: `group:${option.id}`,
+        keywords: option.id,
+        label: option.label,
+        sublabel: option.sublabel,
+      })),
+    },
+    {
+      heading: "Users",
+      icon: UserRound,
+      options: userOptions.map((option) => ({
+        id: `user:${option.id}`,
+        keywords: option.id,
+        label: option.label,
+        sublabel: option.sublabel,
+      })),
+    },
+  ];
+
+  const selectedIds = new Set([
+    ...selectedGroupIds.map((id) => `group:${id}`),
+    ...selectedUserIds.map((id) => `user:${id}`),
+  ]);
+
   const chips = [
     ...selectedUserIds.map((id) => ({
       id,
@@ -87,80 +103,24 @@ export function AssigneeMultiSelect({
 
   return (
     <div className="grid gap-2">
-      <Popover onOpenChange={setOpen} open={open}>
-        <PopoverTrigger asChild>
-          <Button
-            aria-expanded={open}
-            aria-haspopup="listbox"
-            className="justify-between font-normal"
-            disabled={disabled}
-            type="button"
-            variant="outline"
-          >
-            <span className={cn(totalSelected === 0 && "text-muted-foreground")}>
-              {totalSelected === 0
-                ? label
-                : `${totalSelected} assignee${totalSelected === 1 ? "" : "s"}`}
-            </span>
-            <ChevronsUpDown className="size-4 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
-          <Command>
-            <CommandInput placeholder={searchPlaceholder} />
-            <CommandList>
-              <CommandEmpty>{emptyLabel}</CommandEmpty>
-              {groupOptions.length > 0 ? (
-                <CommandGroup heading="Access groups">
-                  {groupOptions.map((option) => (
-                    <CommandItem
-                      key={`group-${option.id}`}
-                      onSelect={() => toggleGroup(option.id)}
-                      value={`group ${option.label} ${option.id}`}
-                    >
-                      <Users className="size-4 text-muted-foreground" />
-                      <span className="flex-1 truncate">{option.label}</span>
-                      <Check
-                        className={cn(
-                          "size-4",
-                          selectedGroups.has(option.id) ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ) : null}
-              {userOptions.length > 0 ? (
-                <CommandGroup heading="Users">
-                  {userOptions.map((option) => (
-                    <CommandItem
-                      key={`user-${option.id}`}
-                      onSelect={() => toggleUser(option.id)}
-                      value={`user ${option.label} ${option.sublabel ?? ""} ${option.id}`}
-                    >
-                      <UserRound className="size-4 text-muted-foreground" />
-                      <span className="flex flex-1 flex-col">
-                        <span className="truncate">{option.label}</span>
-                        {option.sublabel ? (
-                          <span className="truncate text-xs text-muted-foreground">
-                            {option.sublabel}
-                          </span>
-                        ) : null}
-                      </span>
-                      <Check
-                        className={cn(
-                          "size-4",
-                          selectedUsers.has(option.id) ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ) : null}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <Combobox
+        ariaLabel={label}
+        disabled={disabled}
+        emptyText={emptyLabel}
+        groups={comboboxGroups}
+        onSelect={(option) => {
+          const separator = option.id.indexOf(":");
+          const kind = option.id.slice(0, separator);
+          const rawId = option.id.slice(separator + 1);
+          if (kind === "group") {
+            toggleGroup(rawId);
+          } else {
+            toggleUser(rawId);
+          }
+        }}
+        placeholder={searchPlaceholder}
+        selectedIds={selectedIds}
+      />
 
       {chips.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">

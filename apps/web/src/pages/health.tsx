@@ -34,6 +34,7 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { useDocumentTitle } from "@/lib/document-title";
 import { toneBadgeClass, toneTileClass } from "@/lib/status-colors";
 import {
   emptyHealthPageFilters,
@@ -83,6 +84,8 @@ const healthFilterDraftKeys: Record<HealthEventFilterKey, keyof HealthPageFilter
 };
 
 export function HealthPage() {
+  useDocumentTitle("Health");
+
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<HealthPageFilterDraft>(emptyHealthPageFilters);
   const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
@@ -227,7 +230,7 @@ export function HealthPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <HeartPulse className="size-5 text-teal-700 dark:text-teal-400" />
+              <HeartPulse className="size-5 text-primary" />
               <h2 className="text-lg font-semibold">Health Events</h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">

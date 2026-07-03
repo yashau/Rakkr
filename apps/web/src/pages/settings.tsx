@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { UploadRunnerPanel } from "@/components/upload-runner-panel";
 import { api } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { settingsPagePermissions } from "@/lib/settings-page-helpers";
 import { switcherPagePermissions } from "@/lib/switcher-page-helpers";
@@ -40,6 +41,8 @@ const weekStartDays: WeekStartDay[] = [
 ];
 
 export function SettingsPage() {
+  useDocumentTitle("Settings");
+
   const currentUserQuery = useQuery({
     queryFn: api.currentUser,
     queryKey: ["auth", "me"],
