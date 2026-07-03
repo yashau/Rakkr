@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { controllerSettings as controllerSettingsTable, createDatabase, eq } from "@rakkr/db";
+import { controllerSettings as controllerSettingsTable, createDatabase, eq, sql } from "@rakkr/db";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   controllerSettingsSchema,
@@ -82,26 +82,45 @@ class PostgresControllerSettingsStore implements ControllerSettingsStore {
     }
 
     try {
-      const merged = mergeControllerSettings(await this.find(), update);
+      // Serialize concurrent updates of the singleton controller-settings row so a
+      // read-merge-write does not clobber another operator's field. An advisory
+      // lock serializes even before the row's first insert — a plain SELECT FOR
+      // UPDATE would lock nothing while the row does not yet exist.
+      return await this.db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('controller-settings'))`);
 
-      await this.db
-        .insert(controllerSettingsTable)
-        .values({
-          controllerName: merged.controllerName,
-          id: controllerSettingsId,
-          updatedAt: new Date(),
-          weekStartsOn: merged.weekStartsOn,
-        })
-        .onConflictDoUpdate({
-          set: {
+        const [row] = await tx
+          .select()
+          .from(controllerSettingsTable)
+          .where(eq(controllerSettingsTable.id, controllerSettingsId))
+          .limit(1);
+        const current = row
+          ? controllerSettingsSchema.parse({
+              controllerName: row.controllerName,
+              weekStartsOn: row.weekStartsOn,
+            })
+          : { ...defaultControllerSettings };
+        const merged = mergeControllerSettings(current, update);
+
+        await tx
+          .insert(controllerSettingsTable)
+          .values({
             controllerName: merged.controllerName,
+            id: controllerSettingsId,
             updatedAt: new Date(),
             weekStartsOn: merged.weekStartsOn,
-          },
-          target: controllerSettingsTable.id,
-        });
+          })
+          .onConflictDoUpdate({
+            set: {
+              controllerName: merged.controllerName,
+              updatedAt: new Date(),
+              weekStartsOn: merged.weekStartsOn,
+            },
+            target: controllerSettingsTable.id,
+          });
 
-      return merged;
+        return merged;
+      });
     } catch (error) {
       this.failover("controller settings update unavailable; using JSON store", error);
       return this.fallback.update(update);
