@@ -20,6 +20,8 @@ process.env.RAKKR_LOCAL_ACCESS_POLICIES = "";
 const authAccessRoot = await mkdtemp(path.join(tmpdir(), "rakkr-auth-access-routes-"));
 process.env.RAKKR_RECORDING_METADATA_STORE_PATH = path.join(authAccessRoot, "recordings.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(authAccessRoot, "upload-queue.json");
+process.env.RAKKR_ROOM_STORE_PATH = path.join(authAccessRoot, "rooms.json");
+process.env.RAKKR_ROOM_ROSTER_STORE_PATH = path.join(authAccessRoot, "room-roster.json");
 
 const { app, permissionDecision } = await import("../src/index.js");
 const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
