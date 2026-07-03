@@ -92,7 +92,9 @@ export function resolveSelectionRoom(
 ): SelectionRoomResolution {
   const audioInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
   const indexes =
-    channels === "all" ? (audioInterface?.channels.map((channel) => channel.index) ?? []) : channels;
+    channels === "all"
+      ? (audioInterface?.channels.map((channel) => channel.index) ?? [])
+      : channels;
   const rooms = new Set<string>();
 
   for (const index of indexes) {

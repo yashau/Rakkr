@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { RecorderNode } from "@rakkr/shared";
 
-const { channelRoomId, nodeRoomIds, resolveSelectionRoom } = await import(
-  "../src/room-resolution.js"
-);
+const { channelRoomId, nodeRoomIds, resolveSelectionRoom } =
+  await import("../src/room-resolution.js");
 
 function node(overrides: Partial<RecorderNode> = {}): RecorderNode {
   return {
@@ -42,12 +41,7 @@ function iface(id: string, channels: Array<{ index: number; roomId?: string }>) 
 test("channelRoomId prefers the channel room and falls back to the node default", () => {
   const target = node({
     roomId: "room-default",
-    interfaces: [
-      iface("iface-1", [
-        { index: 1, roomId: "room-chamber" },
-        { index: 2 },
-      ]),
-    ],
+    interfaces: [iface("iface-1", [{ index: 1, roomId: "room-chamber" }, { index: 2 }])],
   });
 
   assert.equal(channelRoomId(target, "iface-1", 1), "room-chamber");

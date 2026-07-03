@@ -57,10 +57,7 @@ export function registerChannelRoomRoutes({
 
       if (!body.success) {
         await recordFailure(c, "invalid_request", nodeId);
-        return c.json(
-          { error: "Invalid channel room assignment", issues: body.error.issues },
-          400,
-        );
+        return c.json({ error: "Invalid channel room assignment", issues: body.error.issues }, 400);
       }
 
       const before = (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
@@ -89,10 +86,13 @@ export function registerChannelRoomRoutes({
       const updated = await nodeStore
         .assignChannelRooms(nodeId, flattened)
         .catch(async (error: unknown) => {
-          const reason = error instanceof NodeStoreError ? error.code : "channel_room_assign_failed";
+          const reason =
+            error instanceof NodeStoreError ? error.code : "channel_room_assign_failed";
 
           await recordFailure(c, reason, before.alias, nodeId);
-          return { failureStatus: reason === "database_unavailable" ? (503 as const) : (400 as const) };
+          return {
+            failureStatus: reason === "database_unavailable" ? (503 as const) : (400 as const),
+          };
         });
 
       if (updated && "failureStatus" in updated) {

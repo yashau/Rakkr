@@ -34,11 +34,8 @@ export function NodeChannelRoomEditor({
 }) {
   const queryClient = useQueryClient();
   const roomsQuery = useQuery({ queryFn: api.rooms, queryKey: ["rooms"] });
-  const rooms = roomsQuery.data?.data ?? [];
-  const roomNames = useMemo(
-    () => new Map(rooms.map((room) => [room.id, room.name])),
-    [rooms],
-  );
+  const rooms = useMemo(() => roomsQuery.data?.data ?? [], [roomsQuery.data]);
+  const roomNames = useMemo(() => new Map(rooms.map((room) => [room.id, room.name])), [rooms]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkRoomId, setBulkRoomId] = useState<string>(NODE_DEFAULT);
 
@@ -82,7 +79,11 @@ export function NodeChannelRoomEditor({
 
   function assignOne(interfaceId: string, channelIndex: number, value: string) {
     mutation.mutate([
-      { channelIndexes: [channelIndex], interfaceId, roomId: value === NODE_DEFAULT ? null : value },
+      {
+        channelIndexes: [channelIndex],
+        interfaceId,
+        roomId: value === NODE_DEFAULT ? null : value,
+      },
     ]);
   }
 

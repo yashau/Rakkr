@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AuditEvent, RecorderNode } from "@rakkr/shared";
 
-const { addChannelScopeTargets, addInterfaceScopeTargets, addNodeScopeTargets } = await import(
-  "../src/scope-targets.js"
-);
+const { addChannelScopeTargets, addInterfaceScopeTargets, addNodeScopeTargets } =
+  await import("../src/scope-targets.js");
 
 type AuditTarget = AuditEvent["target"];
 
