@@ -248,12 +248,15 @@ export function isUuid(value: string) {
 }
 
 export function isPgErrorCode(error: unknown, code: string) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === code
-  );
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const record = error as { cause?: unknown; code?: unknown };
+
+  // Drizzle wraps the driver's PostgresError as `.cause` ("Failed query: …"), so
+  // the SQLSTATE lives on the cause, not the top-level error — walk the chain.
+  return record.code === code || isPgErrorCode(record.cause, code);
 }
 
 function isRole(value: unknown): value is Role {
