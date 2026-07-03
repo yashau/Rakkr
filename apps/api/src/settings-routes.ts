@@ -455,6 +455,16 @@ export function registerSettingsRoutes({
         return c.json({ error: "Channel map template not found" }, 404);
       }
 
+      const templateDenied = await denyHiddenTemplate(
+        c,
+        "settings.channel_map_assignments.update.failed",
+        template,
+      );
+
+      if (templateDenied) {
+        return templateDenied;
+      }
+
       const assignment = await settingsStore.assignChannelMapTemplate(
         body.data,
         currentAuth(c).user?.id,
@@ -516,6 +526,16 @@ export function registerSettingsRoutes({
           },
         );
         return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const templateDenied = await denyHiddenTemplate(
+        c,
+        "settings.channel_map_assignments.bulk_update.failed",
+        template,
+      );
+
+      if (templateDenied) {
+        return templateDenied;
       }
 
       const assignments: ChannelMapTemplateAssignment[] = [];
@@ -600,6 +620,16 @@ export function registerSettingsRoutes({
           },
         );
         return c.json({ error: "Channel map template not found" }, 404);
+      }
+
+      const templateDenied = await denyHiddenTemplate(
+        c,
+        "settings.channel_map_assignment_plans.create.failed",
+        template,
+      );
+
+      if (templateDenied) {
+        return templateDenied;
       }
 
       const plan = await channelMapAssignmentPlanStore.create(
@@ -785,6 +815,27 @@ export function registerSettingsRoutes({
       return c.json({ data: rolledBack });
     },
   );
+
+  // Channel-map templates are resource-scoped, and an assignment/plan binds a
+  // body-supplied templateId. Reject binding a template the caller cannot see —
+  // existence alone is not enough (the same foreign-id-scope class as the
+  // upload-policy destination check), so a scoped-out template cannot be applied
+  // to a target the caller does own.
+  async function denyHiddenTemplate(
+    c: Context<AppBindings>,
+    action: string,
+    template: ChannelMapTemplate,
+  ): Promise<Response | undefined> {
+    const user = currentAuth(c).user;
+    const target = channelMapTemplateSettingsTarget(template);
+
+    if (user && !(await hasResourceScope(user, target))) {
+      await recordSettingsFailure(c, action, "missing_resource_scope", target);
+      return c.json({ error: "Forbidden", permission: "settings:manage" }, 403);
+    }
+
+    return undefined;
+  }
 
   async function denyHiddenAssignmentTargets(
     c: Context<AppBindings>,
