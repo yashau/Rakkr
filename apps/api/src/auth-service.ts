@@ -869,12 +869,17 @@ export class LocalAuthService {
       await db.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
       await db.delete(userAccessGroups).where(eq(userAccessGroups.userId, userId));
 
-      await db.insert(userRoles).values(
-        access.roles.map((roleId) => ({
-          roleId,
-          userId,
-        })),
-      );
+      // Guarded like the grant/group inserts below — an empty values() insert
+      // throws in Postgres, which previously broke syncing any user with no role
+      // (e.g. an OIDC login whose token carries groups but no known app role).
+      if (access.roles.length > 0) {
+        await db.insert(userRoles).values(
+          access.roles.map((roleId) => ({
+            roleId,
+            userId,
+          })),
+        );
+      }
 
       if (access.resourceGrants.length > 0) {
         await db.insert(userResourceGrants).values(
@@ -907,15 +912,12 @@ export class LocalAuthService {
       return;
     }
 
+    // Create groups that don't exist yet (JIT from OIDC claims or user access
+    // assignment) but never overwrite an existing group's display name — rename
+    // is owned by createGroup/updateGroup, not membership sync. Otherwise every
+    // login would clobber the operator-curated name back to the raw claim value.
     for (const group of groups) {
       await db.insert(accessGroups).values(group).onConflictDoNothing();
-      await db
-        .update(accessGroups)
-        .set({
-          name: group.name,
-          updatedAt: new Date(),
-        })
-        .where(eq(accessGroups.id, group.id));
     }
   }
 

@@ -11,6 +11,9 @@ const sourceFiles = [
   "apps/web/src/main.tsx",
   "apps/api/test/oidc-config.test.ts",
   "apps/api/test/oidc-sync.test.ts",
+  "apps/api/test/oidc-login-flow.test.ts",
+  "apps/api/test/oidc-groups-collision.test.ts",
+  "apps/api/test/helpers/oidc-provider-harness.ts",
 ];
 const requiredEnvVars = [
   "RAKKR_OIDC_ENABLED",
@@ -47,6 +50,9 @@ const requiredTestPhrases = [
   "rejects OIDC callbacks",
   "clears pending OIDC login state cookies",
   "syncs Azure AD OIDC users",
+  "completes a real OIDC login end to end",
+  "maps a display-name group claim onto the same slug",
+  "treats a non-array groups claim as no groups",
 ];
 const errors = [];
 

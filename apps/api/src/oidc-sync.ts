@@ -1,15 +1,36 @@
 import { z } from "zod";
 import { roles, type AccessGroup, type ResourceGrant, type Role } from "@rakkr/shared";
-import { groupsFromIds, uniqueResourceGrants, uniqueRoles } from "./auth-utils.js";
+import {
+  groupsFromIds,
+  oidcGroupsFromClaims,
+  uniqueGroups,
+  uniqueResourceGrants,
+  uniqueRoles,
+} from "./auth-utils.js";
+
+// `groups`/`roles` are non-identity claims whose shape varies across IdPs (arrays
+// of names, arrays of GUIDs, or — for a single value — a bare string). Parse them
+// leniently: drop non-string/empty entries and coerce a non-array claim to no
+// entries, so an IdP quirk in these claims never fails the whole login. Identity
+// claims (`sub`, email family) stay strict below.
+const claimStringArraySchema = z
+  .array(z.unknown())
+  .transform((values) =>
+    values
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim()),
+  )
+  .catch([])
+  .optional();
 
 export const azureAdOidcClaimsSchema = z
   .object({
     email: z.string().email().optional(),
-    groups: z.array(z.string().trim().min(1)).optional(),
+    groups: claimStringArraySchema,
     name: z.string().trim().min(1).optional(),
     oid: z.string().trim().min(1).optional(),
     preferred_username: z.string().email().optional(),
-    roles: z.array(z.string().trim().min(1)).optional(),
+    roles: claimStringArraySchema,
     sub: z.string().trim().min(1),
     tid: z.string().trim().min(1).optional(),
     upn: z.string().email().optional(),
@@ -66,14 +87,39 @@ export function normalizeAzureAdOidcUser(
     roles.includes(role as Role),
   );
 
+  warnOnGroupsOverage(input.claims);
+
   return {
     email,
     externalId: claims.data.oid ?? claims.data.sub,
-    groups: groupsFromIds([...(input.groupIds ?? []), ...(claims.data.groups ?? [])]),
+    // Explicit groupIds are already-resolved Rakkr ids; claim groups are raw IdP
+    // values that must be slugged so they collide with operator-created groups.
+    groups: uniqueGroups([
+      ...groupsFromIds(input.groupIds ?? []),
+      ...oidcGroupsFromClaims(claims.data.groups ?? []),
+    ]),
     name: claims.data.name?.trim() || email,
     resourceGrants: uniqueResourceGrants(input.resourceGrants ?? []),
     roles: uniqueRoles([...(input.roles ?? []), ...(claimRoles ?? [])]),
     subject: claims.data.sub,
     tenantId: claims.data.tid,
   };
+}
+
+// Azure AD replaces the `groups` claim with a `_claim_names`/`_claim_sources`
+// pointer to Microsoft Graph once a user exceeds the token group limit ("groups
+// overage"). We do not resolve the pointer, so such a login syncs no groups —
+// surface that instead of silently dropping the user's memberships.
+function warnOnGroupsOverage(claims: AzureAdOidcUserSyncInput["claims"]) {
+  const claimNames = (claims as { _claim_names?: unknown })._claim_names;
+
+  if (
+    claimNames &&
+    typeof claimNames === "object" &&
+    "groups" in (claimNames as Record<string, unknown>)
+  ) {
+    console.warn(
+      "Azure AD OIDC token signals groups overage (_claim_names.groups); group memberships are not synced for this login.",
+    );
+  }
 }

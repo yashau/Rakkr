@@ -50,6 +50,44 @@ Status: MVP baseline checked; live tenant validation remains an integration task
 | `groups`                             | Rakkr access groups                      |
 | `roles`                              | Rakkr roles when names match known roles |
 
+## Group Claim Reconciliation
+
+OIDC `groups` claims and operator-created groups share one store, so they must
+derive the same id. Claim values are mapped to a Rakkr group id with the same
+`accessGroupSlug` rule used when an operator creates a group:
+
+- A display-name claim (`Room Council`) resolves to the operator slug
+  (`room-council`) instead of a divergent second group.
+- Case-only variants (`Council`, `council`) collapse to a single group.
+- Ids are capped at 120 characters; a claim with no slug-usable characters gets a
+  stable, deterministic `group-<hash>` id (so the same claim never spawns
+  duplicate groups across logins).
+- The raw claim value is kept as the display name. Membership sync creates missing
+  groups but never renames an existing one — rename is owned by group management.
+
+`groups` and `roles` are parsed leniently: non-array or malformed values are
+treated as no entries so an IdP quirk in these non-identity claims never fails the
+login, while identity claims (`sub`, email family) stay strict. An Azure AD groups
+overage (`_claim_names.groups`) is detected and logged; those memberships are not
+synced (Graph resolution is out of scope).
+
+## Testing
+
+- A real in-process OpenID provider (`oauth2-mock-server`) backs end-to-end OIDC
+  tests via `apps/api/test/helpers/oidc-provider-harness.ts`. It serves live
+  discovery/JWKS, signs real id_tokens, honours PKCE + nonce, and lets a test set
+  the exact claim payload — so the real `openid-client` token-exchange and claim
+  path is exercised, not a stubbed login flow.
+- `RAKKR_OIDC_ALLOW_INSECURE_ISSUER` permits HTTP for a loopback issuer only, and
+  only when explicitly enabled. It exists solely so tests can point the real flow
+  at the local fake provider; it can never relax transport security for a remote
+  issuer.
+- Group-collision and weird-claim coverage lives in
+  `apps/api/test/oidc-groups-collision.test.ts`. The in-memory cases run in the
+  default suite; the persistence-level cases (group id collision, no-rename on
+  login) run in CI via the `node:test-db` task, which provisions a throwaway
+  Postgres database (like `db:verify`) and is part of `mise run check`.
+
 ## Checked By
 
 | Check                  | Command                    |
