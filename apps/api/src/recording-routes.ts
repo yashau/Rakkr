@@ -12,7 +12,7 @@ import type { AuthResult } from "./auth-service.js";
 import { withCaptureStartLock } from "./capture-start-lock.js";
 import { buildCaptureClaims, evaluateAdHocCapture } from "./channel-conflicts.js";
 import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
-import { resolveSelectionRoom } from "./room-resolution.js";
+import { effectiveCaptureInterfaceId, resolveSelectionRoom } from "./room-resolution.js";
 import type { RoomStore } from "./room-store.js";
 import {
   adHocCaptureSeconds,
@@ -515,10 +515,10 @@ export function registerRecordingRoutes({
         return c.json({ error: "Recording interface not found" }, 409);
       }
 
-      const resolvedCaptureInterfaceId =
-        body.data.captureInterfaceId ??
-        process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
-        node.interfaces[0]?.id;
+      const resolvedCaptureInterfaceId = effectiveCaptureInterfaceId(
+        node,
+        body.data.captureInterfaceId,
+      );
       const captureInterface = node.interfaces.find(
         (candidate) => candidate.id === resolvedCaptureInterfaceId,
       );

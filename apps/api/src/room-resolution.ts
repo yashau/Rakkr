@@ -5,6 +5,24 @@
 
 import type { RecorderNode } from "@rakkr/shared";
 
+// The interface a capture actually runs against when none is explicitly pinned:
+// an explicit id wins, then the RAKKR_AGENT_CAPTURE_INTERFACE_ID env default (what
+// the recorder runtime falls back to), then the node's first interface. This is
+// the SINGLE source of truth shared by room attribution (resolveScheduleRoom) and
+// the runtime capture-target paths, so a persisted roomId can never diverge from
+// the interface actually captured (e.g. when the env var points at a non-first
+// interface owned by a different room).
+export function effectiveCaptureInterfaceId(
+  node: Pick<RecorderNode, "interfaces"> | undefined,
+  requestedCaptureInterfaceId: string | null | undefined,
+): string | undefined {
+  return (
+    requestedCaptureInterfaceId ??
+    process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
+    node?.interfaces[0]?.id
+  );
+}
+
 // A channel's effective owning room: its own room, else the node default. Returns
 // undefined when neither is set (channel belongs to no room).
 export function channelRoomId(

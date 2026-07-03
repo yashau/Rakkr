@@ -2,8 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { RecorderNode } from "@rakkr/shared";
 
-const { channelRoomId, nodeRoomIds, resolveSelectionRoom } =
+const { channelRoomId, effectiveCaptureInterfaceId, nodeRoomIds, resolveSelectionRoom } =
   await import("../src/room-resolution.js");
+const { resolveScheduleRoom } = await import("../src/schedule-route-helpers.js");
+
+function withCaptureInterfaceEnv(value: string | undefined, run: () => void) {
+  const previous = process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID;
+
+  try {
+    if (value === undefined) {
+      delete process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID;
+    } else {
+      process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID = value;
+    }
+
+    run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID;
+    } else {
+      process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID = previous;
+    }
+  }
+}
 
 function node(overrides: Partial<RecorderNode> = {}): RecorderNode {
   return {
@@ -138,6 +159,39 @@ test("resolveSelectionRoom over the whole interface uses every channel's room", 
     roomId: "room-a",
   });
   assert.equal(resolveSelectionRoom(multiRoom, "iface-1", "all").ok, false);
+});
+
+test("effectiveCaptureInterfaceId prefers explicit id, then the env default, then first interface", () => {
+  const target = node({
+    interfaces: [iface("iface-1", [{ index: 1 }]), iface("iface-2", [{ index: 1 }])],
+  });
+
+  withCaptureInterfaceEnv(undefined, () => {
+    assert.equal(effectiveCaptureInterfaceId(target, "iface-2"), "iface-2");
+    assert.equal(effectiveCaptureInterfaceId(target, null), "iface-1");
+  });
+
+  withCaptureInterfaceEnv("iface-2", () => {
+    assert.equal(effectiveCaptureInterfaceId(target, null), "iface-2");
+    assert.equal(effectiveCaptureInterfaceId(target, "iface-1"), "iface-1");
+  });
+});
+
+test("resolveScheduleRoom honors RAKKR_AGENT_CAPTURE_INTERFACE_ID like the recorder runtime", () => {
+  const target = node({
+    roomId: "room-default",
+    interfaces: [
+      iface("iface-first", [{ index: 1, roomId: "room-a" }]),
+      iface("iface-env", [{ index: 1, roomId: "room-b" }]),
+    ],
+  });
+
+  withCaptureInterfaceEnv("iface-env", () => {
+    // The schedule pins no interface: the attributed room must match the interface
+    // the runtime actually captures (iface-env -> room-b), not interfaces[0] (room-a),
+    // so the persisted roomId cannot diverge from the captured room.
+    assert.deepEqual(resolveScheduleRoom(target, null, null), { ok: true, roomId: "room-b" });
+  });
 });
 
 test("resolveSelectionRoom falls back to the node default for unassigned channels", () => {

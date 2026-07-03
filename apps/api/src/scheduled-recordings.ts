@@ -9,7 +9,7 @@ import {
 } from "./channel-conflicts.js";
 import { recordingJobTargetOptions } from "./recording-job-targets.js";
 import { createRecordingJob, listRecordingJobs } from "./recording-jobs.js";
-import { resolveSelectionRoom } from "./room-resolution.js";
+import { effectiveCaptureInterfaceId, resolveSelectionRoom } from "./room-resolution.js";
 import type { RecordingStore } from "./recording-store.js";
 import {
   materializeScheduledRecording,
@@ -52,10 +52,7 @@ export async function queueScheduledRecordings({
   const profile = await settingsStore.findRecordingProfile(schedule.recordingProfileId);
   const tracks = scheduleRecordingTrackPlans(schedule);
 
-  const resolvedInterfaceId =
-    schedule.captureInterfaceId ??
-    process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
-    node.interfaces[0]?.id;
+  const resolvedInterfaceId = effectiveCaptureInterfaceId(node, schedule.captureInterfaceId);
   const channels: ClaimedChannels =
     schedule.captureChannelSelection && schedule.captureChannelSelection.length > 0
       ? schedule.captureChannelSelection
