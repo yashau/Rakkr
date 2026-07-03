@@ -3,6 +3,7 @@ import type { Context, Hono } from "hono";
 import {
   defaultKeepControllerCacheRetentionPolicy,
   defaultVoiceRecordingProfile,
+  type Permission,
   type RecorderNode,
   type RecordingSummary,
 } from "@rakkr/shared";
@@ -11,6 +12,8 @@ import type { AuthResult } from "./auth-service.js";
 import { withCaptureStartLock } from "./capture-start-lock.js";
 import { buildCaptureClaims, evaluateAdHocCapture } from "./channel-conflicts.js";
 import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
+import { resolveSelectionRoom } from "./room-resolution.js";
+import type { RoomStore } from "./room-store.js";
 import {
   adHocCaptureSeconds,
   recordingSelectedExportSchema,
@@ -60,6 +63,11 @@ import { findUploadPolicy, uploadPolicyForQueue } from "./upload-policies.js";
 
 interface RecordingRouteDependencies {
   app: Hono<AppBindings>;
+  authorizeTarget?(
+    user: NonNullable<AuthResult["user"]>,
+    permission: Permission,
+    target: AuditTarget,
+  ): Promise<boolean>;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   hasResourceScope?(user: NonNullable<AuthResult["user"]>, target: AuditTarget): Promise<boolean>;
@@ -68,6 +76,7 @@ interface RecordingRouteDependencies {
   recordAuditEvent: RecordAuditEvent;
   recordingStore: RecordingStore;
   requirePermission: RequirePermission;
+  roomStore?: RoomStore;
   scopedNodes: (user: NonNullable<AuthResult["user"]>) => Promise<RecorderNode[]>;
   scopedRecordings: (user: NonNullable<AuthResult["user"]>) => Promise<RecordingSummary[]>;
   settingsStore: SettingsStore;
@@ -76,6 +85,7 @@ interface RecordingRouteDependencies {
 
 export function registerRecordingRoutes({
   app,
+  authorizeTarget = async () => true,
   currentAuth,
   currentUser,
   hasResourceScope = async () => true,
@@ -83,6 +93,7 @@ export function registerRecordingRoutes({
   recordAuditEvent,
   recordingStore,
   requirePermission,
+  roomStore,
   scopedNodes,
   scopedRecordings,
   settingsStore,
@@ -541,6 +552,45 @@ export function registerRecordingRoutes({
         }
       }
 
+      // A recording belongs to exactly one room: resolve it from the selected
+      // channels (or the whole interface). Reject a selection spanning rooms, and
+      // authorize the caller against that specific room — not the whole node — so a
+      // room-A operator cannot capture room B's channels on a shared node.
+      const captureRoom = resolvedCaptureInterfaceId
+        ? resolveSelectionRoom(node, resolvedCaptureInterfaceId, channelSelection ?? "all")
+        : { ok: true as const, roomId: node.roomId };
+
+      if (!captureRoom.ok) {
+        await recordRecordingStartFailure(c, "channel_selection_cross_room", node.id, node.alias);
+        return c.json(
+          {
+            error: "Channel selection spans multiple rooms",
+            reason: "channel_selection_cross_room",
+          },
+          400,
+        );
+      }
+
+      const captureRoomId = captureRoom.roomId;
+
+      if (
+        captureRoomId &&
+        !(await authorizeTarget(currentUser(c), "recording:create", {
+          id: captureRoomId,
+          type: "room",
+        }))
+      ) {
+        await recordRecordingStartFailure(c, "missing_resource_scope", node.id, node.alias, {
+          id: captureRoomId,
+          type: "room",
+        });
+        return c.json({ error: "Forbidden", permission: "recording:create" }, 403);
+      }
+
+      const captureRoomName = captureRoomId
+        ? (await roomStore?.find(captureRoomId))?.name
+        : undefined;
+
       const recordingProfileId = body.data.recordingProfileId ?? defaultVoiceRecordingProfile.id;
       const profile = await settingsStore.findRecordingProfile(recordingProfileId);
 
@@ -646,7 +696,7 @@ export function registerRecordingRoutes({
         const recording: RecordingSummary = {
           cached: false,
           durationSeconds: 0,
-          folder: body.data.folder ?? defaultAdHocFolder(now, node),
+          folder: body.data.folder ?? defaultAdHocFolder(now, node, captureRoomName),
           healthStatus: "unknown",
           id: `rec_${randomUUID()}`,
           name: body.data.name ?? defaultAdHocName(now, node),
@@ -654,6 +704,7 @@ export function registerRecordingRoutes({
           recordedAt: now.toISOString(),
           recordingProfileId,
           retentionPolicyId,
+          roomId: captureRoomId,
           source: "ad_hoc",
           status: "recording",
           tags: uniqueTags(body.data.tags ?? ["ad-hoc", "voice"]),

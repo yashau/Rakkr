@@ -22,8 +22,12 @@ export async function recordingStartTarget(c: Context<AppBindings>) {
   };
 }
 
-export function defaultAdHocFolder(now: Date, node: RecorderNode) {
-  return `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${node.location.room}`;
+export function defaultAdHocFolder(now: Date, node: RecorderNode, roomName?: string) {
+  // Prefer the capturing channels' room; fall back to the node's install room when
+  // the selection has no owning room (unassigned channels on a room-less node).
+  const room = roomName ?? node.location.room;
+
+  return `Ad Hoc/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${room}`;
 }
 
 export function defaultAdHocName(now: Date, node: RecorderNode) {

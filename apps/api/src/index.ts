@@ -194,53 +194,34 @@ function requirePermission(
   return async (c, next) => {
     const auth = await authService.authenticate(c.req.header("authorization"));
     const auditTarget = await target(c);
-    const hasPermission = auth.user?.permissions.includes(permission) ?? false;
-    const scope = auth.user
-      ? await resourceScopeDecision(auth.user, auditTarget)
-      : { allowed: false, reason: "unauthenticated" };
-    let allowed = hasPermission && scope.allowed;
-
-    // A room roster (a manual grant or a calendar meeting-assignment) grants a
-    // per-action capability over its room even without the role permission — but
-    // never past an explicit deny policy.
-    let grantedViaRoomCapability = false;
-    const requiredCapability = permissionRequiresCapability(permission);
-    if (!allowed && auth.user && scope.reason !== "access_policy_denied" && requiredCapability) {
-      grantedViaRoomCapability = await roomCapabilityAuthorizes(
-        auth.user,
-        requiredCapability,
-        auditTarget,
-      );
-      allowed = grantedViaRoomCapability;
-    }
-
-    const reason = allowed
+    const decision = await permissionDecision(auth.user, permission, auditTarget);
+    const reason = decision.allowed
       ? undefined
       : authorizationReason({
           authenticated: Boolean(auth.user),
-          hasPermission,
-          hasScope: scope.allowed,
-          scopeReason: scope.reason,
+          hasPermission: decision.hasPermission,
+          hasScope: decision.scope.allowed,
+          scopeReason: decision.scope.reason,
         });
 
     await recordAuditEvent(c, {
       action,
       auth,
       details: {
-        grantedViaRoomCapability,
+        grantedViaRoomCapability: decision.grantedViaRoomCapability,
         requiredPermission: permission,
         resourceScope: auditTarget,
-        resourceScopeDecision: scope.reason,
-        roomCapability: requiredCapability,
+        resourceScopeDecision: decision.scope.reason,
+        roomCapability: decision.requiredCapability,
         roles: auth.user?.roles ?? [],
       },
-      outcome: allowed ? "allowed" : "denied",
+      outcome: decision.allowed ? "allowed" : "denied",
       permission,
       reason,
       target: auditTarget,
     });
 
-    if (!allowed) {
+    if (!decision.allowed) {
       return c.json(
         {
           error: auth.user ? "Forbidden" : "Unauthorized",
@@ -253,6 +234,42 @@ function requirePermission(
     c.set("auth", auth);
     await next();
   };
+}
+
+// The role-scope OR room-capability allow decision shared by requirePermission and
+// the fine-grained per-room checks in recording/schedule handlers. A room roster
+// (a manual grant or a calendar meeting-assignment) grants a per-action capability
+// over its room even without the role permission — but never past an explicit deny.
+async function permissionDecision(
+  user: AuthResult["user"],
+  permission: Permission,
+  target: AuditTarget,
+) {
+  const hasPermission = user?.permissions.includes(permission) ?? false;
+  const scope = user
+    ? await resourceScopeDecision(user, target)
+    : { allowed: false, reason: "unauthenticated" as const };
+  let allowed = hasPermission && scope.allowed;
+  let grantedViaRoomCapability = false;
+  const requiredCapability = permissionRequiresCapability(permission);
+
+  if (!allowed && user && scope.reason !== "access_policy_denied" && requiredCapability) {
+    grantedViaRoomCapability = await roomCapabilityAuthorizes(user, requiredCapability, target);
+    allowed = grantedViaRoomCapability;
+  }
+
+  return { allowed, grantedViaRoomCapability, hasPermission, requiredCapability, scope };
+}
+
+// Whether a user is authorized for a permission against a target, reusing the same
+// logic as requirePermission without auditing or an HTTP response. Used for the
+// fine-grained per-room check once a request's room is resolved from its channels.
+async function authorizeTargetForUser(
+  user: AuthResult["user"],
+  permission: Permission,
+  target: AuditTarget,
+) {
+  return (await permissionDecision(user, permission, target)).allowed;
 }
 
 function authorizationReason(input: {
@@ -953,6 +970,7 @@ registerHealthRoutes({
 
 registerRecordingRoutes({
   app,
+  authorizeTarget: (user, permission, target) => authorizeTargetForUser(user, permission, target),
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
@@ -961,6 +979,7 @@ registerRecordingRoutes({
   recordAuditEvent,
   recordingStore,
   requirePermission,
+  roomStore,
   scopedNodes,
   scopedRecordings,
   settingsStore,

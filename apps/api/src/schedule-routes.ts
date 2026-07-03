@@ -29,6 +29,7 @@ import {
   buildSchedule,
   isValidScheduleTiming,
   occurrenceLimit,
+  resolveScheduleRoom,
   sanitizeScheduleUpdate,
   scheduleChannelSelectionFailure,
   scheduleInterfaceIsValid,
@@ -392,8 +393,26 @@ export function registerScheduleRoutes({
         return assignmentError;
       }
 
-      // The schedule's room is the node's room unless the caller pins one.
-      const schedule = { ...buildSchedule(body.data), roomId: body.data.roomId ?? node.roomId };
+      // The schedule's room follows its selected channels (one room per schedule);
+      // reject a selection spanning rooms.
+      const createRoom = resolveScheduleRoom(
+        node,
+        body.data.captureInterfaceId,
+        body.data.captureChannelSelection,
+      );
+
+      if (!createRoom.ok) {
+        await recordScheduleWriteFailure(c, "schedules.create.failed", "schedule_channel_cross_room");
+        return c.json(
+          {
+            error: "Channel selection spans multiple rooms",
+            reason: "schedule_channel_cross_room",
+          },
+          400,
+        );
+      }
+
+      const schedule = { ...buildSchedule(body.data), roomId: createRoom.roomId };
 
       try {
         const created = await scheduleStore.create(schedule);
@@ -538,12 +557,29 @@ export function registerScheduleRoutes({
         }
       }
 
+      // The schedule's room follows its selected channels; reject a cross-room
+      // selection and re-derive the room whenever node/interface/selection change.
+      const updateRoom = resolveScheduleRoom(targetNode, targetInterfaceId, targetSelection);
+
+      if (!updateRoom.ok) {
+        await recordScheduleWriteFailure(
+          c,
+          "schedules.update.failed",
+          "schedule_channel_cross_room",
+          before,
+        );
+        return c.json(
+          {
+            error: "Channel selection spans multiple rooms",
+            reason: "schedule_channel_cross_room",
+          },
+          400,
+        );
+      }
+
       const updates = sanitizeScheduleUpdate(body.data, before);
 
-      // Follow the node's room when the node changes and no room is pinned.
-      if (updates.nodeId && body.data.roomId === undefined && targetNode.roomId) {
-        updates.roomId = targetNode.roomId;
-      }
+      updates.roomId = updateRoom.roomId;
 
       const updated = await scheduleStore.update(scheduleId, updates);
 
@@ -801,20 +837,38 @@ export function registerScheduleRoutes({
     return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
   }
 
-  // Resolves the room a create request targets (pinned roomId, else the selected
-  // node's room) so the create gate can authorize a room BOOK grant.
+  // Resolves the room a create request targets from its selected channels (the
+  // room follows the channels, not the node) so the create gate authorizes a room
+  // BOOK grant in the right room. Returns undefined when it can't resolve to a
+  // single room (unknown node, or a cross-room selection the handler rejects) so
+  // only a schedule:manage role can then authorize.
   async function resolveCreateRoomId(c: Context<AppBindings>) {
-    const raw = (await c.req.json().catch(() => ({}))) as { nodeId?: unknown; roomId?: unknown };
+    const raw = (await c.req.json().catch(() => ({}))) as {
+      captureChannelSelection?: unknown;
+      captureInterfaceId?: unknown;
+      nodeId?: unknown;
+    };
 
-    if (typeof raw.roomId === "string" && raw.roomId.trim()) {
-      return raw.roomId.trim();
+    if (typeof raw.nodeId !== "string" || !raw.nodeId.trim()) {
+      return undefined;
     }
 
-    if (typeof raw.nodeId === "string" && raw.nodeId.trim()) {
-      return (await nodeStore.find(raw.nodeId.trim()))?.roomId;
+    const node = await nodeStore.find(raw.nodeId.trim());
+
+    if (!node) {
+      return undefined;
     }
 
-    return undefined;
+    const captureInterfaceId =
+      typeof raw.captureInterfaceId === "string" && raw.captureInterfaceId.trim()
+        ? raw.captureInterfaceId.trim()
+        : undefined;
+    const selection = Array.isArray(raw.captureChannelSelection)
+      ? raw.captureChannelSelection.filter((value): value is number => typeof value === "number")
+      : undefined;
+    const resolution = resolveScheduleRoom(node, captureInterfaceId, selection);
+
+    return resolution.ok ? resolution.roomId : undefined;
   }
 
   // Rejects a create/update whose assignee ids do not resolve to real

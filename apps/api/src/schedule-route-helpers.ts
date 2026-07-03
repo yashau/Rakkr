@@ -9,6 +9,7 @@ import type {
 } from "@rakkr/shared";
 
 import { resolveChannelMode, validateChannelSelection } from "./channel-selection.js";
+import { resolveSelectionRoom, type SelectionRoomResolution } from "./room-resolution.js";
 import { nextRunAtForRecurrence, uniqueTags } from "./schedule-engine.js";
 
 export function captureBackendFromQuery(value: string | undefined) {
@@ -156,6 +157,28 @@ export function scheduleChannelSelectionFailure(
   );
 
   return validation.ok ? undefined : validation.reason;
+}
+
+// Resolves the single room a schedule captures from its selected channels (or the
+// whole capture interface). A schedule is one room only; returns ok:false when the
+// selection spans rooms so the caller can reject it. The capture interface defaults
+// to the node's first interface, matching how the recorder picks it.
+export function resolveScheduleRoom(
+  node: RecorderNode,
+  captureInterfaceId: string | null | undefined,
+  selection: number[] | null | undefined,
+): SelectionRoomResolution {
+  const interfaceId = captureInterfaceId ?? node.interfaces[0]?.id;
+
+  if (!interfaceId) {
+    return { ok: true, roomId: node.roomId };
+  }
+
+  return resolveSelectionRoom(
+    node,
+    interfaceId,
+    selection && selection.length > 0 ? selection : "all",
+  );
 }
 
 export function occurrenceLimit(value: string | undefined) {
