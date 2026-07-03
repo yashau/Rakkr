@@ -69,12 +69,15 @@ export function createResourceScopeTargets({
     if (target.type === "health_event" && target.id) {
       const event = await healthEventStore.find(target.id);
 
-      // A recording-scoped health event follows its recording's single room (strict
-      // on a shared node). A node-level event (no recording) is visible to the
-      // node's rooms so both rooms sharing a node see e.g. an offline alert.
+      // A recording-scoped health event follows its recording's single room, and a
+      // schedule-scoped one follows its schedule's single room (both strict on a
+      // shared node). Only a genuinely node-level event — no recording AND no
+      // schedule (e.g. an offline/xrun alert) — takes the node's room UNION, so
+      // both rooms sharing a node see it. A schedule-scoped event must NOT take the
+      // union or it leaks the other room's schedule health across a shared node.
       if (event?.recordingId) {
         await addRecordingScopeTargets(targets, event.recordingId, knownNodes);
-      } else if (event?.nodeId) {
+      } else if (event?.nodeId && !event.scheduleId) {
         addNodeScopeTargets(targets, event.nodeId, knownNodes);
       }
 
