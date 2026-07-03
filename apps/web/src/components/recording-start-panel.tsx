@@ -35,8 +35,7 @@ const emptyNodes: RecorderNode[] = [];
 const emptyRecordingProfiles: RecordingProfile[] = [];
 const emptyUploadPolicies: UploadPolicy[] = [];
 const captureBackends: RecordingStartDraft["captureBackend"][] = ["", "alsa", "jack", "pipewire"];
-const selectClassName =
-  "flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm whitespace-nowrap text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>span]:line-clamp-1 [&>span]:min-w-0 [&>span]:overflow-hidden [&>span]:text-ellipsis";
+const selectClassName = "w-full min-w-0";
 
 export function RecordingStartPanel({
   canReadNodes,
@@ -249,12 +248,12 @@ export function RecordingStartPanel({
             onValueChange={(value) =>
               setDraft((current) => ({ ...current, uploadPolicyIds: value }))
             }
-            type="multiple"
+            multiple
             value={draft.uploadPolicyIds}
           >
             {uploadPolicies.map((policy) => (
               <ToggleGroupItem
-                className="rounded-md border border-input px-3 data-[state=on]:border-ring"
+                className="rounded-md border border-input px-3 data-pressed:border-ring"
                 key={policy.id}
                 value={policy.id}
               >

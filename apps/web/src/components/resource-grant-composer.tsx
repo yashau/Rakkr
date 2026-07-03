@@ -46,10 +46,7 @@ export function ResourceGrantComposer({ onAppend }: { onAppend: (line: string) =
             onValueChange={(value) => setDraft((current) => ({ ...current, resourceType: value }))}
             value={draft.resourceType}
           >
-            <SelectTrigger
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              id="scope-resource-type"
-            >
+            <SelectTrigger className="w-full" id="scope-resource-type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

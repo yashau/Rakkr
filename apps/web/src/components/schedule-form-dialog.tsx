@@ -42,8 +42,7 @@ import {
   type ScheduleDraft,
 } from "@/lib/schedule-draft";
 
-const selectClass =
-  "h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const selectClass = "w-full";
 const captureBackends: ScheduleDraft["captureBackend"][] = ["", "alsa", "jack", "pipewire"];
 
 export function ScheduleFormDialog({
@@ -334,7 +333,7 @@ export function ScheduleFormDialog({
                 <ToggleGroup
                   className="flex flex-wrap justify-start"
                   onValueChange={(values) => setDaysOfWeek(values as ScheduleDayOfWeek[])}
-                  type="multiple"
+                  multiple
                   value={draft.daysOfWeek}
                   variant="outline"
                 >
@@ -359,10 +358,8 @@ export function ScheduleFormDialog({
 
           <div className="border-t border-border">
             <Accordion
-              collapsible
-              onValueChange={(value) => setAdvancedOpen(value === "advanced")}
-              type="single"
-              value={advancedOpen ? "advanced" : ""}
+              onValueChange={(value) => setAdvancedOpen(value.includes("advanced"))}
+              value={advancedOpen ? ["advanced"] : []}
             >
               <AccordionItem className="border-none" value="advanced">
                 <AccordionTrigger className="py-3">Advanced options</AccordionTrigger>
@@ -643,12 +640,12 @@ export function ScheduleFormDialog({
                         <ToggleGroup
                           className="flex flex-wrap justify-start gap-2"
                           onValueChange={(value) => updateDraft("uploadPolicyIds", value)}
-                          type="multiple"
+                          multiple
                           value={draft.uploadPolicyIds}
                         >
                           {uploadPolicies.map((policy) => (
                             <ToggleGroupItem
-                              className="rounded-md border border-input px-3 data-[state=on]:border-ring"
+                              className="rounded-md border border-input px-3 data-pressed:border-ring"
                               key={policy.id}
                               value={policy.id}
                             >

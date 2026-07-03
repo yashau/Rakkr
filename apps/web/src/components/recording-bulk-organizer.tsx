@@ -189,7 +189,7 @@ export function RecordingBulkOrganizer({
               onValueChange={(value) => setSelectedUploadPolicyId(value)}
               value={uploadPolicyId ?? ""}
             >
-              <SelectTrigger className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

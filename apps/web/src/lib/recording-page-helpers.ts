@@ -224,8 +224,7 @@ export const uploadQueueStatusOrder: UploadQueueStatus[] = [
   "cancelled",
 ];
 export const defaultRecordingPageSize = 25;
-export const selectClassName =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+export const selectClassName = "w-full";
 
 export const recordingFilterDraftKeys: Record<RecordingFilterKey, keyof RecordingFilterDraft> = {
   cacheState: "cacheState",

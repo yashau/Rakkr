@@ -242,7 +242,7 @@ export function ChannelMapTemplateCard({
             }
             value={draft.channelMode}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -347,7 +347,7 @@ export function ChannelMapTemplateCard({
             onValueChange={(value) => setSelectedTarget(value)}
             value={selectedTarget}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -374,7 +374,7 @@ export function ChannelMapTemplateCard({
         <Field label="Bulk Targets">
           <fieldset
             aria-label="Bulk assignment targets"
-            className="grid max-h-40 gap-1.5 overflow-y-auto rounded-md border border-input bg-background p-2"
+            className="grid max-h-40 gap-1.5 overflow-y-auto rounded-md border border-input bg-transparent p-2"
           >
             {targetOptions.map((target) => {
               const targetId = `bulk-target-${target.value}`;
@@ -481,7 +481,7 @@ export function ChannelMapTemplateCard({
 
             return (
               <div
-                className="flex flex-col gap-2 rounded-md border border-border bg-background p-2 text-sm md:flex-row md:items-center md:justify-between"
+                className="flex flex-col gap-2 rounded-md border border-border bg-transparent p-2 text-sm md:flex-row md:items-center md:justify-between"
                 key={assignment.id}
               >
                 <div>

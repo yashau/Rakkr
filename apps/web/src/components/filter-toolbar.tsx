@@ -72,7 +72,7 @@ export function FilterToolbar({
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="Search"
-              className="bg-background pr-8 pl-9"
+              className="bg-transparent pr-8 pl-9"
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder={searchPlaceholder}
               value={search ?? ""}
@@ -91,17 +91,19 @@ export function FilterToolbar({
         ) : null}
         {children ? (
           <Sheet onOpenChange={setOpen} open={open}>
-            <SheetTrigger asChild>
-              <Button type="button" variant="outline">
-                <Filter className="size-4" />
-                Filters
-                {activeCount > 0 ? (
-                  <Badge className="ml-1 h-5 min-w-5 justify-center rounded-full px-1.5 tabular-nums">
-                    {activeCount}
-                  </Badge>
-                ) : null}
-              </Button>
-            </SheetTrigger>
+            <SheetTrigger
+              render={
+                <Button type="button" variant="outline">
+                  <Filter className="size-4" />
+                  Filters
+                  {activeCount > 0 ? (
+                    <Badge className="ml-1 h-5 min-w-5 justify-center rounded-full px-1.5 tabular-nums">
+                      {activeCount}
+                    </Badge>
+                  ) : null}
+                </Button>
+              }
+            />
             <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
               <SheetHeader>
                 <SheetTitle>{sheetTitle}</SheetTitle>
@@ -114,11 +116,13 @@ export function FilterToolbar({
                 <Button className="w-full" onClick={onClearAll} type="button" variant="outline">
                   Reset filters
                 </Button>
-                <SheetClose asChild>
-                  <Button className="w-full" type="button">
-                    Show results
-                  </Button>
-                </SheetClose>
+                <SheetClose
+                  render={
+                    <Button className="w-full" type="button">
+                      Show results
+                    </Button>
+                  }
+                />
               </SheetFooter>
             </SheetContent>
           </Sheet>
@@ -131,7 +135,7 @@ export function FilterToolbar({
         <div className="flex flex-wrap items-center gap-2">
           {chips.map((chip) => (
             <Badge
-              className="max-w-full gap-1 overflow-hidden bg-background pr-1"
+              className="max-w-full gap-1 overflow-hidden bg-transparent pr-1"
               key={chip.key}
               variant="outline"
             >

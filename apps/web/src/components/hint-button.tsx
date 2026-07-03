@@ -15,11 +15,13 @@ export function HintButton({
 }: { children: ReactNode; hint?: ReactNode } & ButtonProps) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <Button {...props}>{children}</Button>
-        </span>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <span className="inline-flex">
+            <Button {...props}>{children}</Button>
+          </span>
+        }
+      />
       {hint ? <TooltipContent>{hint}</TooltipContent> : null}
     </Tooltip>
   );

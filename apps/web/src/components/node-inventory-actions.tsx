@@ -20,7 +20,7 @@ export function NodeInventoryActions({
   selectedExportPending: boolean;
 }) {
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
+    <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-transparent p-3 md:flex-row md:items-center md:justify-between">
       <label className="flex items-center gap-2 text-sm">
         <Checkbox
           checked={allVisibleSelected}
@@ -30,18 +30,20 @@ export function NodeInventoryActions({
       </label>
       <div className="flex flex-wrap gap-2">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                disabled={selectedCount === 0 || selectedExportPending}
-                onClick={onExportSelected}
-                variant="outline"
-              >
-                <Download className="size-4" />
-                Export selected
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={selectedCount === 0 || selectedExportPending}
+                  onClick={onExportSelected}
+                  variant="outline"
+                >
+                  <Download className="size-4" />
+                  Export selected
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {selectedCount > 0 ? "Export selected visible nodes" : "Select visible nodes to export"}
           </TooltipContent>

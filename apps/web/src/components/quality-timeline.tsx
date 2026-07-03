@@ -49,19 +49,21 @@ export function QualityTimeline({
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,.7)_0,transparent_1px,transparent_20%,rgba(255,255,255,.65)_calc(20%+1px),transparent_calc(20%+2px),transparent_40%,rgba(255,255,255,.65)_calc(40%+1px),transparent_calc(40%+2px),transparent_60%,rgba(255,255,255,.65)_calc(60%+1px),transparent_calc(60%+2px),transparent_80%,rgba(255,255,255,.65)_calc(80%+1px),transparent_calc(80%+2px))]" />
         {segments.map((segment) => (
           <Tooltip key={segment.event.id}>
-            <TooltipTrigger asChild>
-              <div
-                aria-label={`${segment.event.severity} ${segment.event.type}`}
-                className={cn(
-                  "absolute top-0 bottom-0 min-w-1 border-x border-white/60",
-                  timelineSegmentClass(segment.event),
-                )}
-                style={{
-                  left: `${segment.left}%`,
-                  width: `${Math.max(1, segment.right - segment.left)}%`,
-                }}
-              />
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <div
+                  aria-label={`${segment.event.severity} ${segment.event.type}`}
+                  className={cn(
+                    "absolute top-0 bottom-0 min-w-1 border-x border-white/60",
+                    timelineSegmentClass(segment.event),
+                  )}
+                  style={{
+                    left: `${segment.left}%`,
+                    width: `${Math.max(1, segment.right - segment.left)}%`,
+                  }}
+                />
+              }
+            />
             <TooltipContent>{timelineTitle(segment.event)}</TooltipContent>
           </Tooltip>
         ))}

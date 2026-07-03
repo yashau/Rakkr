@@ -167,7 +167,7 @@ export function RecordingCard({
             <div className="mt-3 flex flex-wrap gap-1.5">
               {relationships.map((item) => (
                 <Badge
-                  className="max-w-full gap-1 overflow-hidden bg-background"
+                  className="max-w-full gap-1 overflow-hidden bg-transparent"
                   key={`${item.label}-${item.value}`}
                   variant="outline"
                 >
@@ -180,7 +180,7 @@ export function RecordingCard({
           {expanded && recording.tags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {recording.tags.map((tag) => (
-                <Badge className="bg-background" key={tag} variant="outline">
+                <Badge className="bg-transparent" key={tag} variant="outline">
                   {tag}
                 </Badge>
               ))}
@@ -241,7 +241,7 @@ export function RecordingCard({
                       <span className="text-muted-foreground">{job.claimedBy ?? job.nodeId}</span>
                       {captureDetails.map((item) => (
                         <Badge
-                          className="max-w-full gap-1 overflow-hidden bg-background"
+                          className="max-w-full gap-1 overflow-hidden bg-transparent"
                           key={`${job.id}-${item.label}`}
                           variant="outline"
                         >
@@ -396,7 +396,7 @@ function WaveformPreview({ recording }: { recording: RecordingSummary }) {
   return (
     <div
       aria-label={`Waveform preview for ${recording.name}`}
-      className="flex h-8 min-w-0 flex-1 items-center gap-px overflow-hidden rounded bg-background px-1"
+      className="flex h-8 min-w-0 flex-1 items-center gap-px overflow-hidden rounded bg-transparent px-1"
     >
       {peaks.map((peak, index) => (
         <span

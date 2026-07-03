@@ -73,17 +73,19 @@ export function NodeLifecycleMenu({ canManage, node }: NodeLifecycleMenuProps) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          className="justify-self-start md:justify-self-end"
-          disabled={runMutation.isPending}
-          variant="outline"
-        >
-          <CheckCircle2 className="size-4" />
-          Lifecycle
-          <ChevronDown className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            className="justify-self-start md:justify-self-end"
+            disabled={runMutation.isPending}
+            variant="outline"
+          >
+            <CheckCircle2 className="size-4" />
+            Lifecycle
+            <ChevronDown className="size-4" />
+          </Button>
+        }
+      />
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Lifecycle actions</DropdownMenuLabel>
         {lifecycleActions.map(({ action, icon: Icon, label }) => (

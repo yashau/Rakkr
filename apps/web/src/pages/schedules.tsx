@@ -210,12 +210,17 @@ export function SchedulesPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button asChild type="button" variant="outline">
-              <Link to="/schedules/calendar">
-                <CalendarDays className="size-4" />
-                Calendar
-              </Link>
-            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              nativeButton={false}
+              render={
+                <Link to="/schedules/calendar">
+                  <CalendarDays className="size-4" />
+                  Calendar
+                </Link>
+              }
+            />
             {actionPermissions.canManage ? (
               <Button onClick={openCreate} type="button">
                 <PlusCircle className="size-4" />
@@ -392,12 +397,18 @@ function scheduleColumns({
 
       return (
         <div className="flex flex-wrap justify-end gap-2">
-          <Button asChild size="sm" type="button" variant="outline">
-            <Link params={{ scheduleId: row.original.id }} to="/schedules/$scheduleId">
-              <FileSearch className="size-4" />
-              Details
-            </Link>
-          </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="outline"
+            nativeButton={false}
+            render={
+              <Link params={{ scheduleId: row.original.id }} to="/schedules/$scheduleId">
+                <FileSearch className="size-4" />
+                Details
+              </Link>
+            }
+          />
           {permissions.canManage ? (
             <>
               <Button

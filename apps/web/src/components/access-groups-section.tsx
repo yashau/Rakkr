@@ -213,7 +213,7 @@ function accessGroupColumns({
     },
     {
       cell: ({ row }) => (
-        <Badge className="bg-background" variant="outline">
+        <Badge className="bg-transparent" variant="outline">
           {row.original.memberCount} member{row.original.memberCount === 1 ? "" : "s"}
         </Badge>
       ),

@@ -502,18 +502,20 @@ function NodeDetailRow({
           ) : null}
           {canManage ? (
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    disabled={rotatePending || !isUuid(node.id)}
-                    onClick={onRotate}
-                    variant="outline"
-                  >
-                    <KeyRound className="size-4" />
-                    Rotate Token
-                  </Button>
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex">
+                    <Button
+                      disabled={rotatePending || !isUuid(node.id)}
+                      onClick={onRotate}
+                      variant="outline"
+                    >
+                      <KeyRound className="size-4" />
+                      Rotate Token
+                    </Button>
+                  </span>
+                }
+              />
               <TooltipContent>{rotateNodeTokenTitle(canManage, isUuid(node.id))}</TooltipContent>
             </Tooltip>
           ) : null}

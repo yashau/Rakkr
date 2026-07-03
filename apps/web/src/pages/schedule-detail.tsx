@@ -228,12 +228,17 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   if (!pagePermissions.canReadSchedule) {
     return (
       <div className="grid gap-4">
-        <Button asChild className="w-fit" variant="outline">
-          <Link to="/schedules">
-            <ArrowLeft className="size-4" />
-            Schedules
-          </Link>
-        </Button>
+        <Button
+          className="w-fit"
+          variant="outline"
+          nativeButton={false}
+          render={
+            <Link to="/schedules">
+              <ArrowLeft className="size-4" />
+              Schedules
+            </Link>
+          }
+        />
         <Alert>
           <ShieldCheck className="size-4" />
           <AlertTitle>Schedule</AlertTitle>
@@ -250,12 +255,17 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
   if (!schedule) {
     return (
       <div className="grid gap-4">
-        <Button asChild className="w-fit" variant="outline">
-          <Link to="/schedules">
-            <ArrowLeft className="size-4" />
-            Schedules
-          </Link>
-        </Button>
+        <Button
+          className="w-fit"
+          variant="outline"
+          nativeButton={false}
+          render={
+            <Link to="/schedules">
+              <ArrowLeft className="size-4" />
+              Schedules
+            </Link>
+          }
+        />
         <Alert>
           <AlertDescription>Schedule not found.</AlertDescription>
         </Alert>
@@ -269,12 +279,17 @@ export function ScheduleDetailPage({ scheduleId }: { scheduleId: string }) {
     <div className="grid gap-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <Button asChild className="mb-3 w-fit" variant="outline">
-            <Link to="/schedules">
-              <ArrowLeft className="size-4" />
-              Schedules
-            </Link>
-          </Button>
+          <Button
+            className="mb-3 w-fit"
+            variant="outline"
+            nativeButton={false}
+            render={
+              <Link to="/schedules">
+                <ArrowLeft className="size-4" />
+                Schedules
+              </Link>
+            }
+          />
           <div className="flex flex-wrap items-center gap-2">
             <CalendarClock className="size-5 text-primary" />
             <h2 className="text-lg font-semibold">{schedule.name}</h2>
@@ -564,7 +579,7 @@ function RecordingExecutionRow({
   const actions = recordingFileActionState(recording, { canDownload, canPlayback });
 
   return (
-    <div className="rounded-md border border-border bg-background p-3">
+    <div className="rounded-md border border-border bg-transparent p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -640,7 +655,7 @@ function HealthEventRow({
   pending: boolean;
 }) {
   return (
-    <div className="rounded-md border border-border bg-background p-3 text-sm">
+    <div className="rounded-md border border-border bg-transparent p-3 text-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">

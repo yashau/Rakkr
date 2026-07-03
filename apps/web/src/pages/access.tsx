@@ -253,7 +253,7 @@ export function AccessPage() {
             <div className="grid gap-2">
               <Label htmlFor="access-policies">Access Policies</Label>
               <Textarea
-                className="min-h-32 bg-background font-mono text-xs"
+                className="min-h-32 bg-transparent font-mono text-xs"
                 id="access-policies"
                 onChange={(event) => {
                   setPoliciesText(event.target.value);
@@ -339,7 +339,7 @@ function accessUserColumns({
         <div className="min-w-0">
           <div className="font-medium">{row.original.name}</div>
           {row.original.id === selfId ? (
-            <Badge className="mt-1 bg-background" variant="outline">
+            <Badge className="mt-1 bg-transparent" variant="outline">
               you
             </Badge>
           ) : null}
@@ -365,7 +365,7 @@ function accessUserColumns({
         row.original.roles.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {row.original.roles.map((role) => (
-              <Badge className="bg-background" key={role} variant="outline">
+              <Badge className="bg-transparent" key={role} variant="outline">
                 {role}
               </Badge>
             ))}
@@ -381,7 +381,7 @@ function accessUserColumns({
         row.original.groups.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {row.original.groups.map((group) => (
-              <Badge className="bg-background" key={group.id} variant="outline">
+              <Badge className="bg-transparent" key={group.id} variant="outline">
                 {group.name}
               </Badge>
             ))}

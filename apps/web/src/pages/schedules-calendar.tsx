@@ -169,12 +169,18 @@ export function SchedulesCalendarPage() {
                 : "Loading occurrences"}
             </p>
           </div>
-          <Button asChild size="sm" type="button" variant="outline">
-            <Link to="/schedules">
-              <List className="size-4" />
-              List view
-            </Link>
-          </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="outline"
+            nativeButton={false}
+            render={
+              <Link to="/schedules">
+                <List className="size-4" />
+                List view
+              </Link>
+            }
+          />
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -418,7 +424,7 @@ function OccurrenceChip({
   const chip = (
     <Link
       className={cn(
-        "block truncate rounded-sm border border-border bg-background px-1.5 py-0.5 text-xs hover:border-ring",
+        "block truncate rounded-sm border border-border bg-transparent px-1.5 py-0.5 text-xs hover:border-ring",
         !occurrence.enabled && "opacity-60",
       )}
       draggable={canManage}
@@ -447,7 +453,7 @@ function OccurrenceChip({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      <TooltipTrigger render={chip} />
       <TooltipContent>
         <div className="grid gap-0.5 text-xs">
           <span>{occurrence.scheduleName}</span>

@@ -40,11 +40,13 @@ export function ConfirmButton({
 }) {
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button className={className} disabled={disabled} size={size} variant={variant}>
-          {children}
-        </Button>
-      </AlertDialogTrigger>
+      <AlertDialogTrigger
+        render={
+          <Button className={className} disabled={disabled} size={size} variant={variant}>
+            {children}
+          </Button>
+        }
+      />
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

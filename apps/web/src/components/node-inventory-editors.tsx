@@ -97,18 +97,20 @@ export function NodeIdentityEditor({
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium">Node Details</div>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                disabled={mutation.isPending || !canManage}
-                onClick={() => mutation.mutate()}
-                size="sm"
-              >
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={mutation.isPending || !canManage}
+                  onClick={() => mutation.mutate()}
+                  size="sm"
+                >
+                  <Save className="size-4" />
+                  Save
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {canManage ? "Save node details" : "Requires node manage"}
           </TooltipContent>
@@ -215,7 +217,7 @@ export function NodeAudioDefaultsEditor({
   return (
     <fieldset
       aria-disabled={!canManage}
-      className="grid gap-3 rounded-md border border-border bg-background p-3"
+      className="grid gap-3 rounded-md border border-border bg-transparent p-3"
       disabled={!canManage}
     >
       <div className="flex items-center justify-between gap-2">
@@ -224,18 +226,20 @@ export function NodeAudioDefaultsEditor({
           Audio Defaults
         </div>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                disabled={mutation.isPending || !canManage}
-                onClick={() => mutation.mutate()}
-                size="sm"
-              >
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={mutation.isPending || !canManage}
+                  onClick={() => mutation.mutate()}
+                  size="sm"
+                >
+                  <Save className="size-4" />
+                  Save
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {canManage ? "Save audio defaults" : "Requires node manage"}
           </TooltipContent>
@@ -362,7 +366,7 @@ export function NodeInterfaceEditor({
   return (
     <fieldset
       aria-disabled={!canManage}
-      className="grid gap-3 rounded-md border border-border bg-background p-3"
+      className="grid gap-3 rounded-md border border-border bg-transparent p-3"
       disabled={!canManage}
     >
       <div className="flex items-center justify-between gap-2">
@@ -371,18 +375,20 @@ export function NodeInterfaceEditor({
           Interface Details
         </div>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                disabled={mutation.isPending || !canManage}
-                onClick={() => mutation.mutate()}
-                size="sm"
-              >
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={mutation.isPending || !canManage}
+                  onClick={() => mutation.mutate()}
+                  size="sm"
+                >
+                  <Save className="size-4" />
+                  Save
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {canManage ? "Save interface details" : "Requires node manage"}
           </TooltipContent>

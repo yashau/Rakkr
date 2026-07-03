@@ -144,7 +144,7 @@ export function MeterBank({ levels, title }: { levels: AudioLevel[]; title: stri
 
 function MeterStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-background px-3 py-2">
+    <div className="rounded-md border border-border bg-transparent px-3 py-2">
       <div className="text-[11px] text-muted-foreground">{label}</div>
       <div className="mt-1 truncate font-mono text-xs font-semibold text-foreground">{value}</div>
     </div>

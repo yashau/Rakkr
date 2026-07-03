@@ -40,7 +40,7 @@ export function NodeHealthEvents({
   );
 
   return (
-    <div className="rounded-md border border-border bg-background p-3">
+    <div className="rounded-md border border-border bg-transparent p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-sm font-medium">Recent Health Events</div>
         <Badge className={healthBadgeClass(tone)} variant="outline">

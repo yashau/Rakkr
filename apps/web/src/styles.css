@@ -94,6 +94,28 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+/* Base UI's Accordion.Panel exposes its natural height via `--accordion-panel-height`;
+   these keyframes let the panel expand/collapse smoothly. */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--accordion-panel-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--accordion-panel-height);
+  }
+  to {
+    height: 0;
+  }
 }
 
 * {
@@ -163,4 +185,12 @@
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Reserve the scrollbar gutter on every dialog/sheet surface so content does not
+   shift horizontally when a scrollbar appears on taller dialogs. */
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"],
+[data-slot="sheet-content"] {
+  scrollbar-gutter: stable;
 }

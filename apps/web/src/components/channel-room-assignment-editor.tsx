@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox, type ComboboxGroup } from "@/components/ui/combobox";
+import { Combobox, type ComboboxGroup } from "@/components/searchable-combobox";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 
@@ -68,7 +68,7 @@ export function NodeChannelRoomEditor({
   return (
     <fieldset
       aria-disabled={!canManage}
-      className="grid gap-3 rounded-md border border-border bg-background p-3"
+      className="grid gap-3 rounded-md border border-border bg-transparent p-3"
       disabled={!canManage}
     >
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -104,7 +104,7 @@ export function NodeChannelRoomEditor({
 
                   return (
                     <label
-                      className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background p-2 text-sm has-[:checked]:border-ring has-[:checked]:bg-muted/40"
+                      className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-transparent p-2 text-sm has-[:checked]:border-ring has-[:checked]:bg-muted/40"
                       key={key}
                     >
                       <Checkbox

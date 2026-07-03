@@ -67,8 +67,7 @@ const statuses: Array<"" | HealthEvent["status"]> = [
   "resolved",
 ];
 const severities: Array<"" | HealthEvent["severity"]> = ["", "critical", "warning", "info"];
-const selectClassName =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const selectClassName = "w-full";
 const healthFilterDraftKeys: Record<HealthEventFilterKey, keyof HealthPageFilterDraft> = {
   nodeId: "nodeId",
   openedFrom: "openedFromDate",
@@ -492,7 +491,7 @@ function BulkHealthActions({
   const selectionPending = pending || exportPending;
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
+    <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-transparent p-3 md:flex-row md:items-center md:justify-between">
       <label
         className="flex items-center gap-2 text-sm text-muted-foreground"
         htmlFor="health-bulk-select-all"

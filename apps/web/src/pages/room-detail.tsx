@@ -105,12 +105,17 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
   if (!actionPermissions.canRead) {
     return (
       <div className="grid gap-4">
-        <Button asChild className="w-fit" variant="outline">
-          <Link to="/rooms">
-            <ArrowLeft className="size-4" />
-            Rooms
-          </Link>
-        </Button>
+        <Button
+          className="w-fit"
+          variant="outline"
+          nativeButton={false}
+          render={
+            <Link to="/rooms">
+              <ArrowLeft className="size-4" />
+              Rooms
+            </Link>
+          }
+        />
         <Alert>
           <ShieldCheck className="size-4" />
           <AlertTitle>Room</AlertTitle>
@@ -129,12 +134,17 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
   if (!overview) {
     return (
       <div className="grid gap-4">
-        <Button asChild className="w-fit" variant="outline">
-          <Link to="/rooms">
-            <ArrowLeft className="size-4" />
-            Rooms
-          </Link>
-        </Button>
+        <Button
+          className="w-fit"
+          variant="outline"
+          nativeButton={false}
+          render={
+            <Link to="/rooms">
+              <ArrowLeft className="size-4" />
+              Rooms
+            </Link>
+          }
+        />
         <Alert>
           <AlertDescription>Room not found.</AlertDescription>
         </Alert>
@@ -148,12 +158,17 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
     <div className="grid gap-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <Button asChild className="mb-3 w-fit" variant="outline">
-            <Link to="/rooms">
-              <ArrowLeft className="size-4" />
-              Rooms
-            </Link>
-          </Button>
+          <Button
+            className="mb-3 w-fit"
+            variant="outline"
+            nativeButton={false}
+            render={
+              <Link to="/rooms">
+                <ArrowLeft className="size-4" />
+                Rooms
+              </Link>
+            }
+          />
           <div className="flex flex-wrap items-center gap-2">
             <Building2 className="size-5 text-primary" />
             <h2 className="text-lg font-semibold">{room.name}</h2>
@@ -202,7 +217,7 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
           <div className="mt-3 grid gap-2">
             {overview.nodes.map((node) => (
               <div
-                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-3 text-sm"
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-transparent p-3 text-sm"
                 key={node.id}
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{node.alias}</span>
@@ -251,7 +266,7 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
           <div className="mt-3 grid gap-2">
             {overview.recentRecordings.map((recording) => (
               <div
-                className="rounded-md border border-border bg-background p-3 text-sm"
+                className="rounded-md border border-border bg-transparent p-3 text-sm"
                 key={recording.id}
               >
                 <div className="flex flex-wrap items-center gap-2">
