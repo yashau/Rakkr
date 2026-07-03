@@ -880,7 +880,20 @@ pub(crate) async fn append_and_sync_health_event(
     severity: &str,
     details: Value,
 ) -> anyhow::Result<()> {
-    let event = health_log::append_health_event(config, event_type, severity, details)?;
+    // Best-effort local evidence: a health-log append failure (full disk, unwritable
+    // health-log dir) must NOT propagate out of the heartbeat/recovery tick and kill
+    // the daemon — the agent can still capture audio and sync with the controller.
+    // Log and move on, mirroring the controller-sync half below. R14-HEALTH-FATAL:
+    // this is the complete guard; apply_tick_health_updates only covered the
+    // meter/system-health call sites, but the tick also appends heartbeat/meter/
+    // node-config/capture/monitor/cache-sweep sync-edge events through here.
+    let event = match health_log::append_health_event(config, event_type, severity, details) {
+        Ok(event) => event,
+        Err(error) => {
+            warn!(event_type, error = %error, "failed to append health event; continuing");
+            return Ok(());
+        }
+    };
 
     if let Some(token) = token
         && let Err(error) = controller::sync_health_event(config, token, &event).await
