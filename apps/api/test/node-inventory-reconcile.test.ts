@@ -57,6 +57,46 @@ test("reconcile preserves operator labels while updating hardware facts", () => 
   assert.equal(reconcileSummaryChanged(summary), true);
 });
 
+test("reconcile preserves per-channel room assignments and leaves new channels unassigned", () => {
+  const existing: AudioInterface[] = [
+    {
+      alias: "X32 Console",
+      backend: "alsa",
+      channelCount: 2,
+      channels: [
+        { alias: "Chamber L", index: 1, roomId: "room-chamber" },
+        { alias: "Chamber R", index: 2, roomId: "room-chamber" },
+      ],
+      id: "iface-uuid-1",
+      sampleRates: [48000],
+      systemName: "X-USB USB Audio",
+      systemRef: "hw:CARD=X32,DEV=0",
+    },
+  ];
+
+  const { interfaces } = reconcileSeedInterfaces(existing, [
+    agentInterface({
+      channelCount: 4,
+      channels: [
+        { alias: "Input 1", index: 1 },
+        { alias: "Input 2", index: 2 },
+        { alias: "Input 3", index: 3 },
+        { alias: "Input 4", index: 4 },
+      ],
+      systemName: "X-USB USB Audio",
+      systemRef: "hw:CARD=X32,DEV=0",
+    }),
+  ]);
+
+  const [reconciled] = interfaces;
+  // Operator room assignments survive re-inventory, matched on channel index.
+  assert.equal(reconciled.channels[0].roomId, "room-chamber");
+  assert.equal(reconciled.channels[1].roomId, "room-chamber");
+  // Newly discovered channels start unassigned (inherit the node default room).
+  assert.equal(reconciled.channels[2].roomId, undefined);
+  assert.equal(reconciled.channels[3].roomId, undefined);
+});
+
 test("reconcile flags interfaces the agent no longer reports as absent", () => {
   const existing: AudioInterface[] = [
     {

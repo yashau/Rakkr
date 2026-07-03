@@ -140,13 +140,32 @@ export interface NodeCredentialAuth {
 export class NodeStoreError extends Error {
   constructor(
     message: string,
-    readonly code: "database_unavailable" | "node_not_found",
+    readonly code:
+      | "channel_not_found"
+      | "database_unavailable"
+      | "interface_not_found"
+      | "node_not_found",
   ) {
     super(message);
   }
 }
 
+export interface ChannelRoomAssignment {
+  channelIndex: number;
+  interfaceId: string;
+  roomId: string | null;
+}
+
 export interface NodeStore {
+  /**
+   * Assign (or clear, with roomId null) the owning room of specific channels on a
+   * node. Assignments referencing an interface that does not belong to the node
+   * are rejected. Returns the reloaded node, or undefined if the node is unknown.
+   */
+  assignChannelRooms(
+    nodeId: string,
+    assignments: ChannelRoomAssignment[],
+  ): Promise<RecorderNode | undefined>;
   authenticateCredential(token: string): Promise<NodeCredentialAuth | undefined>;
   enroll(input: NodeEnrollmentInput, actorUserId?: string): Promise<NodeEnrollmentResult>;
   find(nodeId: string): Promise<RecorderNode | undefined>;
@@ -178,6 +197,36 @@ export function createNodeStore(seedNodes: RecorderNode[] = []): NodeStore {
 
 class SeedOnlyNodeStore implements NodeStore {
   constructor(private readonly seedNodes: RecorderNode[]) {}
+
+  async assignChannelRooms(nodeId: string, assignments: ChannelRoomAssignment[]) {
+    const index = this.seedNodes.findIndex((node) => node.id === nodeId);
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    const node = this.seedNodes[index];
+
+    assertAssignmentsBelongToNode(node, assignments);
+
+    const roomByChannel = channelRoomAssignmentMap(assignments);
+
+    this.seedNodes[index] = {
+      ...node,
+      interfaces: node.interfaces.map((audioInterface) => ({
+        ...audioInterface,
+        channels: audioInterface.channels.map((channel) => {
+          const key = channelAssignmentKey(audioInterface.id, channel.index);
+
+          return roomByChannel.has(key)
+            ? { ...channel, roomId: roomByChannel.get(key) ?? undefined }
+            : channel;
+        }),
+      })),
+    };
+
+    return this.seedNodes[index];
+  }
 
   async authenticateCredential() {
     return undefined;
@@ -272,6 +321,36 @@ class PostgresNodeStore implements NodeStore {
     private readonly seedNodes: RecorderNode[],
   ) {
     this.db = createDatabase(databaseUrl);
+  }
+
+  async assignChannelRooms(nodeId: string, assignments: ChannelRoomAssignment[]) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      throw new NodeStoreError("Node channel storage is unavailable", "database_unavailable");
+    }
+
+    const node = await this.find(nodeId);
+
+    if (!node) {
+      return undefined;
+    }
+
+    assertAssignmentsBelongToNode(node, assignments);
+
+    for (const assignment of assignments) {
+      await db
+        .update(audioChannels)
+        .set({ roomId: assignment.roomId })
+        .where(
+          and(
+            eq(audioChannels.interfaceId, assignment.interfaceId),
+            eq(audioChannels.index, assignment.channelIndex),
+          ),
+        );
+    }
+
+    return this.find(nodeId);
   }
 
   async enroll(input: NodeEnrollmentInput, actorUserId?: string) {
@@ -834,6 +913,47 @@ function updatedChannels(
   }));
 }
 
+function channelAssignmentKey(interfaceId: string, channelIndex: number): string {
+  return `${interfaceId}:${channelIndex}`;
+}
+
+function channelRoomAssignmentMap(
+  assignments: ChannelRoomAssignment[],
+): Map<string, string | null> {
+  return new Map(
+    assignments.map((assignment) => [
+      channelAssignmentKey(assignment.interfaceId, assignment.channelIndex),
+      assignment.roomId,
+    ]),
+  );
+}
+
+// Rejects assignments whose interface is not on this node or whose channel index
+// is out of range, so a channel-room assignment can never point off-node.
+function assertAssignmentsBelongToNode(node: RecorderNode, assignments: ChannelRoomAssignment[]) {
+  const interfacesById = new Map(
+    node.interfaces.map((audioInterface) => [audioInterface.id, audioInterface]),
+  );
+
+  for (const assignment of assignments) {
+    const audioInterface = interfacesById.get(assignment.interfaceId);
+
+    if (!audioInterface) {
+      throw new NodeStoreError(
+        `Interface ${assignment.interfaceId} does not belong to node ${node.id}`,
+        "interface_not_found",
+      );
+    }
+
+    if (assignment.channelIndex < 1 || assignment.channelIndex > audioInterface.channelCount) {
+      throw new NodeStoreError(
+        `Channel ${assignment.channelIndex} is out of range for interface ${assignment.interfaceId}`,
+        "channel_not_found",
+      );
+    }
+  }
+}
+
 function definedLocation(location: NodeUpdateInput["location"]) {
   const next: Partial<RecorderNode["location"]> = {};
 
@@ -862,6 +982,7 @@ function interfaceFromRows(
       .map((channel) => ({
         alias: channel.alias,
         index: channel.index,
+        roomId: channel.roomId ?? undefined,
       })),
     hardwarePath: audioInterface.hardwarePath ?? undefined,
     id: audioInterface.id,
