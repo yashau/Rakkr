@@ -127,7 +127,11 @@ export function oidcGroupsFromClaims(values: readonly string[]) {
       .filter(Boolean)
       .map((value) => ({
         id: accessGroupSlug(value) || `group-${hashToken(value).slice(0, 12)}`,
-        name: value,
+        // Cap to the access_groups.name varchar(160) budget (matching the operator
+        // create schema). An uncapped IdP claim (e.g. a full group DN) would trip a
+        // Postgres length constraint on insert, failing the login and latching the
+        // auth service into DB-unavailable memory-fallback.
+        name: value.slice(0, 160),
       })),
   );
 }
