@@ -83,7 +83,7 @@ export function defaultDraft(node?: RecorderNode): ScheduleDraft {
     pauseEndDate: "",
     pauseReason: "",
     pauseStartDate: "",
-    recurrenceMode: "weekly",
+    recurrenceMode: "once",
     recurrenceStartAt: "",
     recordingProfileId: defaultVoiceRecordingProfile.id,
     retentionPolicyId: defaultKeepControllerCacheRetentionPolicy.id,

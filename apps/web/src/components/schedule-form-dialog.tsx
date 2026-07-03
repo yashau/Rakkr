@@ -5,6 +5,12 @@ import { type AudioInterface, type RecorderNode, type ScheduleDayOfWeek } from "
 
 import { AssigneeMultiSelect, type AssigneeOption } from "@/components/assignee-multi-select";
 import { ChannelSelectionField } from "@/components/channel-selection-field";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
@@ -61,6 +67,10 @@ export function ScheduleFormDialog({
 }) {
   const [quickRecurrence, setQuickRecurrence] = useState("");
   const [quickRecurrenceError, setQuickRecurrenceError] = useState(false);
+  // Advanced settings stay collapsed for the common "add a quick recording"
+  // flow; editing an existing schedule opens them so its tuned values are
+  // visible without hunting.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const selectedNode = nodes.find((node) => node.id === draft.nodeId);
   const recordingProfilesQuery = useQuery({
     enabled: open,
@@ -118,6 +128,12 @@ export function ScheduleFormDialog({
     setQuickRecurrence("");
     setQuickRecurrenceError(false);
   }, [open]);
+
+  // Collapse advanced options for new schedules; expand them when editing so the
+  // existing profile/capture/policy choices are shown up front.
+  useEffect(() => {
+    setAdvancedOpen(editing);
+  }, [editing, open]);
 
   function updateDraft<Key extends keyof ScheduleDraft>(key: Key, value: ScheduleDraft[Key]) {
     onDraftChange({ ...draft, [key]: value });
@@ -216,37 +232,6 @@ export function ScheduleFormDialog({
               />
             </div>
 
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Assignees</Label>
-              <AssigneeMultiSelect
-                groupOptions={groupOptions}
-                onChange={(next) =>
-                  onDraftChange({
-                    ...draft,
-                    assignedGroupIds: next.groupIds,
-                    assignedUserIds: next.userIds,
-                  })
-                }
-                selectedGroupIds={draft.assignedGroupIds}
-                selectedUserIds={draft.assignedUserIds}
-                userOptions={userOptions}
-              />
-              <p className="text-xs text-muted-foreground">
-                Assigned users and groups get scoped access to this schedule&apos;s room — listen,
-                playback, and operating its recordings — without changing their role.
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-timezone">Timezone</Label>
-              <Input
-                id="schedule-timezone"
-                onChange={(event) => updateDraft("timezone", event.target.value)}
-                required
-                value={draft.timezone}
-              />
-            </div>
-
             <div className="grid gap-2">
               <Label htmlFor="schedule-recurrence-mode">Recurrence</Label>
               <Select
@@ -259,34 +244,14 @@ export function ScheduleFormDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="manual">Manual next run</SelectItem>
                   <SelectItem value="once">One-off</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
                   <SelectItem value="monthly">Monthly</SelectItem>
                   <SelectItem value="always_on">Always on</SelectItem>
+                  <SelectItem value="manual">Manual next run</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-quick-recurrence">Quick Recurrence</Label>
-              <div className="flex gap-2">
-                <Input
-                  aria-invalid={quickRecurrenceError}
-                  id="schedule-quick-recurrence"
-                  onChange={(event) => {
-                    setQuickRecurrence(event.target.value);
-                    setQuickRecurrenceError(false);
-                  }}
-                  placeholder="weekdays 9am-10am"
-                  value={quickRecurrence}
-                />
-                <Button onClick={applyQuickRecurrence} type="button" variant="outline">
-                  <Sparkles className="size-4" />
-                  Apply
-                </Button>
-              </div>
             </div>
 
             {draft.recurrenceMode === "manual" ? (
@@ -348,32 +313,6 @@ export function ScheduleFormDialog({
               </>
             ) : null}
 
-            {draft.recurrenceMode !== "manual" && draft.recurrenceMode !== "always_on" ? (
-              <div className="grid gap-2">
-                <Label htmlFor="schedule-start-early">Start Early Minutes</Label>
-                <Input
-                  id="schedule-start-early"
-                  min={0}
-                  onChange={(event) => updateDraft("startEarlyMinutes", Number(event.target.value))}
-                  type="number"
-                  value={draft.startEarlyMinutes}
-                />
-              </div>
-            ) : null}
-
-            {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
-              <div className="grid gap-2">
-                <Label htmlFor="schedule-stop-late">Stop Late Minutes</Label>
-                <Input
-                  id="schedule-stop-late"
-                  min={0}
-                  onChange={(event) => updateDraft("stopLateMinutes", Number(event.target.value))}
-                  type="number"
-                  value={draft.stopLateMinutes}
-                />
-              </div>
-            ) : null}
-
             {draft.recurrenceMode === "monthly" ? (
               <div className="grid gap-2">
                 <Label htmlFor="schedule-day-of-month">Day Of Month</Label>
@@ -408,7 +347,7 @@ export function ScheduleFormDialog({
               </div>
             ) : null}
 
-            <div className="flex items-center gap-2 pt-7">
+            <div className="flex items-center gap-2 md:col-span-2">
               <Checkbox
                 checked={draft.enabled}
                 id="schedule-enabled"
@@ -418,224 +357,327 @@ export function ScheduleFormDialog({
             </div>
           </div>
 
-          <div className="grid gap-3">
-            <Label>Paused Date Ranges</Label>
-            <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
-              <DatePicker
-                aria-label="Pause start date"
-                onChange={(value) => updateDraft("pauseStartDate", value)}
-                value={draft.pauseStartDate}
-              />
-              <DatePicker
-                aria-label="Pause end date"
-                onChange={(value) => updateDraft("pauseEndDate", value)}
-                value={draft.pauseEndDate}
-              />
-              <Input
-                aria-label="Pause reason"
-                onChange={(event) => updateDraft("pauseReason", event.target.value)}
-                value={draft.pauseReason}
-              />
-              <Button onClick={() => onDraftChange(addPauseRangeToDraft(draft))} type="button">
-                <PlusCircle className="size-4" />
-                Add Pause
-              </Button>
-            </div>
-            {draft.exceptions.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {draft.exceptions.map((exception, index) => (
-                  <Button
-                    key={`${exception.action}-${exception.action === "skip" ? exception.date : `${exception.startDate}-${exception.endDate}`}`}
-                    onClick={() => onDraftChange(removeExceptionFromDraft(draft, index))}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Trash2 className="size-3" />
-                    {exception.action === "skip"
-                      ? `Skip ${exception.date}`
-                      : `Pause ${exception.startDate}-${exception.endDate}`}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-          </div>
+          <div className="border-t border-border">
+            <Accordion
+              collapsible
+              onValueChange={(value) => setAdvancedOpen(value === "advanced")}
+              type="single"
+              value={advancedOpen ? "advanced" : ""}
+            >
+              <AccordionItem className="border-none" value="advanced">
+                <AccordionTrigger className="py-3">Advanced options</AccordionTrigger>
+                <AccordionContent className="grid gap-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-quick-recurrence">Quick Recurrence</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          aria-invalid={quickRecurrenceError}
+                          id="schedule-quick-recurrence"
+                          onChange={(event) => {
+                            setQuickRecurrence(event.target.value);
+                            setQuickRecurrenceError(false);
+                          }}
+                          placeholder="weekdays 9am-10am"
+                          value={quickRecurrence}
+                        />
+                        <Button onClick={applyQuickRecurrence} type="button" variant="outline">
+                          <Sparkles className="size-4" />
+                          Apply
+                        </Button>
+                      </div>
+                    </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-title-template">Title Template</Label>
-              <Textarea
-                id="schedule-title-template"
-                onChange={(event) => updateDraft("titleTemplate", event.target.value)}
-                required
-                value={draft.titleTemplate}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-folder-template">Folder Template</Label>
-              <Textarea
-                id="schedule-folder-template"
-                onChange={(event) => updateDraft("folderTemplate", event.target.value)}
-                required
-                value={draft.folderTemplate}
-              />
-            </div>
-          </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-timezone">Timezone</Label>
+                      <Input
+                        id="schedule-timezone"
+                        onChange={(event) => updateDraft("timezone", event.target.value)}
+                        required
+                        value={draft.timezone}
+                      />
+                    </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-profile">Recording Profile</Label>
-              <Select
-                onValueChange={(value) => updateDraft("recordingProfileId", value)}
-                value={draft.recordingProfileId}
-              >
-                <SelectTrigger className={selectClass} id="schedule-profile">
-                  <SelectValue placeholder="Select a recording profile" />
-                </SelectTrigger>
-                <SelectContent>
-                  {recordingProfileOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-capture-backend">Backend</Label>
-              <Select
-                onValueChange={(value) =>
-                  updateDraft(
-                    "captureBackend",
-                    (value === "__all__" ? "" : value) as ScheduleDraft["captureBackend"],
-                  )
-                }
-                value={draft.captureBackend || "__all__"}
-              >
-                <SelectTrigger className={selectClass} id="schedule-capture-backend">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {captureBackends.map((backend) => (
-                    <SelectItem key={backend || "default"} value={backend || "__all__"}>
-                      {backend || "Node default"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-capture-interface">Interface</Label>
-              <Select
-                onValueChange={(value) =>
-                  onDraftChange({
-                    ...draft,
-                    captureChannels: [],
-                    captureInterfaceId: value === "__all__" ? "" : value,
-                    channelMode: "",
-                  })
-                }
-                value={draft.captureInterfaceId || "__all__"}
-              >
-                <SelectTrigger className={selectClass} id="schedule-capture-interface">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Node default</SelectItem>
-                  {selectedNode?.interfaces.map((audioInterface) => (
-                    <SelectItem key={audioInterface.id} value={audioInterface.id}>
-                      {audioInterfaceLabel(audioInterface)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="md:col-span-2">
-              <ChannelSelectionField
-                audioInterface={selectedNode?.interfaces.find(
-                  (candidate) => candidate.id === draft.captureInterfaceId,
-                )}
-                idPrefix="schedule-capture"
-                onChange={(value) =>
-                  onDraftChange({
-                    ...draft,
-                    captureChannels: value.channels,
-                    channelMode: value.mode,
-                  })
-                }
-                value={{ channels: draft.captureChannels, mode: draft.channelMode }}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
-              <Select
-                onValueChange={(value) => updateDraft("watchdogPolicyId", value)}
-                value={draft.watchdogPolicyId}
-              >
-                <SelectTrigger className={selectClass} id="schedule-watchdog">
-                  <SelectValue placeholder="Select a watchdog policy" />
-                </SelectTrigger>
-                <SelectContent>
-                  {watchdogPolicyOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-retention-policy">Retention Policy</Label>
-              <Select
-                onValueChange={(value) => updateDraft("retentionPolicyId", value)}
-                value={draft.retentionPolicyId}
-              >
-                <SelectTrigger className={selectClass} id="schedule-retention-policy">
-                  <SelectValue placeholder="Select a retention policy" />
-                </SelectTrigger>
-                <SelectContent>
-                  {retentionPolicies.map((policy) => (
-                    <SelectItem key={policy.id} value={policy.id}>
-                      {policy.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Upload Policies</Label>
-              {uploadPolicies.length > 0 ? (
-                <ToggleGroup
-                  className="flex flex-wrap justify-start gap-2"
-                  onValueChange={(value) => updateDraft("uploadPolicyIds", value)}
-                  type="multiple"
-                  value={draft.uploadPolicyIds}
-                >
-                  {uploadPolicies.map((policy) => (
-                    <ToggleGroupItem
-                      className="rounded-md border border-input px-3 data-[state=on]:border-ring"
-                      key={policy.id}
-                      value={policy.id}
-                    >
-                      {policy.name}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              ) : (
-                <p className="text-sm text-muted-foreground">No upload policies are configured.</p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Each selected policy uploads independently to its destination when a recording is
-                cached.
-              </p>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="schedule-tags">Tags</Label>
-              <Input
-                id="schedule-tags"
-                onChange={(event) => updateDraft("tags", event.target.value)}
-                value={draft.tags}
-              />
-            </div>
+                    {draft.recurrenceMode !== "manual" && draft.recurrenceMode !== "always_on" ? (
+                      <div className="grid gap-2">
+                        <Label htmlFor="schedule-start-early">Start Early Minutes</Label>
+                        <Input
+                          id="schedule-start-early"
+                          min={0}
+                          onChange={(event) =>
+                            updateDraft("startEarlyMinutes", Number(event.target.value))
+                          }
+                          type="number"
+                          value={draft.startEarlyMinutes}
+                        />
+                      </div>
+                    ) : null}
+
+                    {["daily", "weekly", "monthly"].includes(draft.recurrenceMode) ? (
+                      <div className="grid gap-2">
+                        <Label htmlFor="schedule-stop-late">Stop Late Minutes</Label>
+                        <Input
+                          id="schedule-stop-late"
+                          min={0}
+                          onChange={(event) =>
+                            updateDraft("stopLateMinutes", Number(event.target.value))
+                          }
+                          type="number"
+                          value={draft.stopLateMinutes}
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Assignees</Label>
+                      <AssigneeMultiSelect
+                        groupOptions={groupOptions}
+                        onChange={(next) =>
+                          onDraftChange({
+                            ...draft,
+                            assignedGroupIds: next.groupIds,
+                            assignedUserIds: next.userIds,
+                          })
+                        }
+                        selectedGroupIds={draft.assignedGroupIds}
+                        selectedUserIds={draft.assignedUserIds}
+                        userOptions={userOptions}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Assigned users and groups get scoped access to this schedule&apos;s room —
+                        listen, playback, and operating its recordings — without changing their
+                        role.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <Label>Paused Date Ranges</Label>
+                    <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
+                      <DatePicker
+                        aria-label="Pause start date"
+                        onChange={(value) => updateDraft("pauseStartDate", value)}
+                        value={draft.pauseStartDate}
+                      />
+                      <DatePicker
+                        aria-label="Pause end date"
+                        onChange={(value) => updateDraft("pauseEndDate", value)}
+                        value={draft.pauseEndDate}
+                      />
+                      <Input
+                        aria-label="Pause reason"
+                        onChange={(event) => updateDraft("pauseReason", event.target.value)}
+                        value={draft.pauseReason}
+                      />
+                      <Button
+                        onClick={() => onDraftChange(addPauseRangeToDraft(draft))}
+                        type="button"
+                      >
+                        <PlusCircle className="size-4" />
+                        Add Pause
+                      </Button>
+                    </div>
+                    {draft.exceptions.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {draft.exceptions.map((exception, index) => (
+                          <Button
+                            key={`${exception.action}-${exception.action === "skip" ? exception.date : `${exception.startDate}-${exception.endDate}`}`}
+                            onClick={() => onDraftChange(removeExceptionFromDraft(draft, index))}
+                            type="button"
+                            variant="outline"
+                          >
+                            <Trash2 className="size-3" />
+                            {exception.action === "skip"
+                              ? `Skip ${exception.date}`
+                              : `Pause ${exception.startDate}-${exception.endDate}`}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-title-template">Title Template</Label>
+                      <Textarea
+                        id="schedule-title-template"
+                        onChange={(event) => updateDraft("titleTemplate", event.target.value)}
+                        required
+                        value={draft.titleTemplate}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-folder-template">Folder Template</Label>
+                      <Textarea
+                        id="schedule-folder-template"
+                        onChange={(event) => updateDraft("folderTemplate", event.target.value)}
+                        required
+                        value={draft.folderTemplate}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-profile">Recording Profile</Label>
+                      <Select
+                        onValueChange={(value) => updateDraft("recordingProfileId", value)}
+                        value={draft.recordingProfileId}
+                      >
+                        <SelectTrigger className={selectClass} id="schedule-profile">
+                          <SelectValue placeholder="Select a recording profile" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {recordingProfileOptions.map((option) => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-capture-backend">Backend</Label>
+                      <Select
+                        onValueChange={(value) =>
+                          updateDraft(
+                            "captureBackend",
+                            (value === "__all__" ? "" : value) as ScheduleDraft["captureBackend"],
+                          )
+                        }
+                        value={draft.captureBackend || "__all__"}
+                      >
+                        <SelectTrigger className={selectClass} id="schedule-capture-backend">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {captureBackends.map((backend) => (
+                            <SelectItem key={backend || "default"} value={backend || "__all__"}>
+                              {backend || "Node default"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-capture-interface">Interface</Label>
+                      <Select
+                        onValueChange={(value) =>
+                          onDraftChange({
+                            ...draft,
+                            captureChannels: [],
+                            captureInterfaceId: value === "__all__" ? "" : value,
+                            channelMode: "",
+                          })
+                        }
+                        value={draft.captureInterfaceId || "__all__"}
+                      >
+                        <SelectTrigger className={selectClass} id="schedule-capture-interface">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Node default</SelectItem>
+                          {selectedNode?.interfaces.map((audioInterface) => (
+                            <SelectItem key={audioInterface.id} value={audioInterface.id}>
+                              {audioInterfaceLabel(audioInterface)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <ChannelSelectionField
+                        audioInterface={selectedNode?.interfaces.find(
+                          (candidate) => candidate.id === draft.captureInterfaceId,
+                        )}
+                        idPrefix="schedule-capture"
+                        onChange={(value) =>
+                          onDraftChange({
+                            ...draft,
+                            captureChannels: value.channels,
+                            channelMode: value.mode,
+                          })
+                        }
+                        value={{ channels: draft.captureChannels, mode: draft.channelMode }}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-watchdog">Watchdog Policy</Label>
+                      <Select
+                        onValueChange={(value) => updateDraft("watchdogPolicyId", value)}
+                        value={draft.watchdogPolicyId}
+                      >
+                        <SelectTrigger className={selectClass} id="schedule-watchdog">
+                          <SelectValue placeholder="Select a watchdog policy" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {watchdogPolicyOptions.map((option) => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-retention-policy">Retention Policy</Label>
+                      <Select
+                        onValueChange={(value) => updateDraft("retentionPolicyId", value)}
+                        value={draft.retentionPolicyId}
+                      >
+                        <SelectTrigger className={selectClass} id="schedule-retention-policy">
+                          <SelectValue placeholder="Select a retention policy" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {retentionPolicies.map((policy) => (
+                            <SelectItem key={policy.id} value={policy.id}>
+                              {policy.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Upload Policies</Label>
+                      {uploadPolicies.length > 0 ? (
+                        <ToggleGroup
+                          className="flex flex-wrap justify-start gap-2"
+                          onValueChange={(value) => updateDraft("uploadPolicyIds", value)}
+                          type="multiple"
+                          value={draft.uploadPolicyIds}
+                        >
+                          {uploadPolicies.map((policy) => (
+                            <ToggleGroupItem
+                              className="rounded-md border border-input px-3 data-[state=on]:border-ring"
+                              key={policy.id}
+                              value={policy.id}
+                            >
+                              {policy.name}
+                            </ToggleGroupItem>
+                          ))}
+                        </ToggleGroup>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No upload policies are configured.
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Each selected policy uploads independently to its destination when a
+                        recording is cached.
+                      </p>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="schedule-tags">Tags</Label>
+                      <Input
+                        id="schedule-tags"
+                        onChange={(event) => updateDraft("tags", event.target.value)}
+                        value={draft.tags}
+                      />
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
         </form>
 
