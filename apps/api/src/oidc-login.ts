@@ -1,4 +1,5 @@
 import {
+  allowInsecureRequests,
   authorizationCodeGrant,
   buildAuthorizationUrl,
   calculatePKCECodeChallenge,
@@ -8,6 +9,7 @@ import {
   randomPKCECodeVerifier,
   randomState,
   type Configuration,
+  type DiscoveryRequestOptions,
 } from "openid-client";
 import { createDatabase, eq, lte, oidcLoginStates } from "@rakkr/db";
 
@@ -229,13 +231,47 @@ async function discoveredClient(config: OidcRuntimeConfig) {
     redirect_uris: [config.redirectUri ?? ""],
     response_types: ["code"],
   };
+  const options = insecureIssuerOptions(config.issuer);
 
   return config.clientSecret
-    ? discovery(new URL(config.issuer ?? ""), config.clientId ?? "", {
-        ...metadata,
-        client_secret: config.clientSecret,
-      })
-    : discovery(new URL(config.issuer ?? ""), config.clientId ?? "", metadata, None());
+    ? discovery(
+        new URL(config.issuer ?? ""),
+        config.clientId ?? "",
+        { ...metadata, client_secret: config.clientSecret },
+        undefined,
+        options,
+      )
+    : discovery(new URL(config.issuer ?? ""), config.clientId ?? "", metadata, None(), options);
+}
+
+// Permits HTTP (non-TLS) discovery/token/JWKS requests, but ONLY for a loopback
+// issuer AND only when RAKKR_OIDC_ALLOW_INSECURE_ISSUER is explicitly enabled.
+// This is the seam that lets the in-process fake OIDC provider run over http in
+// tests; it can never relax transport security for a real remote issuer.
+function insecureIssuerOptions(issuer: string | undefined): DiscoveryRequestOptions | undefined {
+  if (!issuer || !isLoopbackHttpIssuer(issuer)) {
+    return undefined;
+  }
+
+  const flag = process.env.RAKKR_OIDC_ALLOW_INSECURE_ISSUER?.trim().toLowerCase();
+
+  if (!["1", "on", "true", "yes"].includes(flag ?? "")) {
+    return undefined;
+  }
+
+  return { execute: [allowInsecureRequests] };
+}
+
+function isLoopbackHttpIssuer(issuer: string) {
+  try {
+    const url = new URL(issuer);
+
+    return (
+      url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function prunePersistentSessions(db: ReturnType<typeof createDatabase>) {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
+  accessGroupSlug,
   accessPolicyInputSchema,
   rolePermissions,
   roles,
@@ -110,6 +111,25 @@ export function uniqueGroups(values: readonly AccessGroup[]) {
         .map((group) => [group.id, group] as const),
     ).values(),
   ];
+}
+
+// Maps raw IdP group-claim values (names or opaque ids) onto stable Rakkr group
+// ids using the SAME slug rule as operator-created groups (accessGroupSlug), so
+// an OIDC "Room Council" claim resolves to the `room-council` group an operator
+// made instead of a divergent second group. The raw claim value is kept as the
+// display name. When a value has no slug-usable characters we fall back to a
+// deterministic hash id (stable across logins, unlike the random id the manual
+// path uses on create) so the same claim never spawns duplicate groups.
+export function oidcGroupsFromClaims(values: readonly string[]) {
+  return uniqueGroups(
+    values
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((value) => ({
+        id: accessGroupSlug(value) || `group-${hashToken(value).slice(0, 12)}`,
+        name: value,
+      })),
+  );
 }
 
 export function localAccessPoliciesFromEnv(): AccessPolicy[] {

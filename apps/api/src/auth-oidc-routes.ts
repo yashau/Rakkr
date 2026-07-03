@@ -2,7 +2,12 @@ import type { Context, Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import type { Permission } from "@rakkr/shared";
 
-import type { LocalAuthService, LoginResult, SessionContext } from "./auth-service.js";
+import {
+  AuthError,
+  type LocalAuthService,
+  type LoginResult,
+  type SessionContext,
+} from "./auth-service.js";
 import type { AppBindings, RequirePermission } from "./http-types.js";
 import type { RecordAuditEvent } from "./http-types.js";
 import {
@@ -374,7 +379,11 @@ function callbackRedirect(login: LoginResult, returnTo: string) {
 }
 
 function oidcErrorReason(error: unknown) {
-  if (error instanceof OidcConfigError || error instanceof OidcLoginError) {
+  if (
+    error instanceof OidcConfigError ||
+    error instanceof OidcLoginError ||
+    error instanceof AuthError
+  ) {
     return error.code;
   }
 

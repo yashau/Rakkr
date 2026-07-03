@@ -54,6 +54,7 @@ depends = [
   "time:check",
   "node:check",
   "node:test",
+  "node:test-db",
   "node:lint",
   "node:format-check",
   "docs:lint",
@@ -158,6 +159,11 @@ run = "pnpm -r --if-present check"
 depends = ["node:build-libs"]
 description = "Run Node workspace tests"
 run = "pnpm -r --if-present test"
+
+[tasks."node:test-db"]
+depends = ["node:build-libs"]
+description = "Run DB-backed Node tests against a throwaway Postgres database"
+run = "pnpm --filter @rakkr/db exec node scripts/run-db-integration-tests.mjs"
 
 [tasks."node:lint"]
 description = "Run Oxlint with Tailwind CSS rules"
