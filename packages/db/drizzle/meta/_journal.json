@@ -288,6 +288,13 @@
       "when": 1783045545321,
       "tag": "0040_productive_cerise",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783093094120,
+      "tag": "0041_pink_patch",
+      "breakpoints": true
     }
   ]
 }

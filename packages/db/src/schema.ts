@@ -444,6 +444,14 @@ export const nodeSshCredentials = pgTable(
   },
   (table) => ({
     nodeIdx: index("node_ssh_credentials_node_idx").on(table.nodeId),
+    // At most one un-revoked (active) credential per node — the DB-level guard for
+    // the "one active key per node" invariant. Revoke-then-insert in persistActive
+    // is not atomic on its own, so two concurrent rotations could otherwise both
+    // insert an active credential; this partial unique index makes the second
+    // insert fail (rolled back with its transaction) instead.
+    activeNodeIdx: uniqueIndex("node_ssh_credentials_active_node_idx")
+      .on(table.nodeId)
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 

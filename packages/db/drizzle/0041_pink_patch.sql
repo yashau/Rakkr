@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "node_ssh_credentials_active_node_idx" ON "node_ssh_credentials" USING btree ("node_id") WHERE revoked_at IS NULL;

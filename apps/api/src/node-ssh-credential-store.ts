@@ -126,30 +126,39 @@ class PostgresNodeSshCredentialStore implements NodeSshCredentialStore {
   ): Promise<NodeSshCredentialMetadata> {
     const now = new Date();
 
-    // One active key per node: revoke any prior unrevoked credential first.
-    await this.db
-      .update(nodeSshCredentials)
-      .set({ revokedAt: now, rotatedAt: now })
-      .where(and(eq(nodeSshCredentials.nodeId, nodeId), isNull(nodeSshCredentials.revokedAt)));
+    // One active key per node: revoke any prior unrevoked credential, then insert
+    // the new one — ATOMICALLY. Without the transaction a failed insert would
+    // leave the node with every credential revoked and none active (no SSH
+    // access); and two concurrent rotations could both insert an active row. The
+    // revoke+insert runs in one transaction and the `node_ssh_credentials_active_node_idx`
+    // partial unique index makes a racing second insert fail, rolling back that
+    // whole rotation and preserving exactly one active credential.
+    const [row] = await this.db.transaction(async (tx) => {
+      await tx
+        .update(nodeSshCredentials)
+        .set({ revokedAt: now, rotatedAt: now })
+        .where(and(eq(nodeSshCredentials.nodeId, nodeId), isNull(nodeSshCredentials.revokedAt)));
 
-    const [row] = await this.db
-      .insert(nodeSshCredentials)
-      .values({
-        createdByUserId: input.actorUserId && isUuid(input.actorUserId) ? input.actorUserId : null,
-        fingerprint: input.fingerprint,
-        nodeId,
-        privateKeyEncrypted: encryptPrivateKey(input.privateKeyPem),
-        publicKey: input.publicKey,
-        username: input.username,
-      })
-      .returning({
-        createdAt: nodeSshCredentials.createdAt,
-        fingerprint: nodeSshCredentials.fingerprint,
-        id: nodeSshCredentials.id,
-        publicKey: nodeSshCredentials.publicKey,
-        rotatedAt: nodeSshCredentials.rotatedAt,
-        username: nodeSshCredentials.username,
-      });
+      return tx
+        .insert(nodeSshCredentials)
+        .values({
+          createdByUserId:
+            input.actorUserId && isUuid(input.actorUserId) ? input.actorUserId : null,
+          fingerprint: input.fingerprint,
+          nodeId,
+          privateKeyEncrypted: encryptPrivateKey(input.privateKeyPem),
+          publicKey: input.publicKey,
+          username: input.username,
+        })
+        .returning({
+          createdAt: nodeSshCredentials.createdAt,
+          fingerprint: nodeSshCredentials.fingerprint,
+          id: nodeSshCredentials.id,
+          publicKey: nodeSshCredentials.publicKey,
+          rotatedAt: nodeSshCredentials.rotatedAt,
+          username: nodeSshCredentials.username,
+        });
+    });
 
     return {
       createdAt: row.createdAt.toISOString(),
