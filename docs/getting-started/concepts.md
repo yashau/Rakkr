@@ -13,6 +13,11 @@ contracts in `packages/shared` and to tables in the
 
 ## Topology
 
+**Room** — a first-class location entity with a stable ID, unique per site and
+name. Nodes and schedules belong to a room, and it is the RBAC scope target for
+room-level access. Legacy free-text location/room fields are retained for display,
+but the room's ID is the source of truth for room identity.
+
 **Node** — a Linux machine running the recorder agent. Identified by a stable ID
 and described by alias, site/building/floor/room, hostname and IPs, agent
 version, OS/kernel, audio backends, tags, notes, and a live status
@@ -93,6 +98,14 @@ RBAC; see the [permissions reference](../reference/permissions.md).
 **Role** — a named bundle of permissions: `owner`, `admin`, `operator`,
 `viewer`, `auditor`.
 
+**Access group** — a first-party named set of users, assignable to schedules,
+room rosters, and access policies. OIDC group claims sync into the same store.
+
+**Room roster & capability** — a per-room grant of per-action capabilities
+(`view` / `listen` / `download` / `operate` / `book` / `edit` / `delete`) to
+users or groups. Each capability maps onto catalog permissions only when the
+request target resolves to that room; an explicit deny still wins.
+
 **Resource scope / access policy** — Rakkr is default-deny. Beyond role
 permissions, access is narrowed (or widened) by per-resource grants and
 allow/deny **access policies** for users, groups, or everyone. An explicit deny
@@ -114,6 +127,10 @@ retry queue that moves cached recordings to them.
 **Node lifecycle action** — an allowlisted remote operation run against a node's
 host over SSH via the Ansible runner: `install_dependencies`, `update_binary`,
 `restart_service`, `rotate_trust`, `smoke_check`.
+
+**Audio matrix switcher** — an external routing device Rakkr can drive so a live
+room's audio reaches a listener desk. Inputs map to rooms and outputs map to
+users, and the controller reconciles the device's routes.
 
 ---
 

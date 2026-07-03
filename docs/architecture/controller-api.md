@@ -98,7 +98,7 @@ Permissions in `code` are the exact strings checked. This is the map; the
 | --------------------- | ------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------- |
 | Auth / session        | `/api/v1/auth`                                    | — (self)              | login, logout, me                                                                 |
 | OIDC                  | `/api/v1/auth/oidc`                               | public config/actions | `auth:manage` for discovery                                                       |
-| Access / RBAC         | `/api/v1/auth/*`                                  | `auth:manage`         | users, groups, access policies, scopes                                            |
+| Access / RBAC         | `/api/v1/auth/*`                                  | `auth:manage`         | users, access groups (`/auth/groups`), access policies, scopes, room rosters      |
 | Audit                 | `/api/v1/audit-events`                            | `audit:read`          | export, facets, detail                                                            |
 | Nodes inventory       | `/api/v1/nodes`                                   | `node:read`           | `node:manage` (enroll, edit, rotate)                                              |
 | Node lifecycle        | `/api/v1/nodes/:id/lifecycle*`                    | `node:read` (jobs)    | `node:manage` (run action)                                                        |
@@ -108,8 +108,11 @@ Permissions in `code` are the exact strings checked. This is the map; the
 | Recording jobs        | `/api/v1/recording-jobs`                          | `recording:read`      | `recording:control`                                                               |
 | Upload queue / runner | `/api/v1/upload-queue`, `/api/v1/upload-runner`   | `recording:read`      | `recording:control`                                                               |
 | Schedules             | `/api/v1/schedules`                               | `schedule:read`       | `schedule:manage`                                                                 |
+| Schedule calendar     | `/api/v1/schedules/calendar`, `/api/v1/schedules/:scheduleId/move-occurrence` | `schedule:read`    | `schedule:manage` (move occurrence)                                               |
+| Rooms                 | `/api/v1/rooms`                                   | `node:read`           | `node:manage` (create/edit/delete); roster read/write `auth:manage`               |
 | Settings / templates  | `/api/v1/settings/*`                              | `settings:read`       | `settings:manage`                                                                 |
 | Retention             | `/api/v1/settings/retention-policies`             | `settings:read`       | `settings:manage`                                                                 |
+| Switchers             | `/api/v1/settings/switchers`                      | `switcher:read`       | `switcher:manage`; mappings `switcher:map`                                        |
 | Health events         | `/api/v1/health-events`                           | `health:read`         | `health:acknowledge`                                                              |
 | Status                | `/api/v1/status`                                  | `node:read`           | —                                                                                 |
 | Metrics               | `/metrics`                                        | `metrics:read`        | —                                                                                 |
@@ -126,6 +129,7 @@ individually toggleable and audited as service actions:
 | Upload runner    | 60s              | Process the upload queue against providers and retry budgets. |
 | Retention runner | 300s             | Execute controller-cache max-age/max-bytes cleanup.           |
 | Job-lease runner | 10s              | Fail orphaned jobs whose lease expired.                       |
+| Switcher routing runner | 20s        | Reconcile live meetings to owned switcher outputs in observe/enforce mode; open `switcher.unreachable` on failure. |
 
 Tuning knobs (intervals, batch sizes, leases, enable flags) are in the
 [configuration reference](../reference/configuration.md).

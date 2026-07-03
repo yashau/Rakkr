@@ -35,11 +35,12 @@ The Drizzle client (`packages/db/src/client.ts`) opens a small `postgres.js` poo
 
 ## Tables
 
-The schema (`packages/db/src/schema.ts`) defines 31 tables plus Postgres enums
+The schema (`packages/db/src/schema.ts`) defines 37 tables plus Postgres enums
 (`node_status`, `health_severity`, `recording_status`, `recording_job_status`,
-`recording_source`, `audit_outcome`, `access_policy_effect`,
-`access_policy_subject_type`). Timestamps are `timestamptz`; structured columns
-are `jsonb`.
+`recording_chunk_status`, `recording_source`, `audit_outcome`,
+`access_policy_effect`, `access_policy_subject_type`, `room_roster_subject_type`,
+`room_roster_source`). Timestamps are `timestamptz`; structured columns are
+`jsonb`.
 
 ### Auth & access
 
@@ -47,7 +48,7 @@ are `jsonb`.
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `users`                                             | Accounts: email (unique), name, optional password hash (null for OIDC), provider, `disabledAt`. |
 | `roles`, `permissions`, `role_permissions`          | The RBAC catalog and role→permission joins.                                                     |
-| `user_roles`, `access_groups`, `user_access_groups` | Role and group membership.                                                                      |
+| `user_roles`, `access_groups`, `user_access_groups` | Role and group membership; `access_groups`/`user_access_groups` back first-party group management, keyed by a name-derived immutable slug. |
 | `access_policies`                                   | Allow/deny rules by subject (user/group/everyone) and resource.                                 |
 | `user_resource_grants`                              | Direct per-user resource scope grants.                                                          |
 | `auth_sessions`                                     | Login sessions keyed by token hash, with expiry/revocation and client context.                  |
@@ -57,7 +58,7 @@ are `jsonb`.
 
 | Table              | Purpose                                                                                                       |
 | ------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `nodes`                 | Recorder nodes: alias, hostname, agent version, status, last-seen, plus jsonb location/network/metadata/tags.            |
+| `nodes`                 | Recorder nodes: alias, hostname, agent version, status, last-seen, plus jsonb location/network/metadata/tags. `roomId` (FK → `rooms`, `SET NULL`) is the room-identity source of truth; the legacy jsonb `location` is retained for display. |
 | `node_credentials`      | Node enrollment tokens (stored as hashes) with prefix, last-used, revocation.                                            |
 | `node_ssh_credentials`  | Per-node SSH keypairs for lifecycle: private key encrypted at rest, public half readable; the controller is the system of record. |
 | `node_bootstrap_tokens` | Single-use, short-TTL day-0 bootstrap tokens (stored as hashes) consumed atomically at first contact.                    |
@@ -70,7 +71,23 @@ are `jsonb`.
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `recordings`     | Recording records: name, folder, source, status, health status, duration, checksum, node/schedule relations, jsonb metadata/tags, plus the cache paths — `cachePath` (default-playback file) and the optional `rawCachePath`/`enhancedCachePath` rendition masters. |
 | `recording_jobs` | Capture job lifecycle with the jsonb capture `command` and lease/heartbeat fields; indexed for lease-based claiming.                          |
-| `schedules`      | Recurrence (jsonb), timezone, templates, capture overrides, and references to profile/retention/watchdog policies plus a `uploadPolicyIds` list for multi-destination fan-out (the singular `uploadPolicyId` is a retained-for-backfill legacy column). |
+| `recording_chunks` | Chunk lifecycle for a recording (`recording_chunk_status`: `capturing`/`cached`/`uploading`/`uploaded`/`partial`/`failed`).                 |
+| `schedules`      | Recurrence (jsonb), timezone, templates, capture overrides, and references to profile/retention/watchdog policies plus a `uploadPolicyIds` list for multi-destination fan-out (the singular `uploadPolicyId` is a retained-for-backfill legacy column). `roomId` (FK → `rooms`, `RESTRICT`) is the room-identity source of truth; the legacy `room` column is retained for display/templates. |
+
+### Rooms & access rosters
+
+| Table         | Purpose                                                                                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rooms`       | First-class rooms: `name`, required `site`, optional building/floor/description/notes. Unique on (`site`, `name`); referenced by `nodes.roomId` and `schedules.roomId`.                                 |
+| `room_roster` | Per-room access grants: `roomId` (FK → `rooms`), `subjectType` (`user`/`group`), `subjectId`, jsonb `capabilities`, `source` (`manual`/`calendar`), `sourceScheduleId`, `grantedByUserId`. |
+
+### Switchers
+
+| Table                 | Purpose                                                                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `switchers`           | Audio-matrix switchers: host/port/model/mode/`enabled`, input/output counts, plus jsonb `secrets` (encrypted). |
+| `switcher_input_map`  | Maps a switcher input to a room (`switcherId` + `input` → `roomId`).                                                                     |
+| `switcher_output_map` | Maps a switcher output to a user (`switcherId` + `output` → `userId`).                                                                   |
 
 ### Health & audit
 
@@ -99,8 +116,8 @@ are `jsonb`.
 ## Migrations
 
 Migration SQL lives in `packages/db/drizzle/*.sql` with snapshots under
-`drizzle/meta/`; **migrations are committed alongside schema changes** (~34 to
-date). The workflow:
+`drizzle/meta/`; **migrations are committed alongside schema changes** (~40 to
+date, highest `0039`). The workflow:
 
 ```powershell
 mise run db:generate   # drizzle-kit generate — emit SQL from schema.ts
@@ -126,7 +143,7 @@ sync. It exports:
 - **Recurrence schemas** — `scheduleRecurrenceSchema` is a discriminated union on
   `mode` (`manual`/`once`/`daily`/`weekly`/`monthly`/`always_on`) with
   start-early/stop-late and exceptions.
-- **The RBAC source of truth** — the `Permission` union (21 strings), the `Role`
+- **The RBAC source of truth** — the `Permission` union (24 strings), the `Role`
   union (`owner`/`admin`/`operator`/`viewer`/`auditor`), the `rolePermissions`
   map, and `hasPermission` helpers. See the
   [permissions reference](../reference/permissions.md).

@@ -68,13 +68,15 @@ over SSH.
   [Web console](architecture/web-console.md) ·
   [Data model](architecture/data-model.md)
 - **Guides** — [Authentication & RBAC](guides/authentication-and-rbac.md) ·
+  [Rooms & access rosters](guides/rooms.md) ·
   [Nodes & inventory](guides/nodes-and-inventory.md) ·
   [Node onboarding](guides/node-onboarding.md) ·
   [Recording](guides/recording.md) · [Scheduling](guides/scheduling.md) ·
   [Health watchdog](guides/health-watchdog.md) ·
   [Storage & uploads](guides/storage-and-uploads.md) ·
   [Transport security](guides/transport-security.md) ·
-  [Node lifecycle](guides/node-lifecycle.md)
+  [Node lifecycle](guides/node-lifecycle.md) ·
+  [Audio matrix switcher routing](guides/switcher-routing.md)
 - **Reference** — [Configuration](reference/configuration.md) ·
   [Recorder agent CLI](reference/recorder-agent.md) ·
   [API endpoints](reference/api.md) · [Permissions](reference/permissions.md) ·

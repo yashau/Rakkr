@@ -72,6 +72,7 @@ Each checks a [baseline doc](../contributing/baselines.md) against the source:
 | `mise run auth:check-oidc`                                                                                  | Azure AD OIDC            |
 | `mise run security:check-rbac`                                                                              | RBAC / audit             |
 | `mise run security:check-transport`                                                                         | Transport security       |
+| `mise run switcher:check`                                                                                   | Audio matrix switcher routing |
 | `mise run scheduler:check`                                                                                  | Scheduler                |
 | `mise run settings:check`                                                                                   | Settings / templates     |
 | `mise run recordings:check`                                                                                 | Recording library        |
