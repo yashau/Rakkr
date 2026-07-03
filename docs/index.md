@@ -51,8 +51,9 @@ over SSH.
 | Understand what Rakkr is and why it exists                   | [Introduction](getting-started/introduction.md)   |
 | Run it locally in a few minutes                              | [Quick start](getting-started/quick-start.md)     |
 | Learn the vocabulary (nodes, jobs, schedules, channel maps…) | [Core concepts](getting-started/concepts.md)      |
+| **Actually use the console — record, schedule, administer**  | The [How-to guides](how-to/index.md)              |
 | Understand how the pieces fit together                       | [Architecture overview](architecture/overview.md) |
-| Operate a specific feature                                   | The [Guides](guides/recording.md)                 |
+| Understand how a feature works underneath                    | The [Guides](guides/recording.md)                 |
 | Look up an env var, endpoint, or permission                  | The [Reference](reference/configuration.md)       |
 | Deploy or monitor a controller                               | [Operations](operations/deployment.md)            |
 | Contribute code                                              | [Contributing](contributing/development.md)       |
@@ -62,6 +63,12 @@ over SSH.
 - **Getting started** — [Introduction](getting-started/introduction.md) ·
   [Quick start](getting-started/quick-start.md) ·
   [Core concepts](getting-started/concepts.md)
+- **How-to guides** — task-by-task walkthroughs for operators and
+  administrators: [overview & index](how-to/index.md) ·
+  [Get around the console](how-to/navigate-the-console.md) ·
+  [Record](how-to/record-a-session.md) · [Schedule](how-to/schedule-recordings.md) ·
+  [Manage rooms](how-to/manage-rooms.md) · [Grant room access](how-to/grant-room-access.md) ·
+  [Enroll nodes](how-to/enroll-and-configure-nodes.md) · [Manage users](how-to/manage-users.md)
 - **Architecture** — [Overview](architecture/overview.md) ·
   [Controller API](architecture/controller-api.md) ·
   [Recorder agent](architecture/recorder-agent.md) ·
