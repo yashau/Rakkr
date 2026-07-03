@@ -46,7 +46,7 @@ export function toneTileClass(tone: StatusTone): string {
     return "border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200";
   }
 
-  return "border-border bg-background text-foreground";
+  return "border-border bg-transparent text-foreground";
 }
 
 /**

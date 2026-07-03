@@ -125,17 +125,19 @@ export function UploadRunnerPanel() {
             Refresh
           </Button>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex">
-                <Button
-                  disabled={runMutation.isPending || !permissions.canRun}
-                  onClick={() => runMutation.mutate()}
-                >
-                  <Play className="size-4" />
-                  Run now
-                </Button>
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex">
+                  <Button
+                    disabled={runMutation.isPending || !permissions.canRun}
+                    onClick={() => runMutation.mutate()}
+                  >
+                    <Play className="size-4" />
+                    Run now
+                  </Button>
+                </span>
+              }
+            />
             <TooltipContent>
               {permissions.canRun ? "Run upload queue now" : "Requires recording control"}
             </TooltipContent>
@@ -184,7 +186,7 @@ export function UploadRunnerPanel() {
             }
             value={queueFilterDraft.status || "__all__"}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -206,7 +208,7 @@ export function UploadRunnerPanel() {
             }
             value={queueFilterDraft.provider || "__all__"}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All providers" />
             </SelectTrigger>
             <SelectContent>
@@ -321,20 +323,22 @@ function UploadQueueRow({
       <div className="text-xs text-muted-foreground">{item.provider}</div>
       <div className="text-xs text-muted-foreground">Next {formatDateTime(item.nextAttemptAt)}</div>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              disabled={!retryable || !canRetry || isRetrying}
-              onClick={() => onRetry(item.id)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <RotateCcw className="size-4" />
-              Retry
-            </Button>
-          </span>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <span className="inline-flex">
+              <Button
+                disabled={!retryable || !canRetry || isRetrying}
+                onClick={() => onRetry(item.id)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <RotateCcw className="size-4" />
+                Retry
+              </Button>
+            </span>
+          }
+        />
         <TooltipContent>
           {canRetry ? "Retry upload queue item" : "Requires recording control"}
         </TooltipContent>

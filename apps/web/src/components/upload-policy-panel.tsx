@@ -76,7 +76,7 @@ export function UploadPolicyEditor({
             }
             value={draft.destinationId ?? STUB_DESTINATION}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -100,7 +100,7 @@ export function UploadPolicyEditor({
             }
             value={draft.trigger}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -136,7 +136,7 @@ export function UploadPolicyEditor({
       </div>
 
       <label
-        className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+        className="flex h-10 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm"
         htmlFor={`upload-policy-enabled-${policy.id}`}
       >
         <Checkbox
@@ -151,7 +151,7 @@ export function UploadPolicyEditor({
       </label>
 
       <label
-        className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+        className="flex h-10 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm"
         htmlFor={`upload-policy-delete-cache-${policy.id}`}
       >
         <Checkbox
@@ -172,14 +172,19 @@ export function UploadPolicyEditor({
 
       <div className="flex justify-end">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={mutation.isPending || !canManage}
+                  onClick={() => mutation.mutate()}
+                >
+                  <Save className="size-4" />
+                  Save
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {canManage ? "Save upload policy" : "Requires settings manage"}
           </TooltipContent>

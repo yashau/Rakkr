@@ -99,11 +99,11 @@ export function ListenMonitorPanel({ onClose, onSessionChange, preview }: Listen
           <ToggleGroup
             className="gap-0 overflow-hidden rounded-md border border-border"
             onValueChange={(value) => {
-              if (value) switchMutation.mutate(value as LiveListenRendition);
+              const next = value[0] as LiveListenRendition | undefined;
+              if (next) switchMutation.mutate(next);
             }}
             size="sm"
-            type="single"
-            value={activeRendition}
+            value={activeRendition ? [activeRendition] : []}
           >
             {liveListenRenditions.map((rendition) => (
               <ToggleGroupItem
@@ -117,33 +117,37 @@ export function ListenMonitorPanel({ onClose, onSessionChange, preview }: Listen
             ))}
           </ToggleGroup>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex">
-                <Button
-                  disabled={streamQuery.isFetching}
-                  onClick={() => void streamQuery.refetch()}
-                  size="icon"
-                  variant="outline"
-                >
-                  <RefreshCcw className="size-4" />
-                </Button>
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex">
+                  <Button
+                    disabled={streamQuery.isFetching}
+                    onClick={() => void streamQuery.refetch()}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <RefreshCcw className="size-4" />
+                  </Button>
+                </span>
+              }
+            />
             <TooltipContent>Refresh monitor audio</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex">
-                <Button
-                  disabled={stopMutation.isPending}
-                  onClick={() => stopMutation.mutate()}
-                  size="icon"
-                  variant="outline"
-                >
-                  <X className="size-4" />
-                </Button>
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex">
+                  <Button
+                    disabled={stopMutation.isPending}
+                    onClick={() => stopMutation.mutate()}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </span>
+              }
+            />
             <TooltipContent>Stop listen monitor</TooltipContent>
           </Tooltip>
         </div>

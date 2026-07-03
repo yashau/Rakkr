@@ -79,10 +79,7 @@ export function AccessPolicyComposer({
             }
             value={draft.effect}
           >
-            <SelectTrigger
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              id="policy-effect"
-            >
+            <SelectTrigger className="w-full" id="policy-effect">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -106,10 +103,7 @@ export function AccessPolicyComposer({
             }
             value={draft.subjectType}
           >
-            <SelectTrigger
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              id="policy-subject-type"
-            >
+            <SelectTrigger className="w-full" id="policy-subject-type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -140,10 +134,7 @@ export function AccessPolicyComposer({
             onValueChange={(value) => setDraft((current) => ({ ...current, resourceType: value }))}
             value={draft.resourceType}
           >
-            <SelectTrigger
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              id="policy-resource-type"
-            >
+            <SelectTrigger className="w-full" id="policy-resource-type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

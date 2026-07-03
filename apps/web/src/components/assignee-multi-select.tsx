@@ -1,7 +1,7 @@
 import { Users, UserRound, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Combobox, type ComboboxGroup } from "@/components/ui/combobox";
+import { Combobox, type ComboboxGroup } from "@/components/searchable-combobox";
 
 export interface AssigneeOption {
   id: string;

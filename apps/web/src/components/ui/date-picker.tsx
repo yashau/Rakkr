@@ -50,23 +50,25 @@ export function DatePicker({
 
   return (
     <Popover onOpenChange={setOpen} open={open}>
-      <PopoverTrigger asChild>
-        <Button
-          aria-label={ariaLabel}
-          className={cn(
-            "w-full justify-start text-left font-normal",
-            !selected && "text-muted-foreground",
-            className,
-          )}
-          disabled={disabled}
-          id={id}
-          type="button"
-          variant="outline"
-        >
-          <CalendarIcon className="size-4 shrink-0" />
-          <span className="truncate">{selected ? formatDate(selected) : placeholder}</span>
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger
+        render={
+          <Button
+            aria-label={ariaLabel}
+            className={cn(
+              "w-full justify-start text-left font-normal",
+              !selected && "text-muted-foreground",
+              className,
+            )}
+            disabled={disabled}
+            id={id}
+            type="button"
+            variant="outline"
+          >
+            <CalendarIcon className="size-4 shrink-0" />
+            <span className="truncate">{selected ? formatDate(selected) : placeholder}</span>
+          </Button>
+        }
+      />
       <PopoverContent align="start" className="w-auto p-0">
         <Calendar
           mode="single"

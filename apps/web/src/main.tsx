@@ -235,16 +235,18 @@ function RootLayout() {
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Sheet onOpenChange={setMobileNavOpen} open={mobileNavOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    aria-label="Open navigation"
-                    className="lg:hidden"
-                    size="icon"
-                    variant="outline"
-                  >
-                    <Menu className="size-4" />
-                  </Button>
-                </SheetTrigger>
+                <SheetTrigger
+                  render={
+                    <Button
+                      aria-label="Open navigation"
+                      className="lg:hidden"
+                      size="icon"
+                      variant="outline"
+                    >
+                      <Menu className="size-4" />
+                    </Button>
+                  }
+                />
                 <SheetContent className="w-64 p-4" side="left">
                   <SheetTitle className="mb-4 flex items-center gap-2 text-lg font-semibold">
                     <RakkrLogo className="size-6" />
@@ -271,12 +273,16 @@ function RootLayout() {
               </div>
               <ThemeToggle className="mr-1 hidden md:flex" />
               {canReadSettings ? (
-                <Button asChild variant="outline">
-                  <Link to="/settings">
-                    <Settings className="size-4" />
-                    Settings
-                  </Link>
-                </Button>
+                <Button
+                  variant="outline"
+                  nativeButton={false}
+                  render={
+                    <Link to="/settings">
+                      <Settings className="size-4" />
+                      Settings
+                    </Link>
+                  }
+                />
               ) : null}
               <Button
                 disabled={logoutMutation.isPending}
@@ -287,18 +293,20 @@ function RootLayout() {
                 Logout
               </Button>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <Button
-                      disabled={!recordAction.canOpen}
-                      onClick={() => setQuickRecordOpen((open) => !open)}
-                      variant={quickRecordOpen ? "secondary" : "default"}
-                    >
-                      <AudioLines className="size-4" />
-                      Record
-                    </Button>
-                  </span>
-                </TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <span className="inline-flex">
+                      <Button
+                        disabled={!recordAction.canOpen}
+                        onClick={() => setQuickRecordOpen((open) => !open)}
+                        variant={quickRecordOpen ? "secondary" : "default"}
+                      >
+                        <AudioLines className="size-4" />
+                        Record
+                      </Button>
+                    </span>
+                  }
+                />
                 {recordAction.title ? <TooltipContent>{recordAction.title}</TooltipContent> : null}
               </Tooltip>
             </div>
@@ -376,7 +384,7 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
             <Label htmlFor="login-email">Email</Label>
             <Input
               autoComplete="username"
-              className="h-10 bg-background"
+              className="h-10"
               id="login-email"
               onChange={(event) => setEmail(event.target.value)}
               type="email"
@@ -388,7 +396,7 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
             <Label htmlFor="login-password">Password</Label>
             <Input
               autoComplete="current-password"
-              className="h-10 bg-background"
+              className="h-10"
               id="login-password"
               onChange={(event) => setPassword(event.target.value)}
               type="password"
@@ -541,7 +549,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange enableSystem>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={200}>
+        <TooltipProvider delay={200}>
           <RouterProvider router={router} />
           <Toaster position="bottom-right" richColors />
         </TooltipProvider>

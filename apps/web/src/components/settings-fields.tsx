@@ -27,7 +27,7 @@ export function Toggle({
 
   return (
     <label
-      className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm"
+      className="flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-input bg-transparent px-3 text-sm transition-colors select-none hover:bg-accent/50 has-data-[checked]:border-primary/40 has-data-[checked]:bg-primary/5"
       htmlFor={checkboxId}
     >
       <Checkbox

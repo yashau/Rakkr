@@ -68,7 +68,7 @@ export function RetentionPolicyEditor({
             }
             value={draft.scope}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -88,7 +88,7 @@ export function RetentionPolicyEditor({
             }
             value={draft.action}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -146,14 +146,19 @@ export function RetentionPolicyEditor({
 
       <div className="flex justify-end">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={mutation.isPending || !canManage}
+                  onClick={() => mutation.mutate()}
+                >
+                  <Save className="size-4" />
+                  Save
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {canManage ? "Save retention policy" : "Requires settings manage"}
           </TooltipContent>
@@ -175,7 +180,7 @@ function BooleanField({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
+    <label className="flex h-10 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm">
       <Checkbox
         checked={checked}
         disabled={disabled}

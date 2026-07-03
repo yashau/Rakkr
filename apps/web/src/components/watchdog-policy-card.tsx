@@ -110,7 +110,7 @@ export function WatchdogPolicyCard({
             }
             value={draft.activeDuring}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -131,7 +131,7 @@ export function WatchdogPolicyCard({
             }
             value={draft.metric}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -152,7 +152,7 @@ export function WatchdogPolicyCard({
             }
             value={draft.channelCorrelationMode ?? "off"}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -172,7 +172,7 @@ export function WatchdogPolicyCard({
             }
             value={draft.clippingMode ?? "off"}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -192,7 +192,7 @@ export function WatchdogPolicyCard({
             }
             value={draft.flatlineMode ?? "off"}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -212,7 +212,7 @@ export function WatchdogPolicyCard({
             }
             value={draft.qualityAlertMode ?? "off"}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -375,7 +375,7 @@ export function WatchdogPolicyCard({
             }
             value={draft.severity}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -394,7 +394,7 @@ export function WatchdogPolicyCard({
             onValueChange={(value) => setCalibrationNodeId(value)}
             value={calibrationNodeId}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -414,21 +414,25 @@ export function WatchdogPolicyCard({
           value={signalMarginDb}
         />
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                disabled={
-                  calibrationAction.disabled || calibrationMutation.isPending || !calibrationNodeId
-                }
-                onClick={() => calibrationMutation.mutate()}
-                type="button"
-                variant="outline"
-              >
-                <Gauge className="size-4" />
-                Calibrate
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={
+                    calibrationAction.disabled ||
+                    calibrationMutation.isPending ||
+                    !calibrationNodeId
+                  }
+                  onClick={() => calibrationMutation.mutate()}
+                  type="button"
+                  variant="outline"
+                >
+                  <Gauge className="size-4" />
+                  Calibrate
+                </Button>
+              </span>
+            }
+          />
           {calibrationAction.title ? (
             <TooltipContent>{calibrationAction.title}</TooltipContent>
           ) : null}
@@ -441,14 +445,19 @@ export function WatchdogPolicyCard({
 
       <div className="flex justify-end">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={mutation.isPending || !canManage}
+                  onClick={() => mutation.mutate()}
+                >
+                  <Save className="size-4" />
+                  Save
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {canManage ? "Save watchdog policy" : "Requires settings manage"}
           </TooltipContent>

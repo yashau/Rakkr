@@ -357,7 +357,7 @@ function AuditEventDetails({ event }: { event: AuditEvent }) {
 
 function AuditDetailBlock({ title, value }: { title: string; value: unknown }) {
   return (
-    <div className="grid gap-1 rounded-md border border-border bg-background p-3">
+    <div className="grid gap-1 rounded-md border border-border bg-transparent p-3">
       <div className="text-xs font-medium text-muted-foreground">{title}</div>
       <pre className="max-h-40 overflow-auto text-xs whitespace-pre-wrap text-foreground">
         {jsonPreview(value)}

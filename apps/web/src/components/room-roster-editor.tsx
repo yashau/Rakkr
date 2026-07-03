@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Combobox, type ComboboxGroup } from "@/components/ui/combobox";
+import { Combobox, type ComboboxGroup } from "@/components/searchable-combobox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
@@ -113,7 +113,7 @@ export function RoomRosterEditor({ roomId }: { roomId: string }) {
         <div className="grid gap-2">
           {calendarEntries.map((entry) => (
             <div
-              className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-3 text-sm"
+              className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-transparent p-3 text-sm"
               key={`calendar-${entry.subjectType}-${entry.subjectId}`}
             >
               <SubjectBadge type={entry.subjectType} />
@@ -139,7 +139,7 @@ export function RoomRosterEditor({ roomId }: { roomId: string }) {
       <div className="grid gap-2">
         {manualEntries.map((entry) => (
           <div
-            className="grid gap-2 rounded-md border border-border bg-background p-3"
+            className="grid gap-2 rounded-md border border-border bg-transparent p-3"
             key={`manual-${entry.subjectType}-${entry.subjectId}`}
           >
             <div className="flex flex-wrap items-center gap-2">
@@ -162,7 +162,7 @@ export function RoomRosterEditor({ roomId }: { roomId: string }) {
               onValueChange={(values) =>
                 setCapabilities(entry.subjectId, values as RoomCapability[])
               }
-              type="multiple"
+              multiple
               value={entry.capabilities}
               variant="outline"
             >
@@ -249,7 +249,7 @@ function manualEntryDraftsFromRoster(entries: RoomRosterEntry[]): ManualEntryDra
 
 function SubjectBadge({ type }: { type: "group" | "user" }) {
   return (
-    <Badge className="gap-1 bg-background" variant="outline">
+    <Badge className="gap-1 bg-transparent" variant="outline">
       {type === "group" ? <Users className="size-3" /> : <UserRound className="size-3" />}
       {type}
     </Badge>

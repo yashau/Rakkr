@@ -42,7 +42,7 @@ export function NodeHealthTrend({ events }: { events: HealthEvent[] }) {
   );
 
   return (
-    <div className="rounded-md border border-border bg-background p-3">
+    <div className="rounded-md border border-border bg-transparent p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium">
           <TrendingUp className="size-4" />
@@ -58,20 +58,22 @@ export function NodeHealthTrend({ events }: { events: HealthEvent[] }) {
 
           return (
             <Tooltip key={bucket.date}>
-              <TooltipTrigger asChild>
-                <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="font-medium tabular-nums">{bucket.date}</span>
-                    <span className="text-muted-foreground tabular-nums">{bucket.count}</span>
+              <TooltipTrigger
+                render={
+                  <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium tabular-nums">{bucket.date}</span>
+                      <span className="text-muted-foreground tabular-nums">{bucket.count}</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full rounded-full ${healthBarClass(bucket.tone)}`}
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full rounded-full ${healthBarClass(bucket.tone)}`}
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
-                </div>
-              </TooltipTrigger>
+                }
+              />
               <TooltipContent>{`${bucket.date}: ${bucket.count} health events`}</TooltipContent>
             </Tooltip>
           );

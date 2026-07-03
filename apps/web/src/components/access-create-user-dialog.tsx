@@ -59,12 +59,14 @@ export function AccessCreateUserDialog({
       }}
       open={open}
     >
-      <DialogTrigger asChild>
-        <Button type="button">
-          <UserPlus className="size-4" />
-          Add user
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button type="button">
+            <UserPlus className="size-4" />
+            Add user
+          </Button>
+        }
+      />
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Local User</DialogTitle>
@@ -162,7 +164,7 @@ export function AccessCreateUserDialog({
                     <FormControl>
                       <Textarea
                         {...field}
-                        className="min-h-20 bg-background font-mono text-xs"
+                        className="min-h-20 bg-transparent font-mono text-xs"
                         placeholder="node:node_x32_test"
                       />
                     </FormControl>
@@ -210,7 +212,7 @@ function RolePicker({
 
         return (
           <Label
-            className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-normal"
+            className="flex h-9 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm font-normal"
             htmlFor={checkboxId}
             key={role}
           >

@@ -1,21 +1,18 @@
-import { Check, ChevronsUpDown } from "lucide-react";
-import { useState } from "react";
-
 import type { AssigneeOption } from "@/components/assignee-multi-select";
-import { Button } from "@/components/ui/button";
 import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+  Combobox,
+  ComboboxCollection,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 
-// Canonical shadcn single-select combobox (Popover + Command) for picking one
-// user or group. Used by the access-policy composer so every user/group
-// assignment field is the same searchable control.
+// Single-select combobox (Base UI) for picking one user or group. Used by the
+// access-policy composer so every user/group assignment field is the same
+// searchable control. The input doubles as the search box and shows the
+// current selection's label.
 export function SubjectCombobox({
   disabled = false,
   emptyLabel = "No matches found.",
@@ -33,40 +30,28 @@ export function SubjectCombobox({
   searchPlaceholder?: string;
   value: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((option) => option.id === value);
+  const selected = options.find((option) => option.id === value) ?? null;
 
   return (
-    <Popover onOpenChange={setOpen} open={open}>
-      <PopoverTrigger asChild>
-        <Button
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          className="h-9 justify-between font-normal"
-          disabled={disabled}
-          type="button"
-          variant="outline"
-        >
-          <span className={cn("truncate", !selected && "text-muted-foreground")}>
-            {selected?.label ?? (value || placeholder)}
-          </span>
-          <ChevronsUpDown className="size-4 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyLabel}</CommandEmpty>
-            {options.map((option) => (
-              <CommandItem
-                key={option.id}
-                onSelect={() => {
-                  onChange(option.id);
-                  setOpen(false);
-                }}
-                value={`${option.label} ${option.sublabel ?? ""} ${option.id}`}
-              >
+    <Combobox
+      disabled={disabled}
+      isItemEqualToValue={(a: AssigneeOption, b: AssigneeOption) => a.id === b.id}
+      itemToStringLabel={(option: AssigneeOption) => option.label}
+      items={options}
+      onValueChange={(option: AssigneeOption | null) => onChange(option?.id ?? "")}
+      value={selected}
+    >
+      <ComboboxInput
+        aria-label={placeholder}
+        disabled={disabled}
+        placeholder={selected ? searchPlaceholder : placeholder}
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>{emptyLabel}</ComboboxEmpty>
+        <ComboboxList>
+          <ComboboxCollection>
+            {(option: AssigneeOption) => (
+              <ComboboxItem key={option.id} value={option}>
                 <span className="flex flex-1 flex-col">
                   <span className="truncate">{option.label}</span>
                   {option.sublabel ? (
@@ -75,14 +60,11 @@ export function SubjectCombobox({
                     </span>
                   ) : null}
                 </span>
-                <Check
-                  className={cn("size-4", option.id === value ? "opacity-100" : "opacity-0")}
-                />
-              </CommandItem>
-            ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+              </ComboboxItem>
+            )}
+          </ComboboxCollection>
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }

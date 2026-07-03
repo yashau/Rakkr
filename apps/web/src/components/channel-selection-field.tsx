@@ -18,8 +18,7 @@ const channelModes: { label: string; value: ChannelMode }[] = [
   { label: "Multichannel", value: "multichannel" },
 ];
 
-const modeSelectClassName =
-  "flex h-9 w-44 min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-1 text-sm whitespace-nowrap text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>span]:line-clamp-1";
+const modeSelectClassName = "w-44 min-w-0";
 
 export interface ChannelSelectionValue {
   channels: number[];
@@ -73,7 +72,7 @@ export function ChannelSelectionField({
               mode: value.mode,
             })
           }
-          type="multiple"
+          multiple
           value={value.channels.map(String)}
           variant="outline"
         >

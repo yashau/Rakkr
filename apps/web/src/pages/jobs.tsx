@@ -66,8 +66,7 @@ const statuses: Array<"" | RecordingJob["status"]> = [
   "cancelled",
 ];
 const captureBackends: JobsPageFilters["captureBackend"][] = ["", "alsa", "jack", "pipewire"];
-const selectClassName =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const selectClassName = "w-full";
 const recordingJobFilterDraftKeys: Record<RecordingJobFilterKey, keyof JobsPageFilters> = {
   captureBackend: "captureBackend",
   captureInterfaceId: "captureInterfaceId",
@@ -398,7 +397,7 @@ export function JobsPage() {
           </FilterToolbar>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
+        <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-transparent p-3 md:flex-row md:items-center md:justify-between">
           <label className="flex items-center gap-2 text-sm" htmlFor="jobs-bulk-select-all">
             <Checkbox
               checked={allVisibleSelected}
@@ -409,21 +408,23 @@ export function JobsPage() {
           </label>
           <div className="flex flex-wrap gap-2">
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    disabled={
-                      selectedVisibleJobIds.length === 0 || selectedExportMutation.isPending
-                    }
-                    onClick={() => selectedExportMutation.mutate(selectedVisibleJobIds)}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Download className="size-4" />
-                    Export selected
-                  </Button>
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex">
+                    <Button
+                      disabled={
+                        selectedVisibleJobIds.length === 0 || selectedExportMutation.isPending
+                      }
+                      onClick={() => selectedExportMutation.mutate(selectedVisibleJobIds)}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Download className="size-4" />
+                      Export selected
+                    </Button>
+                  </span>
+                }
+              />
               <TooltipContent>
                 {selectedVisibleJobIds.length > 0
                   ? "Export selected visible jobs"
@@ -431,19 +432,21 @@ export function JobsPage() {
               </TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    disabled={bulkRetryTargets.length === 0 || bulkRetryJobMutation.isPending}
-                    onClick={() => bulkRetryJobMutation.mutate({ jobIds: bulkRetryTargets })}
-                    type="button"
-                    variant="outline"
-                  >
-                    <RotateCcw className="size-4" />
-                    Retry selected
-                  </Button>
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex">
+                    <Button
+                      disabled={bulkRetryTargets.length === 0 || bulkRetryJobMutation.isPending}
+                      onClick={() => bulkRetryJobMutation.mutate({ jobIds: bulkRetryTargets })}
+                      type="button"
+                      variant="outline"
+                    >
+                      <RotateCcw className="size-4" />
+                      Retry selected
+                    </Button>
+                  </span>
+                }
+              />
               <TooltipContent>
                 {bulkRetryTargets.length > 0
                   ? "Retry selected failed or cancelled jobs"
@@ -451,19 +454,21 @@ export function JobsPage() {
               </TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    disabled={bulkStopTargets.length === 0 || bulkStopJobMutation.isPending}
-                    onClick={() => bulkStopJobMutation.mutate({ jobIds: bulkStopTargets })}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Square className="size-4" />
-                    Stop selected
-                  </Button>
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex">
+                    <Button
+                      disabled={bulkStopTargets.length === 0 || bulkStopJobMutation.isPending}
+                      onClick={() => bulkStopJobMutation.mutate({ jobIds: bulkStopTargets })}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Square className="size-4" />
+                      Stop selected
+                    </Button>
+                  </span>
+                }
+              />
               <TooltipContent>
                 {bulkStopTargets.length > 0
                   ? "Request stop for selected active jobs"
@@ -631,37 +636,41 @@ function recordingJobColumns({
         return (
           <div className="flex flex-wrap justify-end gap-2">
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    disabled={!retryAction.canRetry || retryPending}
-                    onClick={() => onRetry(row.original.id)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    <RotateCcw className="size-4" />
-                    Retry
-                  </Button>
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex">
+                    <Button
+                      disabled={!retryAction.canRetry || retryPending}
+                      onClick={() => onRetry(row.original.id)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <RotateCcw className="size-4" />
+                      Retry
+                    </Button>
+                  </span>
+                }
+              />
               <TooltipContent>{retryAction.title}</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    disabled={!stopAction.canStop || stopPending}
-                    onClick={() => onStop(row.original.recordingId)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    <Square className="size-4" />
-                    Stop
-                  </Button>
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex">
+                    <Button
+                      disabled={!stopAction.canStop || stopPending}
+                      onClick={() => onStop(row.original.recordingId)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Square className="size-4" />
+                      Stop
+                    </Button>
+                  </span>
+                }
+              />
               <TooltipContent>{stopAction.title}</TooltipContent>
             </Tooltip>
           </div>

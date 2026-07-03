@@ -239,7 +239,7 @@ function UploadDestinationEditor({
             }
             value={draft.kind}
           >
-            <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -290,14 +290,19 @@ function UploadDestinationEditor({
 
       <div className="flex justify-end">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button disabled={mutation.isPending || !canManage} onClick={() => mutation.mutate()}>
-                <Save className="size-4" />
-                Save
-              </Button>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Button
+                  disabled={mutation.isPending || !canManage}
+                  onClick={() => mutation.mutate()}
+                >
+                  <Save className="size-4" />
+                  Save
+                </Button>
+              </span>
+            }
+          />
           <TooltipContent>
             {canManage ? "Save upload destination" : "Requires settings manage"}
           </TooltipContent>
@@ -414,7 +419,7 @@ function S3Fields({
           }
           value={draft.s3.preset ?? "aws"}
         >
-          <SelectTrigger className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+          <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

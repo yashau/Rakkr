@@ -132,7 +132,7 @@ export function AccessGroupFormDialog({
                   <FormControl>
                     <Textarea
                       {...field}
-                      className="min-h-16 bg-background"
+                      className="min-h-16 bg-transparent"
                       placeholder="Optional — who this group is for"
                     />
                   </FormControl>

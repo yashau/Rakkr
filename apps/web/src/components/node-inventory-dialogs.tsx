@@ -120,12 +120,14 @@ export function EnrollNodeDialog() {
       }}
       open={open}
     >
-      <DialogTrigger asChild>
-        <Button type="button">
-          <PlusCircle className="size-4" />
-          Enroll Node
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button type="button">
+            <PlusCircle className="size-4" />
+            Enroll Node
+          </Button>
+        }
+      />
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Enroll Recorder Node</DialogTitle>
@@ -269,12 +271,14 @@ export function NodeConfigureDialog({ node }: { node: RecorderNode }) {
 
   return (
     <Dialog onOpenChange={setOpen} open={open}>
-      <DialogTrigger asChild>
-        <Button size="sm" type="button" variant="outline">
-          <Settings2 className="size-4" />
-          Configure
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button size="sm" type="button" variant="outline">
+            <Settings2 className="size-4" />
+            Configure
+          </Button>
+        }
+      />
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Configure {node.alias}</DialogTitle>

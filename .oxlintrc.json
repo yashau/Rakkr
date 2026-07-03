@@ -23,6 +23,17 @@
     "tailwindcss/no-duplicate-classes": "error",
     "tailwindcss/no-unnecessary-whitespace": "error"
   },
+  "overrides": [
+    {
+      "files": ["apps/web/src/components/ui/**"],
+      "rules": {
+        "jsx-a11y/label-has-associated-control": "off",
+        "jsx-a11y/prefer-tag-over-role": "off",
+        "jsx-a11y/no-noninteractive-element-interactions": "off",
+        "jsx-a11y/click-events-have-key-events": "off"
+      }
+    }
+  ],
   "settings": {
     "tailwindcss": {
       "entryPoint": [

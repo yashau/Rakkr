@@ -1,5 +1,4 @@
-import * as LabelPrimitive from "@radix-ui/react-label";
-import { Slot } from "@radix-ui/react-slot";
+import { useRender } from "@base-ui/react/use-render";
 import * as React from "react";
 import {
   Controller,
@@ -64,75 +63,70 @@ function useFormField() {
   };
 }
 
-const FormItem = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => {
-    const id = React.useId();
+function FormItem({ className, ...props }: React.ComponentProps<"div">) {
+  const id = React.useId();
 
-    return (
-      <FormItemContext.Provider value={{ id }}>
-        <div className={cn("grid gap-2", className)} ref={ref} {...props} />
-      </FormItemContext.Provider>
-    );
-  },
-);
-FormItem.displayName = "FormItem";
+  return (
+    <FormItemContext.Provider value={{ id }}>
+      <div data-slot="form-item" className={cn("grid gap-2", className)} {...props} />
+    </FormItemContext.Provider>
+  );
+}
 
-const FormLabel = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
->(({ className, ...props }, ref) => {
+function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) {
   const { error, formItemId } = useFormField();
 
   return (
     <Label
-      className={cn(error && "text-destructive", className)}
+      data-slot="form-label"
+      data-error={Boolean(error)}
+      className={cn("data-[error=true]:text-destructive", className)}
       htmlFor={formItemId}
-      ref={ref}
       {...props}
     />
   );
-});
-FormLabel.displayName = "FormLabel";
+}
 
-const FormControl = React.forwardRef<
-  React.ElementRef<typeof Slot>,
-  React.ComponentPropsWithoutRef<typeof Slot>
->(({ ...props }, ref) => {
+// Base UI's equivalent of Radix's `Slot`: `useRender` merges the field's
+// accessibility props onto the single control element passed as children (or as
+// an explicit `render` element), so `<FormControl><Input /></FormControl>`
+// keeps working without an `asChild` prop.
+function FormControl({
+  render,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  render?: React.ReactElement;
+}) {
   const { error, formDescriptionId, formItemId, formMessageId } = useFormField();
+  const element = (render ?? children) as React.ReactElement;
 
-  return (
-    <Slot
-      aria-describedby={error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId}
-      aria-invalid={Boolean(error)}
-      id={formItemId}
-      ref={ref}
-      {...props}
-    />
-  );
-});
-FormControl.displayName = "FormControl";
+  return useRender({
+    render: element,
+    props: {
+      "aria-describedby": error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId,
+      "aria-invalid": error ? true : undefined,
+      "data-slot": "form-control",
+      id: formItemId,
+      ...props,
+    },
+  });
+}
 
-const FormDescription = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => {
+function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
   const { formDescriptionId } = useFormField();
 
   return (
     <p
+      data-slot="form-description"
       className={cn("text-sm text-muted-foreground", className)}
       id={formDescriptionId}
-      ref={ref}
       {...props}
     />
   );
-});
-FormDescription.displayName = "FormDescription";
+}
 
-const FormMessage = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ children, className, ...props }, ref) => {
+function FormMessage({ children, className, ...props }: React.ComponentProps<"p">) {
   const { error, formMessageId } = useFormField();
   const body = error ? String(error.message ?? "") : children;
 
@@ -142,16 +136,15 @@ const FormMessage = React.forwardRef<
 
   return (
     <p
+      data-slot="form-message"
       className={cn("text-sm font-medium text-destructive", className)}
       id={formMessageId}
-      ref={ref}
       {...props}
     >
       {body}
     </p>
   );
-});
-FormMessage.displayName = "FormMessage";
+}
 
 export {
   Form,

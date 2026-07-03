@@ -36,11 +36,11 @@ export function RecordingPlaybackDock({
             <ToggleGroup
               className="gap-0 overflow-hidden rounded-md border border-border"
               onValueChange={(value) => {
-                if (value) onSelectRendition(value as RecordingRendition);
+                const next = value[0] as RecordingRendition | undefined;
+                if (next) onSelectRendition(next);
               }}
               size="sm"
-              type="single"
-              value={preview.rendition}
+              value={preview.rendition ? [preview.rendition] : []}
             >
               {availableRenditions.map((rendition) => (
                 <ToggleGroupItem
