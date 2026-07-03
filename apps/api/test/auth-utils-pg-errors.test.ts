@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isPgConstraintError, isPgErrorCode } from "../src/auth-utils.js";
+import { dbOutageGraceExceeded, isPgConstraintError, isPgErrorCode } from "../src/auth-utils.js";
 
 test("isPgErrorCode walks the drizzle cause chain", () => {
   assert.equal(isPgErrorCode({ code: "23503" }, "23503"), true);
@@ -23,4 +23,39 @@ test("isPgConstraintError classifies data/integrity violations, not connectivity
   assert.equal(isPgConstraintError({ code: "57P01" }), false); // admin shutdown
   assert.equal(isPgConstraintError(new Error("ECONNREFUSED")), false);
   assert.equal(isPgConstraintError(undefined), false);
+});
+
+test("dbOutageGraceExceeded bounds the memory-fallback only for a configured DB past grace", () => {
+  const base = { databaseAvailable: false, graceMs: 1000, now: 10_000 };
+
+  // Configured DB, unavailable, outage older than the grace -> trip (deny/probe).
+  assert.equal(
+    dbOutageGraceExceeded({ ...base, databaseConfigured: true, unavailableSince: 8_000 }),
+    true,
+  );
+  // Same, but still within the grace window -> keep serving.
+  assert.equal(
+    dbOutageGraceExceeded({ ...base, databaseConfigured: true, unavailableSince: 9_500 }),
+    false,
+  );
+  // A healthy DB is never tripped.
+  assert.equal(
+    dbOutageGraceExceeded({
+      ...base,
+      databaseAvailable: true,
+      databaseConfigured: true,
+      unavailableSince: undefined,
+    }),
+    false,
+  );
+  // No outage recorded -> never tripped.
+  assert.equal(
+    dbOutageGraceExceeded({ ...base, databaseConfigured: true, unavailableSince: undefined }),
+    false,
+  );
+  // No-DB deployment (memory is authoritative) is exempt even past the grace.
+  assert.equal(
+    dbOutageGraceExceeded({ ...base, databaseConfigured: false, unavailableSince: 0 }),
+    false,
+  );
 });

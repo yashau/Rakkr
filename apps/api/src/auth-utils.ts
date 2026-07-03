@@ -274,6 +274,32 @@ export function isPgConstraintError(error: unknown): boolean {
   return code.startsWith("22") || code.startsWith("23") || isPgConstraintError(record.cause);
 }
 
+// Bounded staleness for the auth memory-fallback. Once a CONFIGURED database has
+// been unavailable longer than the grace window, the controller can no longer
+// confirm current access, so it must stop honoring the login-time permissions
+// cached in memory (a revoked user would otherwise keep access for the whole
+// outage). Returns true only for a configured-but-currently-unavailable DB whose
+// outage has exceeded the grace; no-DB deployments (memory is authoritative) and
+// healthy/short-blip DBs are never tripped. Drives both the recovery probe and
+// the deny decision in authenticate().
+export function dbOutageGraceExceeded(input: {
+  databaseConfigured: boolean;
+  databaseAvailable: boolean;
+  unavailableSince: number | undefined;
+  now: number;
+  graceMs: number;
+}): boolean {
+  if (
+    !input.databaseConfigured ||
+    input.databaseAvailable ||
+    input.unavailableSince === undefined
+  ) {
+    return false;
+  }
+
+  return input.now - input.unavailableSince > input.graceMs;
+}
+
 function isRole(value: unknown): value is Role {
   return typeof value === "string" && roles.includes(value as Role);
 }
