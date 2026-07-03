@@ -631,7 +631,11 @@ async function runRuntimeDiskRecoveryScenario({
   );
   const staleRawPath = path.join(cacheRoot, "rec_fake_controller_runtime_stale.raw.wav");
   const staleOutputPath = path.join(cacheRoot, "rec_fake_controller_runtime_stale.mp3");
-  const fakeDfPath = await writeRuntimeDiskRecoveryDfCommand(smokeRoot, rawCapturePath);
+  const fakeDfPath = await writeRuntimeDiskRecoveryDfCommand(
+    smokeRoot,
+    rawCapturePath,
+    staleOutputPath,
+  );
   const retention = {
     deleteAfterUpload: false,
     maxAgeDays: null,
@@ -915,27 +919,28 @@ if (previousRuns < 2) {
   return fakeBin;
 }
 
-async function writeRuntimeDiskRecoveryDfCommand(directory, rawCapturePath) {
+async function writeRuntimeDiskRecoveryDfCommand(directory, rawCapturePath, staleCachePath) {
   const fakeBin = path.join(directory, "fake-runtime-disk-recovery-bin");
   const dfScript = path.join(fakeBin, "df");
-  const stateFile = path.join(directory, "fake-runtime-disk-recovery-df-state.txt");
-  const lowSpaceMarker = path.join(directory, "fake-runtime-disk-recovery-low-reported.txt");
 
   await mkdir(fakeBin, { recursive: true });
   await writeFile(
     dfScript,
     `#!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 
-const stateFile = ${JSON.stringify(stateFile)};
 const rawCapturePath = ${JSON.stringify(rawCapturePath)};
-const lowSpaceMarker = ${JSON.stringify(lowSpaceMarker)};
-const previousRuns = existsSync(stateFile) ? Number(readFileSync(stateFile, "utf8")) : 0;
-writeFileSync(stateFile, String(previousRuns + 1));
+const staleCachePath = ${JSON.stringify(staleCachePath)};
 
+// Report the disk as full only while a capture is in flight (the raw capture
+// file exists) and the stale cache entry has not yet been swept away. Keying the
+// low reading to filesystem state -- rather than a one-shot counter -- keeps the
+// system-health monitor and the recording-job disk monitor observing the same
+// condition, so the runtime disk-recovery path fires deterministically no matter
+// which loop polls df first. The reading flips back to healthy the moment the
+// recovery sweep deletes the stale cache files.
 console.log("Filesystem 1024-blocks Used Available Capacity Mounted on");
-if (existsSync(rawCapturePath) && !existsSync(lowSpaceMarker)) {
-  writeFileSync(lowSpaceMarker, "reported");
+if (existsSync(rawCapturePath) && existsSync(staleCachePath)) {
   console.log("rakkr-smoke 10000 9999 1 99% /");
 } else {
   console.log("rakkr-smoke 10000 100 9900 1% /");
