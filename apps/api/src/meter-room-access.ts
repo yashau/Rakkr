@@ -133,5 +133,10 @@ export function createMeterRoomAccess({
     return true;
   }
 
-  return { canServeWholeNodeMonitor, filterMeterFrameForUser, meterRoomAccess };
+  return {
+    canServeWholeNodeMonitor,
+    filterMeterFrameForUser,
+    hasFullNodeAuthority,
+    meterRoomAccess,
+  };
 }

@@ -447,11 +447,12 @@ function intersects(left: Set<string>, right: Set<string>) {
 
 // Per-room meter/monitor access decisions (extracted to keep this file within the
 // LOC budget). Injected with this module's roster + scope helpers.
-const { canServeWholeNodeMonitor, filterMeterFrameForUser } = createMeterRoomAccess({
-  accessPolicyDecision: (user, targets) => authService.accessPolicyDecision(user, targets),
-  hasResourceScope: (user, target) => hasResourceScope(user, target),
-  rosterRoomIds: (user) => rosterRoomIds(user),
-});
+const { canServeWholeNodeMonitor, filterMeterFrameForUser, hasFullNodeAuthority } =
+  createMeterRoomAccess({
+    accessPolicyDecision: (user, targets) => authService.accessPolicyDecision(user, targets),
+    hasResourceScope: (user, target) => hasResourceScope(user, target),
+    rosterRoomIds: (user) => rosterRoomIds(user),
+  });
 
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
   const userRoomIds = await rosterRoomIds(user);
@@ -480,11 +481,21 @@ async function scopedRooms(user: NonNullable<AuthResult["user"]>) {
 
   const roomIds = await rosterRoomIds(user);
 
-  // A DIRECT node grant confers full authority over that node, so surface every
-  // room that owns one of its channels. Roster-only access to a shared node does
-  // NOT add its sibling rooms — those stay filtered to the user's rostered rooms.
+  // Rooms the caller holds direct room authority on (a room grant or access-policy
+  // allow) — so a room-scoped principal still sees exactly its own room(s).
+  for (const room of allRooms) {
+    if (!roomIds.has(room.id) && (await hasResourceScope(user, { id: room.id, type: "room" }))) {
+      roomIds.add(room.id);
+    }
+  }
+
+  // FULL node authority (a direct node/site/wildcard grant or node/site policy —
+  // NOT a room-derived node scope) surfaces every room that owns one of the node's
+  // channels. Using hasFullNodeAuthority, not hasResourceScope on the node target
+  // (which expands to the room UNION), is what keeps a single-room grant from
+  // leaking a shared node's sibling rooms into the room list.
   for (const node of await nodeStore.list()) {
-    if (await hasResourceScope(user, { id: node.id, type: "node" })) {
+    if (await hasFullNodeAuthority(user, node)) {
       for (const roomId of nodeRoomIds(node)) {
         roomIds.add(roomId);
       }
@@ -556,7 +567,9 @@ app.onError((error, c) => {
 registerMetricsRoutes({
   app,
   auditStore,
+  canServeWholeNodeMonitor: (user, node) => canServeWholeNodeMonitor(user, node),
   currentUser,
+  filterMeterFrame: (user, node, frame) => filterMeterFrameForUser(user, node, frame),
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,
   listenMonitorStore,

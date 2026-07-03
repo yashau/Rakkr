@@ -118,3 +118,60 @@ test("owner has whole-node authority", async () => {
   assert.equal(await access.meterRoomAccess(owner, sharedNode()), "all");
   assert.equal(await access.canServeWholeNodeMonitor(owner, sharedNode()), true);
 });
+
+test("hasFullNodeAuthority: a room-scoped grant is NOT full-node authority", async () => {
+  const access = roomAAccess(); // accessPolicyDecision -> undefined
+  const roomAUser = user({ resourceGrants: [{ resourceId: "room-a", resourceType: "room" }] });
+
+  assert.equal(await access.hasFullNodeAuthority(roomAUser, sharedNode()), false);
+});
+
+test("hasFullNodeAuthority: node/site/wildcard grants and owner confer it", async () => {
+  const access = roomAAccess();
+
+  assert.equal(
+    await access.hasFullNodeAuthority(
+      user({ resourceGrants: [{ resourceId: "node-1", resourceType: "node" }] }),
+      sharedNode(),
+    ),
+    true,
+  );
+  assert.equal(
+    await access.hasFullNodeAuthority(
+      user({ resourceGrants: [{ resourceId: "HQ", resourceType: "site" }] }),
+      sharedNode(),
+    ),
+    true,
+  );
+  assert.equal(
+    await access.hasFullNodeAuthority(
+      user({ resourceGrants: [{ resourceId: "*", resourceType: "*" }] }),
+      sharedNode(),
+    ),
+    true,
+  );
+  assert.equal(await access.hasFullNodeAuthority(user({ roles: ["owner"] }), sharedNode()), true);
+});
+
+test("hasFullNodeAuthority: a node/site access-policy allow confers it; deny withholds it", async () => {
+  const allow = createMeterRoomAccess({
+    accessPolicyDecision: async () => ({ effect: "allow" }),
+    hasResourceScope: async () => false,
+    rosterRoomIds: async () => new Set<string>(),
+  });
+  assert.equal(await allow.hasFullNodeAuthority(user(), sharedNode()), true);
+
+  // A deny withholds full authority even for a wildcard grant.
+  const deny = createMeterRoomAccess({
+    accessPolicyDecision: async () => ({ effect: "deny" }),
+    hasResourceScope: async () => false,
+    rosterRoomIds: async () => new Set<string>(),
+  });
+  assert.equal(
+    await deny.hasFullNodeAuthority(
+      user({ resourceGrants: [{ resourceId: "*", resourceType: "*" }] }),
+      sharedNode(),
+    ),
+    false,
+  );
+});

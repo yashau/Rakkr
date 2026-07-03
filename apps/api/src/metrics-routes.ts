@@ -33,6 +33,22 @@ import { listUploadQueueItems } from "./upload-queue.js";
 
 interface MetricsScopeDependencies {
   auditStore: AuditStore;
+  // Whether the caller may receive a node's whole-node monitor chunk (owns every
+  // channel's room). Gates listen-monitor chunk metrics so a shared node's chunk
+  // is not exposed to a single-room principal. Defaults permissive for tests; the
+  // real wiring MUST pass the room-aware implementation.
+  canServeWholeNodeMonitor?: (
+    user: NonNullable<AuthResult["user"]>,
+    node: RecorderNode,
+  ) => Promise<boolean>;
+  // Strict per-channel meter filtering: drops levels for channels the caller's
+  // rooms do not own, so per-channel gauges never leak a sibling room's telemetry.
+  // Defaults to identity for tests; the real wiring MUST pass filterMeterFrameForUser.
+  filterMeterFrame?: (
+    user: NonNullable<AuthResult["user"]>,
+    node: RecorderNode,
+    frame: MeterFrame,
+  ) => Promise<MeterFrame>;
   hasResourceScope: (
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
@@ -136,8 +152,8 @@ async function controllerPrometheusMetrics(
       scopedAuditEvents(user, dependencies),
     ]);
   const [listenMonitorChunks, meterFrames] = await Promise.all([
-    scopedListenMonitorChunks(nodes, dependencies),
-    scopedMeterFrames(nodes, dependencies),
+    scopedListenMonitorChunks(user, nodes, dependencies),
+    scopedMeterFrames(user, nodes, dependencies),
   ]);
   const recordingCacheBytes = await recordingCacheByteMap(recordings);
   const output = renderPrometheusMetrics({
@@ -174,14 +190,28 @@ async function controllerPrometheusMetrics(
 }
 
 async function scopedListenMonitorChunks(
+  user: NonNullable<AuthResult["user"]>,
   nodes: RecorderNode[],
-  dependencies: Pick<MetricsScopeDependencies, "listenMonitorStore">,
+  dependencies: Pick<MetricsScopeDependencies, "canServeWholeNodeMonitor" | "listenMonitorStore">,
 ) {
-  const chunks = await Promise.all(
-    nodes.map((node) => dependencies.listenMonitorStore.latest(node.id)),
-  );
+  const canServeWholeNodeMonitor = dependencies.canServeWholeNodeMonitor ?? (async () => true);
+  const chunks = [];
 
-  return chunks.filter((chunk) => chunk !== undefined);
+  for (const node of nodes) {
+    // The monitor chunk is whole-node audio; only surface its metrics to a caller
+    // who owns every channel's room (mirrors the listen-stream gate).
+    if (!(await canServeWholeNodeMonitor(user, node))) {
+      continue;
+    }
+
+    const chunk = await dependencies.listenMonitorStore.latest(node.id);
+
+    if (chunk !== undefined) {
+      chunks.push(chunk);
+    }
+  }
+
+  return chunks;
 }
 
 async function scopedNodes(
@@ -268,12 +298,26 @@ async function scopedAuditEvents(
   return result;
 }
 
-async function scopedMeterFrames(nodes: RecorderNode[], dependencies: MetricsScopeDependencies) {
-  const frames = await Promise.all(
-    nodes.map((node) => dependencies.meterFrameStore.latest(node.id)),
-  );
+async function scopedMeterFrames(
+  user: NonNullable<AuthResult["user"]>,
+  nodes: RecorderNode[],
+  dependencies: MetricsScopeDependencies,
+) {
+  const filterMeterFrame =
+    dependencies.filterMeterFrame ?? (async (_user, _node, frame: MeterFrame) => frame);
+  const frames: MeterFrame[] = [];
 
-  return frames.filter((frame): frame is MeterFrame => Boolean(frame));
+  for (const node of nodes) {
+    const frame = await dependencies.meterFrameStore.latest(node.id);
+
+    if (frame) {
+      // Drop channel levels the caller's rooms do not own so per-channel gauges
+      // never expose a shared node's sibling-room telemetry (matches /meters).
+      frames.push(await filterMeterFrame(user, node, frame));
+    }
+  }
+
+  return frames;
 }
 
 export async function recordingCacheByteMap(
