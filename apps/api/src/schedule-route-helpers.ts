@@ -147,7 +147,13 @@ export function scheduleChannelSelectionFailure(
     return undefined;
   }
 
-  const interfaceId = captureInterfaceId ?? node.interfaces[0]?.id;
+  // Validate against the SAME interface the room attribution + recorder runtime
+  // resolve (explicit id → RAKKR_AGENT_CAPTURE_INTERFACE_ID env → first interface),
+  // not just interfaces[0]. Otherwise, when the controller pins a non-first capture
+  // interface via env, a schedule with no explicit interface is validated against
+  // the wrong interface — falsely accepting a selection that fails at capture, or
+  // falsely rejecting one that is valid on the interface actually captured.
+  const interfaceId = effectiveCaptureInterfaceId(node, captureInterfaceId);
   const captureInterface = node.interfaces.find((candidate) => candidate.id === interfaceId);
 
   if (!captureInterface) {
