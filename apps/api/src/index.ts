@@ -238,7 +238,9 @@ function requirePermission(
 // the fine-grained per-room checks in recording/schedule handlers. A room roster
 // (a manual grant or a calendar meeting-assignment) grants a per-action capability
 // over its room even without the role permission — but never past an explicit deny.
-async function permissionDecision(
+// Exported for test coverage of the access-policy-DENY-beats-roster-grant
+// precedence (the `scope.reason !== "access_policy_denied"` guard below).
+export async function permissionDecision(
   user: AuthResult["user"],
   permission: Permission,
   target: AuditTarget,

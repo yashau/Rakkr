@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,6 +8,7 @@ import type {
   AccessPolicy,
   AccessPolicyInput,
   AuditEvent,
+  CurrentUser,
   HealthEvent,
   RecordingSummary,
   ScheduleSummary,
@@ -19,7 +21,7 @@ const authAccessRoot = await mkdtemp(path.join(tmpdir(), "rakkr-auth-access-rout
 process.env.RAKKR_RECORDING_METADATA_STORE_PATH = path.join(authAccessRoot, "recordings.json");
 process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH = path.join(authAccessRoot, "upload-queue.json");
 
-const { app } = await import("../src/index.js");
+const { app, permissionDecision } = await import("../src/index.js");
 const { enqueueRecordingUpload } = await import("../src/upload-queue.js");
 
 test.after(async () => {
@@ -689,6 +691,83 @@ test("recording resource denies hide mixed-target health events from lists and s
   } finally {
     await updateAccessPolicies(token, []);
   }
+});
+
+test("an access-policy DENY overrides a room-roster capability grant", async () => {
+  const token = await loginToken();
+  const roomId = `room_precedence_${randomUUID().slice(0, 8)}`;
+  const target = { id: roomId, type: "room" as const };
+  const operator: CurrentUser = {
+    email: "roster-op@example.com",
+    groups: [{ id: "grp_precedence", name: "Precedence Group" }],
+    id: "user_roster_op",
+    name: "Roster Operator",
+    permissions: ["recording:read"],
+    provider: "local",
+    resourceGrants: [],
+    roles: ["operator"],
+  };
+
+  // Admin creates the room and grants the operator a room-`view` capability via the
+  // roster (recording:read maps to the `view` room capability).
+  const createRoom = await app.request("/api/v1/rooms", {
+    body: JSON.stringify({ id: roomId, name: `Precedence ${roomId}`, site: "HQ" }),
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    method: "POST",
+  });
+  assert.equal(createRoom.status, 201);
+
+  const grantRoster = await app.request(`/api/v1/rooms/${roomId}/roster`, {
+    body: JSON.stringify({
+      entries: [{ capabilities: ["view"], subjectId: operator.id, subjectType: "user" }],
+    }),
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    method: "PUT",
+  });
+  assert.equal(grantRoster.status, 200);
+
+  // The roster grant alone authorizes the room-scoped read.
+  const viaRoster = await permissionDecision(operator, "recording:read", target);
+  assert.equal(viaRoster.allowed, true, "the roster capability authorizes the action");
+  assert.equal(viaRoster.grantedViaRoomCapability, true);
+
+  // A user-scoped DENY access policy must win over the roster grant.
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "precedence_hold",
+      resourceId: roomId,
+      resourceType: "room",
+      subjectId: operator.id,
+      subjectType: "user",
+    },
+  ]);
+  const underUserDeny = await permissionDecision(operator, "recording:read", target);
+  assert.equal(underUserDeny.allowed, false, "an explicit DENY overrides the roster grant");
+  assert.equal(
+    underUserDeny.grantedViaRoomCapability,
+    false,
+    "the roster fallback is not consulted",
+  );
+  assert.equal(underUserDeny.scope.reason, "access_policy_denied");
+
+  // A GROUP-scoped DENY (the operator's group) is equally authoritative.
+  await updateAccessPolicies(token, [
+    {
+      effect: "deny",
+      reason: "precedence_hold_group",
+      resourceId: roomId,
+      resourceType: "room",
+      subjectId: "grp_precedence",
+      subjectType: "group",
+    },
+  ]);
+  const underGroupDeny = await permissionDecision(operator, "recording:read", target);
+  assert.equal(underGroupDeny.allowed, false, "a group DENY also overrides the roster grant");
+  assert.equal(underGroupDeny.scope.reason, "access_policy_denied");
+
+  // Reset policies so later tests start from a clean slate.
+  await updateAccessPolicies(token, []);
 });
 
 async function loginToken() {
