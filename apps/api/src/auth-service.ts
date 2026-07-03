@@ -88,6 +88,7 @@ export class LocalAuthService {
   private readonly db?: ReturnType<typeof createDatabase>;
   private dbAvailable: boolean;
   private localAdminPasswordHash?: string;
+  private decoyPasswordHashPromise?: Promise<string>;
   // First-party access-group management lives in its own module; the service lends
   // it the shared session/override state it needs (see auth-group-manager.ts).
   private readonly groupManager: LocalGroupManager;
@@ -116,33 +117,38 @@ export class LocalAuthService {
 
   async login(email: string, password: string, context: SessionContext = {}): Promise<LoginResult> {
     const persistedUser = await this.localUserRecordByEmail(email);
+    const admin = await this.localAdmin();
+    const matchesAdmin = email.toLowerCase() === admin.email.toLowerCase();
+
+    // Always run exactly one scrypt verification, even when the email is unknown
+    // or the account has no local password — otherwise the fast (no-KDF) reject
+    // path leaks, via response time, whether an email is registered (a login
+    // user-enumeration timing oracle). When nothing matches we verify against a
+    // decoy hash whose comparison is guaranteed to fail.
+    const targetHash = persistedUser?.passwordHash
+      ? persistedUser.passwordHash
+      : matchesAdmin
+        ? await this.localAdminHash()
+        : await this.decoyPasswordHash();
+    const valid = await verifyPassword(password, targetHash);
 
     if (persistedUser) {
       if (persistedUser.disabledAt) {
         throw new AuthError("Local user is disabled", "user_disabled");
       }
 
-      const valid =
-        Boolean(persistedUser.passwordHash) &&
-        (await verifyPassword(password, persistedUser.passwordHash ?? ""));
-
-      if (!valid) {
+      if (!persistedUser.passwordHash || !valid) {
         throw new AuthError("Invalid credentials", "invalid_credentials");
       }
 
       return this.createSession(await this.currentUserFromRecord(persistedUser), context);
     }
 
-    const user = await this.localAdmin();
-
-    if (
-      email.toLowerCase() !== user.email.toLowerCase() ||
-      !(await verifyPassword(password, await this.localAdminHash()))
-    ) {
+    if (!matchesAdmin || !valid) {
       throw new AuthError("Invalid credentials", "invalid_credentials");
     }
 
-    return this.createSession(user, context);
+    return this.createSession(admin, context);
   }
 
   async createSession(user: CurrentUser, context: SessionContext = {}): Promise<LoginResult> {
@@ -506,6 +512,16 @@ export class LocalAuthService {
     }
 
     return this.localAdminPasswordHash;
+  }
+
+  // A stable, valid scrypt hash (of a random, never-matching password) used as the
+  // verify() target when no real account/hash applies, so an unknown-email login
+  // still pays the full KDF cost and cannot be distinguished by timing from a real
+  // failed login. Computed once and cached (its own scrypt is amortized away).
+  private decoyPasswordHash() {
+    this.decoyPasswordHashPromise ??= hashPassword(randomBytes(32).toString("base64url"));
+
+    return this.decoyPasswordHashPromise;
   }
 
   private async localUserRecordByEmail(email: string) {
