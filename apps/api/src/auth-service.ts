@@ -976,14 +976,16 @@ export class LocalAuthService {
     return db;
   }
 
-  private markDatabaseUnavailable(error: unknown): never | void {
-    // A data-integrity error (constraint violation / data exception) is NOT a
-    // connectivity failure — this specific write was rejected for bad data. Do NOT
-    // latch into the memory store (which silently drops every later DB write, incl.
-    // access changes, until process restart); re-throw so the caller surfaces the
-    // failed write and the service stays DB-backed.
+  private markDatabaseUnavailable(error: unknown): void {
+    // A data-integrity error (constraint / data exception) is NOT connectivity — the
+    // write was rejected for bad data. Do NOT latch to memory (which drops every later
+    // DB write until restart) and do NOT abort the caller: this runs from fire-and-
+    // forget persistence + read/authorization paths that must keep serving the request
+    // (e.g. a login with an over-long X-Forwarded-For must not 401). Access-write
+    // callers that want to surface the failure throw their own AuthError after this.
     if (isPgConstraintError(error)) {
-      throw error;
+      console.warn("auth database rejected a write (constraint violation); not latching", error);
+      return;
     }
 
     // Stamp the outage start once (kept across probe re-latches; cleared only when
