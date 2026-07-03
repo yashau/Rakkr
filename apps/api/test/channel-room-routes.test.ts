@@ -106,6 +106,47 @@ test("reassigning a channel re-homes the schedules that captured it", async () =
   assert.deepEqual(event?.details.reassignedScheduleIds, ["sched_reconcile"]);
 });
 
+test("channel-room reconcile isolates a per-schedule failure and still reconciles the rest", async () => {
+  const auditStore = createAuditStore("");
+  const failing = roomScheduleFixture({ id: "sched_fail" });
+  const healthy = roomScheduleFixture({ id: "sched_ok" });
+  const base = memoryScheduleStore([failing, healthy]);
+  // The first schedule's update throws mid-loop; the node channel-rooms are already
+  // committed, so a non-atomic reconcile would abort and leave sched_ok stale.
+  const scheduleStore: ScheduleStore = {
+    ...base,
+    async update(scheduleId, update) {
+      if (scheduleId === "sched_fail") {
+        throw new Error("simulated schedule update failure");
+      }
+
+      return base.update(scheduleId, update);
+    },
+  };
+  const app = channelRoomApp({
+    auditStore,
+    nodes: [sharedNode()],
+    permissionCalls: [],
+    scheduleStore,
+  });
+
+  const response = await app.request("/api/v1/nodes/node-shared/channel-rooms", {
+    body: JSON.stringify({
+      assignments: [{ channelIndexes: [1], interfaceId: "iface-1", roomId: "room-b" }],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PUT",
+  });
+  const [event] = await auditStore.list({ action: "nodes.channel-rooms.assign.succeeded" });
+
+  assert.equal(response.status, 200);
+  // The healthy schedule still reconciled despite the other's failure...
+  assert.equal((await scheduleStore.find("sched_ok"))?.roomId, "room-b");
+  assert.deepEqual(event?.details.reassignedScheduleIds, ["sched_ok"]);
+  // ...and the failure is surfaced in the audit trail.
+  assert.deepEqual(event?.details.reconcileFailedScheduleIds, ["sched_fail"]);
+});
+
 test("reassigning a channel that splits a schedule across rooms makes it room-less", async () => {
   const auditStore = createAuditStore("");
   const node = sharedNode({

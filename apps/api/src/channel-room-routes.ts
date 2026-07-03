@@ -125,7 +125,8 @@ export function registerChannelRoomRoutes({
       // calendar roster) — otherwise the schedule stays scoped/visible to the OLD
       // room and its RBAC edit-gate keys off a stale room. A selection that now
       // spans rooms resolves to no single room (undefined); the run path defers it.
-      const reassignedSchedules = await reconcileNodeSchedules(updated);
+      const { changed: reassignedSchedules, failed: reconcileFailedScheduleIds } =
+        await reconcileNodeSchedules(updated);
 
       await recordAuditEvent(c, {
         action: "nodes.channel-rooms.assign.succeeded",
@@ -136,6 +137,7 @@ export function registerChannelRoomRoutes({
           assignedRoomIds: requestedRoomIds,
           channelCount: flattened.length,
           reassignedScheduleIds: reassignedSchedules,
+          ...(reconcileFailedScheduleIds.length > 0 ? { reconcileFailedScheduleIds } : {}),
         },
         outcome: "succeeded",
         permission: "node:manage",
@@ -151,6 +153,7 @@ export function registerChannelRoomRoutes({
   // channels no longer resolve to a single room is set room-less (undefined).
   async function reconcileNodeSchedules(node: RecorderNode) {
     const changed: string[] = [];
+    const failed: string[] = [];
 
     for (const schedule of await scheduleStore.list()) {
       if (schedule.nodeId !== node.id) {
@@ -168,15 +171,24 @@ export function registerChannelRoomRoutes({
         continue;
       }
 
-      const reconciled = await scheduleStore.update(schedule.id, { roomId: nextRoomId });
+      // Best-effort per schedule: the node channel-rooms are already committed, so
+      // one schedule's reconcile throwing must NOT abort the loop and leave the
+      // remaining schedules stale. Record the failure and continue; the reconcile
+      // is idempotent, so a retry PUT re-runs it over all the node's schedules.
+      try {
+        const reconciled = await scheduleStore.update(schedule.id, { roomId: nextRoomId });
 
-      if (reconciled) {
-        await reconcileScheduleRoster(reconciled);
-        changed.push(schedule.id);
+        if (reconciled) {
+          await reconcileScheduleRoster(reconciled);
+          changed.push(schedule.id);
+        }
+      } catch (error) {
+        console.warn("schedule room reconcile failed", { error, scheduleId: schedule.id });
+        failed.push(schedule.id);
       }
     }
 
-    return changed;
+    return { changed, failed };
   }
 
   async function recordFailure(
