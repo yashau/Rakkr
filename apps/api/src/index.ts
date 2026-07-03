@@ -12,6 +12,7 @@ import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   type AuditEvent,
   defaultCalendarGrantCapabilities,
+  type MeterFrame,
   type Permission,
   permissionRequiresCapability,
   type RecorderNode,
@@ -34,23 +35,21 @@ import { createListenSessionStore } from "./listen-session-store.js";
 import { createMeterFrameStore } from "./meter-store.js";
 import { registerMetricsRoutes } from "./metrics-routes.js";
 import { createNodeBootstrapStore } from "./node-bootstrap-store.js";
+import { registerChannelRoomRoutes } from "./channel-room-routes.js";
 import { registerNodeRoutes } from "./node-routes.js";
 import { createNodeStore } from "./node-store.js";
 import { createNodeSshCredentialStore } from "./node-ssh-credential-store.js";
 import { markAgentJobTerminalRecording } from "./agent-job-terminal-recording.js";
 import { isDatabaseUnavailableError } from "./database-unavailable.js";
-import { onRecordingJobLeaseExpired, recordingJob } from "./recording-jobs.js";
+import { onRecordingJobLeaseExpired } from "./recording-jobs.js";
 import { registerRecordingRoutes } from "./recording-routes.js";
 import { createRecordingStore } from "./recording-store.js";
 import { registerRetentionPolicyRoutes } from "./retention-policy-routes.js";
 import { createRoomRosterStore } from "./room-roster-store.js";
 import { registerRoomRoutes } from "./room-routes.js";
 import { createRoomStore } from "./room-store.js";
-import {
-  addChannelScopeTargets,
-  addInterfaceScopeTargets,
-  addNodeScopeTargets,
-} from "./scope-targets.js";
+import { createResourceScopeTargets } from "./resource-scope-targets.js";
+import { channelRoomId, nodeRoomIds } from "./room-resolution.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -193,53 +192,34 @@ function requirePermission(
   return async (c, next) => {
     const auth = await authService.authenticate(c.req.header("authorization"));
     const auditTarget = await target(c);
-    const hasPermission = auth.user?.permissions.includes(permission) ?? false;
-    const scope = auth.user
-      ? await resourceScopeDecision(auth.user, auditTarget)
-      : { allowed: false, reason: "unauthenticated" };
-    let allowed = hasPermission && scope.allowed;
-
-    // A room roster (a manual grant or a calendar meeting-assignment) grants a
-    // per-action capability over its room even without the role permission — but
-    // never past an explicit deny policy.
-    let grantedViaRoomCapability = false;
-    const requiredCapability = permissionRequiresCapability(permission);
-    if (!allowed && auth.user && scope.reason !== "access_policy_denied" && requiredCapability) {
-      grantedViaRoomCapability = await roomCapabilityAuthorizes(
-        auth.user,
-        requiredCapability,
-        auditTarget,
-      );
-      allowed = grantedViaRoomCapability;
-    }
-
-    const reason = allowed
+    const decision = await permissionDecision(auth.user, permission, auditTarget);
+    const reason = decision.allowed
       ? undefined
       : authorizationReason({
           authenticated: Boolean(auth.user),
-          hasPermission,
-          hasScope: scope.allowed,
-          scopeReason: scope.reason,
+          hasPermission: decision.hasPermission,
+          hasScope: decision.scope.allowed,
+          scopeReason: decision.scope.reason,
         });
 
     await recordAuditEvent(c, {
       action,
       auth,
       details: {
-        grantedViaRoomCapability,
+        grantedViaRoomCapability: decision.grantedViaRoomCapability,
         requiredPermission: permission,
         resourceScope: auditTarget,
-        resourceScopeDecision: scope.reason,
-        roomCapability: requiredCapability,
+        resourceScopeDecision: decision.scope.reason,
+        roomCapability: decision.requiredCapability,
         roles: auth.user?.roles ?? [],
       },
-      outcome: allowed ? "allowed" : "denied",
+      outcome: decision.allowed ? "allowed" : "denied",
       permission,
       reason,
       target: auditTarget,
     });
 
-    if (!allowed) {
+    if (!decision.allowed) {
       return c.json(
         {
           error: auth.user ? "Forbidden" : "Unauthorized",
@@ -252,6 +232,42 @@ function requirePermission(
     c.set("auth", auth);
     await next();
   };
+}
+
+// The role-scope OR room-capability allow decision shared by requirePermission and
+// the fine-grained per-room checks in recording/schedule handlers. A room roster
+// (a manual grant or a calendar meeting-assignment) grants a per-action capability
+// over its room even without the role permission — but never past an explicit deny.
+async function permissionDecision(
+  user: AuthResult["user"],
+  permission: Permission,
+  target: AuditTarget,
+) {
+  const hasPermission = user?.permissions.includes(permission) ?? false;
+  const scope = user
+    ? await resourceScopeDecision(user, target)
+    : { allowed: false, reason: "unauthenticated" as const };
+  let allowed = hasPermission && scope.allowed;
+  let grantedViaRoomCapability = false;
+  const requiredCapability = permissionRequiresCapability(permission);
+
+  if (!allowed && user && scope.reason !== "access_policy_denied" && requiredCapability) {
+    grantedViaRoomCapability = await roomCapabilityAuthorizes(user, requiredCapability, target);
+    allowed = grantedViaRoomCapability;
+  }
+
+  return { allowed, grantedViaRoomCapability, hasPermission, requiredCapability, scope };
+}
+
+// Whether a user is authorized for a permission against a target, reusing the same
+// logic as requirePermission without auditing or an HTTP response. Used for the
+// fine-grained per-room check once a request's room is resolved from its channels.
+async function authorizeTargetForUser(
+  user: AuthResult["user"],
+  permission: Permission,
+  target: AuditTarget,
+) {
+  return (await permissionDecision(user, permission, target)).allowed;
 }
 
 function authorizationReason(input: {
@@ -325,103 +341,12 @@ async function resourceScopeDecision(user: AuthResult["user"], target: AuditTarg
   };
 }
 
-async function resourceScopeTargets(target: AuditTarget): Promise<AuditTarget[]> {
-  const targets = [target];
-  const knownNodes = await nodeStore.list();
-
-  if (target.type === "recording" && target.id) {
-    await addRecordingScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "recording_job" && target.id) {
-    const job = await recordingJob(target.id);
-
-    if (job) {
-      await addRecordingScopeTargets(targets, job.recordingId, knownNodes);
-      addNodeScopeTargets(targets, job.nodeId, knownNodes);
-    }
-  }
-
-  if (target.type === "schedule" && target.id) {
-    await addScheduleScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "node" && target.id) {
-    addNodeScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "health_event" && target.id) {
-    const event = await healthEventStore.find(target.id);
-    if (event?.recordingId) targets.push({ id: event.recordingId, type: "recording" });
-    const recording = event?.recordingId ? await recordingStore.find(event.recordingId) : undefined;
-    for (const scheduleId of [recording?.scheduleId, event?.scheduleId]) {
-      if (!scheduleId) continue;
-      await addScheduleScopeTargets(targets, scheduleId, knownNodes);
-    }
-    for (const nodeId of [recording?.nodeId, event?.nodeId]) {
-      if (!nodeId) continue;
-      addNodeScopeTargets(targets, nodeId, knownNodes);
-    }
-  }
-
-  if (target.type === "interface" && target.id) {
-    addInterfaceScopeTargets(targets, target.id, knownNodes);
-  }
-
-  if (target.type === "channel" && target.id) {
-    addChannelScopeTargets(targets, target.id, knownNodes);
-  }
-
-  return targets.filter(
-    (candidate, index, allTargets) =>
-      candidate.id &&
-      allTargets.findIndex(
-        (other) => other.type === candidate.type && other.id === candidate.id,
-      ) === index,
-  );
-}
-
-async function addRecordingScopeTargets(
-  targets: AuditTarget[],
-  recordingId: string,
-  knownNodes: NodeRecord[],
-) {
-  const recording = await recordingStore.find(recordingId);
-
-  if (!recording) {
-    return;
-  }
-
-  targets.push({ id: recording.id, type: "recording" });
-
-  if (recording.scheduleId) {
-    await addScheduleScopeTargets(targets, recording.scheduleId, knownNodes);
-  }
-
-  if (recording.nodeId) {
-    addNodeScopeTargets(targets, recording.nodeId, knownNodes);
-  }
-}
-
-async function addScheduleScopeTargets(
-  targets: AuditTarget[],
-  scheduleId: string,
-  knownNodes: NodeRecord[],
-) {
-  const schedule = await scheduleStore.find(scheduleId);
-
-  if (!schedule) {
-    return;
-  }
-
-  targets.push({ id: schedule.id, type: "schedule" });
-
-  if (schedule.roomId) {
-    targets.push({ id: schedule.roomId, type: "room" });
-  }
-
-  addNodeScopeTargets(targets, schedule.nodeId, knownNodes);
-}
+const resourceScopeTargets = createResourceScopeTargets({
+  healthEventStore,
+  nodeStore,
+  recordingStore,
+  scheduleStore,
+});
 
 function rosterSubject(user: NonNullable<AuthResult["user"]>) {
   return { groupIds: user.groups.map((group) => group.id), userId: user.id };
@@ -496,8 +421,11 @@ async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
   const result: NodeRecord[] = [];
 
   for (const node of await nodeStore.list()) {
+    // A node is visible if the user has a roster capability in ANY room that owns
+    // one of its channels (a shared node surfaces to every rostered room), or via
+    // a direct node grant. Per-channel data is filtered separately downstream.
     if (
-      (node.roomId !== undefined && userRoomIds.has(node.roomId)) ||
+      intersects(userRoomIds, nodeRoomIds(node)) ||
       (await hasResourceScope(user, { id: node.id, type: "node" }))
     ) {
       result.push(node);
@@ -507,15 +435,64 @@ async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
   return result;
 }
 
+function intersects(left: Set<string>, right: Set<string>) {
+  for (const value of right) {
+    if (left.has(value)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// The rooms whose channel data a user may see on a node. "all" for owner/admin or
+// a direct node grant (full node authority); otherwise the user's rostered rooms,
+// so a shared node exposes only the caller's channels.
+async function meterRoomAccess(
+  user: NonNullable<AuthResult["user"]>,
+  node: NodeRecord,
+): Promise<Set<string> | "all"> {
+  if (user.roles.includes("owner") || user.roles.includes("admin")) {
+    return "all";
+  }
+
+  if (await hasResourceScope(user, { id: node.id, type: "node" })) {
+    return "all";
+  }
+
+  return rosterRoomIds(user);
+}
+
+// Strict per-channel meter filtering: drop level rows for channels the caller's
+// rooms do not own so a shared node never leaks another room's meters.
+async function filterMeterFrameForUser(
+  user: NonNullable<AuthResult["user"]>,
+  node: NodeRecord,
+  frame: MeterFrame,
+): Promise<MeterFrame> {
+  const access = await meterRoomAccess(user, node);
+
+  if (access === "all") {
+    return frame;
+  }
+
+  return {
+    ...frame,
+    levels: frame.levels.filter((level) => {
+      const roomId = channelRoomId(node, frame.interfaceId, level.channelIndex);
+
+      return roomId !== undefined && access.has(roomId);
+    }),
+  };
+}
+
 async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
   const userRoomIds = await rosterRoomIds(user);
-  const knownNodes = userRoomIds.size > 0 ? await nodeStore.list() : [];
   const result: ScheduleSummary[] = [];
 
   for (const schedule of await scheduleStore.list()) {
-    const node = knownNodes.find((candidate) => candidate.id === schedule.nodeId);
-    const roomId = schedule.roomId ?? node?.roomId;
-    const inRosterRoom = roomId !== undefined && userRoomIds.has(roomId);
+    // A schedule follows its own persisted room (its selected channels' room).
+    const inRosterRoom = schedule.roomId !== undefined && userRoomIds.has(schedule.roomId);
 
     if (inRosterRoom || (await hasResourceScope(user, { id: schedule.id, type: "schedule" }))) {
       result.push(schedule);
@@ -536,9 +513,14 @@ async function scopedRooms(user: NonNullable<AuthResult["user"]>) {
 
   const roomIds = await rosterRoomIds(user);
 
-  for (const node of await scopedNodes(user)) {
-    if (node.roomId) {
-      roomIds.add(node.roomId);
+  // A DIRECT node grant confers full authority over that node, so surface every
+  // room that owns one of its channels. Roster-only access to a shared node does
+  // NOT add its sibling rooms — those stay filtered to the user's rostered rooms.
+  for (const node of await nodeStore.list()) {
+    if (await hasResourceScope(user, { id: node.id, type: "node" })) {
+      for (const roomId of nodeRoomIds(node)) {
+        roomIds.add(roomId);
+      }
     }
   }
 
@@ -559,15 +541,12 @@ async function scheduledByName(scheduleId: string) {
 
 async function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
   const userRoomIds = await rosterRoomIds(user);
-  const knownNodes = userRoomIds.size > 0 ? await nodeStore.list() : [];
   const result = [];
 
   for (const recording of await recordingStore.list()) {
-    const node = recording.nodeId
-      ? knownNodes.find((candidate) => candidate.id === recording.nodeId)
-      : undefined;
-    const roomId = node?.roomId;
-    const inRosterRoom = roomId !== undefined && userRoomIds.has(roomId);
+    // A recording follows its own persisted room (captured from its channels), so
+    // a shared node never leaks one room's recordings to the other room's roster.
+    const inRosterRoom = recording.roomId !== undefined && userRoomIds.has(recording.roomId);
 
     if (inRosterRoom || (await hasResourceScope(user, { id: recording.id, type: "recording" }))) {
       result.push(recording);
@@ -833,6 +812,7 @@ registerNodeRoutes({
   bootstrapStore,
   currentAuth,
   currentUser,
+  filterMeterFrame: (user, node, frame) => filterMeterFrameForUser(user, node, frame),
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   listenMonitorStore,
   listenSessionStore,
@@ -842,6 +822,17 @@ registerNodeRoutes({
   requirePermission,
   scopedNodes,
   sshCredentialStore,
+});
+
+registerChannelRoomRoutes({
+  app,
+  currentAuth,
+  currentUser,
+  nodeStore,
+  recordAuditEvent,
+  requirePermission,
+  roomStore,
+  scopedNodes,
 });
 
 registerScheduleRoutes({
@@ -941,6 +932,7 @@ registerHealthRoutes({
 
 registerRecordingRoutes({
   app,
+  authorizeTarget: (user, permission, target) => authorizeTargetForUser(user, permission, target),
   currentAuth,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
@@ -949,6 +941,7 @@ registerRecordingRoutes({
   recordAuditEvent,
   recordingStore,
   requirePermission,
+  roomStore,
   scopedNodes,
   scopedRecordings,
   settingsStore,

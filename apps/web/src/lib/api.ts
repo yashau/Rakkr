@@ -893,6 +893,17 @@ export const api = {
       },
       method: "PATCH",
     }),
+  assignChannelRooms: (
+    nodeId: string,
+    assignments: Array<{ channelIndexes: number[]; interfaceId: string; roomId: string | null }>,
+  ) =>
+    fetchJson<{ data: RecorderNode }>(`/api/v1/nodes/${nodeId}/channel-rooms`, {
+      body: JSON.stringify({ assignments }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PUT",
+    }),
   createSchedule: (input: ScheduleInput) =>
     fetchJson<{ data: ScheduleSummary }>("/api/v1/schedules", {
       body: JSON.stringify(input),

@@ -17,11 +17,15 @@ const requiredPhrases = [
   "per-action capabilities",
   "explicit deny access-policy always overrides",
   "grantedViaRoomCapability",
+  "Room ownership is per-channel",
+  "spanning rooms is rejected",
 ];
 const requiredApiIdentifiers = [
   "roomCapabilityAuthorizes",
   "roomRosterStore",
   "permissionRequiresCapability",
+  "channelRoomId",
+  "nodeRoomIds",
 ];
 const errors = [];
 

@@ -26,6 +26,10 @@ export interface CaptureClaim {
   jobId: string;
   nodeId: string;
   recordingId: string;
+  // Room that owns the claimed capture, for cross-room contention reporting. A
+  // shared node lets two rooms capture disjoint channels at once, so a conflict
+  // names which room already holds the channels.
+  roomId?: string;
   startMs: number;
   status: RecordingJobStatus;
 }
@@ -73,7 +77,8 @@ export function buildCaptureClaims(
       continue;
     }
 
-    const startMs = captureStartMs(job, recordings.get(job.recordingId));
+    const recording = recordings.get(job.recordingId);
+    const startMs = captureStartMs(job, recording);
 
     if (startMs === undefined) {
       continue;
@@ -87,6 +92,7 @@ export function buildCaptureClaims(
       jobId: job.id,
       nodeId: job.nodeId,
       recordingId: job.recordingId,
+      roomId: recording?.roomId,
       startMs,
       status: job.status,
     });
@@ -191,6 +197,7 @@ export function evaluateAdHocCapture(
         captureInterfaceId: request.captureInterfaceId,
         conflictingJobId: conflictingClaim.jobId,
         conflictingRecordingId: conflictingClaim.recordingId,
+        conflictingRoomId: conflictingClaim.roomId,
         error:
           busyChannels.length > 0
             ? "Requested channels are already in use"

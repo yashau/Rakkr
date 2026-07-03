@@ -264,6 +264,7 @@ function mergeSeedInterface(
   incomingInterface: NodeInterfaceInput,
 ): AudioInterface {
   const aliasByIndex = new Map(existing.channels.map((channel) => [channel.index, channel.alias]));
+  const roomByIndex = new Map(existing.channels.map((channel) => [channel.index, channel.roomId]));
   const incomingAliases = incomingChannelAliases(incomingInterface);
 
   return {
@@ -271,9 +272,12 @@ function mergeSeedInterface(
     absent: undefined,
     backend: incomingInterface.backend,
     channelCount: incomingInterface.channelCount,
+    // Operator-owned per-channel room assignments survive reconcile, matched on
+    // channel index (new channels start unassigned and inherit the node default).
     channels: channelIndexes(incomingInterface.channelCount).map((index) => ({
       alias: aliasByIndex.get(index) ?? incomingAliases.get(index) ?? defaultChannelAlias(index),
       index,
+      roomId: roomByIndex.get(index),
     })),
     hardwarePath: incomingInterface.hardwarePath,
     sampleRates: incomingInterface.sampleRates,

@@ -21,6 +21,7 @@ import type {
   RequirePermission,
 } from "./http-types.js";
 import type { NodeStore } from "./node-store.js";
+import { nodeRoomIds } from "./room-resolution.js";
 import type { RecordingStore } from "./recording-store.js";
 import { previewScheduleOccurrences } from "./schedule-engine.js";
 import type { ScheduleStore } from "./schedule-store.js";
@@ -318,11 +319,13 @@ export function registerRoomRoutes({
         return c.json({ error: "Room not found" }, 404);
       }
 
-      const nodes = (await nodeStore.list()).filter((node) => node.roomId === roomId);
-      const nodeIds = new Set(nodes.map((node) => node.id));
+      // A node belongs to the room if any of its channels do (a shared node
+      // appears in every room it serves). Recent recordings use the recording's
+      // persisted room, not the node, so a shared node shows only this room's.
+      const nodes = (await nodeStore.list()).filter((node) => nodeRoomIds(node).has(roomId));
       const upcoming = await buildUpcomingOccurrences(roomId);
       const recentRecordings: RecordingSummary[] = (await recordingStore.list())
-        .filter((recording) => recording.nodeId !== undefined && nodeIds.has(recording.nodeId))
+        .filter((recording) => recording.roomId === roomId)
         .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))
         .slice(0, RECENT_RECORDINGS_LIMIT);
 
@@ -450,7 +453,9 @@ export function registerRoomRoutes({
   function withNodeCount(room: Room, nodes: RecorderNode[]): Room {
     return {
       ...room,
-      nodeCount: nodes.filter((node) => node.roomId === room.id).length,
+      // Count nodes with ANY channel owned by this room (a shared node counts for
+      // every room it serves).
+      nodeCount: nodes.filter((node) => nodeRoomIds(node).has(room.id)).length,
     };
   }
 

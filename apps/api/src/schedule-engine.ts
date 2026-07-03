@@ -67,6 +67,7 @@ export function materializeScheduledRecording(
     recordedAt: trackStart.toISOString(),
     recordingProfileId: schedule.recordingProfileId,
     retentionPolicyId: schedule.retentionPolicyId,
+    roomId: schedule.roomId,
     scheduleId: schedule.id,
     source: "schedule",
     status: "recording",

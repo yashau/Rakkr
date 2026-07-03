@@ -194,6 +194,12 @@ export const auditEventSchema = z.object({
 export const audioChannelSchema = z.object({
   alias: z.string().min(1),
   index: z.number().int().positive(),
+  // Room that owns this channel. Room ownership is per-channel: any set of a
+  // node's channels can belong to a room, and each channel belongs to at most one
+  // room. Absent means the channel inherits the node default room. `roomName` is a
+  // denormalized display copy resolved by the controller.
+  roomId: z.string().min(1).optional(),
+  roomName: z.string().min(1).optional(),
 });
 
 export const audioInterfaceSchema = z.object({
@@ -264,8 +270,10 @@ export const recorderNodeSchema = z.object({
     room: z.string().min(1),
     site: z.string().min(1),
   }),
-  // First-class room this node belongs to (source of truth for room identity;
-  // location above is retained for display). Optional during the rooms rollout.
+  // Node default room. Room ownership is per-channel (see audioChannelSchema);
+  // this is the fallback room for channels with no room of their own, and the
+  // display fallback for a node whose channels are all in one room. `location`
+  // above is retained for physical-install display.
   roomId: z.string().min(1).optional(),
   notes: z.string().optional(),
   audioDefaults: nodeAudioCommandDefaultsSchema.optional(),
@@ -644,6 +652,10 @@ export const recordingSummarySchema = z.object({
   recordedAt: isoDateTimeSchema,
   recordingProfileId: z.string().min(1).optional(),
   retentionPolicyId: z.string().min(1).optional(),
+  // Room that owns this recording, captured at create time from the selected
+  // channels' room. Persisted, not derived, so a later channel reassignment does
+  // not retroactively move a completed recording.
+  roomId: z.string().min(1).optional(),
   scheduleId: z.string().min(1).optional(),
   source: recordingSourceSchema,
   status: recordingStatusSchema,

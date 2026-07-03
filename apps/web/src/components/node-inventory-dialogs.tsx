@@ -5,6 +5,7 @@ import type { RecorderNode } from "@rakkr/shared";
 import { PlusCircle, Save, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { NodeChannelRoomEditor } from "@/components/channel-room-assignment-editor";
 import {
   NodeAudioDefaultsEditor,
   NodeIdentityEditor,
@@ -283,6 +284,7 @@ export function NodeConfigureDialog({ node }: { node: RecorderNode }) {
         </DialogHeader>
         <div className="grid gap-3 text-sm">
           <NodeIdentityEditor canManage node={node} />
+          <NodeChannelRoomEditor canManage node={node} />
           <NodeAudioDefaultsEditor canManage node={node} />
           {node.interfaces.map((audioInterface) => (
             <NodeInterfaceEditor

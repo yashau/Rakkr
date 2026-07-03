@@ -38,6 +38,13 @@ interface NodeRouteDependencies {
   bootstrapStore: NodeBootstrapStore;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
+  // Strict per-channel meter filtering: drops levels for channels the caller's
+  // rooms do not own. Defaults to identity (no filtering) for tests.
+  filterMeterFrame?: (
+    user: NonNullable<AuthResult["user"]>,
+    node: RecorderNode,
+    frame: MeterFrame,
+  ) => Promise<MeterFrame>;
   hasResourceScope: (
     user: NonNullable<AuthResult["user"]>,
     target: AuditTarget,
@@ -141,6 +148,7 @@ export function registerNodeRoutes({
   bootstrapStore,
   currentAuth,
   currentUser,
+  filterMeterFrame = async (_user, _node, frame) => frame,
   hasResourceScope,
   listenMonitorStore,
   listenSessionStore,
@@ -488,13 +496,17 @@ export function registerNodeRoutes({
         return c.json({ error: "Meter data unavailable" }, 409);
       }
 
+      // Strict per-channel filtering: a caller sees only the levels for channels
+      // their rooms own on this (possibly shared) node.
+      const visibleFrame = await filterMeterFrame(currentUser(c), node, frame);
+
       await recordAuditEvent(c, {
         action: "meters.read.succeeded",
         auth: currentAuth(c),
         details: {
-          capturedAt: frame.capturedAt,
-          interfaceId: frame.interfaceId,
-          levelCount: frame.levels.length,
+          capturedAt: visibleFrame.capturedAt,
+          interfaceId: visibleFrame.interfaceId,
+          levelCount: visibleFrame.levels.length,
         },
         outcome: "succeeded",
         permission: "node:read",
@@ -505,7 +517,7 @@ export function registerNodeRoutes({
         },
       });
 
-      return c.json({ data: frame });
+      return c.json({ data: visibleFrame });
     },
   );
 
