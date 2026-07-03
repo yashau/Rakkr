@@ -15,6 +15,7 @@ import {
   useParams,
 } from "@tanstack/react-router";
 import {
+  AudioLines,
   Building2,
   CalendarDays,
   Database,
@@ -24,7 +25,7 @@ import {
   LogOut,
   ListChecks,
   Menu,
-  Radio,
+  RadioReceiver,
   Settings,
   ShieldCheck,
   Users,
@@ -36,6 +37,7 @@ import ReactDOM from "react-dom/client";
 
 import { toast } from "sonner";
 
+import { RakkrLogo } from "@/components/rakkr-logo";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -87,7 +89,7 @@ const navIcons: Record<RootNavItem["id"], typeof Gauge> = {
   dashboard: Gauge,
   health: HeartPulse,
   jobs: ListChecks,
-  nodes: Radio,
+  nodes: RadioReceiver,
   recordings: Database,
   rooms: Building2,
   schedules: CalendarDays,
@@ -176,9 +178,7 @@ function RootLayout() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <div className="grid w-full max-w-sm gap-4 rounded-lg border border-border bg-panel p-6 text-center">
-          <div className="mx-auto flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Radio className="size-5" />
-          </div>
+          <RakkrLogo className="mx-auto size-10" />
           <div className="grid gap-1">
             <h1 className="text-base font-semibold text-foreground">Controller unavailable</h1>
             <p className="text-sm text-muted-foreground">
@@ -197,9 +197,7 @@ function RootLayout() {
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <output aria-label="Loading Rakkr" className="grid w-full max-w-xs gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Radio className="size-5" />
-            </div>
+            <RakkrLogo className="size-10" />
             <Skeleton className="h-5 w-28" />
           </div>
           <Skeleton className="h-24 w-full" />
@@ -218,9 +216,7 @@ function RootLayout() {
     <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-border bg-panel px-4 py-5 lg:block">
         <div className="mb-8 flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Radio className="size-5" />
-          </div>
+          <RakkrLogo className="size-10" />
           <div>
             <div className="text-lg font-semibold">Rakkr</div>
             <div className="text-xs text-muted-foreground">Controller</div>
@@ -251,7 +247,7 @@ function RootLayout() {
                 </SheetTrigger>
                 <SheetContent className="w-64 p-4" side="left">
                   <SheetTitle className="mb-4 flex items-center gap-2 text-lg font-semibold">
-                    <Radio className="size-5" />
+                    <RakkrLogo className="size-6" />
                     Rakkr
                   </SheetTitle>
                   <NavLinks navItems={navItems} onNavigate={() => setMobileNavOpen(false)} />
@@ -298,7 +294,7 @@ function RootLayout() {
                       onClick={() => setQuickRecordOpen((open) => !open)}
                       variant={quickRecordOpen ? "secondary" : "default"}
                     >
-                      <Radio className="size-4" />
+                      <AudioLines className="size-4" />
                       Record
                     </Button>
                   </span>
@@ -361,10 +357,8 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
       <section className="w-full max-w-sm rounded-lg border border-border bg-panel p-5 shadow-sm">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Radio className="size-5" />
-          </div>
+        <div className="mb-5 flex flex-col items-center gap-2 text-center">
+          <RakkrLogo className="size-12" />
           <div>
             <h1 className="text-lg font-semibold">Rakkr</h1>
             <p className="text-sm text-muted-foreground">Local controller sign in</p>

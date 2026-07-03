@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import { toneBadgeClass } from "@/lib/status-colors";
 import {
   auditFilterChips,
@@ -149,6 +150,8 @@ const auditColumns: ColumnDef<AuditEvent>[] = [
 ];
 
 export function AuditPage() {
+  useDocumentTitle("Audit");
+
   const [draft, setDraft] = useState<AuditFilterDraft>(emptyAuditFilterDraft);
   const filters = useMemo(() => auditFiltersFromDraft(draft), [draft]);
   const pagination = useServerPagination(filters, { defaultPageSize });

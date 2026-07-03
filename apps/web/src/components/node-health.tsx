@@ -320,7 +320,7 @@ function healthBarClass(tone: HealthTone) {
     return "bg-emerald-500";
   }
 
-  return "bg-slate-300 dark:bg-slate-600";
+  return "bg-muted";
 }
 
 function numericDetail(value: unknown) {

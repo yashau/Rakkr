@@ -35,6 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { api, apiErrorStatus } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { useDocumentTitle } from "@/lib/document-title";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
 import {
   roomDraftFromRoom,
@@ -99,6 +100,8 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
     return <LoadingSkeleton label="Loading room" />;
   }
 
+  useDocumentTitle(overviewQuery.data?.data?.room.name);
+
   if (!actionPermissions.canRead) {
     return (
       <div className="grid gap-4">
@@ -152,7 +155,7 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            <Building2 className="size-5 text-teal-700 dark:text-teal-400" />
+            <Building2 className="size-5 text-primary" />
             <h2 className="text-lg font-semibold">{room.name}</h2>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -393,7 +396,7 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
 function SectionTitle({ icon: Icon, title }: { icon: typeof Building2; title: string }) {
   return (
     <div className="flex items-center gap-2">
-      <Icon className="size-5 text-teal-700 dark:text-teal-400" />
+      <Icon className="size-5 text-primary" />
       <h3 className="text-base font-semibold">{title}</h3>
     </div>
   );

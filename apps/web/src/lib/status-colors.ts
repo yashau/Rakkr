@@ -22,7 +22,7 @@ export function toneBadgeClass(tone: StatusTone): string {
     return "border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300";
   }
 
-  return "border-slate-200 dark:border-slate-900 bg-slate-50 dark:bg-slate-950/40 text-slate-700 dark:text-slate-300";
+  return "border-border bg-muted text-muted-foreground";
 }
 
 /**

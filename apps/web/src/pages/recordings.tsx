@@ -32,6 +32,7 @@ import {
   type RecordingSortOrder,
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { useDocumentTitle } from "@/lib/document-title";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
 import {
   auditedUploadActionQueryKeys,
@@ -64,6 +65,8 @@ import { useRecordingPlaybackMutation } from "@/lib/recording-playback";
 import { useServerPagination } from "@/lib/use-server-pagination";
 
 export function RecordingsPage() {
+  useDocumentTitle("Recordings");
+
   const queryClient = useQueryClient();
   const audioPreviewRef = useRef<RecordingPlaybackPreview | undefined>(undefined);
   const [audioPreview, setAudioPreview] = useState<RecordingPlaybackPreview>();

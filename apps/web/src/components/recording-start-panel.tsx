@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Radio } from "lucide-react";
+import { AudioLines } from "lucide-react";
 import { useState } from "react";
 import type { AudioInterface, RecorderNode, RecordingProfile, UploadPolicy } from "@rakkr/shared";
 
@@ -289,7 +289,7 @@ export function RecordingStartPanel({
           }
           type="submit"
         >
-          <Radio className="size-4" />
+          <AudioLines className="size-4" />
           Start
         </Button>
       </div>

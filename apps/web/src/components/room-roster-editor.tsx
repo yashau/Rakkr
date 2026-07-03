@@ -1,20 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Plus, Save, Users, UserRound, X } from "lucide-react";
+import { Calendar, Save, Users, UserRound, X } from "lucide-react";
 import { roomCapabilities, type RoomCapability, type RoomRosterEntry } from "@rakkr/shared";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Combobox, type ComboboxGroup } from "@/components/ui/combobox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
@@ -93,6 +85,28 @@ export function RoomRosterEditor({ roomId }: { roomId: string }) {
     (group) => !usedSubjectIds.has(group.id),
   );
 
+  const comboboxGroups: ComboboxGroup[] = [
+    {
+      heading: "Access groups",
+      icon: Users,
+      options: groupOptions.map((group) => ({
+        id: `group:${group.id}`,
+        keywords: group.id,
+        label: group.name,
+      })),
+    },
+    {
+      heading: "Users",
+      icon: UserRound,
+      options: userOptions.map((user) => ({
+        id: `user:${user.id}`,
+        keywords: user.email,
+        label: user.name,
+        sublabel: user.email,
+      })),
+    },
+  ];
+
   return (
     <div className="grid gap-3">
       {calendarEntries.length > 0 ? (
@@ -169,64 +183,29 @@ export function RoomRosterEditor({ roomId }: { roomId: string }) {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Popover onOpenChange={setAddOpen} open={addOpen}>
-          <PopoverTrigger asChild>
-            <Button type="button" variant="outline">
-              <Plus className="size-4" />
-              Add user/group
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80 p-0">
-            <Command>
-              <CommandInput placeholder="Search users and groups…" />
-              <CommandList>
-                <CommandEmpty>No users or groups found.</CommandEmpty>
-                {groupOptions.length > 0 ? (
-                  <CommandGroup heading="Access groups">
-                    {groupOptions.map((group) => (
-                      <CommandItem
-                        key={`group-${group.id}`}
-                        onSelect={() => addEntry({ id: group.id, name: group.name, type: "group" })}
-                        value={`group ${group.name} ${group.id}`}
-                      >
-                        <Users className="size-4 text-muted-foreground" />
-                        <span className="flex-1 truncate">{group.name}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                ) : null}
-                {userOptions.length > 0 ? (
-                  <CommandGroup heading="Users">
-                    {userOptions.map((user) => (
-                      <CommandItem
-                        key={`user-${user.id}`}
-                        onSelect={() => addEntry({ id: user.id, name: user.name, type: "user" })}
-                        value={`user ${user.name} ${user.email} ${user.id}`}
-                      >
-                        <UserRound className="size-4 text-muted-foreground" />
-                        <span className="flex flex-1 flex-col">
-                          <span className="truncate">{user.name}</span>
-                          <span className="truncate text-xs text-muted-foreground">
-                            {user.email}
-                          </span>
-                        </span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                ) : null}
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-
-        <Button
-          disabled={saveMutation.isPending}
-          onClick={() => saveMutation.mutate(manualEntries)}
-        >
-          <Save className="size-4" />
-          Save roster
-        </Button>
+      <div className="grid gap-2">
+        <Combobox
+          ariaLabel="Add a user or group to the roster"
+          closeOnSelect
+          emptyText="No users or groups found."
+          groups={comboboxGroups}
+          onOpenChange={setAddOpen}
+          onSelect={(option) => {
+            const separator = option.id.indexOf(":");
+            const kind = option.id.slice(0, separator) as "group" | "user";
+            addEntry({ id: option.id.slice(separator + 1), name: option.label, type: kind });
+          }}
+          placeholder="Add a user or group…"
+        />
+        <div className="flex justify-end">
+          <Button
+            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate(manualEntries)}
+          >
+            <Save className="size-4" />
+            Save roster
+          </Button>
+        </div>
       </div>
     </div>
   );

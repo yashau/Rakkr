@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import {
   addMonths,
   buildMonthGrid,
@@ -38,6 +39,8 @@ interface DragPayload {
 }
 
 export function SchedulesCalendarPage() {
+  useDocumentTitle("Schedule Calendar");
+
   const queryClient = useQueryClient();
   const [month, setMonth] = useState(() => {
     const now = new Date();
@@ -157,7 +160,7 @@ export function SchedulesCalendarPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <CalendarDays className="size-5 text-teal-700 dark:text-teal-400" />
+              <CalendarDays className="size-5 text-primary" />
               <h2 className="text-lg font-semibold">Schedule Calendar</h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">

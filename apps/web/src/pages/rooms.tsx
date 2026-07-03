@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import {
   emptyRoomDraft,
   roomDraftToInput,
@@ -30,6 +31,8 @@ import {
 } from "@/lib/room-page-helpers";
 
 export function RoomsPage() {
+  useDocumentTitle("Rooms");
+
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<RoomDraft>(emptyRoomDraft);
