@@ -231,9 +231,16 @@ class JsonUploadQueueStore implements UploadQueueStore {
   }
 }
 
+type UploadQueueDatabase = ReturnType<typeof createDatabase>;
+// The db handle or a transaction handle — lets findItem/writeItem run inside the
+// succeed/fail/retry transactions that serialize the read-modify-write.
+type UploadQueueExecutor =
+  | UploadQueueDatabase
+  | Parameters<Parameters<UploadQueueDatabase["transaction"]>[0]>[0];
+
 class PostgresUploadQueueStore implements UploadQueueStore {
   private dbAvailable = true;
-  private readonly db;
+  private readonly db: UploadQueueDatabase;
 
   constructor(private readonly fallback: UploadQueueStore) {
     this.db = createDatabase(process.env.DATABASE_URL!);
@@ -381,24 +388,28 @@ class PostgresUploadQueueStore implements UploadQueueStore {
     }
 
     try {
-      const item = await this.findItem(itemId);
+      // Lock the row for the read-modify-write so a concurrent operator retry()
+      // or another runner tick cannot clobber this transition (last-writer-wins).
+      return await this.db.transaction(async (tx) => {
+        const item = await this.findItem(itemId, tx, true);
 
-      if (!item) {
-        return undefined;
-      }
+        if (!item) {
+          return undefined;
+        }
 
-      const now = new Date().toISOString();
-      const updated = uploadQueueItemSchema.parse({
-        ...item,
-        lastError: undefined,
-        nextAttemptAt: now,
-        status: "succeeded",
-        updatedAt: now,
+        const now = new Date().toISOString();
+        const updated = uploadQueueItemSchema.parse({
+          ...item,
+          lastError: undefined,
+          nextAttemptAt: now,
+          status: "succeeded",
+          updatedAt: now,
+        });
+
+        await this.writeItem(updated, tx);
+
+        return updated;
       });
-
-      await this.writeItem(updated);
-
-      return updated;
     } catch (error) {
       await this.failover("upload queue success unavailable; using JSON store", error);
       return this.fallback.succeed(itemId);
@@ -411,25 +422,29 @@ class PostgresUploadQueueStore implements UploadQueueStore {
     }
 
     try {
-      const item = await this.findItem(itemId);
+      // Lock the row for the read-modify-write (see succeed()); the failed/retry
+      // decision reads attemptCount, which a concurrent writer must not race.
+      return await this.db.transaction(async (tx) => {
+        const item = await this.findItem(itemId, tx, true);
 
-      if (!item) {
-        return undefined;
-      }
+        if (!item) {
+          return undefined;
+        }
 
-      const now = new Date().toISOString();
-      const failed = item.attemptCount >= item.maxAttempts;
-      const updated = uploadQueueItemSchema.parse({
-        ...item,
-        lastError: reason,
-        nextAttemptAt: failed ? now : retryAt(item.attemptCount),
-        status: failed ? "failed" : "retrying",
-        updatedAt: now,
+        const now = new Date().toISOString();
+        const failed = item.attemptCount >= item.maxAttempts;
+        const updated = uploadQueueItemSchema.parse({
+          ...item,
+          lastError: reason,
+          nextAttemptAt: failed ? now : retryAt(item.attemptCount),
+          status: failed ? "failed" : "retrying",
+          updatedAt: now,
+        });
+
+        await this.writeItem(updated, tx);
+
+        return updated;
       });
-
-      await this.writeItem(updated);
-
-      return updated;
     } catch (error) {
       await this.failover("upload queue failure unavailable; using JSON store", error);
       return this.fallback.fail(itemId, reason);
@@ -442,39 +457,49 @@ class PostgresUploadQueueStore implements UploadQueueStore {
     }
 
     try {
-      const item = await this.findItem(itemId);
+      // Lock the row for the read-modify-write so the operator's budget reset is
+      // not clobbered by a concurrent runner succeed/fail (see succeed()).
+      return await this.db.transaction(async (tx) => {
+        const item = await this.findItem(itemId, tx, true);
 
-      if (!item) {
-        return undefined;
-      }
+        if (!item) {
+          return undefined;
+        }
 
-      const now = new Date().toISOString();
-      // Operator retry resets the attempt budget so the runner re-attempts a
-      // terminally-failed item (see the JSON store for the rationale).
-      const updated = uploadQueueItemSchema.parse({
-        ...item,
-        attemptCount: 0,
-        lastError: "provider_not_configured",
-        nextAttemptAt: now,
-        status: "retrying",
-        updatedAt: now,
+        const now = new Date().toISOString();
+        // Operator retry resets the attempt budget so the runner re-attempts a
+        // terminally-failed item (see the JSON store for the rationale).
+        const updated = uploadQueueItemSchema.parse({
+          ...item,
+          attemptCount: 0,
+          lastError: "provider_not_configured",
+          nextAttemptAt: now,
+          status: "retrying",
+          updatedAt: now,
+        });
+
+        await this.writeItem(updated, tx);
+
+        return updated;
       });
-
-      await this.writeItem(updated);
-
-      return updated;
     } catch (error) {
       await this.failover("upload queue retry unavailable; using JSON store", error);
       return this.fallback.retry(itemId);
     }
   }
 
-  private async findItem(itemId: string) {
-    const [row] = await this.db
+  private async findItem(
+    itemId: string,
+    executor: UploadQueueExecutor = this.db,
+    forUpdate = false,
+  ) {
+    const base = executor
       .select()
       .from(uploadQueueItemsTable)
-      .where(eq(uploadQueueItemsTable.id, itemId))
-      .limit(1);
+      .where(eq(uploadQueueItemsTable.id, itemId));
+    // FOR UPDATE (only valid inside a transaction) locks the row so the
+    // succeed/fail/retry read-modify-write serializes against a concurrent writer.
+    const [row] = await (forUpdate ? base.for("update") : base.limit(1));
 
     return row ? queueItemFromRow(row) : undefined;
   }
@@ -495,8 +520,8 @@ class PostgresUploadQueueStore implements UploadQueueStore {
     }
   }
 
-  private async writeItem(item: UploadQueueItem) {
-    await this.db
+  private async writeItem(item: UploadQueueItem, executor: UploadQueueExecutor = this.db) {
+    await executor
       .insert(uploadQueueItemsTable)
       .values(queueItemToRow(item))
       .onConflictDoUpdate({
