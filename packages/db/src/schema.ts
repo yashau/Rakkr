@@ -418,6 +418,14 @@ export const nodeCredentials = pgTable(
   (table) => ({
     nodeIdx: index("node_credentials_node_idx").on(table.nodeId),
     tokenPrefixIdx: index("node_credentials_token_prefix_idx").on(table.tokenPrefix),
+    // At most one un-revoked (active) credential per node — the DB-level guard for
+    // the invariant rotateCredential intends (revoke prior, then insert one). The
+    // revoke+insert is not atomic on its own, so two concurrent rotations could
+    // otherwise both insert an active credential (an un-revoked, still-valid stale
+    // token); this partial unique index makes the second insert fail closed.
+    activeNodeIdx: uniqueIndex("node_credentials_active_node_idx")
+      .on(table.nodeId)
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 

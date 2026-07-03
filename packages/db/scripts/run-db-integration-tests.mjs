@@ -12,6 +12,7 @@ import postgres from "postgres";
 const dbBackedApiTests = [
   "test/oidc-groups-collision.test.ts",
   "test/node-ssh-credential-rotation-atomic.test.ts",
+  "test/node-credential-rotation-atomic.test.ts",
 ];
 
 const DEFAULT_DATABASE_URL = "postgres://rakkr:rakkr@127.0.0.1:5432/rakkr";
