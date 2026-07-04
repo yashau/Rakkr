@@ -223,6 +223,63 @@ test("a retry PUT re-runs a schedule roster reconcile that failed on the first p
   );
 });
 
+test("does not write calendar roster rows for a schedule deleted mid-reconcile", async () => {
+  const auditStore = createAuditStore("");
+  const node = sharedNode({
+    roomId: undefined,
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1, roomId: "room-a" },
+          { alias: "Ch 2", index: 2 },
+          { alias: "Ch 3", index: 3 },
+          { alias: "Ch 4", index: 4 },
+        ],
+        id: "iface-1",
+        sampleRates: [48000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+  });
+  // The schedule is visible to list() but its update() returns undefined — it was
+  // deleted concurrently between list() and the reconcile write (its delete cascade
+  // already removed its roster rows).
+  const base = memoryScheduleStore([roomScheduleFixture()]);
+  const scheduleStore: ScheduleStore = {
+    ...base,
+    async update() {
+      return undefined;
+    },
+  };
+  const reconciledRosters: ScheduleSummary[] = [];
+  const app = channelRoomApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    reconcileScheduleRoster: async (schedule) => {
+      reconciledRosters.push(schedule);
+    },
+    scheduleStore,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node.id}/channel-rooms`, {
+    body: JSON.stringify({
+      assignments: [{ channelIndexes: [1], interfaceId: "iface-1", roomId: "room-b" }],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PUT",
+  });
+
+  assert.equal(response.status, 200);
+  // A vanished schedule must NOT get fresh calendar roster rows (which would outlive
+  // the deleted schedule and leak view/operate grants that nothing cleans up).
+  assert.deepEqual(reconciledRosters, []);
+});
+
 test("reassigning a channel that splits a schedule across rooms makes it room-less", async () => {
   const auditStore = createAuditStore("");
   const node = sharedNode({

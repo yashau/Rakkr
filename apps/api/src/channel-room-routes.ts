@@ -174,20 +174,28 @@ export function registerChannelRoomRoutes({
       // Best-effort per schedule: the node channel-rooms are already committed, so
       // one schedule's reconcile throwing must NOT abort the loop and leave the
       // remaining schedules stale. Record the failure and continue.
-      //
-      // Reconcile the roster into the target room FIRST, and persist the schedule's
-      // new roomId only after that succeeds — the roomId write is the commit point.
-      // A retry PUT re-detects the schedule (nextRoomId !== schedule.roomId) and
-      // re-runs BOTH writes, so a failed roster reconcile self-heals. (Persisting
-      // roomId first would leave the schedule pointing at the new room with its
-      // roster stranded in the old one, and the retry would then skip the schedule
-      // because its roomId already matched — the stale roster never healed.)
       try {
-        await reconcileScheduleRoster({ ...schedule, roomId: nextRoomId });
+        // Persist the new roomId first — but ONLY reconcile the roster once the
+        // schedule is confirmed to still exist (`reconciled` truthy). Reconciling
+        // before the existence check would write calendar roster rows for a schedule
+        // that was deleted concurrently (between list() and here), orphaning grants
+        // the schedule-delete cascade already ran and can no longer clean.
         const reconciled = await scheduleStore.update(schedule.id, { roomId: nextRoomId });
 
-        if (reconciled) {
+        if (!reconciled) {
+          continue;
+        }
+
+        try {
+          await reconcileScheduleRoster(reconciled);
           changed.push(schedule.id);
+        } catch (rosterError) {
+          // roomId is persisted but the roster reconcile failed; roll the roomId
+          // back so a retry PUT re-detects the move (nextRoomId !== schedule.roomId)
+          // and re-runs BOTH writes. Otherwise the schedule stays on the new room
+          // with a stale roster and the retry skips it — the roster never heals.
+          await scheduleStore.update(schedule.id, { roomId: schedule.roomId });
+          throw rosterError;
         }
       } catch (error) {
         console.warn("schedule room reconcile failed", { error, scheduleId: schedule.id });
