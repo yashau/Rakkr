@@ -310,7 +310,11 @@ export function registerScheduleCalendarRoutes({
           undefined,
           new Date(),
           undefined,
-          before.nextRunAt ?? undefined,
+          // Anchor parity to the schedule's phase; if a recurring series has no
+          // persisted nextRunAt (a long pause can exhaust the forward scan), fall
+          // back to the DRAGGED occurrence's phase — the one the operator saw on
+          // the calendar — never to wall-clock `now`, which would flip the series.
+          before.nextRunAt ?? new Date(body.data.occurrenceStartAt).toISOString(),
         ),
         recurrence: skippedRecurrence,
       });
