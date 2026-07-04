@@ -687,6 +687,49 @@ test("health summary tiles reflect the full filtered set, not the current page",
   }
 });
 
+test("unrestricted reader who is a DENY subject counts only the events they can see", async () => {
+  // An owner/admin who is the subject of an access-policy DENY is scope-restricted
+  // for the hidden event even though they take the unrestricted list path. meta.total
+  // and the summary tiles must reflect the SCOPED set, not the raw store count.
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser: CurrentUser = { ...user(["health:read"]), roles: ["admin"] };
+  const healthEventStore = createHealthEventStore("", [
+    event({ id: "health_visible_a", nodeId: "node_1", status: "open" }),
+    event({ id: "health_visible_b", nodeId: "node_1", status: "open" }),
+    event({ id: "health_hidden", nodeId: "node_hidden", severity: "critical", status: "open" }),
+  ]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async (_user, target) => target.id !== "node_hidden",
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermissionWithCalls([]),
+  });
+
+  const body = (await (await app.request("/api/v1/health-events")).json()) as {
+    data: HealthEvent[];
+    meta: { total: number };
+    summary: { activeCritical: number; open: number; total: number };
+  };
+
+  // Two visible, one DENY-hidden -> data excludes the hidden event, and both the
+  // header count and the tiles agree with the scoped visible set.
+  assert.deepEqual(
+    body.data.map((healthEvent) => healthEvent.id).sort(),
+    ["health_visible_a", "health_visible_b"],
+  );
+  assert.equal(body.meta.total, 2);
+  assert.equal(body.summary.total, 2);
+  assert.equal(body.summary.open, 2);
+  // The hidden event was the only critical one; it must not leak into the tiles.
+  assert.equal(body.summary.activeCritical, 0);
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   path: string,

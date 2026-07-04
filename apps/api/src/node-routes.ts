@@ -156,7 +156,6 @@ export function registerNodeRoutes({
   currentAuth,
   currentUser,
   filterMeterFrame = async (_user, _node, frame) => frame,
-  hasResourceScope,
   listenMonitorStore,
   listenSessionStore,
   meterFrameStore,
@@ -546,14 +545,16 @@ export function registerNodeRoutes({
     return streamSSE(c, async (stream) => {
       while (true) {
         const frame = await liveMeterFrame();
-        // Strict per-channel filtering (mirrors /meters): the node-scope gate expands
-        // to the room union, so on a shared node a caller scoped to only some rooms
-        // must not receive sibling-room channel levels.
+        // Roster-inclusive gate + strict per-channel filtering, mirroring /meters:
+        // resolve the node through the caller's scoped-node set (scopedNodes — the
+        // same authority /meters uses via findScopedNode), so a rostered room
+        // operator with no direct node grant is admitted for the channels their
+        // rooms own, while sibling-room levels on a shared node are stripped before
+        // streaming.
         const visibleFrame = frame
           ? await resolveVisibleMeterFrame(user, frame, {
               filterMeterFrame,
-              hasResourceScope,
-              nodeStore,
+              resolveScopedNode: scopedNode,
             })
           : undefined;
 
@@ -596,7 +597,14 @@ export function registerNodeRoutes({
   }
 
   async function findScopedNode(c: Context<AppBindings>, nodeId: string) {
-    return (await scopedNodes(currentUser(c))).find((node) => node.id === nodeId);
+    return scopedNode(currentUser(c), nodeId);
+  }
+
+  // The caller's scoped-node lookup by id, mirroring /meters' findScopedNode but
+  // taking a user directly so the /meter-events SSE loop (which has the user, not a
+  // fresh request context per tick) can reuse the same roster-inclusive resolution.
+  async function scopedNode(user: NonNullable<AuthResult["user"]>, nodeId: string) {
+    return (await scopedNodes(user)).find((node) => node.id === nodeId);
   }
 
   async function recordNodeFailure(

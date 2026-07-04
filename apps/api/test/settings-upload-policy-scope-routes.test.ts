@@ -175,6 +175,49 @@ test("upload policy create rejects an out-of-scope or unknown destination refere
   );
 });
 
+test("R28: upload policy create with a duplicate id is a 409 and does not overwrite", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer();
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async () => true,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, () => true),
+    settingsStore: createSettingsStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
+  });
+
+  const policyId = `upload_policy_dup_${randomUUID()}`;
+  const first = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    enabled: true,
+    id: policyId,
+    maxAttempts: 3,
+    name: "Original Policy",
+    trigger: "manual",
+  });
+  const conflict = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    enabled: true,
+    id: policyId,
+    maxAttempts: 9,
+    name: "Impostor Policy",
+    trigger: "manual",
+  });
+  const conflictBody = (await conflict.json()) as { reason?: string };
+  const stored = await findUploadPolicy(policyId);
+  const failed = await auditStore.list({ action: "settings.upload_policies.create.failed" });
+
+  assert.equal(first.status, 201);
+  assert.equal(conflict.status, 409);
+  assert.equal(conflictBody.reason, "upload_policy_exists");
+  // The create must not have upserted over the original row.
+  assert.equal(stored?.name, "Original Policy");
+  assert.equal(stored?.maxAttempts, 3);
+  assert.equal(failed.at(-1)?.reason, "upload_policy_exists");
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   url: string,

@@ -19,7 +19,7 @@ import type {
   RecordAuditEvent,
   RequirePermission,
 } from "./http-types.js";
-import type { SettingsStore } from "./settings-store.js";
+import { SettingsStoreError, type SettingsStore } from "./settings-store.js";
 import {
   channelMapTemplateSettingsTarget,
   firstHiddenChannelMapAssignmentTarget,
@@ -65,7 +65,20 @@ export function registerSettingsChannelMapRoutes({
         return c.json({ error: "Invalid channel map template", issues: body.error.issues }, 400);
       }
 
-      const created = await settingsStore.createChannelMapTemplate(body.data);
+      let created;
+
+      try {
+        created = await settingsStore.createChannelMapTemplate(body.data);
+      } catch (error) {
+        // A duplicate operator-supplied id is a client conflict (409); any other
+        // store error (a genuine DB outage) rethrows to the onError boundary → 503.
+        if (error instanceof SettingsStoreError) {
+          await recordSettingsFailure(c, "settings.channel_map_templates.create.failed", error.code);
+          return c.json({ error: "Channel map template already exists", reason: error.code }, 409);
+        }
+
+        throw error;
+      }
 
       await recordAuditEvent(c, {
         action: "settings.channel_map_templates.create.succeeded",

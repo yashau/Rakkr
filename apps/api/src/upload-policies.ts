@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDatabase, eq, uploadPolicies as uploadPoliciesTable } from "@rakkr/db";
+import { isPgErrorCode } from "./auth-utils.js";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   defaultStubUploadPolicy,
@@ -17,6 +18,20 @@ import {
 import type { UploadDestinationStore } from "./upload-destinations.js";
 
 type UploadPolicyRow = typeof uploadPoliciesTable.$inferSelect;
+
+// A client-error the create route maps to 409 (rather than silently upserting
+// over an existing policy on an operator-supplied duplicate id, or the failover
+// path mislabeling the unique-violation as a 503). Mirrors
+// UploadDestinationStoreError / SwitcherStoreError.
+export class UploadPolicyStoreError extends Error {
+  constructor(
+    message: string,
+    readonly code: "upload_policy_exists",
+  ) {
+    super(message);
+    this.name = "UploadPolicyStoreError";
+  }
+}
 
 const policyStorePath = path.resolve(
   process.env.RAKKR_UPLOAD_POLICY_STORE_PATH ?? "data/upload-policies.json",
@@ -48,6 +63,13 @@ class JsonUploadPolicyStore implements UploadPolicyStore {
       id: parsed.id ?? `upload_policy_${randomUUID()}`,
       updatedAt: now,
     });
+
+    // An operator-supplied duplicate id is a client conflict, not an overwrite —
+    // creating over an existing policy would silently replace it. Only guard the
+    // supplied-id case; a generated id is always unique.
+    if (parsed.id && this.policies.some((existing) => existing.id === policy.id)) {
+      throw new UploadPolicyStoreError("Upload policy already exists", "upload_policy_exists");
+    }
 
     this.policies.unshift(policy);
     this.persist();
@@ -154,10 +176,27 @@ class PostgresUploadPolicyStore implements UploadPolicyStore {
         updatedAt: new Date().toISOString(),
       });
 
-      await this.writePolicy(policy);
+      // An operator-supplied duplicate id is a client conflict (409), not a DB
+      // outage (503) — pre-check + discriminate the 23505 race, mirroring room /
+      // switcher / upload-destination stores. Insert directly (not via
+      // writePolicy) so create never upserts over an existing row; update keeps
+      // the upsert.
+      if (parsed.id && (await this.findExisting(policy.id))) {
+        throw new UploadPolicyStoreError("Upload policy already exists", "upload_policy_exists");
+      }
+
+      await this.db.insert(uploadPoliciesTable).values(policyToRow(policy));
 
       return policy;
     } catch (error) {
+      if (error instanceof UploadPolicyStoreError) {
+        throw error;
+      }
+
+      if (isPgErrorCode(error, "23505")) {
+        throw new UploadPolicyStoreError("Upload policy already exists", "upload_policy_exists");
+      }
+
       await this.failover("upload policy create unavailable; using JSON store", error);
       return this.fallback.create(input);
     }

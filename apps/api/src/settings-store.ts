@@ -50,6 +50,21 @@ import {
   watchdogPolicyToRow,
   type WatchdogPolicyCreateInput,
 } from "./watchdog-policy-settings.js";
+import { isPgErrorCode } from "./auth-utils.js";
+
+// A client-error the channel-map template create route maps to 409 (rather than
+// silently overwriting an existing template on an operator-supplied duplicate id,
+// which also resets its revision to 1). Mirrors UploadDestinationStoreError /
+// SwitcherStoreError.
+export class SettingsStoreError extends Error {
+  constructor(
+    message: string,
+    readonly code: "channel_map_template_exists",
+  ) {
+    super(message);
+    this.name = "SettingsStoreError";
+  }
+}
 
 export interface SettingsStore {
   assignChannelMapTemplate(
@@ -125,14 +140,18 @@ class JsonSettingsStore implements SettingsStore {
 
   async createChannelMapTemplate(input: ChannelMapTemplateInput) {
     const template = channelMapTemplateFromInput(input);
-    const index = this.channelMapTemplates.findIndex((candidate) => candidate.id === template.id);
 
-    if (index >= 0) {
-      this.channelMapTemplates[index] = template;
-    } else {
-      this.channelMapTemplates.unshift(template);
+    // An operator-supplied duplicate id is a client conflict, not an overwrite —
+    // creating over an existing template would silently replace it and reset its
+    // revision to 1. Only guard the supplied-id case; a generated id is unique.
+    if (input.id && this.channelMapTemplates.some((candidate) => candidate.id === template.id)) {
+      throw new SettingsStoreError(
+        "Channel map template already exists",
+        "channel_map_template_exists",
+      );
     }
 
+    this.channelMapTemplates.unshift(template);
     persistSettings(channelMapStorePath, "templates", this.channelMapTemplates);
 
     return template;
@@ -300,10 +319,34 @@ class PostgresSettingsStore implements SettingsStore {
 
     try {
       const template = channelMapTemplateFromInput(input);
-      await this.writeChannelMapTemplate(template);
+
+      // An operator-supplied duplicate id is a client conflict (409), not a DB
+      // outage (503) — pre-check + discriminate the 23505 race, mirroring the
+      // upload-destination/switcher stores. Insert directly (not via
+      // writeChannelMapTemplate) so create never upserts over an existing row and
+      // reset its revision; update keeps the upsert.
+      if (input.id && (await this.findChannelMapTemplate(template.id))) {
+        throw new SettingsStoreError(
+          "Channel map template already exists",
+          "channel_map_template_exists",
+        );
+      }
+
+      await this.db.insert(channelMapTemplatesTable).values(channelMapTemplateToRow(template));
 
       return template;
     } catch (error) {
+      if (error instanceof SettingsStoreError) {
+        throw error;
+      }
+
+      if (isPgErrorCode(error, "23505")) {
+        throw new SettingsStoreError(
+          "Channel map template already exists",
+          "channel_map_template_exists",
+        );
+      }
+
       await this.failover("channel map template persistence unavailable; using JSON store", error);
       return this.fallback.createChannelMapTemplate(input);
     }

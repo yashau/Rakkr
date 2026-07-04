@@ -103,14 +103,17 @@ test("room-scoped caller is refused whole-node monitor audio and gets filtered m
 test("resolveVisibleMeterFrame streams only the caller's room channels (SSE per-channel filter)", async () => {
   const access = roomAAccess();
   const roomAUser = user({ resourceGrants: [{ resourceId: "room-a", resourceType: "room" }] });
-  const nodeStore = { find: async (id: string) => (id === "node-1" ? sharedNode() : undefined) };
+  // The scoped-node resolver mirrors /meters' findScopedNode: it returns the node
+  // only when it is in the caller's scoped set (roster-inclusive), else undefined.
+  const resolvesNode = async (_u: CurrentUser, id: string) =>
+    id === "node-1" ? sharedNode() : undefined;
+  const outOfScope = async () => undefined;
 
-  // The node-scope gate passes (a room-a grant expands to the node's room union),
-  // then the same strict per-channel filter as /meters keeps only the room-a channel.
+  // The node resolves within scope, then the same strict per-channel filter as
+  // /meters keeps only the room-a channel.
   const visible = await resolveVisibleMeterFrame(roomAUser, frame(), {
     filterMeterFrame: access.filterMeterFrameForUser,
-    hasResourceScope: async () => true,
-    nodeStore,
+    resolveScopedNode: resolvesNode,
   });
 
   assert.deepEqual(
@@ -119,14 +122,13 @@ test("resolveVisibleMeterFrame streams only the caller's room channels (SSE per-
     "sibling-room channel levels are stripped before streaming",
   );
 
-  // No node scope -> the stream emits nothing.
+  // Node not in the caller's scope -> the stream emits nothing.
   const denied = await resolveVisibleMeterFrame(roomAUser, frame(), {
     filterMeterFrame: access.filterMeterFrameForUser,
-    hasResourceScope: async () => false,
-    nodeStore,
+    resolveScopedNode: outOfScope,
   });
 
-  assert.equal(denied, undefined, "no node scope streams nothing");
+  assert.equal(denied, undefined, "an out-of-scope node streams nothing");
 
   // An unresolvable node -> never a fall-back to the unfiltered frame.
   const missing = await resolveVisibleMeterFrame(
@@ -134,12 +136,40 @@ test("resolveVisibleMeterFrame streams only the caller's room channels (SSE per-
     { ...frame(), nodeId: "ghost" },
     {
       filterMeterFrame: access.filterMeterFrameForUser,
-      hasResourceScope: async () => true,
-      nodeStore,
+      resolveScopedNode: resolvesNode,
     },
   );
 
   assert.equal(missing, undefined, "an unresolvable node never yields an unfiltered frame");
+});
+
+test("R25: a rostered room operator (no direct node grant) is admitted to the SSE stream", async () => {
+  // Room-B operator via ROSTER only: no resource grants, no node/room scope. The
+  // old gate used hasResourceScope on the node target, which fails closed for a
+  // roster-only operator, so they got an empty stream for channels they own. The
+  // scoped-node resolver (mirroring /meters' scopedNodes) admits them.
+  const access = createMeterRoomAccess({
+    accessPolicyDecision: async () => undefined,
+    hasResourceScope: async () => false,
+    rosterRoomIds: async () => new Set(["room-b"]),
+  });
+  const rosterUser = user();
+  // scopedNodes admits the node because the operator is rostered in room-b, which
+  // owns channel 2 on this shared node.
+  const resolveScopedNode = async (_u: CurrentUser, id: string) =>
+    id === "node-1" ? sharedNode() : undefined;
+
+  const visible = await resolveVisibleMeterFrame(rosterUser, frame(), {
+    filterMeterFrame: access.filterMeterFrameForUser,
+    resolveScopedNode,
+  });
+
+  // Admitted, and filtered to only the room-b channel they own.
+  assert.deepEqual(
+    visible?.levels.map((level) => level.channelIndex),
+    [2],
+    "a rostered operator receives their own channels, not an empty stream",
+  );
 });
 
 test("a direct node grant confers whole-node authority", async () => {

@@ -14,7 +14,7 @@ import { healthEventStatusSummary } from "./health-event-status-summary.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import { registerHealthActionRoutes } from "./health-action-routes.js";
 import { healthEventTargets, visibleHealthEvent } from "./health-visibility.js";
-import { buildPaginationMeta, PAGE_POLICY, paginate, parsePagination } from "./pagination.js";
+import { PAGE_POLICY, paginate, parsePagination } from "./pagination.js";
 import type {
   AppBindings,
   AuditTarget,
@@ -256,37 +256,20 @@ export function registerHealthRoutes({
         PAGE_POLICY.health,
       );
 
-      let data: HealthEvent[];
-      let meta;
-      let summary;
-
-      if (healthReaderUnrestricted(user)) {
-        data = await scopeHealthEvents(
-          user,
-          await healthEventStore.list({ ...filters, limit: page.limit, offset: page.offset }),
-          hasResourceScope,
-        );
-        meta = buildPaginationMeta({
-          limit: page.limit,
-          offset: page.offset,
-          returned: data.length,
-          total: await healthEventStore.count(filters),
-        });
-        // Tiles summarize the FULL filtered set, not the page, so they don't
-        // undercount once matches exceed the page size. An unrestricted reader's
-        // total is the unscoped count, so summarize unscoped to match it.
-        summary = healthEventStatusSummary(await healthEventStore.listAll(filters));
-      } else {
-        const visible = await visibleHealthEvents(user, filters, {
-          hasResourceScope,
-          healthEventStore,
-        });
-        const sliced = paginate(visible, { limit: page.limit, offset: page.offset });
-        data = sliced.data;
-        meta = sliced.meta;
-        // Global summary over the full visible set (matches meta.total).
-        summary = healthEventStatusSummary(visible);
-      }
+      // Both readers scope against the full filtered set: even an "unrestricted"
+      // owner/admin can be the SUBJECT of an access-policy DENY, so the raw store
+      // count/summary would over-count events the DENY hides. Computing meta.total
+      // and the tiles from the scoped set keeps the header + tiles honest, and the
+      // page slice comes from the same set so it never leaks a hidden row.
+      const visible = await visibleHealthEvents(user, filters, {
+        hasResourceScope,
+        healthEventStore,
+      });
+      const sliced = paginate(visible, { limit: page.limit, offset: page.offset });
+      const data = sliced.data;
+      const meta = sliced.meta;
+      // Global summary over the full visible set (matches meta.total).
+      const summary = healthEventStatusSummary(visible);
 
       await recordAuditEvent(c, {
         action: "health.events.read.succeeded",
@@ -684,13 +667,6 @@ function healthFilters(input: z.infer<typeof healthEventsQuerySchema>): HealthEv
   };
 }
 
-// Owner/admin readers bypass resource scoping (see resourceScopeDecision), so
-// their visible set equals the full filtered set and can be paged + counted in
-// SQL. Everyone else may be scope-restricted and is scoped in memory.
-function healthReaderUnrestricted(user: NonNullable<AuthResult["user"]>) {
-  return user.roles.includes("owner") || user.roles.includes("admin");
-}
-
 async function scopeHealthEvents(
   user: NonNullable<AuthResult["user"]>,
   events: HealthEvent[],
@@ -708,7 +684,7 @@ async function scopeHealthEvents(
 }
 
 // Every matching + visible event, ignoring pagination — used by exports and the
-// scope-restricted list path.
+// list path (the list path pages the returned set in memory).
 async function visibleHealthEvents(
   user: NonNullable<AuthResult["user"]>,
   filters: HealthEventFilters,
