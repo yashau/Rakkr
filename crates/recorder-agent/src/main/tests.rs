@@ -1,5 +1,7 @@
 use super::*;
+use crate::meter_health::update_meter_health;
 use crate::telemetry::{AudioLevel, AudioQuality, ChannelCorrelation};
+use serde_json::Value;
 
 #[test]
 fn classifies_alsa_xrun_errors() {

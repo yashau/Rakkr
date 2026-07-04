@@ -13,6 +13,8 @@ mod controller_http;
 mod enhance;
 mod enhanced_render;
 mod health_log;
+#[path = "main/health_tick.rs"]
+mod health_tick;
 mod inventory;
 mod meter_command;
 mod meter_health;
@@ -36,8 +38,8 @@ use anyhow::Context;
 use clap::Parser;
 use config::{AgentConfig, CaptureBackend, MeterBackend};
 use meter_command::MeterCaptureConfig;
-use meter_health::{MeterFailureKind, MeterHealthState, update_meter_health};
-use serde_json::{Value, json};
+use meter_health::{MeterFailureKind, MeterHealthState};
+use serde_json::json;
 use telemetry::{
     MeterFrame, MeterSample, alsa_meter_frame, alsa_meter_sample, synthetic_meter_frame,
     synthetic_meter_sample,
@@ -45,6 +47,13 @@ use telemetry::{
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
+
+// Per-tick health-evidence helpers were extracted to keep this file under the
+// per-file LOC budget. Re-export so loop call sites stay unqualified, `super::*`
+// resolves for `main/tests.rs`, and `crate::append_and_sync_health_event` still
+// resolves for agent_recovery.rs / meter_health.rs.
+pub(crate) use health_tick::append_and_sync_health_event;
+use health_tick::apply_tick_health_updates;
 
 #[cfg(test)]
 use meter_health::{CHANNEL_CORRELATION_ALERT_MIN_ABS_SCORE, correlated_channel_pairs};
@@ -821,87 +830,6 @@ fn meter_capture_backend(config: &AgentConfig) -> CaptureBackend {
         MeterBackend::Jack => CaptureBackend::Jack,
         MeterBackend::Pipewire => CaptureBackend::Pipewire,
     }
-}
-
-// Runs the per-tick meter and system health updates as best-effort work. A
-// transient health-evidence write failure (full disk, unwritable path, poisoned
-// lock) must not abort the heartbeat/meter/job loop and take the whole node dark
-// — a node that stops heartbeating is worse than a gap in local evidence, and the
-// controller's stale-heartbeat watchdog is the backstop for a genuinely dead node.
-// Failures are logged and counted rather than propagated; returns the count.
-async fn apply_tick_health_updates(
-    config: &AgentConfig,
-    token: Option<&str>,
-    frame: &MeterFrame,
-    inventory: &inventory::NodeInventory,
-    meter_state: &mut MeterHealthState,
-    system_state: &mut system_health::SystemHealthState,
-) -> u32 {
-    let mut failures = 0;
-
-    if let Err(error) = update_meter_health(config, token, frame, meter_state).await {
-        failures += 1;
-        warn!(error = %error, "failed to update meter health; continuing heartbeat");
-    }
-
-    if let Err(error) = update_system_health(config, token, inventory, system_state).await {
-        failures += 1;
-        warn!(error = %error, "failed to update system health; continuing heartbeat");
-    }
-
-    failures
-}
-
-async fn update_system_health(
-    config: &AgentConfig,
-    token: Option<&str>,
-    inventory: &inventory::NodeInventory,
-    state: &mut system_health::SystemHealthState,
-) -> anyhow::Result<()> {
-    for event in system_health::collect_system_health_events(config, inventory, state) {
-        append_and_sync_health_event(
-            config,
-            token,
-            event.event_type,
-            event.severity,
-            event.details,
-        )
-        .await
-        .context("append system health event")?;
-    }
-
-    Ok(())
-}
-
-pub(crate) async fn append_and_sync_health_event(
-    config: &AgentConfig,
-    token: Option<&str>,
-    event_type: &str,
-    severity: &str,
-    details: Value,
-) -> anyhow::Result<()> {
-    // Best-effort local evidence: a health-log append failure (full disk, unwritable
-    // health-log dir) must NOT propagate out of the heartbeat/recovery tick and kill
-    // the daemon — the agent can still capture audio and sync with the controller.
-    // Log and move on, mirroring the controller-sync half below. R14-HEALTH-FATAL:
-    // this is the complete guard; apply_tick_health_updates only covered the
-    // meter/system-health call sites, but the tick also appends heartbeat/meter/
-    // node-config/capture/monitor/cache-sweep sync-edge events through here.
-    let event = match health_log::append_health_event(config, event_type, severity, details) {
-        Ok(event) => event,
-        Err(error) => {
-            warn!(event_type, error = %error, "failed to append health event; continuing");
-            return Ok(());
-        }
-    };
-
-    if let Some(token) = token
-        && let Err(error) = controller::sync_health_event(config, token, &event).await
-    {
-        warn!(event_type, error = %error, "failed to sync health event");
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
