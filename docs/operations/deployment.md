@@ -171,6 +171,14 @@ helm upgrade --install rakkr deploy/helm/rakkr-controller `
   --set api.env.RAKKR_OIDC_REDIRECT_URI=https://rakkr.example.com/api/v1/auth/oidc/callback
 ```
 
+Recorder-agent cache-file uploads reach the API through this ingress -> web
+(nginx) path, so the chart ships a `nginx.ingress.kubernetes.io/proxy-body-size:
+"0"` annotation (and the web image's nginx sets `client_max_body_size 0` on
+`/api/`) to lift the 1 MB default that would otherwise `413` every upload. The
+controller enforces the authoritative cap via `RAKKR_RECORDING_CACHE_MAX_BYTES`
+(4 GiB default). Override `ingress.annotations` if you run a non-nginx ingress
+controller.
+
 Use an external database instead of the bundled Postgres:
 
 ```powershell
