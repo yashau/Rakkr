@@ -5,6 +5,7 @@ import type {
   AccessPolicyInput,
   CurrentUser,
   HealthEvent,
+  HealthEventStatusSummary,
   MeterFrame,
   NodeStatus,
   NodeRuntime,
@@ -377,7 +378,9 @@ export const api = {
   auditEventsExport: (filters: AuditEventFilters = {}) =>
     fetchBlob(withQuery("/api/v1/audit-events/export", filters)),
   healthEvents: (filters: HealthEventFilters = {}) =>
-    fetchJson<PaginatedResponse<HealthEvent>>(withQuery("/api/v1/health-events", filters)),
+    fetchJson<PaginatedResponse<HealthEvent> & { summary: HealthEventStatusSummary }>(
+      withQuery("/api/v1/health-events", filters),
+    ),
   healthEventsExport: (filters: HealthEventFilters = {}) =>
     fetchBlob(withQuery("/api/v1/health-events/export", filters)),
   healthEventsExportSelected: (input: HealthEventSelectedExportInput) =>

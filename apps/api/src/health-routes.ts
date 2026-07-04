@@ -10,6 +10,7 @@ import type {
   HealthEventStore,
 } from "./health-store.js";
 import { neutralizeCsvFormula } from "./csv.js";
+import { healthEventStatusSummary } from "./health-event-status-summary.js";
 import { syncRecordingHealth } from "./health-sync.js";
 import { registerHealthActionRoutes } from "./health-action-routes.js";
 import { healthEventTargets, visibleHealthEvent } from "./health-visibility.js";
@@ -257,6 +258,7 @@ export function registerHealthRoutes({
 
       let data: HealthEvent[];
       let meta;
+      let summary;
 
       if (healthReaderUnrestricted(user)) {
         data = await scopeHealthEvents(
@@ -270,6 +272,10 @@ export function registerHealthRoutes({
           returned: data.length,
           total: await healthEventStore.count(filters),
         });
+        // Tiles summarize the FULL filtered set, not the page, so they don't
+        // undercount once matches exceed the page size. An unrestricted reader's
+        // total is the unscoped count, so summarize unscoped to match it.
+        summary = healthEventStatusSummary(await healthEventStore.listAll(filters));
       } else {
         const visible = await visibleHealthEvents(user, filters, {
           hasResourceScope,
@@ -278,6 +284,8 @@ export function registerHealthRoutes({
         const sliced = paginate(visible, { limit: page.limit, offset: page.offset });
         data = sliced.data;
         meta = sliced.meta;
+        // Global summary over the full visible set (matches meta.total).
+        summary = healthEventStatusSummary(visible);
       }
 
       await recordAuditEvent(c, {
@@ -293,7 +301,7 @@ export function registerHealthRoutes({
         target: healthReadTarget(c),
       });
 
-      return c.json({ data, meta });
+      return c.json({ data, meta, summary });
     },
   );
 

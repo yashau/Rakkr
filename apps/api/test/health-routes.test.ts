@@ -624,6 +624,69 @@ test("health pagination stays stable across pages for unrestricted readers", asy
   assert.equal(ids.size, 5);
 });
 
+test("health summary tiles reflect the full filtered set, not the current page", async () => {
+  // 4 warning-open + 1 warning-resolved + 1 critical-open = 6 matching events;
+  // page size 2. The summary must count all 6, not just the 2 on the page.
+  const seed = [
+    ...Array.from({ length: 4 }, (_, index) =>
+      event({
+        id: `health_open_${index}`,
+        openedAt: `2026-06-1${index}T12:00:00.000Z`,
+        status: "open",
+      }),
+    ),
+    event({ id: "health_resolved", openedAt: "2026-06-05T12:00:00.000Z", status: "resolved" }),
+    event({
+      id: "health_critical_open",
+      openedAt: "2026-06-06T12:00:00.000Z",
+      severity: "critical",
+      status: "open",
+    }),
+  ];
+
+  // Both reader branches (restricted viewer + unrestricted owner) must return a
+  // global summary — they use different list paths (visibleHealthEvents vs
+  // listAll) but the tiles must agree with meta.total either way.
+  for (const roles of [["viewer"], ["owner"]] as const) {
+    const app = new Hono<AppBindings>();
+    const currentUser: CurrentUser = { ...user(["health:read"]), roles: [...roles] };
+
+    registerHealthRoutes({
+      app,
+      currentAuth: () => ({ user: currentUser }),
+      currentUser: () => currentUser,
+      hasResourceScope: async () => true,
+      healthEventStore: createHealthEventStore(
+        "",
+        seed.map((event) => ({ ...event })),
+      ),
+      recordAuditEvent: recordAuditEvent(createAuditStore("")),
+      recordingStore: memoryRecordingStore(),
+      requirePermission: allowPermissionWithCalls([]),
+    });
+
+    const body = (await (await app.request("/api/v1/health-events?limit=2&offset=0")).json()) as {
+      data: HealthEvent[];
+      meta: { total: number };
+      summary: {
+        activeCritical: number;
+        open: number;
+        resolved: number;
+        suppressed: number;
+        total: number;
+      };
+    };
+
+    assert.equal(body.data.length, 2, `page is limited for roles=${roles}`);
+    assert.equal(body.meta.total, 6, `total for roles=${roles}`);
+    assert.equal(body.summary.total, 6, `summary.total for roles=${roles}`);
+    assert.equal(body.summary.open, 5, `summary.open for roles=${roles}`);
+    assert.equal(body.summary.resolved, 1, `summary.resolved for roles=${roles}`);
+    assert.equal(body.summary.suppressed, 0, `summary.suppressed for roles=${roles}`);
+    assert.equal(body.summary.activeCritical, 1, `summary.activeCritical for roles=${roles}`);
+  }
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   path: string,

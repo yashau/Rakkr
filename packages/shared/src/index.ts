@@ -16,6 +16,7 @@ export * from "./access-groups.js";
 export * from "./base.js";
 export * from "./channels.js";
 export * from "./enhancement.js";
+export * from "./health-event-summary.js";
 export * from "./oidc.js";
 export * from "./pagination.js";
 export * from "./recording-chunks.js";
