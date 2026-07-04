@@ -95,8 +95,18 @@ pub fn write_job_state_snapshot(config: &AgentConfig, state: AgentJobState) -> a
             .with_context(|| format!("create agent state directory {}", parent.display()))?;
     }
 
-    fs::write(&config.agent_state_file, serde_json::to_vec_pretty(&state)?)
-        .with_context(|| format!("write agent state {}", config.agent_state_file.display()))
+    // Atomic write: serialize to a sibling temp file then rename into place. A crash
+    // mid-write must never leave a torn state.json — a partial file fails to decode
+    // on restart, and reconcile then swallows the error and loops forever, stranding
+    // the interrupted recording (never stitched/uploaded until lease expiry).
+    let mut temp = config.agent_state_file.as_os_str().to_os_string();
+    temp.push(format!(".{}.tmp", std::process::id()));
+    let temp_path = std::path::PathBuf::from(temp);
+
+    fs::write(&temp_path, serde_json::to_vec_pretty(&state)?)
+        .with_context(|| format!("write agent state {}", temp_path.display()))?;
+    fs::rename(&temp_path, &config.agent_state_file)
+        .with_context(|| format!("replace agent state {}", config.agent_state_file.display()))
 }
 
 pub fn read_job_state(config: &AgentConfig) -> anyhow::Result<Option<AgentJobState>> {
@@ -106,10 +116,23 @@ pub fn read_job_state(config: &AgentConfig) -> anyhow::Result<Option<AgentJobSta
 
     let bytes = fs::read(&config.agent_state_file)
         .with_context(|| format!("read agent state {}", config.agent_state_file.display()))?;
-    let state = serde_json::from_slice(&bytes)
-        .with_context(|| format!("decode agent state {}", config.agent_state_file.display()))?;
 
-    Ok(Some(state))
+    // A torn/corrupt state file (e.g. a crash mid-write from before atomic writes
+    // landed) must NOT propagate a decode error every heartbeat — reconcile swallows
+    // it and keeps recovery pending, so the daemon would re-read and re-fail the same
+    // file forever. Treat an undecodable file as "no recoverable state"; the next job
+    // write atomically replaces it.
+    match serde_json::from_slice(&bytes) {
+        Ok(state) => Ok(Some(state)),
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                path = %config.agent_state_file.display(),
+                "ignoring unreadable agent state file"
+            );
+            Ok(None)
+        }
+    }
 }
 
 impl AgentJobState {
@@ -243,6 +266,31 @@ mod tests {
             AgentConfig::parse_from(["test", "--agent-state-file", state_file_arg.as_str()]);
 
         assert!(read_job_state(&config).expect("read state").is_none());
+
+        cleanup(&state_file);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn corrupt_job_state_is_ignored_not_fatal() {
+        let state_file = temp_state_file("corrupt");
+        let state_file_arg = state_file.to_string_lossy().into_owned();
+        let config =
+            AgentConfig::parse_from(["test", "--agent-state-file", state_file_arg.as_str()]);
+
+        // Simulate a torn state.json from a crash mid-write (before atomic writes).
+        fs::create_dir_all(state_file.parent().expect("parent")).expect("create dir");
+        fs::write(
+            &state_file,
+            b"{ \"job_id\": \"rec_partial\", \"status\": \"runn",
+        )
+        .expect("write torn state");
+
+        // Must NOT propagate a decode error (which reconcile swallows → the daemon
+        // re-reads and re-fails the same file every heartbeat forever).
+        let loaded = read_job_state(&config).expect("corrupt state must not error");
+
+        assert!(loaded.is_none());
 
         cleanup(&state_file);
     }

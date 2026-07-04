@@ -358,8 +358,18 @@ fn save_manifest(path: &Path, manifest: &RecorderCacheManifest) -> anyhow::Resul
         })?;
     }
 
-    fs::write(path, serde_json::to_vec_pretty(manifest)?)
-        .with_context(|| format!("write recorder cache manifest {}", path.display()))
+    // Atomic write (temp + rename): a crash mid-write must not leave a torn manifest
+    // that fails to decode on the next sweep (load_manifest would then error every
+    // idle tick — best-effort-swallowed by run_idle_recorder_cache_sweep, but the
+    // sweep would never make progress).
+    let mut temp = path.as_os_str().to_os_string();
+    temp.push(format!(".{}.tmp", std::process::id()));
+    let temp_path = std::path::PathBuf::from(temp);
+
+    fs::write(&temp_path, serde_json::to_vec_pretty(manifest)?)
+        .with_context(|| format!("write recorder cache manifest {}", temp_path.display()))?;
+    fs::rename(&temp_path, path)
+        .with_context(|| format!("replace recorder cache manifest {}", path.display()))
 }
 
 fn unique_cache_paths<'a>(raw_output_path: &'a Path, output_path: &'a Path) -> Vec<&'a Path> {
