@@ -297,7 +297,21 @@ export function registerScheduleCalendarRoutes({
       };
 
       const updatedOriginal = await scheduleStore.update(scheduleId, {
-        nextRunAt: nextRunAtForRecurrence(skippedRecurrence, before.timezone, undefined),
+        // Anchor the every-N parity to the schedule's persisted phase, not `now`:
+        // without the parity anchor, moving one occurrence of an interval>1 series
+        // (bi-weekly / every-N-days / every-N-months) re-derived parity from the
+        // current week and silently shifted every future occurrence to the wrong
+        // slot whenever `now` sat in the off-parity window. The anchor keeps the
+        // scan starting at `now` (so a later-in-series move doesn't skip the still-
+        // upcoming immediate occurrence) while measuring parity from the true phase.
+        nextRunAt: nextRunAtForRecurrence(
+          skippedRecurrence,
+          before.timezone,
+          undefined,
+          new Date(),
+          undefined,
+          before.nextRunAt ?? undefined,
+        ),
         recurrence: skippedRecurrence,
       });
 
