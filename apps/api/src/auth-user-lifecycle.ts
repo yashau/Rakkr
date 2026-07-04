@@ -9,6 +9,7 @@ type AuthDatabase = ReturnType<typeof createDatabase>;
 export interface LocalUserRecord {
   disabledAt: Date | null;
   email: string;
+  externalId: string | null;
   id: string;
   name: string;
   passwordHash: string | null;
@@ -22,6 +23,7 @@ export interface AuthSessionLike {
 export const localUserReturning = {
   disabledAt: users.disabledAt,
   email: users.email,
+  externalId: users.externalId,
   id: users.id,
   name: users.name,
   passwordHash: users.passwordHash,

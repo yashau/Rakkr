@@ -515,6 +515,27 @@ export class LocalAuthService {
     }
   }
 
+  private async localUserRecordByExternalId(externalId: string) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return [...this.oidcUserRecords.values()].find((record) => record.externalId === externalId);
+    }
+
+    try {
+      const [row] = await db
+        .select(localUserReturning)
+        .from(users)
+        .where(eq(users.externalId, externalId))
+        .limit(1);
+
+      return row;
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+      return undefined;
+    }
+  }
+
   private async localUserRecordById(userId: string) {
     const db = this.availableDatabase();
 
@@ -565,8 +586,11 @@ export class LocalAuthService {
       currentUserFromRecord: (record: LocalUserRecord) => this.currentUserFromRecord(record),
       db: () => this.availableDatabase(),
       findUserByEmail: (email: string) => this.localUserRecordByEmail(email),
+      findUserByExternalId: (externalId: string) => this.localUserRecordByExternalId(externalId),
       markDatabaseUnavailable: (error: unknown) => this.markDatabaseUnavailable(error),
       memoryRecordByEmail: (email: string) => this.oidcUserRecords.get(email),
+      memoryRecordByExternalId: (externalId: string) =>
+        [...this.oidcUserRecords.values()].find((record) => record.externalId === externalId),
       persistAccess: async (userId: string, access: LocalAccess, groups: AccessGroup[]) => {
         await this.persistLocalUserAccess(userId, access, groups);
         this.localAccessOverrides.set(userId, {

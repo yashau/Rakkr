@@ -309,6 +309,13 @@
       "when": 1783108280266,
       "tag": "0043_familiar_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1783158169478,
+      "tag": "0044_real_black_panther",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ const sourceFiles = [
   "apps/api/src/oidc-config.ts",
   "apps/api/src/oidc-login.ts",
   "apps/api/src/oidc-sync.ts",
+  "apps/api/src/oidc-user-sync.ts",
   "apps/api/src/index.ts",
   "apps/web/src/lib/api.ts",
   "apps/web/src/main.tsx",
@@ -13,6 +14,7 @@ const sourceFiles = [
   "apps/api/test/oidc-sync.test.ts",
   "apps/api/test/oidc-login-flow.test.ts",
   "apps/api/test/oidc-groups-collision.test.ts",
+  "apps/api/test/oidc-user-linking.test.ts",
   "apps/api/test/helpers/oidc-provider-harness.ts",
 ];
 const requiredEnvVars = [
@@ -42,6 +44,8 @@ const requiredPhrases = [
   "auth:manage",
   "Logout clears",
   "live tenant validation",
+  "linked by the IdP subject",
+  "email_verified",
 ];
 const requiredTestPhrases = [
   "derives Azure AD issuer",
@@ -53,6 +57,8 @@ const requiredTestPhrases = [
   "completes a real OIDC login end to end",
   "maps a display-name group claim onto the same slug",
   "treats a non-array groups claim as no groups",
+  "take over an existing local account by email",
+  "rejects an explicitly unverified email claim",
 ];
 const errors = [];
 
