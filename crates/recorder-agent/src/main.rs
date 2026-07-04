@@ -494,7 +494,11 @@ async fn run_idle_recorder_cache_sweep(
         return Ok(());
     }
 
-    let summary = recorder_cache_retention::run_recorder_cache_sweep(
+    // Best-effort, like the health-event append below: the sweep does local manifest
+    // I/O (load/save), and a failure there (full disk, unwritable manifest dir) must
+    // NOT propagate out of the heartbeat tick and kill the daemon — idle cache
+    // maintenance failing is not fatal. Log and skip this tick.
+    let summary = match recorder_cache_retention::run_recorder_cache_sweep(
         &config.recorder_cache_manifest_file,
         &node_config.recorder_cache_policies,
         system_health::disk_usage(
@@ -507,7 +511,13 @@ async fn run_idle_recorder_cache_sweep(
             total_bytes: usage.total_bytes,
         }),
         std::time::SystemTime::now(),
-    )?;
+    ) {
+        Ok(summary) => summary,
+        Err(error) => {
+            warn!(error = %error, "recorder cache sweep failed; continuing");
+            return Ok(());
+        }
+    };
 
     if summary.deleted == 0 && summary.errors == 0 {
         return Ok(());

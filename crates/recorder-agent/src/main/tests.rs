@@ -253,6 +253,50 @@ async fn append_and_sync_health_event_survives_a_local_append_failure() {
     let _ = std::fs::remove_dir_all(&directory);
 }
 
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn idle_cache_sweep_survives_a_manifest_io_failure() {
+    // The idle recorder-cache sweep does local manifest I/O; a failure there (full
+    // disk, unreadable/unwritable manifest) must be best-effort — it must NOT
+    // propagate out of the heartbeat tick and kill the daemon (the twin of the
+    // health-append best-effort guard). Point the manifest at a DIRECTORY so reading
+    // it as a file fails, cross-platform.
+    let process_id = std::process::id();
+    let directory =
+        std::path::PathBuf::from("target").join(format!("rakkr-agent-cache-sweep-{process_id}"));
+    std::fs::create_dir_all(&directory).expect("create temp directory");
+    let manifest_as_dir = directory.join("manifest-as-dir");
+    std::fs::create_dir_all(&manifest_as_dir).expect("create manifest dir");
+
+    let config = AgentConfig::parse_from([
+        "rakkr-recorder-agent",
+        "--recorder-cache-manifest-file",
+        manifest_as_dir.to_str().expect("utf8 manifest path"),
+    ]);
+    // A non-empty policy list so the sweep actually runs (not the empty early-return).
+    let node_config = node_config::ControllerNodeConfig {
+        audio_defaults: None,
+        monitor_enhancement: None,
+        recorder_cache_policies: vec![recorder_cache_retention::ControllerRecorderCacheRetention {
+            delete_after_upload: true,
+            max_age_days: Some(7),
+            max_bytes: None,
+            min_free_disk_percent: None,
+            policy_id: "policy-1".to_string(),
+        }],
+        recording_capacity: None,
+    };
+
+    let result = run_idle_recorder_cache_sweep(&config, None, &node_config).await;
+
+    assert!(
+        result.is_ok(),
+        "a manifest I/O failure must not propagate out of the idle cache sweep: {result:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
 fn level_with_correlation(
     channel_index: u16,
     peer_channel_index: u16,
