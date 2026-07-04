@@ -162,9 +162,12 @@ export function applyStoredChunkRendition(
   return false;
 }
 
-export async function deleteRecordingChunkCacheFile(chunk: RecordingChunk) {
+export async function deleteRecordingChunkCacheFile(
+  chunk: RecordingChunk,
+  { includeRaw = true }: { includeRaw?: boolean } = {},
+) {
   const targets = new Set(
-    [chunk.cachePath, chunk.rawCachePath, chunk.enhancedCachePath].filter(
+    [chunk.cachePath, includeRaw ? chunk.rawCachePath : undefined, chunk.enhancedCachePath].filter(
       (value): value is string => Boolean(value),
     ),
   );
@@ -240,11 +243,13 @@ function chunkPart(chunkIndex: number) {
 // separate enhanced object. Size/delete must cover all of them or the raw master
 // (usually the largest rendition) leaks on disk and escapes byte-pressure
 // retention. Mirrors the per-chunk helpers above.
-function recordingCacheTargets(recording: RecordingSummary): Set<string> {
+function recordingCacheTargets(recording: RecordingSummary, includeRaw = true): Set<string> {
   return new Set(
-    [recording.cachePath, recording.rawCachePath, recording.enhancedCachePath].filter(
-      (value): value is string => Boolean(value),
-    ),
+    [
+      recording.cachePath,
+      includeRaw ? recording.rawCachePath : undefined,
+      recording.enhancedCachePath,
+    ].filter((value): value is string => Boolean(value)),
   );
 }
 
@@ -270,10 +275,18 @@ export async function recordingCacheFileSize(recording: RecordingSummary) {
   return found ? total : undefined;
 }
 
-export async function deleteRecordingCacheFile(recording: RecordingSummary) {
+// `includeRaw: false` preserves the raw master (`rawCachePath`) — used by the
+// upload runner's deleteCacheAfterUpload path, because the raw rendition is
+// supplementary and is NEVER uploaded to an external destination, so deleting it
+// on a confirmed upload would silently destroy the documented source-of-truth. The
+// byte-pressure retention runner keeps the default (delete every rendition).
+export async function deleteRecordingCacheFile(
+  recording: RecordingSummary,
+  { includeRaw = true }: { includeRaw?: boolean } = {},
+) {
   let deleted = false;
 
-  for (const target of recordingCacheTargets(recording)) {
+  for (const target of recordingCacheTargets(recording, includeRaw)) {
     try {
       await unlink(resolvedCachePathFromRelative(target));
       deleted = true;

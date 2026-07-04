@@ -520,7 +520,10 @@ async function deleteChunkCacheIfPolicyAllows(
 
     if (policy.deleteCacheAfterUpload) {
       try {
-        await deleteRecordingChunkCacheFile(chunk);
+        // Preserve the raw master: it is supplementary and was never uploaded, so a
+        // confirmed-upload cache delete must not destroy it (byte-pressure retention
+        // still reclaims it later).
+        await deleteRecordingChunkCacheFile(chunk, { includeRaw: false });
       } catch (error) {
         console.warn("chunk cache retention failed", error);
       }
@@ -546,7 +549,9 @@ async function resolveCacheDeletion(
 
     if (policy.deleteCacheAfterUpload) {
       try {
-        const cacheDeleted = await deleteRecordingCacheFile(recording);
+        // Preserve the raw master (supplementary, never uploaded); see the chunk
+        // path above. Byte-pressure retention still reclaims raw when disk fills.
+        const cacheDeleted = await deleteRecordingCacheFile(recording, { includeRaw: false });
 
         return { cacheDeleted, policyId: policy.id };
       } catch (error) {

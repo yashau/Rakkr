@@ -126,6 +126,59 @@ test("upload runner deletes local cache after confirmed upload when policy reque
   });
 });
 
+test("upload runner preserves the never-uploaded raw master when deleting cache after upload", async () => {
+  const auditStore = createAuditStore("");
+  const destinationStore = createUploadDestinationStore();
+  const contents = "enhanced-primary-bytes";
+  const id = "rec_upload_raw_preserve";
+  const rawRel = `scheduled/${id}.raw.mp3`;
+  // The enhanced primary is uploaded; the raw master is supplementary (kept in the
+  // controller cache, never enqueued for external upload).
+  const cachedRecording = { ...recording(id, contents), rawCachePath: rawRel };
+  const cachePath = await cacheRecording(id, contents);
+  const rawCachePath = path.join(runnerRoot, "cache", "scheduled", `${id}.raw.mp3`);
+  await writeFile(rawCachePath, "raw-master-bytes");
+  const recordingStore = memoryRecordingStore([cachedRecording]);
+  const smb = fakeSmbClient();
+  const runner = createUploadRunner({
+    auditStore,
+    limit: 5,
+    destinationStore,
+    recordingStore,
+    smbClientFactory: () => smb.client,
+  });
+
+  const destination = await destinationStore.create({
+    displayName: "Archive Share",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "files.example.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+  const policy = await createUploadPolicy({
+    deleteCacheAfterUpload: true,
+    destinationId: destination.id,
+    enabled: true,
+    maxAttempts: 1,
+    name: "Archive then delete cache",
+    trigger: "manual",
+  });
+  await enqueueRecordingUpload(cachedRecording, {
+    destinationId: destination.id,
+    maxAttempts: 1,
+    policyId: policy.id,
+    provider: "smb",
+  });
+
+  const summary = await runner.runOnce();
+
+  assert.equal(summary.succeeded, 1);
+  // The uploaded primary is reclaimed...
+  await assert.rejects(readFile(cachePath), /ENOENT/);
+  // ...but the raw master (never uploaded, the documented source of truth) survives.
+  assert.equal((await readFile(rawCachePath)).toString("utf8"), "raw-master-bytes");
+});
+
 test("upload runner records health events for terminal upload failures", async () => {
   const auditStore = createAuditStore("");
   const healthEventStore = createHealthEventStore("");
