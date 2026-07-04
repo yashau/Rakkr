@@ -164,6 +164,32 @@ describe("schedule recurrence engine", () => {
     assert.equal(scheduleRecordingDurationSeconds(schedule), 3_600);
   });
 
+  it("keeps capture length FIXED across a DST boundary (documented by design)", () => {
+    // A 01:00 -> 04:00 daily window in America/New_York. On the 2026-03-08
+    // spring-forward day the clock jumps 02:00 -> 03:00, so the true elapsed
+    // wall-clock time from local 01:00 to local 04:00 is only 2h — but capture
+    // is FIXED-LENGTH by design: it records the scheduled wall-clock duration
+    // (3h = 10_800s) regardless of the transition. This pins that contract so a
+    // future change can't silently make the capture length date/timezone
+    // dependent without updating this expectation. See scheduleRecordingDurationSeconds.
+    const schedule = scheduleFixture({
+      recurrence: {
+        endTime: "04:00",
+        interval: 1,
+        mode: "daily",
+        startTime: "01:00",
+      },
+      timezone: "America/New_York",
+    });
+
+    // Fixed 3h, not the 2h a DST-correct end derived from the occurrence date
+    // would yield on the spring-forward day.
+    assert.equal(scheduleRecordingDurationSeconds(schedule), 10_800);
+    assert.deepEqual(scheduleRecordingTrackPlans(schedule), [
+      { durationSeconds: 10_800, offsetSeconds: 0 },
+    ]);
+  });
+
   it("keeps a scheduled recording window as a single track for chunked capture", () => {
     const schedule = scheduleFixture({
       recurrence: {

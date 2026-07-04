@@ -88,6 +88,21 @@ export function scheduleRecordingTrackPlans(schedule: ScheduleSummary): Schedule
   return [{ durationSeconds: scheduleRecordingDurationSeconds(schedule), offsetSeconds: 0 }];
 }
 
+// Capture is FIXED-LENGTH by design. The length is the scheduled wall-clock
+// duration `timeRangeSeconds(startTime, endTime)` (plus start-early/stop-late
+// buffers) — a date- and timezone-independent constant, NOT a delta between two
+// zoned instants. On the ~2 DST-transition days per year a window spanning the
+// transition hour (e.g. a 01:00->04:00 window on a spring-forward day) therefore
+// captures for the scheduled duration (3h) even though the true elapsed local
+// time to 04:00 is 2h (spring) or 4h (fall) — i.e. it may differ from the local
+// wall-clock end by ±1h. This is accepted as a predictable capture length:
+// transition-hour meetings are vanishingly rare, and a fixed capture duration is
+// preferable to a length that silently varies by date. Making it DST-correct
+// would require threading the occurrence date + timezone through
+// `scheduleRecordingTrackPlans` and the job-command duration path
+// (`scheduled-recordings.ts`) and the move-occurrence clone path
+// (`schedule-occurrence-routes.ts`), a broad signature refactor deliberately not
+// taken. Pinned by the "keeps capture length FIXED across a DST boundary" test.
 export function scheduleRecordingDurationSeconds(schedule: ScheduleSummary) {
   const recurrence = schedule.recurrence;
 

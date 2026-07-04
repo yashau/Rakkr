@@ -147,6 +147,85 @@ test("channel-room reconcile isolates a per-schedule failure and still reconcile
   assert.deepEqual(event?.details.reconcileFailedScheduleIds, ["sched_fail"]);
 });
 
+test("surfaces a double failure (roster reconcile AND roomId rollback both throw)", async () => {
+  const auditStore = createAuditStore("");
+  // Channel 1 belongs to room-a; a schedule captures it and must follow it to room-b.
+  const node = sharedNode({
+    roomId: undefined,
+    interfaces: [
+      {
+        alias: "X32",
+        backend: "alsa",
+        channelCount: 4,
+        channels: [
+          { alias: "Ch 1", index: 1, roomId: "room-a" },
+          { alias: "Ch 2", index: 2 },
+          { alias: "Ch 3", index: 3 },
+          { alias: "Ch 4", index: 4 },
+        ],
+        id: "iface-1",
+        sampleRates: [48000],
+        systemName: "X-USB",
+        systemRef: "hw:CARD=X32",
+      },
+    ],
+  });
+  const base = memoryScheduleStore([roomScheduleFixture()]);
+  // The FIRST update (the room-b commit) succeeds; the SECOND update (the roomId
+  // rollback, back to room-a) throws. Combined with a roster reconcile that also
+  // throws, the schedule is now stranded in room-b with a stale roster and a retry
+  // would skip it (roomId already === nextRoomId). This double failure must be
+  // surfaced, not swallowed as an ordinary recoverable per-schedule failure.
+  let updates = 0;
+  const scheduleStore: ScheduleStore = {
+    ...base,
+    async update(scheduleId, update) {
+      updates += 1;
+
+      if (updates === 2) {
+        throw new Error("simulated roomId rollback failure");
+      }
+
+      return base.update(scheduleId, update);
+    },
+  };
+  const reconcileScheduleRoster = async () => {
+    throw new Error("simulated roster reconcile failure");
+  };
+  const app = channelRoomApp({
+    auditStore,
+    nodes: [node],
+    permissionCalls: [],
+    reconcileScheduleRoster,
+    scheduleStore,
+  });
+
+  const response = await app.request(`/api/v1/nodes/${node.id}/channel-rooms`, {
+    body: JSON.stringify({
+      assignments: [{ channelIndexes: [1], interfaceId: "iface-1", roomId: "room-b" }],
+    }),
+    headers: { "content-type": "application/json" },
+    method: "PUT",
+  });
+  const [success] = await auditStore.list({ action: "nodes.channel-rooms.assign.succeeded" });
+  const [inconsistent] = await auditStore.list({
+    action: "nodes.channel-rooms.reconcile.inconsistent",
+  });
+
+  assert.equal(response.status, 200);
+  // The schedule is stranded on room-b (rollback failed), so the inconsistency is
+  // real — and it must be observable, not silent.
+  assert.equal((await scheduleStore.find("sched_reconcile"))?.roomId, "room-b");
+  // The failure is still counted as a reconcile failure...
+  assert.deepEqual(success?.details.reconcileFailedScheduleIds, ["sched_reconcile"]);
+  // ...and the DOUBLE failure is surfaced distinctly: both in the success audit
+  // details and as its own failed audit event listing the stranded schedule.
+  assert.deepEqual(success?.details.inconsistentScheduleIds, ["sched_reconcile"]);
+  assert.equal(inconsistent?.outcome, "failed");
+  assert.equal(inconsistent?.reason, "schedule_room_reconcile_inconsistent");
+  assert.deepEqual(inconsistent?.details.inconsistentScheduleIds, ["sched_reconcile"]);
+});
+
 test("a retry PUT re-runs a schedule roster reconcile that failed on the first pass", async () => {
   const auditStore = createAuditStore("");
   // Channel 1 belongs to room-a; a schedule captures it.
