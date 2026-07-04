@@ -187,6 +187,12 @@ helm upgrade --install rakkr deploy/helm/rakkr-controller `
   --set database.externalUrl=postgres://user:password@postgres.example.com:5432/rakkr
 ```
 
+Setting `postgres.enabled=false` is **required** here, not optional: the chart
+`fail`s at render time if an external database is configured
+(`database.externalUrl` or `database.existingSecret.name`) while the bundled
+Postgres is still enabled (`postgres.enabled=true`, the default). See the warning
+below.
+
 `values.yaml` ships **no plaintext secret defaults** (admin password, master
 keys, runner token, and postgres password are all empty) so a default install
 fails closed. For local clusters, apply the dev overlay:
@@ -241,15 +247,23 @@ secrets:
           key: secret/data/rakkr/controller
 ```
 
-> **Bundled Postgres + an external/ESO/sealed app secret must coordinate the DB
-> password.** The chart's Postgres `Secret` renders `POSTGRES_PASSWORD` from
+> **Bringing your own database means disabling the bundled Postgres.** The chart
+> **`fail`s at render time** if you configure an external database
+> (`database.externalUrl` **or** `database.existingSecret.name`) while leaving
+> `postgres.enabled=true` (the default) — that combination would render a full
+> Postgres StatefulSet + Service + Secret + PVC that runs **UNUSED** (an orphaned
+> database: wasted storage, and a second, drifting source of truth for the DB
+> password). The render error tells you to disable the bundled Postgres when
+> bringing your own `DATABASE_URL`; set `postgres.enabled=false` (above).
+>
+> If you deliberately keep the bundled Postgres **as** your database while your
+> app secret is external/ESO/sealed, you must still coordinate the DB password.
+> The chart's Postgres `Secret` renders `POSTGRES_PASSWORD` from
 > `postgres.auth.password` (empty by default), which is independent of the
-> `DATABASE_URL` your app secret supplies — so if you keep `postgres.enabled=true`
-> you MUST either point Postgres at the same secret via
-> `postgres.auth.existingSecret` or set a matching `postgres.auth.password`.
+> `DATABASE_URL` your app secret supplies — so point Postgres at the same secret
+> via `postgres.auth.existingSecret` or set a matching `postgres.auth.password`.
 > Otherwise Postgres trusts an empty password while the API presents a real one
-> and every connection fails `password authentication failed`. The simplest path
-> when you manage `DATABASE_URL` yourself is `postgres.enabled=false` (above).
+> and every connection fails `password authentication failed`.
 
 The Ansible runner's SSH secrets no longer live in `RAKKR_ANSIBLE_TARGETS`
 (Phase 1): the runner fetches per-node keys from the controller using

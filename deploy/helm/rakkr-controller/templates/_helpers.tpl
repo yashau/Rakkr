@@ -50,6 +50,18 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- and .Values.appSecret.create (eq .Values.secrets.backend "native") (not .Values.appSecret.existingSecret) -}}
 {{- end -}}
 
+{{/* Render-time guard: refuse the contradictory combo where the operator brings
+their own database (database.externalUrl or database.existingSecret.name) yet
+leaves the bundled Postgres enabled (postgres.enabled, true by default). That
+would render a full Postgres StatefulSet+Service+Secret+PVC that runs UNUSED —
+wasted storage and a second, drifting source of truth for the DB password. Fail
+fast with an actionable message instead of shipping an orphaned database. */}}
+{{- define "rakkr-controller.validateDatabase" -}}
+{{- if and .Values.postgres.enabled (or .Values.database.externalUrl .Values.database.existingSecret.name) -}}
+{{- fail "postgres.enabled=true but an external database is configured (database.externalUrl or database.existingSecret.name): the bundled Postgres StatefulSet/Service/Secret/PVC would render and run UNUSED. Disable the bundled Postgres when bringing your own DATABASE_URL (set postgres.enabled=false)." -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "rakkr-controller.postgresSecretName" -}}
 {{- default (printf "%s-postgres" (include "rakkr-controller.fullname" .)) .Values.postgres.auth.existingSecret -}}
 {{- end -}}
