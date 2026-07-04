@@ -167,6 +167,9 @@ export function registerScheduleCalendarRoutes({
             room: schedule.room,
             scheduleId: schedule.id,
             scheduleName: schedule.name,
+            // Carry the schedule's timezone so the calendar groups each chip on the
+            // schedule-local day (matching the backend skip/occurrence day).
+            timezone: schedule.timezone,
           });
         }
 

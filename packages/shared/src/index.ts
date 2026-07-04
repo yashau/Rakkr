@@ -580,6 +580,10 @@ export const scheduleCalendarOccurrenceSchema = scheduleOccurrencePreviewSchema.
   room: z.string().min(1),
   scheduleId: z.string().min(1),
   scheduleName: z.string().min(1),
+  // The schedule's IANA timezone, so the calendar groups each chip on the
+  // SCHEDULE-local day (matching the backend skip/occurrence day) rather than the
+  // viewer's browser-local day when the two differ (see calendar-grid groupByLocalDay).
+  timezone: z.string().min(1).max(80),
 });
 export const scheduleCalendarResponseSchema = z.object({
   data: z.array(scheduleCalendarOccurrenceSchema),
