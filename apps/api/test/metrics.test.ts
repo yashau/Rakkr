@@ -156,6 +156,29 @@ test("renders store-backed Prometheus gauges", () => {
   assert.match(output, /rakkr_upload_failures_total\{provider="stub"\} 3/);
 });
 
+test("neutralizes a carriage return in a label value so the scrape stays parseable", () => {
+  // Node alias/room are operator-set and validated only as non-empty strings, so
+  // a control char can reach a label. A raw CR (or LF) inside a label value makes
+  // a metric line strict Prometheus/OpenMetrics parsers reject — breaking the
+  // whole scrape. escapeLabel neutralizes \\, ", \n; it must also handle \r.
+  const output = renderPrometheusMetrics({
+    auditEvents: [],
+    healthEvents: [],
+    listenMonitorChunks: [],
+    meterFrames: [],
+    nodes: [{ ...node(), alias: "Rack\rA" }],
+    observedAt: new Date("2026-06-18T12:16:00.000Z"),
+    recordingCacheBytes: {},
+    recordingJobs: [],
+    recordings: [],
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+    uploadQueueItems: [],
+  });
+
+  assert.doesNotMatch(output, /\r/, "a raw carriage return must never appear in the exposition");
+  assert.match(output, /alias="Rack\\rA"/);
+});
+
 function auditEvent(
   action: string,
   outcome: AuditEvent["outcome"],
