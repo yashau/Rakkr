@@ -588,7 +588,9 @@ export class LocalAuthService {
       findUserByEmail: (email: string) => this.localUserRecordByEmail(email),
       findUserByExternalId: (externalId: string) => this.localUserRecordByExternalId(externalId),
       markDatabaseUnavailable: (error: unknown) => this.markDatabaseUnavailable(error),
-      memoryRecordByEmail: (email: string) => this.oidcUserRecords.get(email),
+      // Lowercase the lookup key to match the login path (localUserRecordByEmail),
+      // which also lowercases — so a mixed-case OIDC email resolves the same record.
+      memoryRecordByEmail: (email: string) => this.oidcUserRecords.get(email.toLowerCase()),
       memoryRecordByExternalId: (externalId: string) =>
         [...this.oidcUserRecords.values()].find((record) => record.externalId === externalId),
       persistAccess: async (userId: string, access: LocalAccess, groups: AccessGroup[]) => {
@@ -797,40 +799,46 @@ export class LocalAuthService {
       await ensureSecurityCatalog(db);
       await upsertGroups(db, groups);
 
-      await db.delete(userRoles).where(eq(userRoles.userId, userId));
-      await db.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
-      await db.delete(userAccessGroups).where(eq(userAccessGroups.userId, userId));
+      // Wrap the DELETE-then-INSERT of the user's roles/grants/groups in a single
+      // transaction: a failed INSERT (e.g. a stale groupId/roleId tripping an FK)
+      // must roll the DELETEs back so the user keeps their prior access rather than
+      // being left fully stripped in the DB while the caller throws.
+      await db.transaction(async (tx) => {
+        await tx.delete(userRoles).where(eq(userRoles.userId, userId));
+        await tx.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
+        await tx.delete(userAccessGroups).where(eq(userAccessGroups.userId, userId));
 
-      // Guarded like the grant/group inserts below — an empty values() insert
-      // throws in Postgres, which previously broke syncing any user with no role
-      // (e.g. an OIDC login whose token carries groups but no known app role).
-      if (access.roles.length > 0) {
-        await db.insert(userRoles).values(
-          access.roles.map((roleId) => ({
-            roleId,
-            userId,
-          })),
-        );
-      }
+        // Guarded like the grant/group inserts below — an empty values() insert
+        // throws in Postgres, which previously broke syncing any user with no role
+        // (e.g. an OIDC login whose token carries groups but no known app role).
+        if (access.roles.length > 0) {
+          await tx.insert(userRoles).values(
+            access.roles.map((roleId) => ({
+              roleId,
+              userId,
+            })),
+          );
+        }
 
-      if (access.resourceGrants.length > 0) {
-        await db.insert(userResourceGrants).values(
-          access.resourceGrants.map((grant) => ({
-            resourceId: grant.resourceId,
-            resourceType: grant.resourceType,
-            userId,
-          })),
-        );
-      }
+        if (access.resourceGrants.length > 0) {
+          await tx.insert(userResourceGrants).values(
+            access.resourceGrants.map((grant) => ({
+              resourceId: grant.resourceId,
+              resourceType: grant.resourceType,
+              userId,
+            })),
+          );
+        }
 
-      if (groups.length > 0) {
-        await db.insert(userAccessGroups).values(
-          groups.map((group) => ({
-            groupId: group.id,
-            userId,
-          })),
-        );
-      }
+        if (groups.length > 0) {
+          await tx.insert(userAccessGroups).values(
+            groups.map((group) => ({
+              groupId: group.id,
+              userId,
+            })),
+          );
+        }
+      });
     } catch (error) {
       this.markDatabaseUnavailable(error);
       throw new AuthError("Local user access storage is unavailable", "database_unavailable");

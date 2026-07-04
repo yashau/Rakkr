@@ -3,6 +3,7 @@ import { eq, users, type createDatabase } from "@rakkr/db";
 import type { CurrentUser } from "@rakkr/shared";
 
 import { localUserReturning, type LocalUserRecord } from "./auth-user-lifecycle.js";
+import { isPgErrorCode } from "./auth-utils.js";
 import type { LocalAccess } from "./auth-types.js";
 import {
   normalizeAzureAdOidcUser,
@@ -90,21 +91,37 @@ async function linkOidcUser(
     );
   }
 
-  const [row] = await db
-    .insert(users)
-    .values({
-      email: normalized.email,
-      externalId: normalized.externalId,
-      name: normalized.name,
-      provider: "oidc",
-    })
-    .returning(localUserReturning);
+  try {
+    const [row] = await db
+      .insert(users)
+      .values({
+        email: normalized.email,
+        externalId: normalized.externalId,
+        name: normalized.name,
+        provider: "oidc",
+      })
+      .returning(localUserReturning);
 
-  if (!row) {
-    throw new Error("OIDC user storage returned no record");
+    if (!row) {
+      throw new Error("OIDC user storage returned no record");
+    }
+
+    return row;
+  } catch (error) {
+    // Two concurrent first-logins of the same NEW subject both reach this INSERT;
+    // the loser trips the users_external_id_idx / email unique (23505). If the
+    // race winner has now created the row, treat this as a normal subject re-link
+    // (update + return it) instead of surfacing an opaque 502.
+    if (isPgErrorCode(error, "23505")) {
+      const winner = await adapter.findUserByExternalId(normalized.externalId);
+
+      if (winner) {
+        return writeOidcRow(db, winner.id, normalized);
+      }
+    }
+
+    throw error;
   }
-
-  return row;
 }
 
 async function writeOidcRow(
@@ -112,23 +129,37 @@ async function writeOidcRow(
   userId: string,
   normalized: NormalizedAzureAdOidcUser,
 ) {
-  const [row] = await db
-    .update(users)
-    .set({
-      email: normalized.email,
-      externalId: normalized.externalId,
-      name: normalized.name,
-      provider: "oidc",
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, userId))
-    .returning(localUserReturning);
+  try {
+    const [row] = await db
+      .update(users)
+      .set({
+        email: normalized.email,
+        externalId: normalized.externalId,
+        name: normalized.name,
+        provider: "oidc",
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning(localUserReturning);
 
-  if (!row) {
-    throw new Error("OIDC user storage returned no record");
+    if (!row) {
+      throw new Error("OIDC user storage returned no record");
+    }
+
+    return row;
+  } catch (error) {
+    // A legit federated email-swap onto an email another row still holds trips the
+    // email unique (23505). Surface it as a linking conflict (403) rather than an
+    // opaque DB-unavailable 502.
+    if (isPgErrorCode(error, "23505")) {
+      throw new OidcSyncError(
+        "OIDC email is already linked to a different account",
+        "oidc_email_conflict",
+      );
+    }
+
+    throw error;
   }
-
-  return row;
 }
 
 async function syncMemoryOidcUser(
