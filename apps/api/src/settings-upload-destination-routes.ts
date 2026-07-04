@@ -8,6 +8,7 @@ import {
 import type { AuthResult } from "./auth-service.js";
 import type { AppBindings, RecordAuditEvent, RequirePermission } from "./http-types.js";
 import { uploadDestinationSettingsTarget } from "./settings-scope.js";
+import { UploadDestinationStoreError } from "./upload-destinations.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
 
 interface SettingsUploadDestinationRouteDependencies {
@@ -42,7 +43,20 @@ export function registerSettingsUploadDestinationRoutes({
         return c.json({ error: "Invalid upload destination", issues: body.error.issues }, 400);
       }
 
-      const created = await uploadDestinationStore.create(body.data);
+      let created;
+
+      try {
+        created = await uploadDestinationStore.create(body.data);
+      } catch (error) {
+        // A duplicate operator-supplied id is a client conflict (409); any other
+        // store error (a genuine DB outage) rethrows to the onError boundary → 503.
+        if (error instanceof UploadDestinationStoreError) {
+          await recordSettingsFailure(c, "settings.upload_destinations.create.failed", error.code);
+          return c.json({ error: "Upload destination already exists", reason: error.code }, 409);
+        }
+
+        throw error;
+      }
 
       await recordAuditEvent(c, {
         action: "settings.upload_destinations.create.succeeded",

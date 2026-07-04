@@ -7,7 +7,8 @@ import test from "node:test";
 const destinationRoot = await mkdtemp(path.join(tmpdir(), "rakkr-upload-destinations-"));
 process.env.RAKKR_UPLOAD_DESTINATION_STORE_PATH = path.join(destinationRoot, "destinations.json");
 
-const { createUploadDestinationStore } = await import("../src/upload-destinations.js");
+const { createUploadDestinationStore, UploadDestinationStoreError } =
+  await import("../src/upload-destinations.js");
 
 test.after(async () => {
   await rm(destinationRoot, { force: true, recursive: true });
@@ -80,4 +81,36 @@ test("reports upload destination configuration readiness", async () => {
   assert.equal(await store.delete(smb.id), true);
   assert.equal((await store.list()).length, 1);
   assert.equal(await store.find(smb.id), undefined);
+});
+
+test("rejects a duplicate operator-supplied id as a conflict, not a DB outage", async () => {
+  const store = createUploadDestinationStore();
+
+  await store.create({
+    displayName: "Archive",
+    enabled: true,
+    id: "upload_dest_archive",
+    kind: "s3",
+    s3: { accessKeyId: "AKIA", bucket: "rakkr-archive", region: "us-east-1" },
+  });
+
+  // Re-creating the same explicit id must surface a typed conflict (→ 409), not fall
+  // through to failover (→ 503 "database unavailable").
+  await assert.rejects(
+    () =>
+      store.create({
+        displayName: "Archive (dupe)",
+        enabled: true,
+        id: "upload_dest_archive",
+        kind: "s3",
+        s3: { accessKeyId: "AKIA2", bucket: "rakkr-archive-2", region: "us-east-1" },
+      }),
+    (error: unknown) =>
+      error instanceof UploadDestinationStoreError && error.code === "upload_destination_exists",
+  );
+
+  assert.equal(
+    (await store.list()).filter((entry) => entry.id === "upload_dest_archive").length,
+    1,
+  );
 });

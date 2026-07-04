@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDatabase, eq, uploadDestinations as uploadDestinationsTable } from "@rakkr/db";
+import { isPgErrorCode } from "./auth-utils.js";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   uploadDestinationInputSchema,
@@ -100,6 +101,19 @@ const uploadDestinationDrivers: Record<UploadDestinationKind, UploadDestinationD
   },
 };
 
+// A client-error the destination routes map to 409 (rather than the failover path
+// mislabeling a duplicate-id create as a 503 "database unavailable"). Mirrors
+// RoomStoreError / SwitcherStoreError.
+export class UploadDestinationStoreError extends Error {
+  constructor(
+    message: string,
+    readonly code: "upload_destination_exists",
+  ) {
+    super(message);
+    this.name = "UploadDestinationStoreError";
+  }
+}
+
 export interface UploadDestinationStore {
   create(input: UploadDestinationInput): Promise<UploadDestinationRuntimeStatus>;
   delete(id: string): Promise<boolean>;
@@ -137,6 +151,13 @@ class JsonUploadDestinationStore implements UploadDestinationStore {
 
   async create(input: UploadDestinationInput) {
     const next = createStored(input);
+
+    if (input.id && this.storedFor(next.destination.id)) {
+      throw new UploadDestinationStoreError(
+        "Upload destination already exists",
+        "upload_destination_exists",
+      );
+    }
 
     this.stored.unshift(next);
     this.persist();
@@ -263,10 +284,31 @@ class PostgresUploadDestinationStore implements UploadDestinationStore {
     try {
       const next = createStored(input);
 
+      // An operator-supplied duplicate id is a client conflict (409), not a DB
+      // outage (503) — pre-check + discriminate the 23505 race, mirroring room /
+      // switcher stores; otherwise the unique-violation falls through to failover.
+      if (input.id && (await this.storedFor(next.destination.id))) {
+        throw new UploadDestinationStoreError(
+          "Upload destination already exists",
+          "upload_destination_exists",
+        );
+      }
+
       await this.db.insert(uploadDestinationsTable).values(storedToRow(next));
 
       return uploadDestinationRuntimeStatus(next);
     } catch (error) {
+      if (error instanceof UploadDestinationStoreError) {
+        throw error;
+      }
+
+      if (isPgErrorCode(error, "23505")) {
+        throw new UploadDestinationStoreError(
+          "Upload destination already exists",
+          "upload_destination_exists",
+        );
+      }
+
       await this.failover("upload destination create unavailable; using JSON store", error);
       return this.fallback.create(input);
     }
