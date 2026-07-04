@@ -19,8 +19,7 @@ export function listen(server) {
 }
 
 export function agentBinaryPath(repoRoot) {
-  const binary =
-    process.platform === "win32" ? "rakkr-recorder-agent.exe" : "rakkr-recorder-agent";
+  const binary = process.platform === "win32" ? "rakkr-recorder-agent.exe" : "rakkr-recorder-agent";
 
   return path.join(repoRoot, "target", "debug", binary);
 }
@@ -105,6 +104,36 @@ export async function waitFor(predicate, timeoutMs, describe) {
   }
 
   throw new Error(`Timed out waiting for condition: ${describe()}`);
+}
+
+/**
+ * Wait for a daemon-agent predicate, then tear the child down. On timeout the
+ * daemon's stdout/stderr (otherwise discarded on the happy path) plus any extra
+ * diagnostics are folded into the thrown error, so a flake surfaces *why* the
+ * agent stalled instead of a bare "Timed out waiting for condition". Returns the
+ * child's `{ code, stdout, stderr }` close outcome on success.
+ */
+export async function waitForDaemon(child, predicate, timeoutMs, describe, diagnose) {
+  let waitError;
+
+  try {
+    await waitFor(predicate, timeoutMs, describe);
+  } catch (error) {
+    waitError = error;
+  }
+
+  child.kill();
+  const outcome = await child.closed;
+
+  if (waitError) {
+    const extra = diagnose ? await diagnose() : "";
+    throw new Error(
+      `${waitError.message}\n--- agent stdout (last 4000) ---\n${outcome.stdout.slice(-4000)}\n` +
+        `--- agent stderr (last 4000) ---\n${outcome.stderr.slice(-4000)}${extra}`,
+    );
+  }
+
+  return outcome;
 }
 
 export async function readBody(request) {

@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -89,11 +90,29 @@ pub fn write_job_state(
     )
 }
 
+// Serializes the shared-state-file write below. With max_concurrent_recordings >= 2,
+// sibling recording-job workers in THIS process write the single `agent_state_file`
+// at once; the sibling `.<pid>.tmp` was named by process id alone, so concurrent
+// writers collided on ONE temp path — the loser's rename found a temp already
+// consumed by the winner ("replace agent state"/ENOENT) and its whole job errored
+// out, stranding it "running" (no /failed, no re-claim) until controller lease
+// expiry. This is the write-safety half of R37-CONCURRENT-STATE, the exact state.rs
+// mirror of the cache-manifest race BO (a2e3e14c) closed. An in-process lock
+// suffices — one agent process owns the file. Poisoning is recovered so a panic in
+// one writer can't permanently wedge state writes. The per-job-file recovery-format
+// refactor (so a restart recovers ALL concurrent jobs, not just the last writer)
+// stays deferred to the audio rig.
+static STATE_FILE_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
 pub fn write_job_state_snapshot(config: &AgentConfig, state: AgentJobState) -> anyhow::Result<()> {
     if let Some(parent) = config.agent_state_file.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("create agent state directory {}", parent.display()))?;
     }
+
+    let _guard = STATE_FILE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     // Atomic write: serialize to a sibling temp file then rename into place. A crash
     // mid-write must never leave a torn state.json — a partial file fails to decode
@@ -293,6 +312,84 @@ mod tests {
         assert!(loaded.is_none());
 
         cleanup(&state_file);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // real filesystem + threads
+    fn concurrent_state_writes_do_not_collide_on_the_temp_file() {
+        // R37-CONCURRENT-STATE write-safety half: with max_concurrent_recordings >= 2,
+        // sibling recording-job workers write the SAME agent_state_file at once. Pre-fix
+        // the atomic-write temp was named by process id alone, so concurrent writers
+        // shared one `.<pid>.tmp` — the loser's rename found the temp already consumed
+        // ("replace agent state"), erroring its whole job and stranding the recording
+        // "running". Serialized writes must let every writer succeed.
+        let state_file = temp_state_file("concurrent");
+        let state_file_arg = state_file.to_string_lossy().into_owned();
+        let config = std::sync::Arc::new(AgentConfig::parse_from([
+            "test",
+            "--agent-state-file",
+            state_file_arg.as_str(),
+        ]));
+        if let Some(parent) = state_file.parent() {
+            fs::create_dir_all(parent).expect("state dir");
+        }
+
+        // A barrier aligns all writers on the same instant to maximize the race.
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+        let handles: Vec<_> = (0..16)
+            .map(|worker| {
+                let barrier = std::sync::Arc::clone(&barrier);
+                let config = std::sync::Arc::clone(&config);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    for _ in 0..8 {
+                        write_job_state_snapshot(&config, sample_state(worker))?;
+                    }
+                    anyhow::Ok(())
+                })
+            })
+            .collect();
+
+        let errors: Vec<String> = handles
+            .into_iter()
+            .filter_map(|handle| handle.join().expect("writer thread panicked").err())
+            .map(|error| error.to_string())
+            .collect();
+
+        assert!(
+            errors.is_empty(),
+            "concurrent state writes errored: {errors:?}"
+        );
+        // Last-writer-wins on the single file is expected and fine here — the recovery
+        // FORMAT is unchanged (the per-job-file refactor stays deferred); this asserts
+        // only that no writer errors and the file stays decodable.
+        let loaded = read_job_state(&config)
+            .expect("read state")
+            .expect("state present");
+        assert_eq!(loaded.node_id, "node_concurrent");
+
+        cleanup(&state_file);
+    }
+
+    fn sample_state(worker: usize) -> AgentJobState {
+        AgentJobState {
+            job_id: format!("job_{worker}"),
+            node_id: "node_concurrent".to_string(),
+            output_path: None,
+            reason: None,
+            raw_output_path: None,
+            recording_id: format!("rec_{worker}"),
+            recorder_cache_retention: None,
+            recovered_segments: Vec::new(),
+            status: "running".to_string(),
+            updated_at: "2026-06-25T00:00:00Z".to_string(),
+            upload_content_type: None,
+            upload_duration_seconds: None,
+            upload_file_name: None,
+            chunk_total: None,
+            uploaded_chunk_count: None,
+            pending_chunks: Vec::new(),
+        }
     }
 
     fn temp_state_file(name: &str) -> std::path::PathBuf {
