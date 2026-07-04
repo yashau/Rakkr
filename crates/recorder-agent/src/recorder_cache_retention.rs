@@ -1,10 +1,31 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+
+// Serializes every manifest read-modify-write. A node runs a single agent process,
+// but that process runs up to `max_concurrent_recordings` recording-job workers as
+// concurrent tasks, and each finalization (`record_uploaded_cache_files`) plus the
+// idle sweep (`run_recorder_cache_sweep`) load the manifest, mutate it, and save it.
+// Without serialization two concurrent finalizations both load the same manifest,
+// each append their own entry, and the second save clobbers the first — dropping an
+// entry so that recording's cache files leak untracked (never reclaimed by any
+// age/bytes/min-free policy). It also collides the shared temp file used by the
+// atomic save. An in-process mutex is sufficient because a single agent process owns
+// the manifest; there is no second writer process to coordinate with.
+static MANIFEST_MUTEX: Mutex<()> = Mutex::new(());
+
+fn lock_manifest() -> MutexGuard<'static, ()> {
+    // A panic while another writer held the lock must not permanently wedge cache
+    // tracking, so recover the guard from a poisoned mutex rather than propagating.
+    MANIFEST_MUTEX
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,6 +142,9 @@ pub fn record_uploaded_cache_files(
         return Ok(());
     }
 
+    // Hold the manifest lock across the whole load-modify-save so a concurrent
+    // finalization or sweep cannot clobber this entry (or the shared temp file).
+    let _guard = lock_manifest();
     let mut manifest = load_manifest(manifest_path)?;
 
     manifest
@@ -142,6 +166,9 @@ pub fn run_recorder_cache_sweep(
     disk_usage: Option<RecorderCacheDiskUsage>,
     now: SystemTime,
 ) -> anyhow::Result<RecorderCacheSweepSummary> {
+    // Hold the lock across the sweep's own load-modify-save: a finalization that
+    // lands mid-sweep must not have its new entry dropped by the pruned save below.
+    let _guard = lock_manifest();
     let mut manifest = load_manifest(manifest_path)?;
     let mut candidates = Vec::new();
     let mut missing_recordings = Vec::new();
@@ -518,6 +545,70 @@ mod tests {
             min_free_disk_percent: None,
             policy_id: policy_id.to_string(),
         }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn concurrent_uploads_do_not_lose_manifest_entries() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        // Multiple recording-job workers (max_concurrent_recordings >= 2) finalize
+        // at once and each records its cache files in the shared manifest. Without a
+        // serialized read-modify-write, two concurrent finalizations both load the
+        // same manifest, each append their entry, and the second save clobbers the
+        // first — dropping an entry so that recording's cache file leaks untracked
+        // and is never swept. Every concurrently recorded entry must survive.
+        let root = temp_dir("concurrent-manifest");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let manifest_path = root.join("manifest.json");
+
+        let writers = 16;
+        let barrier = Arc::new(Barrier::new(writers));
+        let mut handles = Vec::new();
+        for index in 0..writers {
+            let manifest_path = manifest_path.clone();
+            let root = root.clone();
+            let barrier = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                let mut policy = policy("retain-concurrent");
+                policy.max_age_days = Some(1);
+                let raw = root.join(format!("rec_{index}.raw.wav"));
+                let rendered = root.join(format!("rec_{index}.mp3"));
+                // Align every writer's load so the read-modify-write windows overlap.
+                barrier.wait();
+                record_uploaded_cache_files(
+                    &manifest_path,
+                    &format!("rec_{index}"),
+                    &policy,
+                    &raw,
+                    &rendered,
+                )
+                .unwrap();
+            }));
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let manifest = load_manifest(&manifest_path).unwrap();
+        assert_eq!(
+            manifest.entries.len(),
+            writers,
+            "all concurrent manifest entries must survive the race"
+        );
+        for index in 0..writers {
+            assert!(
+                manifest
+                    .entries
+                    .iter()
+                    .any(|entry| entry.recording_id == format!("rec_{index}")),
+                "entry rec_{index} was lost to a concurrent write"
+            );
+        }
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
