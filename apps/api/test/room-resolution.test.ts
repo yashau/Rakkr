@@ -223,6 +223,26 @@ test("scheduleChannelSelectionFailure validates against the effective (env) capt
   });
 });
 
+test("ignores an env capture interface that does not exist on the node", () => {
+  // The process-wide env names an interface that isn't on THIS node.
+  const target = node({
+    roomId: "room-default",
+    interfaces: [iface("iface-first", [{ index: 1 }, { index: 2 }])],
+  });
+
+  withCaptureInterfaceEnv("iface-not-on-this-node", () => {
+    // Falls through to the node's real first interface, not the absent env id.
+    assert.equal(effectiveCaptureInterfaceId(target, null), "iface-first");
+
+    // Validation must NOT hard-reject a selection valid on the real interface (the
+    // env id would resolve to no interface → schedule_interface_not_found → 409)...
+    assert.equal(scheduleChannelSelectionFailure(target, null, [1], "mono"), undefined);
+
+    // ...and it must AGREE with room attribution (both resolve iface-first → default room).
+    assert.deepEqual(resolveScheduleRoom(target, null, [1]), { ok: true, roomId: "room-default" });
+  });
+});
+
 test("resolveSelectionRoom falls back to the node default for unassigned channels", () => {
   const target = node({
     roomId: "room-default",
