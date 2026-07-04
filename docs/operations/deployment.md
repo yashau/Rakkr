@@ -218,6 +218,12 @@ Secret's name and the chart renders no Secret/ExternalSecret/SealedSecret. For a
 DB-only external secret, keep `database.existingSecret`:
 
 ```yaml
+# Bringing your own DATABASE_URL means bringing your own database — disable the
+# bundled Postgres, or its pod boots with an empty password that will never match
+# the DATABASE_URL your app secret carries, and the API fails to connect.
+postgres:
+  enabled: false
+
 database:
   existingSecret:
     name: rakkr-database
@@ -234,6 +240,16 @@ secrets:
       - extract:
           key: secret/data/rakkr/controller
 ```
+
+> **Bundled Postgres + an external/ESO/sealed app secret must coordinate the DB
+> password.** The chart's Postgres `Secret` renders `POSTGRES_PASSWORD` from
+> `postgres.auth.password` (empty by default), which is independent of the
+> `DATABASE_URL` your app secret supplies — so if you keep `postgres.enabled=true`
+> you MUST either point Postgres at the same secret via
+> `postgres.auth.existingSecret` or set a matching `postgres.auth.password`.
+> Otherwise Postgres trusts an empty password while the API presents a real one
+> and every connection fails `password authentication failed`. The simplest path
+> when you manage `DATABASE_URL` yourself is `postgres.enabled=false` (above).
 
 The Ansible runner's SSH secrets no longer live in `RAKKR_ANSIBLE_TARGETS`
 (Phase 1): the runner fetches per-node keys from the controller using

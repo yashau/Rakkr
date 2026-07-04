@@ -7,6 +7,15 @@ metadata:
     app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.api.replicaCount }}
+  # The API mounts a single ReadWriteOnce PVC (api-pvc.yaml) for its JSON stores +
+  # recording cache. RollingUpdate would start the new pod before terminating the
+  # old one on an image-tag upgrade; both would mount the same RWO volume, so the
+  # new pod is stuck Multi-Attach and the rollout deadlocks. Recreate tears the old
+  # pod down first — the correct single-writer posture (brief cutover, never
+  # double-mounts). Raising api.replicaCount would also multi-write the JSON stores;
+  # HA requires moving those to Postgres or an RWX volume first.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "rakkr-controller.selectorLabels" . | nindent 6 }}

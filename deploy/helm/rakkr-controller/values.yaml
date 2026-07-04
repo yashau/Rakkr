@@ -132,6 +132,11 @@ postgres:
     database: rakkr
     username: rakkr
     # No committed default; provide via existingSecret, --set, or values-dev.yaml.
+    # This password is independent of the DATABASE_URL the app secret carries: if
+    # you supply DATABASE_URL via an external/ESO/sealed app secret while keeping
+    # this bundled Postgres, set `existingSecret` (or a matching `password`) so the
+    # two agree — otherwise Postgres boots with an empty password the API can't use.
+    # When you bring your own database, prefer `postgres.enabled: false`.
     password: ""
     existingSecret: ""
     passwordKey: POSTGRES_PASSWORD
