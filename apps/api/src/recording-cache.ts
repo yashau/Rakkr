@@ -45,6 +45,20 @@ export function recordingHasCachedFile(recording: RecordingSummary) {
   );
 }
 
+// True when the recording still has ANY rendition on disk to reclaim — the primary
+// (`cachePath`), the enhanced object, OR the preserved raw master. Retention sizing
+// and cache deletion must use this, not `recordingHasCachedFile`: after an upload
+// with `deleteCacheAfterUpload`, the primary `cachePath` is cleared but the raw
+// master is intentionally preserved (audit AR), so a `cachePath`-only gate would
+// leave that raw file unreclaimable forever (audit AR-twin). Playback/download still
+// gate on `recordingHasCachedFile` (they need the primary).
+export function recordingHasReclaimableCache(recording: RecordingSummary) {
+  return (
+    Boolean(recording.cachePath || recording.rawCachePath || recording.enhancedCachePath) &&
+    (recording.cached || recording.status === "cached" || recording.status === "uploaded")
+  );
+}
+
 export async function loadRecordingFile(
   recording: RecordingSummary,
   rendition?: RecordingRendition,
@@ -254,7 +268,7 @@ function recordingCacheTargets(recording: RecordingSummary, includeRaw = true): 
 }
 
 export async function recordingCacheFileSize(recording: RecordingSummary) {
-  if (!recordingHasCachedFile(recording)) {
+  if (!recordingHasReclaimableCache(recording)) {
     return undefined;
   }
 

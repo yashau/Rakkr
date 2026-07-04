@@ -8,7 +8,7 @@ import {
   deleteRecordingChunkCacheFile,
   recordingCacheFileSize,
   recordingChunkCacheFileSize,
-  recordingHasCachedFile,
+  recordingHasReclaimableCache,
 } from "./recording-cache.js";
 import { listRecordingChunksForRecording, upsertRecordingChunk } from "./recording-chunks.js";
 import type { RecordingStore } from "./recording-store.js";
@@ -241,7 +241,7 @@ async function retentionCandidates(
     // renditions — chunked recordings carry no recording-level cachePath, so
     // sizing/eligibility must sum the chunk files or they escape retention.
     const chunks = await listRecordingChunksForRecording(recording.id);
-    const wholeFileSize = recordingHasCachedFile(recording)
+    const wholeFileSize = recordingHasReclaimableCache(recording)
       ? await recordingCacheFileSize(recording)
       : undefined;
     let size = wholeFileSize ?? 0;
@@ -329,7 +329,7 @@ async function deleteCandidate({
   }
 
   try {
-    let cacheDeleted = recordingHasCachedFile(current)
+    let cacheDeleted = recordingHasReclaimableCache(current)
       ? await deleteRecordingCacheFile(current)
       : false;
 

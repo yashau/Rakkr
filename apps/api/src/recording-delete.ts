@@ -6,6 +6,7 @@ import {
   deleteRecordingCacheFile,
   deleteRecordingChunkCacheFile,
   recordingHasCachedFile,
+  recordingHasReclaimableCache,
 } from "./recording-cache.js";
 import {
   deleteRecordingChunksForRecording,
@@ -237,7 +238,7 @@ export async function deleteRecordings(
 }
 
 async function deleteRecordingData(recordingStore: RecordingStore, recording: RecordingSummary) {
-  let cacheDeleted = recordingHasCachedFile(recording)
+  let cacheDeleted = recordingHasReclaimableCache(recording)
     ? await deleteRecordingCacheFile(recording)
     : false;
 
