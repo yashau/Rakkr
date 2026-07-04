@@ -160,11 +160,21 @@ export function windowScheduleOccurrences(
   const endMs = windowEnd.getTime();
   // Search from just before the window so an occurrence exactly at windowStart
   // is found; nextRunAtForRecurrence scans forward from `after` regardless of now.
+  // Anchor every-N parity to the schedule's true phase (its persisted nextRunAt) so
+  // an interval>1 recurrence (bi-weekly, every-3-days, every-2-months) renders the
+  // SAME occurrences the run loop fires — not the opposite phase re-derived from the
+  // window edge. (An unparseable nextRunAt falls back to the edge-anchored scan.)
+  const parityAnchor =
+    schedule.nextRunAt && !Number.isNaN(Date.parse(schedule.nextRunAt))
+      ? schedule.nextRunAt
+      : undefined;
   let nextRunAt = nextRunAtForRecurrence(
     schedule.recurrence,
     schedule.timezone,
     undefined,
     new Date(startMs - 1),
+    undefined,
+    parityAnchor,
   );
 
   let guard = 0;
@@ -310,6 +320,10 @@ export function nextRunAtForRecurrence(
   fallback: string | undefined,
   after = new Date(),
   previousRunAt?: string,
+  // Parity anchor for every-N recurrence: when scanning a window without a
+  // previousRunAt (the calendar), pass the schedule's true phase so `interval>1`
+  // parity is measured from it, not from the window edge.
+  parityAnchor?: string,
 ) {
   if (recurrence.mode === "manual") {
     return validIsoOrUndefined(fallback);
@@ -324,14 +338,14 @@ export function nextRunAtForRecurrence(
   }
 
   if (recurrence.mode === "daily") {
-    return nextDailyRunAt(recurrence, timeZone, after, previousRunAt);
+    return nextDailyRunAt(recurrence, timeZone, after, previousRunAt, parityAnchor);
   }
 
   if (recurrence.mode === "weekly") {
-    return nextWeeklyRunAt(recurrence, timeZone, after, previousRunAt);
+    return nextWeeklyRunAt(recurrence, timeZone, after, previousRunAt, parityAnchor);
   }
 
-  return nextMonthlyRunAt(recurrence, timeZone, after, previousRunAt);
+  return nextMonthlyRunAt(recurrence, timeZone, after, previousRunAt, parityAnchor);
 }
 
 export function uniqueTags(tags: string[]) {
@@ -343,11 +357,18 @@ function nextDailyRunAt(
   timeZone: string,
   after: Date,
   previousRunAt?: string,
+  parityAnchor?: string,
 ) {
-  const anchor = previousRunAt
-    ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
-    : localDate(after, timeZone);
-  const start = previousRunAt ? addDays(anchor, 1) : anchor;
+  // The `interval` (every-N) parity is measured from the anchor. When only a parity
+  // anchor is given (the calendar-window scan), parity follows the schedule's true
+  // phase while the scan still starts at the window edge — so occurrences at/after
+  // `after`, INCLUDING ones before the anchor, are enumerated with correct parity.
+  const anchor = parityAnchor
+    ? scheduledLocalDateFromRunAt(parityAnchor, recurrence, timeZone)
+    : previousRunAt
+      ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
+      : localDate(after, timeZone);
+  const start = previousRunAt ? addDays(anchor, 1) : localDate(after, timeZone);
 
   for (let offset = 0; offset <= scanDayLimit; offset += 1) {
     const candidateDate = addDays(start, offset);
@@ -378,12 +399,20 @@ function nextWeeklyRunAt(
   timeZone: string,
   after: Date,
   previousRunAt?: string,
+  parityAnchor?: string,
 ) {
-  const afterDate = previousRunAt
+  // Parity (every-N weeks) follows the parity anchor; the scan cursor follows the
+  // window edge when only a parity anchor is given (see nextDailyRunAt).
+  const parityDate = parityAnchor
+    ? scheduledLocalDateFromRunAt(parityAnchor, recurrence, timeZone)
+    : previousRunAt
+      ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
+      : localDate(after, timeZone);
+  const anchorWeek = weekStart(parityDate);
+  const scanBase = previousRunAt
     ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
     : localDate(after, timeZone);
-  const anchorWeek = weekStart(afterDate);
-  const start = previousRunAt ? addDays(afterDate, 1) : afterDate;
+  const start = previousRunAt ? addDays(scanBase, 1) : scanBase;
   const selectedDays = new Set<number>(recurrence.daysOfWeek.map((day) => dayIndexes[day]));
 
   for (let offset = 0; offset <= scanDayLimit; offset += 1) {
@@ -419,17 +448,30 @@ function nextMonthlyRunAt(
   timeZone: string,
   after: Date,
   previousRunAt?: string,
+  parityAnchor?: string,
 ) {
-  const anchorDate = previousRunAt
-    ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
-    : localDate(after, timeZone);
-  const anchorMonth = monthIndex(anchorDate);
+  // Parity (every-N months) is measured from the parity month; the scan iterates
+  // from the scan-base month. They differ only for the calendar-window scan (parity
+  // anchor given, no previousRunAt), where parity follows the schedule's true phase
+  // while the scan starts at the window's month.
+  const parityMonth = monthIndex(
+    parityAnchor
+      ? scheduledLocalDateFromRunAt(parityAnchor, recurrence, timeZone)
+      : previousRunAt
+        ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
+        : localDate(after, timeZone),
+  );
+  const scanBaseMonth = monthIndex(
+    previousRunAt
+      ? scheduledLocalDateFromRunAt(previousRunAt, recurrence, timeZone)
+      : localDate(after, timeZone),
+  );
   const firstOffset = previousRunAt ? recurrence.interval : 0;
 
   for (let offset = firstOffset; offset <= scanMonthLimit; offset += 1) {
-    const candidateMonth = anchorMonth + offset;
+    const candidateMonth = scanBaseMonth + offset;
 
-    if ((candidateMonth - anchorMonth) % recurrence.interval !== 0) {
+    if ((candidateMonth - parityMonth) % recurrence.interval !== 0) {
       continue;
     }
 

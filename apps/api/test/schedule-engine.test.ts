@@ -225,6 +225,35 @@ describe("schedule recurrence engine", () => {
     );
   });
 
+  it("windows an interval>1 recurrence on the schedule's true phase, not the window edge", () => {
+    // Bi-weekly Mondays anchored at Mon 2026-06-15 → fires 06-15, 06-29, 07-13, 07-27.
+    const schedule = scheduleFixture({
+      nextRunAt: "2026-06-15T09:00:00.000Z",
+      recurrence: {
+        daysOfWeek: ["monday"],
+        endTime: "10:00",
+        interval: 2,
+        mode: "weekly",
+        startTime: "09:00",
+      },
+    });
+
+    // A window whose start edge (07-07, week of Mon 07-06) is the OPPOSITE fortnight
+    // from the schedule's phase. Anchored to the window edge (the bug) this yields
+    // 07-20; anchored to the schedule's phase (correct) it yields 07-13 and 07-27 —
+    // the same days the run loop actually fires.
+    const occurrences = windowScheduleOccurrences(
+      schedule,
+      new Date("2026-07-07T00:00:00.000Z"),
+      new Date("2026-07-31T23:59:59.000Z"),
+    );
+
+    assert.deepEqual(
+      occurrences.map((occurrence) => occurrence.recordingStartAt),
+      ["2026-07-13T09:00:00.000Z", "2026-07-27T09:00:00.000Z"],
+    );
+  });
+
   it("windows return nothing for manual/always_on schedules", () => {
     const start = new Date("2026-06-15T00:00:00.000Z");
     const end = new Date("2026-07-15T00:00:00.000Z");
