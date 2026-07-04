@@ -6,6 +6,7 @@ import type {
   RecordingChunk,
   RecordingChunkStatus,
   RecordingSummary,
+  UploadChecksumVerification,
   UploadQueueItem,
   UploadQueueRunItem,
   UploadQueueRunSummary,
@@ -19,7 +20,7 @@ import { listRecordingChunksForRecording, upsertRecordingChunk } from "./recordi
 import { recordingJob } from "./recording-jobs.js";
 import type { RecordingStore } from "./recording-store.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
-import { runUploadQueueOnce } from "./upload-executor.js";
+import { runUploadQueueOnce, type S3Sender } from "./upload-executor.js";
 import { uploadPolicyForQueue } from "./upload-policies.js";
 import { listUploadQueueItems } from "./upload-queue.js";
 import type { SmbClientFactory } from "./upload-smb.js";
@@ -31,8 +32,20 @@ interface UploadRunnerDependencies {
   limit?: number;
   recordingIds?: ReadonlySet<string>;
   recordingStore?: RecordingStore;
+  // Test-only override so S3 uploads can be exercised without a live endpoint.
+  s3Client?: S3Sender;
   // Test-only override so SMB uploads can be exercised without a live server.
   smbClientFactory?: SmbClientFactory;
+}
+
+// A succeeded upload only earns controller-cache deletion when its checksum was
+// genuinely verified: `matched` (SMB read-back byte compare) or
+// `provider_validated` (real AWS S3 validates the trailing ChecksumSHA256). A
+// custom S3-compatible endpoint that may silently ignore the checksum reports
+// `provider_declared` (unverified) — a silently-corrupted upload could otherwise
+// be promoted and its only source cache deleted, so we keep the cache in that case.
+function uploadWasVerified(status: UploadChecksumVerification["status"] | undefined): boolean {
+  return status === "matched" || status === "provider_validated";
 }
 
 export interface UploadRunnerRunOptions {
@@ -124,6 +137,7 @@ export async function runUploadQueuePass(
     limit = uploadRunnerBatchSize(),
     recordingIds,
     recordingStore,
+    s3Client,
     smbClientFactory,
   }: UploadRunnerDependencies,
   now = new Date(),
@@ -133,6 +147,7 @@ export async function runUploadQueuePass(
     limit,
     now,
     recordingIds,
+    s3Client,
     smbClientFactory,
   });
 
@@ -152,12 +167,23 @@ export async function runUploadQueuePass(
     await appendUploadItemAudit(auditStore, item, healthEvent?.id);
   }
 
+  // The per-item checksum-verification level lives only on this pass's run items
+  // (queue rows don't persist it). Cache deletion is gated on genuine
+  // verification, so carry the level from the run summary into the reconcile.
+  const verificationByItemId = new Map<string, UploadChecksumVerification["status"]>();
+
+  for (const item of summary.items) {
+    if (item.checksumVerification) {
+      verificationByItemId.set(item.itemId, item.checksumVerification.status);
+    }
+  }
+
   // Reconcile each affected recording once all its upload items have settled:
   // derive uploaded/partial status and run the gated cache deletion.
   const touchedRecordingIds = [...new Set(summary.items.map((item) => item.recordingId))];
 
   for (const recordingId of touchedRecordingIds) {
-    await reconcileRecordingUpload(recordingId, recordingStore, auditStore);
+    await reconcileRecordingUpload(recordingId, recordingStore, auditStore, verificationByItemId);
   }
 
   return summary;
@@ -259,6 +285,7 @@ async function reconcileRecordingUpload(
   recordingId: string,
   recordingStore: RecordingStore | undefined,
   auditStore: AuditStore,
+  verificationByItemId: ReadonlyMap<string, UploadChecksumVerification["status"]>,
 ): Promise<void> {
   if (!recordingStore) {
     return;
@@ -283,7 +310,13 @@ async function reconcileRecordingUpload(
   const chunkItems = items.filter((item) => item.chunkId);
 
   if (chunkItems.length > 0) {
-    await reconcileChunkedRecordingUpload(recording, chunkItems, recordingStore, auditStore);
+    await reconcileChunkedRecordingUpload(
+      recording,
+      chunkItems,
+      recordingStore,
+      auditStore,
+      verificationByItemId,
+    );
     return;
   }
 
@@ -318,7 +351,7 @@ async function reconcileRecordingUpload(
   const retention =
     failed.length > 0
       ? ({ skipped: "upload_incomplete" } satisfies UploadRetentionResult)
-      : await resolveCacheDeletion(succeeded, current);
+      : await resolveCacheDeletion(succeeded, current, verificationByItemId);
   const cacheDeleted = retention.cacheDeleted === true;
 
   await recordingStore.save({
@@ -363,6 +396,7 @@ async function reconcileChunkedRecordingUpload(
   chunkItems: UploadQueueItem[],
   recordingStore: RecordingStore,
   auditStore: AuditStore,
+  verificationByItemId: ReadonlyMap<string, UploadChecksumVerification["status"]>,
 ): Promise<void> {
   const chunks = await listRecordingChunksForRecording(recording.id);
 
@@ -408,7 +442,7 @@ async function reconcileChunkedRecordingUpload(
     // only source is this cached object, so deleting it now would strand them
     // permanently — mirrors the whole-recording gate above.
     if (settled && failed.length === 0 && succeeded.length > 0) {
-      await deleteChunkCacheIfPolicyAllows(succeeded, chunk);
+      await deleteChunkCacheIfPolicyAllows(succeeded, chunk, verificationByItemId);
     }
 
     if (nextStatus !== chunk.status) {
@@ -489,8 +523,13 @@ export function chunkedRecordingFinalization(input: {
     (status) => status === "partial" || status === "failed",
   ).length;
   const hasGap = input.total !== undefined && input.presentCount < input.total;
+  // The total is stamped only on the final chunk's primary upload. If that
+  // total-bearing chunk never attached, `total` is undefined and completeness is
+  // unprovable — the recording may be missing its tail. When capture is otherwise
+  // done, treat unknown-total as `partial` rather than overstating `uploaded`.
+  const completenessUnprovable = input.total === undefined;
 
-  return { status: degraded > 0 || hasGap ? "partial" : "uploaded" };
+  return { status: degraded > 0 || hasGap || completenessUnprovable ? "partial" : "uploaded" };
 }
 
 function chunkUploadStatus(
@@ -510,17 +549,29 @@ function chunkUploadStatus(
 }
 
 // Per-chunk cache-deletion gate: delete a chunk's cached object only when a
-// succeeded destination's policy requests it, mirroring the whole-recording gate.
+// succeeded destination's policy requests it AND that destination's upload was
+// genuinely checksum-verified, mirroring the whole-recording gate.
 async function deleteChunkCacheIfPolicyAllows(
   succeededItems: UploadQueueItem[],
   chunk: RecordingChunk,
+  verificationByItemId: ReadonlyMap<string, UploadChecksumVerification["status"]>,
 ): Promise<void> {
   for (const item of succeededItems) {
     const policy = await uploadPolicyForQueue(item.uploadPolicyId);
 
     if (policy.deleteCacheAfterUpload) {
+      // Never delete the chunk's only source on the strength of an unverified
+      // (provider_declared) upload — a silently-corrupted object would be
+      // unrecoverable. Keep the cache so the upload stays re-verifiable/retryable.
+      if (!uploadWasVerified(verificationByItemId.get(item.id))) {
+        return;
+      }
+
       try {
-        await deleteRecordingChunkCacheFile(chunk);
+        // Preserve the raw master: it is supplementary and was never uploaded, so a
+        // confirmed-upload cache delete must not destroy it (byte-pressure retention
+        // still reclaims it later).
+        await deleteRecordingChunkCacheFile(chunk, { includeRaw: false });
       } catch (error) {
         console.warn("chunk cache retention failed", error);
       }
@@ -531,11 +582,14 @@ async function deleteChunkCacheIfPolicyAllows(
 }
 
 // Cache-deletion gate: only delete the shared cache file when all items are
-// terminal (guaranteed by the caller) and a succeeded destination's policy asks
-// for it — so a still-pending destination never loses the source file.
+// terminal (guaranteed by the caller), a succeeded destination's policy asks for
+// it, AND that upload was genuinely checksum-verified — so a still-pending
+// destination never loses the source file and an unverified (provider_declared)
+// S3 upload cannot strand a silently-corrupted object with no local recovery.
 async function resolveCacheDeletion(
   succeededItems: UploadQueueItem[],
   recording: RecordingSummary,
+  verificationByItemId: ReadonlyMap<string, UploadChecksumVerification["status"]>,
 ): Promise<UploadRetentionResult> {
   if (!recording.cachePath) {
     return { skipped: "recording_cache_missing" };
@@ -545,8 +599,17 @@ async function resolveCacheDeletion(
     const policy = await uploadPolicyForQueue(item.uploadPolicyId);
 
     if (policy.deleteCacheAfterUpload) {
+      // A custom S3 endpoint that may ignore ChecksumSHA256 reports
+      // `provider_declared` (unverified). Keep the controller cache in that case:
+      // it is the only recovery source if the remote object is corrupt.
+      if (!uploadWasVerified(verificationByItemId.get(item.id))) {
+        return { policyId: policy.id, skipped: "upload_unverified" };
+      }
+
       try {
-        const cacheDeleted = await deleteRecordingCacheFile(recording);
+        // Preserve the raw master (supplementary, never uploaded); see the chunk
+        // path above. Byte-pressure retention still reclaims raw when disk fills.
+        const cacheDeleted = await deleteRecordingCacheFile(recording, { includeRaw: false });
 
         return { cacheDeleted, policyId: policy.id };
       } catch (error) {

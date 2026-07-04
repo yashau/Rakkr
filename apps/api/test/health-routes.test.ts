@@ -624,6 +624,112 @@ test("health pagination stays stable across pages for unrestricted readers", asy
   assert.equal(ids.size, 5);
 });
 
+test("health summary tiles reflect the full filtered set, not the current page", async () => {
+  // 4 warning-open + 1 warning-resolved + 1 critical-open = 6 matching events;
+  // page size 2. The summary must count all 6, not just the 2 on the page.
+  const seed = [
+    ...Array.from({ length: 4 }, (_, index) =>
+      event({
+        id: `health_open_${index}`,
+        openedAt: `2026-06-1${index}T12:00:00.000Z`,
+        status: "open",
+      }),
+    ),
+    event({ id: "health_resolved", openedAt: "2026-06-05T12:00:00.000Z", status: "resolved" }),
+    event({
+      id: "health_critical_open",
+      openedAt: "2026-06-06T12:00:00.000Z",
+      severity: "critical",
+      status: "open",
+    }),
+  ];
+
+  // Both reader branches (restricted viewer + unrestricted owner) must return a
+  // global summary — they use different list paths (visibleHealthEvents vs
+  // listAll) but the tiles must agree with meta.total either way.
+  for (const roles of [["viewer"], ["owner"]] as const) {
+    const app = new Hono<AppBindings>();
+    const currentUser: CurrentUser = { ...user(["health:read"]), roles: [...roles] };
+
+    registerHealthRoutes({
+      app,
+      currentAuth: () => ({ user: currentUser }),
+      currentUser: () => currentUser,
+      hasResourceScope: async () => true,
+      healthEventStore: createHealthEventStore(
+        "",
+        seed.map((event) => ({ ...event })),
+      ),
+      recordAuditEvent: recordAuditEvent(createAuditStore("")),
+      recordingStore: memoryRecordingStore(),
+      requirePermission: allowPermissionWithCalls([]),
+    });
+
+    const body = (await (await app.request("/api/v1/health-events?limit=2&offset=0")).json()) as {
+      data: HealthEvent[];
+      meta: { total: number };
+      summary: {
+        activeCritical: number;
+        open: number;
+        resolved: number;
+        suppressed: number;
+        total: number;
+      };
+    };
+
+    assert.equal(body.data.length, 2, `page is limited for roles=${roles}`);
+    assert.equal(body.meta.total, 6, `total for roles=${roles}`);
+    assert.equal(body.summary.total, 6, `summary.total for roles=${roles}`);
+    assert.equal(body.summary.open, 5, `summary.open for roles=${roles}`);
+    assert.equal(body.summary.resolved, 1, `summary.resolved for roles=${roles}`);
+    assert.equal(body.summary.suppressed, 0, `summary.suppressed for roles=${roles}`);
+    assert.equal(body.summary.activeCritical, 1, `summary.activeCritical for roles=${roles}`);
+  }
+});
+
+test("unrestricted reader who is a DENY subject counts only the events they can see", async () => {
+  // An owner/admin who is the subject of an access-policy DENY is scope-restricted
+  // for the hidden event even though they take the unrestricted list path. meta.total
+  // and the summary tiles must reflect the SCOPED set, not the raw store count.
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser: CurrentUser = { ...user(["health:read"]), roles: ["admin"] };
+  const healthEventStore = createHealthEventStore("", [
+    event({ id: "health_visible_a", nodeId: "node_1", status: "open" }),
+    event({ id: "health_visible_b", nodeId: "node_1", status: "open" }),
+    event({ id: "health_hidden", nodeId: "node_hidden", severity: "critical", status: "open" }),
+  ]);
+
+  registerHealthRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    hasResourceScope: async (_user, target) => target.id !== "node_hidden",
+    healthEventStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    requirePermission: allowPermissionWithCalls([]),
+  });
+
+  const body = (await (await app.request("/api/v1/health-events")).json()) as {
+    data: HealthEvent[];
+    meta: { total: number };
+    summary: { activeCritical: number; open: number; total: number };
+  };
+
+  // Two visible, one DENY-hidden -> data excludes the hidden event, and both the
+  // header count and the tiles agree with the scoped visible set.
+  assert.deepEqual(body.data.map((healthEvent) => healthEvent.id).sort(), [
+    "health_visible_a",
+    "health_visible_b",
+  ]);
+  assert.equal(body.meta.total, 2);
+  assert.equal(body.summary.total, 2);
+  assert.equal(body.summary.open, 2);
+  // The hidden event was the only critical one; it must not leak into the tiles.
+  assert.equal(body.summary.activeCritical, 0);
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   path: string,

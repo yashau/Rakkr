@@ -266,7 +266,13 @@ export function EnrollNodeDialog() {
  * own save mutation and `["nodes"]` invalidation, so the table refreshes after
  * a save without extra wiring here.
  */
-export function NodeConfigureDialog({ node }: { node: RecorderNode }) {
+export function NodeConfigureDialog({
+  canManage,
+  node,
+}: {
+  canManage: boolean;
+  node: RecorderNode;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -287,13 +293,13 @@ export function NodeConfigureDialog({ node }: { node: RecorderNode }) {
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 text-sm">
-          <NodeIdentityEditor canManage node={node} />
-          <NodeChannelRoomEditor canManage node={node} />
-          <NodeAudioDefaultsEditor canManage node={node} />
+          <NodeIdentityEditor canManage={canManage} node={node} />
+          <NodeChannelRoomEditor canManage={canManage} node={node} />
+          <NodeAudioDefaultsEditor canManage={canManage} node={node} />
           {node.interfaces.map((audioInterface) => (
             <NodeInterfaceEditor
               audioInterface={audioInterface}
-              canManage
+              canManage={canManage}
               key={audioInterface.id}
               node={node}
             />

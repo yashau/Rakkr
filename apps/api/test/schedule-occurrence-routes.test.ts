@@ -197,6 +197,112 @@ test("move-occurrence splits a recurring instance into a duration-preserving one
   assert.deepEqual(body.source.recurrence.exceptions, [{ action: "skip", date: "2026-06-15" }]);
 });
 
+test("move-occurrence keeps an every-N series on its true phase, not now's parity", async (t) => {
+  // Bug (BC): recomputing the skipped series' nextRunAt anchored the every-N
+  // parity to `now` instead of the schedule's persisted phase, so moving one
+  // occurrence of a bi-weekly series silently shifted every future occurrence to
+  // the wrong week ~half the time (whenever `now` fell in the off-parity week).
+  // Pin `now` to the OFF-parity week (2026-06-24 sits in the 06-22 Monday week;
+  // the true Mondays are 06-15 / 06-29 / 07-13) so the defect is deterministic.
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-24T12:00:00.000Z") });
+
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:manage"]);
+  const biweekly = schedule({
+    id: "sched_move_biweekly",
+    nextRunAt: "2026-06-29T09:00:00.000Z",
+    recurrence: {
+      daysOfWeek: ["monday"],
+      endTime: "10:00",
+      interval: 2,
+      mode: "weekly",
+      startTime: "09:00",
+    },
+  });
+  const store = scheduleStore([biweekly]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedNodes: async () => [node()],
+    scopedSchedules: () => store.list(),
+    settingsStore: createSettingsStore(),
+  });
+
+  const response = await requestJson(
+    app,
+    "/api/v1/schedules/sched_move_biweekly/move-occurrence",
+    "POST",
+    { newStartAt: "2026-06-30T14:00:00.000Z", occurrenceStartAt: "2026-06-29T09:00:00.000Z" },
+  );
+  const body = (await response.json()) as { data: ScheduleSummary; source: ScheduleSummary };
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(body.source.recurrence.exceptions, [{ action: "skip", date: "2026-06-29" }]);
+  // The moved 06-29 is skipped, so the series must advance to the next TRUE-phase
+  // bi-weekly Monday (07-13) — NOT re-anchor to now's week, which yields the
+  // off-phase 07-06.
+  assert.equal(body.source.nextRunAt, "2026-07-13T09:00:00.000Z");
+});
+
+test("move-occurrence anchors parity to the dragged occurrence when nextRunAt is null (BD)", async (t) => {
+  // BD closes the last BC residual: an enabled recurring series can persist
+  // nextRunAt=null (e.g. a long pause exhausts the forward scan), so BC's
+  // `before.nextRunAt ?? undefined` parity anchor falls back to undefined ->
+  // now-anchored parity -> the exact phase-flip BC set out to kill. The fix
+  // anchors to the moved occurrence's own start (the phase the operator saw on
+  // the calendar), so the result is independent of `now`.
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-24T12:00:00.000Z") });
+
+  const app = new Hono<AppBindings>();
+  const currentUser = user(["schedule:manage"]);
+  const biweekly = schedule({
+    id: "sched_move_null_anchor",
+    nextRunAt: undefined,
+    recurrence: {
+      daysOfWeek: ["monday"],
+      endTime: "10:00",
+      interval: 2,
+      mode: "weekly",
+      startTime: "09:00",
+    },
+  });
+  const store = scheduleStore([biweekly]);
+
+  registerScheduleRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    currentUser: () => currentUser,
+    nodeStore: createNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(createAuditStore("")),
+    recordingStore: recordingStore(),
+    requirePermission: allowPermission(),
+    scheduleStore: store,
+    scopedNodes: async () => [node()],
+    scopedSchedules: () => store.list(),
+    settingsStore: createSettingsStore(),
+  });
+
+  const response = await requestJson(
+    app,
+    "/api/v1/schedules/sched_move_null_anchor/move-occurrence",
+    "POST",
+    { newStartAt: "2026-06-30T14:00:00.000Z", occurrenceStartAt: "2026-06-29T09:00:00.000Z" },
+  );
+  const body = (await response.json()) as { data: ScheduleSummary; source: ScheduleSummary };
+
+  assert.equal(response.status, 201);
+  // The dragged 06-29 occurrence sets the phase; skipping it must advance to the
+  // next occurrence on THAT phase (07-13), not re-anchor to now's week (07-06).
+  assert.equal(body.source.nextRunAt, "2026-07-13T09:00:00.000Z");
+});
+
 test("move-occurrence reconciles the cloned occurrence's room roster", async () => {
   const app = new Hono<AppBindings>();
   const currentUser = user(["schedule:manage"]);

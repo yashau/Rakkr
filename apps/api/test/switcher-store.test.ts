@@ -7,7 +7,7 @@ import test from "node:test";
 const storeRoot = await mkdtemp(path.join(tmpdir(), "rakkr-switchers-"));
 process.env.RAKKR_SWITCHER_STORE_PATH = path.join(storeRoot, "switchers.json");
 
-const { createSwitcherStore } = await import("../src/switcher-store.js");
+const { createSwitcherStore, SwitcherStoreError } = await import("../src/switcher-store.js");
 
 test.after(async () => {
   await rm(storeRoot, { force: true, recursive: true });
@@ -81,4 +81,35 @@ test("persists switcher config, redacts secrets, and resolves decrypted connecti
   assert.equal(await store.delete(second.id), true);
   assert.equal((await store.list()).length, 1);
   assert.equal(await store.find(second.id), undefined);
+});
+
+test("rejects a duplicate operator-supplied id as a conflict, not a DB outage", async () => {
+  const store = createSwitcherStore();
+
+  await store.create({
+    displayName: "Chamber Matrix",
+    enabled: true,
+    host: "10.0.0.10",
+    id: "switcher_chamber",
+    model: "avpro-ac-max",
+    username: "admin",
+  });
+
+  // Re-creating the same explicit id must surface a typed conflict (→ 409), not fall
+  // through to the failover path that would mislabel it as a 503 "database unavailable".
+  await assert.rejects(
+    () =>
+      store.create({
+        displayName: "Chamber Matrix (dupe)",
+        enabled: true,
+        host: "10.0.0.11",
+        id: "switcher_chamber",
+        model: "avpro-ac-max",
+        username: "admin",
+      }),
+    (error: unknown) => error instanceof SwitcherStoreError && error.code === "switcher_exists",
+  );
+
+  // The duplicate did not clobber or duplicate the stored row.
+  assert.equal((await store.list()).filter((entry) => entry.id === "switcher_chamber").length, 1);
 });

@@ -9,8 +9,12 @@ import type { RecordingSummary } from "@rakkr/shared";
 const cacheRoot = await mkdtemp(path.join(tmpdir(), "rakkr-cache-"));
 process.env.RAKKR_RECORDING_CACHE_DIR = cacheRoot;
 
-const { deleteRecordingCacheFile, recordingCacheFileSize, storeRecordingFile } =
-  await import("../src/recording-cache.js");
+const {
+  deleteRecordingCacheFile,
+  recordingCacheFileSize,
+  recordingHasReclaimableCache,
+  storeRecordingFile,
+} = await import("../src/recording-cache.js");
 const fakeAudioToolPath = path.join(cacheRoot, "fake-audio-tool.mjs");
 
 await writeFile(fakeAudioToolPath, fakeAudioToolScript());
@@ -95,6 +99,36 @@ test("C-NEW-1: sizes and deletes the raw master alongside the primary rendition"
   assert.equal(deleted, true);
   await assert.rejects(stat(rawAbsolute), /ENOENT/);
   assert.equal(await recordingCacheFileSize(cached), undefined);
+});
+
+test("keeps a raw-only uploaded recording reclaimable (no cachePath but rawCachePath set)", async () => {
+  const base = recording();
+  const raw = await storeRecordingFile(
+    base,
+    { bytes: wavFile([0, 1, 2, 3, 4, 5, 6, 7]), fileName: "meeting.wav", mimeType: "audio/wav" },
+    "raw",
+  );
+  // After a deleteCacheAfterUpload run (audit AR) the primary cachePath is cleared but
+  // the raw master is preserved. Retention/delete must still be able to reclaim it —
+  // gating only on cachePath (recordingHasCachedFile) would leak it forever (AR-twin).
+  const uploaded: RecordingSummary = {
+    ...base,
+    cachePath: undefined,
+    cached: false,
+    rawCachePath: raw.cachePath,
+    status: "uploaded",
+  };
+  const rawAbsolute = path.join(cacheRoot, raw.cachePath);
+
+  assert.equal(recordingHasReclaimableCache(uploaded), true);
+  // Retention byte-pressure candidate sizing must see the surviving raw (pre-fix:
+  // undefined → recording skipped as a non-candidate → raw unreclaimable).
+  assert.equal(await recordingCacheFileSize(uploaded), raw.size);
+
+  const deleted = await deleteRecordingCacheFile(uploaded);
+
+  assert.equal(deleted, true);
+  await assert.rejects(stat(rawAbsolute), /ENOENT/);
 });
 
 function recording(): RecordingSummary {

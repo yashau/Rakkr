@@ -171,6 +171,14 @@ helm upgrade --install rakkr deploy/helm/rakkr-controller `
   --set api.env.RAKKR_OIDC_REDIRECT_URI=https://rakkr.example.com/api/v1/auth/oidc/callback
 ```
 
+Recorder-agent cache-file uploads reach the API through this ingress -> web
+(nginx) path, so the chart ships a `nginx.ingress.kubernetes.io/proxy-body-size:
+"0"` annotation (and the web image's nginx sets `client_max_body_size 0` on
+`/api/`) to lift the 1 MB default that would otherwise `413` every upload. The
+controller enforces the authoritative cap via `RAKKR_RECORDING_CACHE_MAX_BYTES`
+(4 GiB default). Override `ingress.annotations` if you run a non-nginx ingress
+controller.
+
 Use an external database instead of the bundled Postgres:
 
 ```powershell
@@ -178,6 +186,12 @@ helm upgrade --install rakkr deploy/helm/rakkr-controller `
   --set postgres.enabled=false `
   --set database.externalUrl=postgres://user:password@postgres.example.com:5432/rakkr
 ```
+
+Setting `postgres.enabled=false` is **required** here, not optional: the chart
+`fail`s at render time if an external database is configured
+(`database.externalUrl` or `database.existingSecret.name`) while the bundled
+Postgres is still enabled (`postgres.enabled=true`, the default). See the warning
+below.
 
 `values.yaml` ships **no plaintext secret defaults** (admin password, master
 keys, runner token, and postgres password are all empty) so a default install
@@ -210,6 +224,12 @@ Secret's name and the chart renders no Secret/ExternalSecret/SealedSecret. For a
 DB-only external secret, keep `database.existingSecret`:
 
 ```yaml
+# Bringing your own DATABASE_URL means bringing your own database — disable the
+# bundled Postgres, or its pod boots with an empty password that will never match
+# the DATABASE_URL your app secret carries, and the API fails to connect.
+postgres:
+  enabled: false
+
 database:
   existingSecret:
     name: rakkr-database
@@ -227,6 +247,24 @@ secrets:
           key: secret/data/rakkr/controller
 ```
 
+> **Bringing your own database means disabling the bundled Postgres.** The chart
+> **`fail`s at render time** if you configure an external database
+> (`database.externalUrl` **or** `database.existingSecret.name`) while leaving
+> `postgres.enabled=true` (the default) — that combination would render a full
+> Postgres StatefulSet + Service + Secret + PVC that runs **UNUSED** (an orphaned
+> database: wasted storage, and a second, drifting source of truth for the DB
+> password). The render error tells you to disable the bundled Postgres when
+> bringing your own `DATABASE_URL`; set `postgres.enabled=false` (above).
+>
+> If you deliberately keep the bundled Postgres **as** your database while your
+> app secret is external/ESO/sealed, you must still coordinate the DB password.
+> The chart's Postgres `Secret` renders `POSTGRES_PASSWORD` from
+> `postgres.auth.password` (empty by default), which is independent of the
+> `DATABASE_URL` your app secret supplies — so point Postgres at the same secret
+> via `postgres.auth.existingSecret` or set a matching `postgres.auth.password`.
+> Otherwise Postgres trusts an empty password while the API presents a real one
+> and every connection fails `password authentication failed`.
+
 The Ansible runner's SSH secrets no longer live in `RAKKR_ANSIBLE_TARGETS`
 (Phase 1): the runner fetches per-node keys from the controller using
 `RAKKR_RUNNER_TOKEN`, so `TARGETS` is a non-secret host map.
@@ -241,9 +279,37 @@ migration Job, and — when `postgres.enabled=true` — a Postgres
 StatefulSet/Service/Secret.
 
 Migrations run in an API **init container** by default (`api.migrateOnStartup=true`,
-after a `wait-for-database` probe). For controlled release pipelines, set
-`api.migrateOnStartup=false` and enable the separate Job with
-`migrations.job.enabled=true`. Key values include `api.image`/`web.image`,
-`api.replicaCount`, `api.service.port`, `api.persistence`, `api.env`/`api.secretEnv`,
-`postgres.auth`/`postgres.enabled`, `database.externalUrl`/`existingSecret`, and
-`ingress.*`.
+after a `wait-for-database` probe). For controlled release pipelines against an
+**external / pre-existing database**, enable the separate migration Job with
+`migrations.job.enabled=true`; this also **disables** the API init-container
+migrate (so migrations never run twice), runs its own `wait-for-database` init
+container, and sequences ahead of the API rollout as a
+`pre-install,pre-upgrade` Helm hook. Because that hook runs before the release's
+normal resources, the bundled Postgres StatefulSet is not yet up when it fires —
+so `migrations.job.enabled=true` **requires** `postgres.enabled=false` and the
+chart fails render otherwise. For the bundled Postgres, keep the default
+init-container path (`migrations.job.enabled=false`). Key values include
+`api.image`/`web.image`, `api.replicaCount`, `api.service.port`,
+`api.persistence`, `api.env`/`api.secretEnv`, `postgres.auth`/`postgres.enabled`,
+`database.externalUrl`/`existingSecret`, and `ingress.*`.
+
+### Health probes
+
+The API pod splits its probes by concern. **Liveness** rides `/healthz`, an
+unconditional 200 that only reflects that the process is up — a transient
+database blip must not restart an otherwise-healthy process. **Readiness** rides
+`/readyz`, which returns 503 while Postgres is unreachable and 200 once the
+controller can serve traffic, so Kubernetes keeps the pod out of the Service
+until the database is actually usable. (In memory-store mode — no `DATABASE_URL`
+— `/readyz` is always ready.) The web (nginx) pod's probes both hit an
+nginx-local health location and never proxy to the API.
+
+### Rendering the chart
+
+`mise run helm:check` (part of `mise run check`) renders the chart across every
+`secrets.backend` (`native`/`externalSecrets`/`sealed`) and asserts its
+invariants: the native app Secret carries the full secret key set, the API
+consumes it via `envFrom.secretRef` (no plaintext key material in the pod spec),
+and both render-time `fail` guards (orphaned bundled Postgres; migration Job
+against bundled Postgres) fire for their bad combos. The gate self-skips when
+the `helm` binary is unavailable.

@@ -1,4 +1,5 @@
 [tools]
+helm = "3.16.3"
 node = "26.3.1"
 pnpm = "11.9.0"
 rust = "1.96.0"
@@ -52,6 +53,7 @@ depends = [
   "switcher:check",
   "operations:check",
   "time:check",
+  "helm:check",
   "node:check",
   "node:test",
   "node:test-db",
@@ -141,6 +143,10 @@ run = "node scripts/verify-operations-baseline.mjs"
 [tasks."time:check"]
 description = "Validate date/time baseline documentation"
 run = "node scripts/verify-date-time-baseline.mjs"
+
+[tasks."helm:check"]
+description = "Render the controller Helm chart across secret backends and assert its invariants"
+run = "node scripts/verify-helm-render.mjs"
 
 [tasks."node:build-libs"]
 description = "Build shared Node workspace libraries"

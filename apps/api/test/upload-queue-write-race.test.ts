@@ -17,7 +17,9 @@ if (dbUrl) {
 }
 
 const {
+  deleteUploadQueueItemsForRecording,
   enqueueRecordingUpload,
+  failUploadQueueItem,
   listUploadQueueItems,
   retryUploadQueueItem,
   startUploadQueueItem,
@@ -55,6 +57,40 @@ test(
         0,
         `attemptCount for ${item.id} must be the retry reset (0), not a clobbered stale value`,
       );
+    }
+  },
+);
+
+test(
+  "R25: a runner transition must not resurrect a row deleted mid-flight",
+  {
+    skip: dbUrl ? false : "requires RAKKR_API_TEST_DATABASE_URL (Postgres)",
+  },
+  async () => {
+    // Each transition (succeed/fail/retry) is a read-modify-write. If it upserts
+    // (INSERT ... ON CONFLICT DO UPDATE), a transition racing a deleteForRecording
+    // risks re-creating the just-deleted row. The transition is now UPDATE-only so
+    // a row deleted mid-flight stays gone by construction. Deterministic contract
+    // check: enqueue, start (so the row exists and is in-flight), delete, then run
+    // the transition — it must return undefined and leave no resurrected row. (The
+    // in-transaction SELECT ... FOR UPDATE guard already makes the sequential case
+    // safe; UPDATE-only is the structural guarantee this test locks in.)
+    for (const transition of [
+      (id: string) => succeedUploadQueueItem(id),
+      (id: string) => failUploadQueueItem(id, "boom"),
+      (id: string) => retryUploadQueueItem(id),
+    ]) {
+      const rec = recording();
+      const item = await enqueueRecordingUpload(rec, { fileName: "rec.mp3" });
+
+      await startUploadQueueItem(item.id);
+      await deleteUploadQueueItemsForRecording(rec.id);
+
+      const result = await transition(item.id);
+      const stored = (await listUploadQueueItems()).find((row) => row.id === item.id);
+
+      assert.equal(result, undefined, "a transition on a deleted row must return undefined");
+      assert.equal(stored, undefined, "the deleted row must NOT be resurrected by the transition");
     }
   },
 );

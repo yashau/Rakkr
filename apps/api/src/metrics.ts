@@ -570,7 +570,15 @@ function pushOptionalMetric(
 }
 
 function escapeLabel(value: boolean | number | string) {
-  return String(value).replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll('"', '\\"');
+  // Escape the characters the Prometheus text format disallows raw in a label
+  // value — backslash, double-quote, and BOTH line terminators (\n and \r). A
+  // bare \r (from an operator-set alias/room) would otherwise emit a metric line
+  // that strict Prometheus/OpenMetrics parsers reject, breaking the whole scrape.
+  return String(value)
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll('"', '\\"');
 }
 
 function metricValue(value: number) {

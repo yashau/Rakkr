@@ -202,7 +202,10 @@ export function HealthPage() {
   const advancedFilterChips = healthEventFilterChips(apiFilters).filter(
     (chip) => chip.key !== "search",
   );
-  const summary = healthEventSummary(events);
+  // Prefer the server-computed summary over the FULL filtered set; the
+  // client-side count over `events` is only the current page and undercounts
+  // once matches exceed the page size (it stays as a pre-first-response fallback).
+  const summary = healthQuery.data?.summary ?? healthEventSummary(events);
   const visibleEventIds = events.map((event) => event.id);
   const selectedVisibleEventIds = selectedEventIds.filter((eventId) =>
     visibleEventIds.includes(eventId),

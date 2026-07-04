@@ -9,6 +9,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  type ErrorComponentProps,
   Link,
   Outlet,
   RouterProvider,
@@ -26,8 +27,10 @@ import {
   ListChecks,
   Menu,
   RadioReceiver,
+  RefreshCw,
   Settings,
   ShieldCheck,
+  TriangleAlert,
   Users,
   X,
 } from "lucide-react";
@@ -40,6 +43,7 @@ import { toast } from "sonner";
 import { RakkrLogo } from "@/components/rakkr-logo";
 import { RecordingStartPanel } from "@/components/recording-start-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -429,6 +433,36 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
   );
 }
 
+// Route-level error containment. A render throw in any page is caught here and
+// rendered in place of the outlet content, so the surrounding shell (sidebar,
+// header, navigation) survives instead of the whole app blanking out. `reset`
+// re-attempts the failed render so the operator can recover without a reload.
+function RouteErrorBoundary({ error, reset }: ErrorComponentProps) {
+  const detail = error instanceof Error ? error.message : String(error);
+
+  return (
+    <div className="grid gap-3">
+      <Alert variant="destructive">
+        <TriangleAlert className="size-4" />
+        <AlertTitle>This section failed to load</AlertTitle>
+        <AlertDescription className="grid gap-3">
+          <p>
+            Something went wrong rendering this page. The rest of the console is still available —
+            use the navigation to move elsewhere, or retry this section.
+          </p>
+          {detail ? (
+            <p className="font-mono text-xs wrap-break-word text-muted-foreground">{detail}</p>
+          ) : null}
+          <Button className="w-fit" onClick={() => reset()} size="sm" variant="outline">
+            <RefreshCw className="size-4" />
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
+    </div>
+  );
+}
+
 const rootRoute = createRootRoute({ component: RootLayout });
 
 const indexRoute = createRoute({
@@ -537,7 +571,7 @@ const routeTree = rootRoute.addChildren([
   accessRoute,
 ]);
 
-const router = createRouter({ routeTree });
+const router = createRouter({ defaultErrorComponent: RouteErrorBoundary, routeTree });
 
 declare module "@tanstack/react-router" {
   interface Register {

@@ -12,7 +12,12 @@ import type {
   RecordAuditEvent,
   RequirePermission,
 } from "./http-types.js";
-import { createUploadPolicy, findUploadPolicy, updateUploadPolicy } from "./upload-policies.js";
+import {
+  createUploadPolicy,
+  findUploadPolicy,
+  updateUploadPolicy,
+  UploadPolicyStoreError,
+} from "./upload-policies.js";
 import { uploadDestinationSettingsTarget, uploadPolicySettingsTarget } from "./settings-scope.js";
 import type { UploadDestinationStore } from "./upload-destinations.js";
 
@@ -56,7 +61,20 @@ export function registerSettingsUploadPolicyRoutes({
         return destinationDenied;
       }
 
-      const created = await createUploadPolicy(body.data);
+      let created;
+
+      try {
+        created = await createUploadPolicy(body.data);
+      } catch (error) {
+        // A duplicate operator-supplied id is a client conflict (409); any other
+        // store error (a genuine DB outage) rethrows to the onError boundary → 503.
+        if (error instanceof UploadPolicyStoreError) {
+          await recordSettingsFailure(c, "settings.upload_policies.create.failed", error.code);
+          return c.json({ error: "Upload policy already exists", reason: error.code }, 409);
+        }
+
+        throw error;
+      }
 
       await recordAuditEvent(c, {
         action: "settings.upload_policies.create.succeeded",

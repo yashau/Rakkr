@@ -92,11 +92,37 @@ export function monthGridRange(year: number, month: number, weekStartsOn = 1) {
   };
 }
 
-export function groupByLocalDay<T extends { recordingStartAt: string }>(occurrences: T[]) {
+// The YYYY-MM-DD calendar date of an instant in a specific IANA timezone. This
+// mirrors the controller's schedule-engine day derivation (Intl.DateTimeFormat
+// parts in the schedule's timezone) so a chip lands on the same grid day the
+// backend skip/occurrence logic uses.
+function zonedDayIso(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "01";
+
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+// Bucket occurrences onto the grid day they belong to. When an occurrence carries
+// its schedule timezone we group by the SCHEDULE-local day (matching the backend's
+// occurrenceLocalDateIso), anchored on scheduledStartAt when present (the backend
+// derives the day from the scheduled start, which includes the recurrence
+// start-early offset). Without a timezone we fall back to the browser-local day.
+export function groupByLocalDay<
+  T extends { recordingStartAt: string; scheduledStartAt?: string; timezone?: string },
+>(occurrences: T[]) {
   const map = new Map<string, T[]>();
 
   for (const occurrence of occurrences) {
-    const iso = localDayIso(new Date(occurrence.recordingStartAt));
+    const anchor = new Date(occurrence.scheduledStartAt ?? occurrence.recordingStartAt);
+    const iso = occurrence.timezone
+      ? zonedDayIso(anchor, occurrence.timezone)
+      : localDayIso(anchor);
     const bucket = map.get(iso);
 
     if (bucket) {

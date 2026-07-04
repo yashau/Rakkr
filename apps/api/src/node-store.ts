@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   and,
   audioChannels,
@@ -30,22 +30,16 @@ import {
   reconcilePersistedInterfaces,
   reconcileSeedInterfaces,
 } from "./node-inventory-reconcile.js";
+import { nodeMetadata, nodeRuntimeFromInput } from "./node-metadata.js";
 import {
-  nodeAudioDefaultsFromMetadata,
-  nodeMetadata,
-  nodeRecordingCapacityFromMetadata,
-  nodeRuntimeFromInput,
-  nodeRuntimeFromMetadata,
-  numberArray,
-  record,
-  stringArray,
-  stringOrUndefined,
-} from "./node-metadata.js";
+  channelInputs,
+  interfaceInputToRow,
+  nodeFromRows,
+  nodeInputToRow,
+  recorderInterfaceToRow,
+  recorderNodeToRow,
+} from "./node-store-mappers.js";
 import { updatedNode, updatedNodeHeartbeat, updatedNodeInterface } from "./node-store-updates.js";
-
-type AudioChannelRow = typeof audioChannels.$inferSelect;
-type AudioInterfaceRow = typeof audioInterfaces.$inferSelect;
-type NodeRow = typeof nodeRows.$inferSelect;
 
 export interface NodeEnrollmentInput {
   agentVersion: string;
@@ -762,160 +756,6 @@ async function replaceInterfaces(
       );
     }
   }
-}
-
-function nodeInputToRow(input: NodeEnrollmentInput): typeof nodeRows.$inferInsert {
-  return {
-    agentVersion: input.agentVersion,
-    alias: input.alias,
-    hostname: input.hostname,
-    id: `node_${randomUUID()}`,
-    location: input.location,
-    metadata: nodeMetadata(
-      { enrolledAt: new Date().toISOString() },
-      input.runtime,
-      input.recordingCapacity,
-      input.audioDefaults,
-    ),
-    network: {
-      ipAddresses: input.ipAddresses,
-    },
-    notes: input.notes,
-    status: "offline",
-    tags: input.tags,
-  };
-}
-
-function interfaceInputToRow(
-  nodeId: string,
-  input: NodeInterfaceInput,
-): typeof audioInterfaces.$inferInsert {
-  return {
-    alias: input.alias,
-    backend: input.backend,
-    channelCount: input.channelCount,
-    hardwarePath: input.hardwarePath ?? null,
-    nodeId,
-    sampleRates: input.sampleRates,
-    serialNumber: input.serialNumber ?? null,
-    systemName: input.systemName,
-    systemRef: input.systemRef ?? input.systemName,
-  };
-}
-
-function recorderNodeToRow(node: RecorderNode): typeof nodeRows.$inferInsert {
-  return {
-    agentVersion: node.agentVersion,
-    alias: node.alias,
-    hostname: node.hostname,
-    id: node.id,
-    lastSeenAt: new Date(node.lastSeenAt),
-    location: node.location,
-    metadata: nodeMetadata(
-      { enrolledAt: new Date().toISOString() },
-      node.runtime,
-      node.recordingCapacity,
-      node.audioDefaults,
-    ),
-    network: { ipAddresses: node.ipAddresses },
-    notes: node.notes,
-    roomId: node.roomId ?? null,
-    status: node.status,
-    tags: node.tags,
-  };
-}
-
-function recorderInterfaceToRow(
-  nodeId: string,
-  audioInterface: AudioInterface,
-): typeof audioInterfaces.$inferInsert {
-  return {
-    alias: audioInterface.alias,
-    backend: audioInterface.backend,
-    channelCount: audioInterface.channelCount,
-    hardwarePath: audioInterface.hardwarePath ?? null,
-    id: audioInterface.id,
-    nodeId,
-    sampleRates: audioInterface.sampleRates,
-    serialNumber: audioInterface.serialNumber ?? null,
-    systemName: audioInterface.systemName,
-    systemRef: audioInterface.systemRef ?? audioInterface.systemName,
-  };
-}
-
-function nodeFromRows(
-  node: NodeRow,
-  interfaces: AudioInterfaceRow[],
-  channels: AudioChannelRow[],
-): RecorderNode {
-  return {
-    agentVersion: node.agentVersion,
-    alias: node.alias,
-    hostname: node.hostname,
-    id: node.id,
-    interfaces: interfaces.map((audioInterface) => interfaceFromRows(audioInterface, channels)),
-    ipAddresses: stringArray(record(node.network)?.ipAddresses),
-    lastSeenAt: (node.lastSeenAt ?? node.createdAt).toISOString(),
-    location: locationFromValue(node.location),
-    roomId: node.roomId ?? undefined,
-    notes: node.notes ?? undefined,
-    audioDefaults: nodeAudioDefaultsFromMetadata(node.metadata),
-    recordingCapacity: nodeRecordingCapacityFromMetadata(node.metadata),
-    runtime: nodeRuntimeFromMetadata(node.metadata),
-    status: node.status,
-    tags: stringArray(node.tags),
-  };
-}
-
-function interfaceFromRows(
-  audioInterface: AudioInterfaceRow,
-  channels: AudioChannelRow[],
-): AudioInterface {
-  return {
-    absent: audioInterface.absentAt ? true : undefined,
-    alias: audioInterface.alias,
-    backend: backend(audioInterface.backend),
-    channelCount: audioInterface.channelCount,
-    channels: channels
-      .filter((channel) => channel.interfaceId === audioInterface.id)
-      .map((channel) => ({
-        alias: channel.alias,
-        index: channel.index,
-        roomId: channel.roomId ?? undefined,
-      })),
-    hardwarePath: audioInterface.hardwarePath ?? undefined,
-    id: audioInterface.id,
-    sampleRates: numberArray(audioInterface.sampleRates),
-    serialNumber: audioInterface.serialNumber ?? undefined,
-    systemName: audioInterface.systemName,
-    systemRef: audioInterface.systemRef,
-  };
-}
-
-function channelInputs(input: NodeInterfaceInput) {
-  if (input.channels.length > 0) {
-    return input.channels;
-  }
-
-  return Array.from({ length: input.channelCount }, (_, index) => ({
-    alias: `Channel ${index + 1}`,
-    index: index + 1,
-  }));
-}
-
-function locationFromValue(value: unknown): RecorderNode["location"] {
-  const parsed = record(value);
-
-  return {
-    building: stringOrUndefined(parsed?.building),
-    floor: stringOrUndefined(parsed?.floor),
-    room: stringOrUndefined(parsed?.room) ?? "Unknown Room",
-    site: stringOrUndefined(parsed?.site) ?? "Unknown Site",
-  };
-}
-
-function backend(value: string): AudioInterface["backend"] {
-  return value === "alsa" || value === "jack" || value === "pipewire" ? value : "unknown";
 }
 
 function seedNodesEnabled() {

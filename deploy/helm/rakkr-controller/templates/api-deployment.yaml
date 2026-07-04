@@ -7,6 +7,15 @@ metadata:
     app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.api.replicaCount }}
+  # The API mounts a single ReadWriteOnce PVC (api-pvc.yaml) for its JSON stores +
+  # recording cache. RollingUpdate would start the new pod before terminating the
+  # old one on an image-tag upgrade; both would mount the same RWO volume, so the
+  # new pod is stuck Multi-Attach and the rollout deadlocks. Recreate tears the old
+  # pod down first — the correct single-writer posture (brief cutover, never
+  # double-mounts). Raising api.replicaCount would also multi-write the JSON stores;
+  # HA requires moving those to Postgres or an RWX volume first.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "rakkr-controller.selectorLabels" . | nindent 6 }}
@@ -53,7 +62,7 @@ spec:
               probe();
           env:
             {{- include "rakkr-controller.databaseEnv" . | nindent 12 }}
-        {{- if .Values.api.migrateOnStartup }}
+        {{- if and .Values.api.migrateOnStartup (not .Values.migrations.job.enabled) }}
         - name: migrate
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
@@ -81,9 +90,13 @@ spec:
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          # Readiness rides /readyz, which returns 503 while Postgres is
+          # unreachable, so the pod stays out of the Service until the DB is
+          # actually usable. Liveness stays on the unconditional /healthz so a
+          # transient DB blip can't crash-loop an otherwise-healthy process.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10

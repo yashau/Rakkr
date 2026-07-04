@@ -4,7 +4,8 @@ import type { RecorderNode } from "@rakkr/shared";
 
 const { channelRoomId, effectiveCaptureInterfaceId, nodeRoomIds, resolveSelectionRoom } =
   await import("../src/room-resolution.js");
-const { resolveScheduleRoom } = await import("../src/schedule-route-helpers.js");
+const { resolveScheduleRoom, scheduleChannelSelectionFailure } =
+  await import("../src/schedule-route-helpers.js");
 
 function withCaptureInterfaceEnv(value: string | undefined, run: () => void) {
   const previous = process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID;
@@ -191,6 +192,54 @@ test("resolveScheduleRoom honors RAKKR_AGENT_CAPTURE_INTERFACE_ID like the recor
     // the runtime actually captures (iface-env -> room-b), not interfaces[0] (room-a),
     // so the persisted roomId cannot diverge from the captured room.
     assert.deepEqual(resolveScheduleRoom(target, null, null), { ok: true, roomId: "room-b" });
+  });
+});
+
+test("scheduleChannelSelectionFailure validates against the effective (env) capture interface", () => {
+  const target = node({
+    roomId: "room-default",
+    interfaces: [
+      // interfaces[0] has channel 3; the env-selected interface does NOT.
+      iface("iface-first", [{ index: 1 }, { index: 2 }, { index: 3 }, { index: 4 }]),
+      iface("iface-env", [{ index: 1 }, { index: 2 }]),
+    ],
+  });
+
+  withCaptureInterfaceEnv(undefined, () => {
+    // No env: validate against interfaces[0] (iface-first), where channel 3 is valid.
+    assert.equal(scheduleChannelSelectionFailure(target, null, [3], "mono"), undefined);
+  });
+
+  withCaptureInterfaceEnv("iface-env", () => {
+    // The controller pins iface-env — the interface the runtime actually captures.
+    // Channel 3 is out of range there, so validation must reject it, matching the
+    // attributed room + runtime capture (which both use the effective interface).
+    assert.ok(
+      scheduleChannelSelectionFailure(target, null, [3], "mono"),
+      "a selection invalid on the env-pinned interface must be rejected, not validated against interfaces[0]",
+    );
+    // An explicit interface still wins over the env default.
+    assert.equal(scheduleChannelSelectionFailure(target, "iface-first", [3], "mono"), undefined);
+  });
+});
+
+test("ignores an env capture interface that does not exist on the node", () => {
+  // The process-wide env names an interface that isn't on THIS node.
+  const target = node({
+    roomId: "room-default",
+    interfaces: [iface("iface-first", [{ index: 1 }, { index: 2 }])],
+  });
+
+  withCaptureInterfaceEnv("iface-not-on-this-node", () => {
+    // Falls through to the node's real first interface, not the absent env id.
+    assert.equal(effectiveCaptureInterfaceId(target, null), "iface-first");
+
+    // Validation must NOT hard-reject a selection valid on the real interface (the
+    // env id would resolve to no interface → schedule_interface_not_found → 409)...
+    assert.equal(scheduleChannelSelectionFailure(target, null, [1], "mono"), undefined);
+
+    // ...and it must AGREE with room attribution (both resolve iface-first → default room).
+    assert.deepEqual(resolveScheduleRoom(target, null, [1]), { ok: true, roomId: "room-default" });
   });
 });
 

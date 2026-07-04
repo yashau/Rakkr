@@ -11,6 +11,7 @@ import postgres from "postgres";
 // Add DB-gated test files here so they run as part of `mise run check`.
 const dbBackedApiTests = [
   "test/oidc-groups-collision.test.ts",
+  "test/auth-login-constraint.test.ts",
   "test/node-ssh-credential-rotation-atomic.test.ts",
   "test/node-credential-rotation-atomic.test.ts",
   "test/node-metadata-write-race.test.ts",

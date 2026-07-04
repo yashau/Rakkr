@@ -8,19 +8,35 @@ import type { RecorderNode } from "@rakkr/shared";
 // The interface a capture actually runs against when none is explicitly pinned:
 // an explicit id wins, then the RAKKR_AGENT_CAPTURE_INTERFACE_ID env default (what
 // the recorder runtime falls back to), then the node's first interface. This is
-// the SINGLE source of truth shared by room attribution (resolveScheduleRoom) and
-// the runtime capture-target paths, so a persisted roomId can never diverge from
-// the interface actually captured (e.g. when the env var points at a non-first
-// interface owned by a different room).
+// the SINGLE source of truth shared by room attribution (resolveScheduleRoom), the
+// channel-selection validator, and the runtime capture-target paths, so a persisted
+// roomId can never diverge from the interface actually captured (e.g. when the env
+// var points at a non-first interface owned by a different room).
 export function effectiveCaptureInterfaceId(
   node: Pick<RecorderNode, "interfaces"> | undefined,
   requestedCaptureInterfaceId: string | null | undefined,
 ): string | undefined {
-  return (
-    requestedCaptureInterfaceId ??
-    process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID ??
-    node?.interfaces[0]?.id
-  );
+  if (requestedCaptureInterfaceId) {
+    return requestedCaptureInterfaceId;
+  }
+
+  // The env default is process-wide, but interface ids are per-node. Only honor it
+  // when it actually exists on THIS node; otherwise fall through to the node's first
+  // interface. A fleet-wide env naming an interface absent on this node would
+  // otherwise make the validator (scheduleChannelSelectionFailure) hard-reject a
+  // valid schedule while room attribution (resolveScheduleRoom) silently accepts it
+  // against the node default — the two must resolve the same interface. (With no node
+  // to check against, keep the raw env fallback.)
+  const envInterfaceId = process.env.RAKKR_AGENT_CAPTURE_INTERFACE_ID;
+
+  if (
+    envInterfaceId &&
+    (!node || node.interfaces.some((candidate) => candidate.id === envInterfaceId))
+  ) {
+    return envInterfaceId;
+  }
+
+  return node?.interfaces[0]?.id;
 }
 
 // A channel's effective owning room: its own room, else the node default. Returns

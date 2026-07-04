@@ -429,7 +429,7 @@ function nodeColumns({
       cell: ({ row }) =>
         canManage ? (
           <div className="flex justify-end">
-            <NodeConfigureDialog node={row.original} />
+            <NodeConfigureDialog canManage={canManage} node={row.original} />
           </div>
         ) : null,
       header: "Actions",

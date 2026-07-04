@@ -312,6 +312,49 @@ test("channel map assignment routes reject binding a scope-denied template", asy
   );
 });
 
+test("R28: channel map template create with a duplicate id is a 409 and does not overwrite", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer();
+  const settingsStore = createSettingsStore();
+  const channelMapAssignmentPlanStore = createChannelMapAssignmentPlanStore();
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    channelMapAssignmentPlanStore,
+    hasResourceScope: async () => true,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, () => true),
+    settingsStore,
+    uploadDestinationStore: createUploadDestinationStore(),
+  });
+
+  const templateId = `channel_map_dup_${randomUUID()}`;
+  const original = { ...channelMapInput("Original Template"), id: templateId };
+  const impostor = { ...channelMapInput("Impostor Template"), id: templateId };
+  const first = await requestJson(app, "/api/v1/settings/channel-map-templates", "POST", original);
+  const conflict = await requestJson(
+    app,
+    "/api/v1/settings/channel-map-templates",
+    "POST",
+    impostor,
+  );
+  const conflictBody = (await conflict.json()) as { reason?: string };
+  const stored = await settingsStore.findChannelMapTemplate(templateId);
+  const failed = await auditStore.list({
+    action: "settings.channel_map_templates.create.failed",
+  });
+
+  assert.equal(first.status, 201);
+  assert.equal(conflict.status, 409);
+  assert.equal(conflictBody.reason, "channel_map_template_exists");
+  // The create must not have overwritten the original template or reset its revision.
+  assert.equal(stored?.name, "Original Template");
+  assert.equal(stored?.revision, 1);
+  assert.equal(failed.at(-1)?.reason, "channel_map_template_exists");
+});
+
 function channelMapInput(name: string) {
   return {
     channelMode: "mono_to_stereo_mix" as const,

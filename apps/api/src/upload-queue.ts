@@ -43,7 +43,12 @@ interface EnqueueUploadInput {
 const queuePath = path.resolve(
   process.env.RAKKR_UPLOAD_QUEUE_STORE_PATH ?? "data/upload-queue.json",
 );
-const activeStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying", "failed"]);
+// Only genuinely in-flight items dedup a re-enqueue. A terminal `failed` item is
+// NOT reusable: re-enqueuing the same recording+policy+pathOverride after a
+// terminal failure must create a fresh queue item (the old failed row lingers as
+// a record) instead of returning the stale FAILED one and silently skipping the
+// new upload.
+const activeStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying"]);
 const dueStatuses = new Set<UploadQueueItem["status"]>(["queued", "retrying"]);
 
 interface UploadQueueStore {
@@ -406,9 +411,10 @@ class PostgresUploadQueueStore implements UploadQueueStore {
           updatedAt: now,
         });
 
-        await this.writeItem(updated, tx);
-
-        return updated;
+        // UPDATE-only (see updateItem): if the row was deleted after the lock
+        // was acquired this affects zero rows and returns undefined rather than
+        // resurrecting it via an upsert-insert.
+        return await this.updateItem(updated, tx);
       });
     } catch (error) {
       await this.failover("upload queue success unavailable; using JSON store", error);
@@ -441,9 +447,8 @@ class PostgresUploadQueueStore implements UploadQueueStore {
           updatedAt: now,
         });
 
-        await this.writeItem(updated, tx);
-
-        return updated;
+        // UPDATE-only (see updateItem): never resurrect a row deleted mid-flight.
+        return await this.updateItem(updated, tx);
       });
     } catch (error) {
       await this.failover("upload queue failure unavailable; using JSON store", error);
@@ -478,9 +483,8 @@ class PostgresUploadQueueStore implements UploadQueueStore {
           updatedAt: now,
         });
 
-        await this.writeItem(updated, tx);
-
-        return updated;
+        // UPDATE-only (see updateItem): never resurrect a row deleted mid-flight.
+        return await this.updateItem(updated, tx);
       });
     } catch (error) {
       await this.failover("upload queue retry unavailable; using JSON store", error);
@@ -546,6 +550,39 @@ class PostgresUploadQueueStore implements UploadQueueStore {
         },
         target: uploadQueueItemsTable.id,
       });
+  }
+
+  // UPDATE-only state transition (no upsert-insert): the runner's/operator's
+  // succeed/fail/retry read-modify-write must not RESURRECT a row a concurrent
+  // deleteForRecording removed mid-flight. `writeItem`'s upsert would re-INSERT a
+  // just-deleted row; a plain UPDATE ... WHERE id=... affects zero rows and
+  // returns undefined once the row is gone. Enqueue keeps its INSERT (writeItem).
+  private async updateItem(item: UploadQueueItem, executor: UploadQueueExecutor = this.db) {
+    const [row] = await executor
+      .update(uploadQueueItemsTable)
+      .set({
+        attemptCount: item.attemptCount,
+        cachePath: item.cachePath ?? null,
+        checksum: item.checksum ?? null,
+        chunkId: item.chunkId ?? null,
+        chunkIndex: item.chunkIndex ?? null,
+        destinationId: item.destinationId ?? null,
+        fileName: item.fileName,
+        lastError: item.lastError ?? null,
+        maxAttempts: item.maxAttempts,
+        nextAttemptAt: new Date(item.nextAttemptAt),
+        pathOverride: item.pathOverride ?? null,
+        provider: item.provider,
+        recordingId: item.recordingId,
+        status: item.status,
+        target: item.target ?? null,
+        updatedAt: new Date(item.updatedAt),
+        uploadPolicyId: item.uploadPolicyId ?? null,
+      })
+      .where(eq(uploadQueueItemsTable.id, item.id))
+      .returning();
+
+    return row ? queueItemFromRow(row) : undefined;
   }
 
   private async failover(message: string, error: unknown): Promise<never> {

@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { createDatabase, sql } from "@rakkr/db";
 import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -14,7 +15,6 @@ import {
   defaultCalendarGrantCapabilities,
   type Permission,
   permissionRequiresCapability,
-  type RecorderNode,
   type RoomCapability,
   type ScheduleSummary,
 } from "@rakkr/shared";
@@ -48,8 +48,7 @@ import { createRoomRosterStore } from "./room-roster-store.js";
 import { registerRoomRoutes } from "./room-routes.js";
 import { createRoomStore } from "./room-store.js";
 import { createResourceScopeTargets } from "./resource-scope-targets.js";
-import { createMeterRoomAccess } from "./meter-room-access.js";
-import { nodeRoomIds } from "./room-resolution.js";
+import { createScopedResources } from "./index-scoped-resources.js";
 import { registerScheduleRoutes } from "./schedule-routes.js";
 import { createScheduleStore } from "./schedule-store.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -67,6 +66,43 @@ import { registerWatchdogCalibrationRoutes } from "./watchdog-calibration-routes
 const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
 const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
+
+// Readiness backing for /readyz. When DATABASE_URL is set we hold ONE dedicated
+// health client and probe it with a bounded `select 1`; a hung DB must not hang
+// the probe, so the query races a short timeout. When DATABASE_URL is unset
+// (memory-store / test mode) there is no DB to depend on, so the controller is
+// always ready.
+const readinessDatabaseUrl = process.env.DATABASE_URL;
+const readinessDatabase = readinessDatabaseUrl ? createDatabase(readinessDatabaseUrl) : undefined;
+const READINESS_DB_TIMEOUT_MS = 3000;
+
+async function checkDatabaseReady(): Promise<boolean> {
+  if (!readinessDatabase) {
+    return true;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const probe = readinessDatabase.execute(sql`select 1`);
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("database readiness probe timed out")),
+        READINESS_DB_TIMEOUT_MS,
+      );
+    });
+
+    await Promise.race([probe, timeout]);
+
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
@@ -127,7 +163,6 @@ export const {
   switcherStore,
   uploadDestinationStore,
 });
-type NodeRecord = RecorderNode;
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -418,123 +453,28 @@ function currentUser(c: Context<AppBindings>) {
   return user;
 }
 
-async function scopedNodes(user: NonNullable<AuthResult["user"]>) {
-  const userRoomIds = await rosterRoomIds(user);
-  const result: NodeRecord[] = [];
-
-  for (const node of await nodeStore.list()) {
-    // A node is visible if the user has a roster capability in ANY room that owns
-    // one of its channels (a shared node surfaces to every rostered room), or via
-    // a direct node grant. Per-channel data is filtered separately downstream.
-    if (
-      intersects(userRoomIds, nodeRoomIds(node)) ||
-      (await hasResourceScope(user, { id: node.id, type: "node" }))
-    ) {
-      result.push(node);
-    }
-  }
-
-  return result;
-}
-
-function intersects(left: Set<string>, right: Set<string>) {
-  for (const value of right) {
-    if (left.has(value)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-// Per-room meter/monitor access decisions (extracted to keep this file within the
-// LOC budget). Injected with this module's roster + scope helpers.
-const { canServeWholeNodeMonitor, filterMeterFrameForUser, hasFullNodeAuthority } =
-  createMeterRoomAccess({
-    accessPolicyDecision: (user, targets) => authService.accessPolicyDecision(user, targets),
-    hasResourceScope: (user, target) => hasResourceScope(user, target),
-    rosterRoomIds: (user) => rosterRoomIds(user),
-  });
-
-async function scopedSchedules(user: NonNullable<AuthResult["user"]>) {
-  const userRoomIds = await rosterRoomIds(user);
-  const result: ScheduleSummary[] = [];
-
-  for (const schedule of await scheduleStore.list()) {
-    // A schedule follows its own persisted room (its selected channels' room).
-    const inRosterRoom = schedule.roomId !== undefined && userRoomIds.has(schedule.roomId);
-
-    if (inRosterRoom || (await hasResourceScope(user, { id: schedule.id, type: "schedule" }))) {
-      result.push(schedule);
-    }
-  }
-
-  return result;
-}
-
-// Rooms visible to a user: everything for owner/admin, else rooms they hold a
-// roster capability in plus the rooms of any nodes they are otherwise scoped to.
-async function scopedRooms(user: NonNullable<AuthResult["user"]>) {
-  const allRooms = await roomStore.list();
-
-  if (user.roles.includes("owner") || user.roles.includes("admin")) {
-    return allRooms;
-  }
-
-  const roomIds = await rosterRoomIds(user);
-
-  // Rooms the caller holds direct room authority on (a room grant or access-policy
-  // allow) — so a room-scoped principal still sees exactly its own room(s).
-  for (const room of allRooms) {
-    if (!roomIds.has(room.id) && (await hasResourceScope(user, { id: room.id, type: "room" }))) {
-      roomIds.add(room.id);
-    }
-  }
-
-  // FULL node authority (a direct node/site/wildcard grant or node/site policy —
-  // NOT a room-derived node scope) surfaces every room that owns one of the node's
-  // channels. Using hasFullNodeAuthority, not hasResourceScope on the node target
-  // (which expands to the room UNION), is what keeps a single-room grant from
-  // leaking a shared node's sibling rooms into the room list.
-  for (const node of await nodeStore.list()) {
-    if (await hasFullNodeAuthority(user, node)) {
-      for (const roomId of nodeRoomIds(node)) {
-        roomIds.add(roomId);
-      }
-    }
-  }
-
-  return allRooms.filter((room) => roomIds.has(room.id));
-}
-
-// Resolves who created a schedule from its create audit event (schedules do not
-// store a creator); used for the room overview's "scheduled by" attribution.
-async function scheduledByName(scheduleId: string) {
-  const [event] = await auditStore.list({
-    action: "schedules.create.succeeded",
-    limit: 1,
-    target: scheduleId,
-  });
-
-  return event?.actor.name;
-}
-
-async function scopedRecordings(user: NonNullable<AuthResult["user"]>) {
-  const userRoomIds = await rosterRoomIds(user);
-  const result = [];
-
-  for (const recording of await recordingStore.list()) {
-    // A recording follows its own persisted room (captured from its channels), so
-    // a shared node never leaks one room's recordings to the other room's roster.
-    const inRosterRoom = recording.roomId !== undefined && userRoomIds.has(recording.roomId);
-
-    if (inRosterRoom || (await hasResourceScope(user, { id: recording.id, type: "recording" }))) {
-      result.push(recording);
-    }
-  }
-
-  return result;
-}
+// Per-user resource visibility + meter/monitor access decisions. Extracted to a
+// sibling factory to keep this composition root within the LOC budget; the
+// factory only builds closures over the roster/scope helpers above, so wiring it
+// here preserves behavior and the startup order of side effects exactly.
+const {
+  canServeWholeNodeMonitor,
+  filterMeterFrameForUser,
+  scheduledByName,
+  scopedNodes,
+  scopedRecordings,
+  scopedRooms,
+  scopedSchedules,
+} = createScopedResources({
+  accessPolicyDecision: (user, targets) => authService.accessPolicyDecision(user, targets),
+  auditStore,
+  hasResourceScope: (user, target) => hasResourceScope(user, target),
+  nodeStore,
+  recordingStore,
+  roomStore,
+  rosterRoomIds: (user) => rosterRoomIds(user),
+  scheduleStore,
+});
 
 export const app = new Hono<AppBindings>();
 
@@ -585,6 +525,7 @@ registerMetricsRoutes({
 
 registerStatusRoutes({
   app,
+  checkDatabaseReady,
   currentUser,
   hasResourceScope: (user, target) => hasResourceScope(user, target),
   healthEventStore,

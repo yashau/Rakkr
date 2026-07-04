@@ -76,3 +76,20 @@ test("a degraded (partial) chunk finalizes the recording as partial", () => {
     { status: "partial" },
   );
 });
+
+test("R29: capture done but total unknown finalizes as partial (completeness unprovable)", () => {
+  // The total is stamped only on the final chunk's primary upload; if that
+  // total-bearing chunk never attaches, `total` is undefined and completeness
+  // cannot be proven. Pre-fix `hasGap` was false (it requires total !== undefined)
+  // so a chunked recording missing its tail was reported `uploaded`. With capture
+  // done and the total unknown, it must finalize `partial`, not `uploaded`.
+  assert.deepEqual(
+    chunkedRecordingFinalization({
+      captureDone: true,
+      chunkStatuses: ["uploaded", "uploaded"],
+      presentCount: 2,
+      total: undefined,
+    }),
+    { status: "partial" },
+  );
+});

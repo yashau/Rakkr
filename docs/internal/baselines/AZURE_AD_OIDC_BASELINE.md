@@ -50,6 +50,24 @@ Status: MVP baseline checked; live tenant validation remains an integration task
 | `groups`                             | Rakkr access groups                      |
 | `roles`                              | Rakkr roles when names match known roles |
 
+## Account Linking (identity, not email)
+
+An OIDC login is **linked by the IdP subject** (`oid ?? sub`, persisted in
+`users.external_id`), never by email — a mutable/attacker-settable email claim
+must not let a federated login assume another account. The rules:
+
+- A known subject re-links its existing account (email is a display attribute
+  that may change between logins).
+- An unknown subject whose email is already owned by a **different** identity
+  (a local user — including the built-in local admin — or a different subject)
+  is **refused** with `oidc_email_conflict` (HTTP 403); the login is never merged
+  onto that row. This closes the email-based local-admin takeover.
+- A legacy email-linked OIDC row (created before subject-linking, `external_id`
+  null) is adopted on its next login and backfilled with the subject — no
+  duplicate account.
+- An explicitly `email_verified: false` claim is rejected; absence is tolerated
+  because linking is subject-keyed, not email-keyed.
+
 ## Group Claim Reconciliation
 
 OIDC `groups` claims and operator-created groups share one store, so they must

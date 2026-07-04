@@ -26,6 +26,10 @@ const claimStringArraySchema = z
 export const azureAdOidcClaimsSchema = z
   .object({
     email: z.string().email().optional(),
+    // IdPs emit this as a bool (Azure v2) or a stringified bool. We reject an
+    // EXPLICITLY-false value (an untrusted email); absence is tolerated because
+    // linking is keyed on the verified subject, not email (see oidc-user-sync).
+    email_verified: z.union([z.boolean(), z.enum(["true", "false"])]).optional(),
     groups: claimStringArraySchema,
     name: z.string().trim().min(1).optional(),
     oid: z.string().trim().min(1).optional(),
@@ -60,7 +64,7 @@ export interface NormalizedAzureAdOidcUser {
 export class OidcSyncError extends Error {
   constructor(
     message: string,
-    readonly code: "invalid_oidc_claims",
+    readonly code: "invalid_oidc_claims" | "oidc_email_conflict",
   ) {
     super(message);
   }
@@ -81,6 +85,13 @@ export function normalizeAzureAdOidcUser(
 
   if (!email) {
     throw new OidcSyncError("Azure AD OIDC email claim is required", "invalid_oidc_claims");
+  }
+
+  // An IdP that explicitly marks the email unverified must not be trusted — an
+  // unverified email is attacker-settable. (Linking is keyed on the subject, so
+  // absence of the claim is safe; only an explicit `false` is a hard reject.)
+  if (claims.data.email_verified === false || claims.data.email_verified === "false") {
+    throw new OidcSyncError("Azure AD OIDC email is not verified", "invalid_oidc_claims");
   }
 
   const claimRoles = claims.data.roles?.filter((role): role is Role =>

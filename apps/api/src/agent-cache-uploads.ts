@@ -291,9 +291,12 @@ export function createAgentCacheUploads(deps: AgentCacheUploadDeps) {
       : await queueCachedChunkUpload(c, actor, recording, chunk, stored);
     let job: RecordingJob | undefined;
 
-    // The final chunk carries the total: stamp it across the chunk rows, mark the
-    // recording cached, and complete the capture job.
-    if (input.chunkTotal !== undefined) {
+    // The final PRIMARY chunk carries the total: stamp it across the chunk rows,
+    // mark the recording cached, and complete the capture job. A supplementary
+    // rendition (e.g. `rendition=raw`) must NOT complete the job or flip the
+    // recording to cached — this mirrors the whole-recording path's
+    // `!supplementary` gate; only the primary rendition finalizes capture.
+    if (!supplementary && input.chunkTotal !== undefined) {
       await setRecordingChunkTotal(recording.id, input.chunkTotal);
       await markRecordingCachedFromChunks(recording);
       job = input.job

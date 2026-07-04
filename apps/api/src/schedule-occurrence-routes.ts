@@ -167,6 +167,9 @@ export function registerScheduleCalendarRoutes({
             room: schedule.room,
             scheduleId: schedule.id,
             scheduleName: schedule.name,
+            // Carry the schedule's timezone so the calendar groups each chip on the
+            // schedule-local day (matching the backend skip/occurrence day).
+            timezone: schedule.timezone,
           });
         }
 
@@ -297,7 +300,25 @@ export function registerScheduleCalendarRoutes({
       };
 
       const updatedOriginal = await scheduleStore.update(scheduleId, {
-        nextRunAt: nextRunAtForRecurrence(skippedRecurrence, before.timezone, undefined),
+        // Anchor the every-N parity to the schedule's persisted phase, not `now`:
+        // without the parity anchor, moving one occurrence of an interval>1 series
+        // (bi-weekly / every-N-days / every-N-months) re-derived parity from the
+        // current week and silently shifted every future occurrence to the wrong
+        // slot whenever `now` sat in the off-parity window. The anchor keeps the
+        // scan starting at `now` (so a later-in-series move doesn't skip the still-
+        // upcoming immediate occurrence) while measuring parity from the true phase.
+        nextRunAt: nextRunAtForRecurrence(
+          skippedRecurrence,
+          before.timezone,
+          undefined,
+          new Date(),
+          undefined,
+          // Anchor parity to the schedule's phase; if a recurring series has no
+          // persisted nextRunAt (a long pause can exhaust the forward scan), fall
+          // back to the DRAGGED occurrence's phase — the one the operator saw on
+          // the calendar — never to wall-clock `now`, which would flip the series.
+          before.nextRunAt ?? new Date(body.data.occurrenceStartAt).toISOString(),
+        ),
         recurrence: skippedRecurrence,
       });
 

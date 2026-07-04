@@ -1,8 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import {
-  accessGroups,
-  accessPolicies as accessPolicyRows,
   and,
   authSessions,
   createDatabase,
@@ -27,11 +25,16 @@ import type {
   LoginResult,
   SessionContext,
 } from "./auth-types.js";
+import { LocalAccessPolicyManager } from "./auth-access-policy-manager.js";
 import { AuthError } from "./auth-errors.js";
 import { LocalGroupManager } from "./auth-group-manager.js";
+import {
+  resolveUserAccess,
+  resolveUserGroups,
+  type UserAccessResolverDeps,
+} from "./auth-user-access-resolver.js";
 
 import {
-  accessPoliciesWithIds,
   bearerToken,
   dbOutageGraceExceeded,
   groupsFromIds,
@@ -39,15 +42,8 @@ import {
   isPgConstraintError,
   isPgErrorCode,
   isUuid,
-  localAccessPoliciesFromEnv,
   localAdminId,
-  localGroupsFromEnv,
-  localResourceGrantsFromEnv,
-  localRole,
   permissionsForRoles,
-  policyMatchesSubject,
-  policyMatchesTarget,
-  uniqueAccessPolicyInputs,
   uniqueResourceGrants,
   uniqueRoles,
 } from "./auth-utils.js";
@@ -98,6 +94,9 @@ export class LocalAuthService {
   // First-party access-group management lives in its own module; the service lends
   // it the shared session/override state it needs (see auth-group-manager.ts).
   private readonly groupManager: LocalGroupManager;
+  // Resource access-policy CRUD + decision (see auth-access-policy-manager.ts); it
+  // shares the service's access-policy override cache via callbacks.
+  private readonly accessPolicyManager: LocalAccessPolicyManager;
 
   constructor(databaseUrl = process.env.DATABASE_URL, fallbackGraceMs = authFallbackGraceMs()) {
     this.db = databaseUrl ? createDatabase(databaseUrl) : undefined;
@@ -111,6 +110,14 @@ export class LocalAuthService {
       localUsers: () => this.localUsers(),
       markDatabaseUnavailable: (error) => this.markDatabaseUnavailable(error),
       refreshUserSessions: (user) => this.refreshUserSessions(user),
+      setAccessPolicyOverrides: (policies) => {
+        this.accessPolicyOverrides = policies;
+      },
+    });
+    this.accessPolicyManager = new LocalAccessPolicyManager({
+      availableDatabase: () => this.availableDatabase(),
+      getAccessPolicyOverrides: () => this.accessPolicyOverrides,
+      markDatabaseUnavailable: (error) => this.markDatabaseUnavailable(error),
       setAccessPolicyOverrides: (policies) => {
         this.accessPolicyOverrides = policies;
       },
@@ -434,87 +441,22 @@ export class LocalAuthService {
     return deleted;
   }
 
-  async accessPolicies(): Promise<AccessPolicy[]> {
-    if (this.accessPolicyOverrides) {
-      return accessPoliciesWithIds(this.accessPolicyOverrides);
-    }
-
-    const db = this.availableDatabase();
-
-    if (db) {
-      try {
-        const rows = await db.select().from(accessPolicyRows);
-
-        if (rows.length > 0) {
-          return rows.map((row) => ({
-            effect: row.effect,
-            id: row.id,
-            reason: row.reason ?? undefined,
-            resourceId: row.resourceId,
-            resourceType: row.resourceType,
-            subjectId: row.subjectId ?? undefined,
-            subjectType: row.subjectType,
-          }));
-        }
-      } catch (error) {
-        this.markDatabaseUnavailable(error);
-      }
-    }
-
-    return localAccessPoliciesFromEnv();
+  accessPolicies(): Promise<AccessPolicy[]> {
+    return this.accessPolicyManager.list();
   }
 
-  async accessPolicyDecision(
+  accessPolicyDecision(
     user: CurrentUser,
     targets: Array<{ id?: string; type: string }>,
   ): Promise<AccessPolicyDecision | undefined> {
-    const matchingPolicies = (await this.accessPolicies()).filter(
-      (policy) => policyMatchesSubject(policy, user) && policyMatchesTarget(policy, targets),
-    );
-    const deny = matchingPolicies.find((policy) => policy.effect === "deny");
-
-    if (deny) {
-      return { effect: "deny", policy: deny };
-    }
-
-    const allow = matchingPolicies.find((policy) => policy.effect === "allow");
-
-    return allow ? { effect: "allow", policy: allow } : undefined;
+    return this.accessPolicyManager.decision(user, targets);
   }
 
-  async updateLocalAccessPolicies(
+  updateLocalAccessPolicies(
     policies: AccessPolicyInput[],
     actorUserId?: string,
   ): Promise<AccessPolicy[]> {
-    const nextPolicies = uniqueAccessPolicyInputs(policies);
-
-    this.accessPolicyOverrides = nextPolicies;
-
-    const db = this.availableDatabase();
-
-    if (db) {
-      try {
-        await db.delete(accessPolicyRows);
-
-        if (nextPolicies.length > 0) {
-          await db.insert(accessPolicyRows).values(
-            nextPolicies.map((policy) => ({
-              createdByUserId: actorUserId && isUuid(actorUserId) ? actorUserId : undefined,
-              effect: policy.effect,
-              reason: policy.reason,
-              resourceId: policy.resourceId,
-              resourceType: policy.resourceType,
-              subjectId: policy.subjectId,
-              subjectType: policy.subjectType,
-            })),
-          );
-        }
-      } catch (error) {
-        this.markDatabaseUnavailable(error);
-      }
-    }
-
-    return accessPoliciesWithIds(nextPolicies);
+    return this.accessPolicyManager.update(policies, actorUserId);
   }
 
   async localAdmin(): Promise<CurrentUser> {
@@ -564,6 +506,27 @@ export class LocalAuthService {
         .select(localUserReturning)
         .from(users)
         .where(eq(users.email, email.toLowerCase()))
+        .limit(1);
+
+      return row;
+    } catch (error) {
+      this.markDatabaseUnavailable(error);
+      return undefined;
+    }
+  }
+
+  private async localUserRecordByExternalId(externalId: string) {
+    const db = this.availableDatabase();
+
+    if (!db) {
+      return [...this.oidcUserRecords.values()].find((record) => record.externalId === externalId);
+    }
+
+    try {
+      const [row] = await db
+        .select(localUserReturning)
+        .from(users)
+        .where(eq(users.externalId, externalId))
         .limit(1);
 
       return row;
@@ -623,8 +586,13 @@ export class LocalAuthService {
       currentUserFromRecord: (record: LocalUserRecord) => this.currentUserFromRecord(record),
       db: () => this.availableDatabase(),
       findUserByEmail: (email: string) => this.localUserRecordByEmail(email),
+      findUserByExternalId: (externalId: string) => this.localUserRecordByExternalId(externalId),
       markDatabaseUnavailable: (error: unknown) => this.markDatabaseUnavailable(error),
-      memoryRecordByEmail: (email: string) => this.oidcUserRecords.get(email),
+      // Lowercase the lookup key to match the login path (localUserRecordByEmail),
+      // which also lowercases — so a mixed-case OIDC email resolves the same record.
+      memoryRecordByEmail: (email: string) => this.oidcUserRecords.get(email.toLowerCase()),
+      memoryRecordByExternalId: (externalId: string) =>
+        [...this.oidcUserRecords.values()].find((record) => record.externalId === externalId),
       persistAccess: async (userId: string, access: LocalAccess, groups: AccessGroup[]) => {
         await this.persistLocalUserAccess(userId, access, groups);
         this.localAccessOverrides.set(userId, {
@@ -803,100 +771,21 @@ export class LocalAuthService {
     }
   }
 
-  private async localGroupsForUser(userId: string): Promise<AccessGroup[]> {
-    const override = this.localGroupOverrides.get(userId);
-
-    if (override) {
-      return override;
-    }
-
-    const db = this.availableDatabase();
-
-    if (db) {
-      try {
-        const rows = await db
-          .select({
-            id: accessGroups.id,
-            name: accessGroups.name,
-          })
-          .from(userAccessGroups)
-          .innerJoin(accessGroups, eq(userAccessGroups.groupId, accessGroups.id))
-          .where(eq(userAccessGroups.userId, userId));
-
-        if (rows.length > 0) {
-          return rows;
-        }
-
-        const [userRow] = await db
-          .select({
-            id: users.id,
-          })
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1);
-
-        if (userRow) {
-          return [];
-        }
-      } catch (error) {
-        this.markDatabaseUnavailable(error);
-      }
-    }
-
-    if (userId !== localAdminId()) {
-      return [];
-    }
-
-    return localGroupsFromEnv();
+  private localGroupsForUser(userId: string): Promise<AccessGroup[]> {
+    return resolveUserGroups(this.userAccessResolverDeps(), userId);
   }
 
-  private async localAccessForUser(userId: string): Promise<LocalAccess> {
-    const override = this.localAccessOverrides.get(userId);
+  private localAccessForUser(userId: string): Promise<LocalAccess> {
+    return resolveUserAccess(this.userAccessResolverDeps(), userId);
+  }
 
-    if (override) {
-      return override;
-    }
-
-    const db = this.availableDatabase();
-
-    if (db) {
-      try {
-        const grantRows = await db
-          .select({
-            resourceId: userResourceGrants.resourceId,
-            resourceType: userResourceGrants.resourceType,
-          })
-          .from(userResourceGrants)
-          .where(eq(userResourceGrants.userId, userId));
-        const roleResult = await db
-          .select({
-            roleId: userRoles.roleId,
-          })
-          .from(userRoles)
-          .where(eq(userRoles.userId, userId));
-
-        if (grantRows.length > 0 || roleResult.length > 0) {
-          return {
-            resourceGrants: grantRows,
-            roles: uniqueRoles(roleResult.map((row) => row.roleId)).length
-              ? uniqueRoles(roleResult.map((row) => row.roleId))
-              : [localRole()],
-          };
-        }
-      } catch (error) {
-        this.markDatabaseUnavailable(error);
-      }
-    }
-
-    return userId === localAdminId()
-      ? {
-          resourceGrants: localResourceGrantsFromEnv(),
-          roles: [localRole()],
-        }
-      : {
-          resourceGrants: [],
-          roles: [],
-        };
+  private userAccessResolverDeps(): UserAccessResolverDeps {
+    return {
+      accessOverrides: this.localAccessOverrides,
+      availableDatabase: () => this.availableDatabase(),
+      groupOverrides: this.localGroupOverrides,
+      markDatabaseUnavailable: (error) => this.markDatabaseUnavailable(error),
+    };
   }
 
   private async persistLocalUserAccess(userId: string, access: LocalAccess, groups: AccessGroup[]) {
@@ -910,40 +799,46 @@ export class LocalAuthService {
       await ensureSecurityCatalog(db);
       await upsertGroups(db, groups);
 
-      await db.delete(userRoles).where(eq(userRoles.userId, userId));
-      await db.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
-      await db.delete(userAccessGroups).where(eq(userAccessGroups.userId, userId));
+      // Wrap the DELETE-then-INSERT of the user's roles/grants/groups in a single
+      // transaction: a failed INSERT (e.g. a stale groupId/roleId tripping an FK)
+      // must roll the DELETEs back so the user keeps their prior access rather than
+      // being left fully stripped in the DB while the caller throws.
+      await db.transaction(async (tx) => {
+        await tx.delete(userRoles).where(eq(userRoles.userId, userId));
+        await tx.delete(userResourceGrants).where(eq(userResourceGrants.userId, userId));
+        await tx.delete(userAccessGroups).where(eq(userAccessGroups.userId, userId));
 
-      // Guarded like the grant/group inserts below — an empty values() insert
-      // throws in Postgres, which previously broke syncing any user with no role
-      // (e.g. an OIDC login whose token carries groups but no known app role).
-      if (access.roles.length > 0) {
-        await db.insert(userRoles).values(
-          access.roles.map((roleId) => ({
-            roleId,
-            userId,
-          })),
-        );
-      }
+        // Guarded like the grant/group inserts below — an empty values() insert
+        // throws in Postgres, which previously broke syncing any user with no role
+        // (e.g. an OIDC login whose token carries groups but no known app role).
+        if (access.roles.length > 0) {
+          await tx.insert(userRoles).values(
+            access.roles.map((roleId) => ({
+              roleId,
+              userId,
+            })),
+          );
+        }
 
-      if (access.resourceGrants.length > 0) {
-        await db.insert(userResourceGrants).values(
-          access.resourceGrants.map((grant) => ({
-            resourceId: grant.resourceId,
-            resourceType: grant.resourceType,
-            userId,
-          })),
-        );
-      }
+        if (access.resourceGrants.length > 0) {
+          await tx.insert(userResourceGrants).values(
+            access.resourceGrants.map((grant) => ({
+              resourceId: grant.resourceId,
+              resourceType: grant.resourceType,
+              userId,
+            })),
+          );
+        }
 
-      if (groups.length > 0) {
-        await db.insert(userAccessGroups).values(
-          groups.map((group) => ({
-            groupId: group.id,
-            userId,
-          })),
-        );
-      }
+        if (groups.length > 0) {
+          await tx.insert(userAccessGroups).values(
+            groups.map((group) => ({
+              groupId: group.id,
+              userId,
+            })),
+          );
+        }
+      });
     } catch (error) {
       this.markDatabaseUnavailable(error);
       throw new AuthError("Local user access storage is unavailable", "database_unavailable");
@@ -976,14 +871,20 @@ export class LocalAuthService {
     return db;
   }
 
-  private markDatabaseUnavailable(error: unknown): never | void {
+  private markDatabaseUnavailable(error: unknown): void {
     // A data-integrity error (constraint violation / data exception) is NOT a
     // connectivity failure — this specific write was rejected for bad data. Do NOT
     // latch into the memory store (which silently drops every later DB write, incl.
-    // access changes, until process restart); re-throw so the caller surfaces the
-    // failed write and the service stays DB-backed.
+    // access changes, until process restart). Also do NOT abort the caller: this
+    // helper is invoked from fire-and-forget persistence and read/authorization
+    // paths (login-session persist, session lookup, group/access reads) that must
+    // keep serving the request on a rejected write — e.g. a login carrying an
+    // over-long X-Forwarded-For must not 401. Log the rejected write and return; the
+    // access-write callers that want to surface the failure throw their own
+    // AuthError after calling this.
     if (isPgConstraintError(error)) {
-      throw error;
+      console.warn("auth database rejected a write (constraint violation); not latching", error);
+      return;
     }
 
     // Stamp the outage start once (kept across probe re-latches; cleared only when

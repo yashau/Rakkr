@@ -5,7 +5,31 @@ server {
   root /usr/share/nginx/html;
   index index.html;
 
+  # Compress text payloads (console JS/CSS/JSON, SVG icons). HTML is compressed
+  # by default; the rest are opt-in via gzip_types.
+  gzip on;
+  gzip_vary on;
+  gzip_comp_level 5;
+  gzip_min_length 1024;
+  gzip_types application/javascript application/json application/manifest+json image/svg+xml text/css text/javascript text/plain;
+
   location /api/ {
+    # Recorder-agent cache-file uploads PUT recording renditions here (up to
+    # RAKKR_RECORDING_CACHE_MAX_BYTES, 4 GiB default). Disable nginx's 1 MB
+    # default body cap so it never 413s a legitimate upload; the controller
+    # enforces the authoritative, bounded cap (agent-cache-upload-body.ts).
+    client_max_body_size 0;
+    # With the body cap lifted, stock `proxy_request_buffering on` would spool the
+    # ENTIRE upload to this pod's disk before forwarding a byte — defeating the
+    # controller's pre-buffer 413 and risking ENOSPC on a multi-GB upload. Stream
+    # straight to the upstream instead. Streaming makes the nginx->upstream
+    # exchange concurrent with the slow client read, so raise the read/send
+    # timeouts to comfortably exceed a slow multi-GB upload (3600s, matching the
+    # agent's overall request-timeout default) — otherwise a legit slow upload is
+    # cut mid-transfer.
+    proxy_request_buffering off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -27,6 +51,32 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_pass ${RAKKR_API_UPSTREAM};
+  }
+
+  # Self-contained liveness/readiness endpoint for the web (nginx) pod. It must
+  # NOT proxy to the API: the web tier's health is "nginx is up and can serve the
+  # console + proxy /api", independent of API availability. Probing the proxied
+  # /healthz instead would crash-loop healthy web pods during any API outage and,
+  # because the ingress routes /api only to -web, block the API's own recovery.
+  location = /nginx-health {
+    access_log off;
+    add_header Content-Type text/plain;
+    return 200 "ok\n";
+  }
+
+  # The SPA entry document must never be cached: a fresh image bump changes the
+  # hashed asset names it references, so a stale index.html would pin operators on
+  # a dead build. Still served locally via try_files so the SPA fallback holds.
+  location = /index.html {
+    add_header Cache-Control "no-cache";
+    try_files $uri /index.html;
+  }
+
+  # Vite emits content-hashed filenames under /assets/, so a given URL's bytes
+  # never change — cache them for a year and mark immutable to skip revalidation.
+  location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files $uri =404;
   }
 
   location / {

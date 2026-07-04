@@ -1,5 +1,7 @@
 use super::*;
+use crate::meter_health::update_meter_health;
 use crate::telemetry::{AudioLevel, AudioQuality, ChannelCorrelation};
+use serde_json::Value;
 
 #[test]
 fn classifies_alsa_xrun_errors() {
@@ -177,8 +179,9 @@ async fn tick_health_updates_survive_health_log_write_failures() {
     let mut system_state = system_health::SystemHealthState::default();
 
     // Sustain the low-signal condition so its debounced edge fires and attempts a
-    // health-event append — which hits the unwritable sink. A best-effort tick
-    // swallows and counts the failure instead of propagating and killing the loop.
+    // health-event append — which hits the unwritable sink. The append is best-effort
+    // at the source (append_and_sync_health_event), so the failure never propagates:
+    // the tick returns 0 failures and the loop survives instead of the daemon dying.
     let mut total_failures = 0u32;
     for _ in 0..meter_health::METER_HEALTH_MIN_CONSECUTIVE_FRAMES {
         total_failures += apply_tick_health_updates(
@@ -192,13 +195,103 @@ async fn tick_health_updates_survive_health_log_write_failures() {
         .await;
     }
 
-    assert!(
-        total_failures >= 1,
-        "expected at least one health-append failure to be swallowed and counted"
+    assert_eq!(
+        total_failures, 0,
+        "a local health-append failure is swallowed at the source, so the tick sees no failures"
     );
     assert!(
         !health_log_file.exists(),
         "the unwritable health sink must not have been created"
+    );
+
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn append_and_sync_health_event_survives_a_local_append_failure() {
+    // R14-HEALTH-FATAL covers ALL health-append call sites, not just the meter/system
+    // ones apply_tick_health_updates wraps. The heartbeat/recovery tick calls
+    // append_and_sync_health_event directly for its sync_recovered/sync_failed/capture
+    // edges; a local append failure there must be best-effort (Ok), not propagate out
+    // of the loop and kill the daemon. Same unwritable-sink trick: parent is a regular
+    // file so create_dir_all fails, on both Windows and Linux.
+    let process_id = std::process::id();
+    let directory =
+        std::path::PathBuf::from("target").join(format!("rakkr-agent-health-append-{process_id}"));
+    std::fs::create_dir_all(&directory).expect("create temp directory");
+    let blocker = directory.join("blocker");
+    std::fs::write(&blocker, b"x").expect("write blocker file");
+    let health_log_file = blocker.join("health-events.jsonl");
+
+    let config = AgentConfig::parse_from([
+        "rakkr-recorder-agent",
+        "--agent-health-log-file",
+        health_log_file.to_str().expect("utf8 health log path"),
+    ]);
+
+    // No token: the controller-sync half is skipped, isolating the LOCAL append
+    // failure — which pre-fix propagated via `?` and unwound out of the loop.
+    let result = append_and_sync_health_event(
+        &config,
+        None,
+        "agent.node_heartbeat.sync_failed",
+        "warning",
+        serde_json::json!({ "reason": "unwritable-sink" }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "a local health-append failure must be swallowed, not propagated: {result:?}"
+    );
+    assert!(
+        !health_log_file.exists(),
+        "the unwritable health sink must not have been created"
+    );
+
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn idle_cache_sweep_survives_a_manifest_io_failure() {
+    // The idle recorder-cache sweep does local manifest I/O; a failure there (full
+    // disk, unreadable/unwritable manifest) must be best-effort — it must NOT
+    // propagate out of the heartbeat tick and kill the daemon (the twin of the
+    // health-append best-effort guard). Point the manifest at a DIRECTORY so reading
+    // it as a file fails, cross-platform.
+    let process_id = std::process::id();
+    let directory =
+        std::path::PathBuf::from("target").join(format!("rakkr-agent-cache-sweep-{process_id}"));
+    std::fs::create_dir_all(&directory).expect("create temp directory");
+    let manifest_as_dir = directory.join("manifest-as-dir");
+    std::fs::create_dir_all(&manifest_as_dir).expect("create manifest dir");
+
+    let config = AgentConfig::parse_from([
+        "rakkr-recorder-agent",
+        "--recorder-cache-manifest-file",
+        manifest_as_dir.to_str().expect("utf8 manifest path"),
+    ]);
+    // A non-empty policy list so the sweep actually runs (not the empty early-return).
+    let node_config = node_config::ControllerNodeConfig {
+        audio_defaults: None,
+        monitor_enhancement: None,
+        recorder_cache_policies: vec![recorder_cache_retention::ControllerRecorderCacheRetention {
+            delete_after_upload: true,
+            max_age_days: Some(7),
+            max_bytes: None,
+            min_free_disk_percent: None,
+            policy_id: "policy-1".to_string(),
+        }],
+        recording_capacity: None,
+    };
+
+    let result = run_idle_recorder_cache_sweep(&config, None, &node_config).await;
+
+    assert!(
+        result.is_ok(),
+        "a manifest I/O failure must not propagate out of the idle cache sweep: {result:?}"
     );
 
     let _ = std::fs::remove_dir_all(&directory);

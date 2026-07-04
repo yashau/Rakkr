@@ -1,0 +1,7 @@
+{{- /*
+Render-time validations. This file emits no Kubernetes objects; it exists so the
+guards run on every `helm template`/`install`/`upgrade`. Keep it free of any
+`enabled`-style condition so the checks cannot be skipped.
+*/ -}}
+{{- include "rakkr-controller.validateDatabase" . -}}
+{{- include "rakkr-controller.validateMigrationJob" . -}}

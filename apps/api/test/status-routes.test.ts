@@ -38,6 +38,7 @@ test("status health counts honor aggregate health event denies", async () => {
 
   registerStatusRoutes({
     app,
+    checkDatabaseReady: async () => true,
     currentUser: () => user(["node:read"]),
     hasResourceScope: async (_user, target) =>
       target.id === "node_status_health" || target.id === "rec_status_health",
@@ -92,6 +93,7 @@ test("status embedded settings summaries honor resource-scope denies", async () 
 
   registerStatusRoutes({
     app,
+    checkDatabaseReady: async () => true,
     currentUser: () => user(["node:read", "settings:read"]),
     hasResourceScope: async (_user, target) =>
       target.id !== defaultVoiceRecordingProfile.id &&
@@ -128,6 +130,7 @@ test("healthz reports service identity and version", async () => {
 
   registerStatusRoutes({
     app,
+    checkDatabaseReady: async () => true,
     currentUser: () => user(["node:read"]),
     hasResourceScope: async () => true,
     healthEventStore: createHealthEventStore("", []),

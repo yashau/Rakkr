@@ -106,6 +106,10 @@ export const users = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     email: varchar("email", { length: 320 }).notNull().unique(),
+    // Stable federated-identity key (OIDC `oid`/`sub`). Null for local users.
+    // OIDC logins link on THIS, not email, so a mutable/unverified email claim
+    // can never merge onto another account (see the login-linking invariant).
+    externalId: varchar("external_id", { length: 320 }),
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 160 }).notNull(),
     passwordHash: text("password_hash"),
@@ -114,6 +118,9 @@ export const users = pgTable(
   },
   (table) => ({
     emailIdx: index("users_email_idx").on(table.email),
+    // Unique per federated subject; Postgres treats NULLs as distinct, so local
+    // users (external_id NULL) never collide.
+    externalIdIdx: uniqueIndex("users_external_id_idx").on(table.externalId),
   }),
 );
 

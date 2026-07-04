@@ -125,8 +125,30 @@ export function registerChannelRoomRoutes({
       // calendar roster) — otherwise the schedule stays scoped/visible to the OLD
       // room and its RBAC edit-gate keys off a stale room. A selection that now
       // spans rooms resolves to no single room (undefined); the run path defers it.
-      const { changed: reassignedSchedules, failed: reconcileFailedScheduleIds } =
-        await reconcileNodeSchedules(updated);
+      const {
+        changed: reassignedSchedules,
+        failed: reconcileFailedScheduleIds,
+        inconsistent: inconsistentScheduleIds,
+      } = await reconcileNodeSchedules(updated);
+
+      // A DOUBLE failure (roster reconcile threw AND the roomId rollback threw)
+      // leaves the schedule committed to the new room with a stale roster; a retry
+      // PUT then skips it (roomId already matches), so the roster never heals. There
+      // is no cross-store transaction at this layer to make the pair atomic, so the
+      // inconsistency is real — surface it observably as its own failed audit event
+      // (in addition to the error-level log inside the loop) so an operator can spot
+      // and recover it, rather than letting it hide in the ordinary failure count.
+      if (inconsistentScheduleIds.length > 0) {
+        await recordAuditEvent(c, {
+          action: "nodes.channel-rooms.reconcile.inconsistent",
+          auth: currentAuth(c),
+          details: { inconsistentScheduleIds, nodeId: updated.id },
+          outcome: "failed",
+          permission: "node:manage",
+          reason: "schedule_room_reconcile_inconsistent",
+          target: { id: updated.id, name: updated.alias, type: "node" },
+        });
+      }
 
       await recordAuditEvent(c, {
         action: "nodes.channel-rooms.assign.succeeded",
@@ -138,6 +160,7 @@ export function registerChannelRoomRoutes({
           channelCount: flattened.length,
           reassignedScheduleIds: reassignedSchedules,
           ...(reconcileFailedScheduleIds.length > 0 ? { reconcileFailedScheduleIds } : {}),
+          ...(inconsistentScheduleIds.length > 0 ? { inconsistentScheduleIds } : {}),
         },
         outcome: "succeeded",
         permission: "node:manage",
@@ -154,6 +177,9 @@ export function registerChannelRoomRoutes({
   async function reconcileNodeSchedules(node: RecorderNode) {
     const changed: string[] = [];
     const failed: string[] = [];
+    // Double-failure: roster reconcile threw AND the roomId rollback threw, so the
+    // schedule is stranded on the new room with a stale roster (see below).
+    const inconsistent: string[] = [];
 
     for (const schedule of await scheduleStore.list()) {
       if (schedule.nodeId !== node.id) {
@@ -173,14 +199,48 @@ export function registerChannelRoomRoutes({
 
       // Best-effort per schedule: the node channel-rooms are already committed, so
       // one schedule's reconcile throwing must NOT abort the loop and leave the
-      // remaining schedules stale. Record the failure and continue; the reconcile
-      // is idempotent, so a retry PUT re-runs it over all the node's schedules.
+      // remaining schedules stale. Record the failure and continue.
       try {
+        // Persist the new roomId first — but ONLY reconcile the roster once the
+        // schedule is confirmed to still exist (`reconciled` truthy). Reconciling
+        // before the existence check would write calendar roster rows for a schedule
+        // that was deleted concurrently (between list() and here), orphaning grants
+        // the schedule-delete cascade already ran and can no longer clean.
         const reconciled = await scheduleStore.update(schedule.id, { roomId: nextRoomId });
 
-        if (reconciled) {
+        if (!reconciled) {
+          continue;
+        }
+
+        try {
           await reconcileScheduleRoster(reconciled);
           changed.push(schedule.id);
+        } catch (rosterError) {
+          // roomId is persisted but the roster reconcile failed; roll the roomId
+          // back so a retry PUT re-detects the move (nextRoomId !== schedule.roomId)
+          // and re-runs BOTH writes. Otherwise the schedule stays on the new room
+          // with a stale roster and the retry skips it — the roster never heals.
+          try {
+            await scheduleStore.update(schedule.id, { roomId: schedule.roomId });
+          } catch (rollbackError) {
+            // DOUBLE failure: the rollback itself threw, so the schedule is now
+            // stranded on the new room with a stale roster and a retry will skip it
+            // (nextRoomId already === schedule.roomId). No cross-store transaction
+            // exists here to undo the commit, so do NOT swallow it as an ordinary
+            // recoverable failure — log at error level and flag it as inconsistent
+            // so the caller can surface it as a distinct audit event for recovery.
+            console.error("schedule room reconcile left an inconsistent state", {
+              rollbackError,
+              rosterError,
+              scheduleId: schedule.id,
+              strandedRoomId: nextRoomId,
+            });
+            inconsistent.push(schedule.id);
+            failed.push(schedule.id);
+            continue;
+          }
+
+          throw rosterError;
         }
       } catch (error) {
         console.warn("schedule room reconcile failed", { error, scheduleId: schedule.id });
@@ -188,7 +248,7 @@ export function registerChannelRoomRoutes({
       }
     }
 
-    return { changed, failed };
+    return { changed, failed, inconsistent };
   }
 
   async function recordFailure(

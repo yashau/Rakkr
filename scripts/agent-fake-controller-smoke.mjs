@@ -73,7 +73,7 @@ import {
   localRecorderCachePaths,
   readJsonLines,
   run,
-  waitFor,
+  waitForDaemon,
 } from "./agent-fake-controller-smoke-utils.mjs";
 import { createFakeControllerHandler } from "./agent-fake-controller-smoke-controller.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -132,7 +132,14 @@ try {
   // and prone to hanging when another build held the lock.
   const buildResult = await run(
     "cargo",
-    ["build", "--quiet", "--manifest-path", path.join(repoRoot, "Cargo.toml"), "-p", "rakkr-recorder-agent"],
+    [
+      "build",
+      "--quiet",
+      "--manifest-path",
+      path.join(repoRoot, "Cargo.toml"),
+      "-p",
+      "rakkr-recorder-agent",
+    ],
     { cwd: repoRoot, timeoutMs: 600000 },
   );
   invariant(
@@ -292,7 +299,9 @@ try {
   await runSystemHealthScenario(
     healthScenarioDeps({ address, captureCommand, ...systemHealthFixtures, renderCommand }),
   );
-  await runClockSkewRecoveryScenario(healthScenarioDeps({ address, captureCommand, renderCommand }));
+  await runClockSkewRecoveryScenario(
+    healthScenarioDeps({ address, captureCommand, renderCommand }),
+  );
   await runAudioBackendRecoveryScenario(
     healthScenarioDeps({ address, captureCommand, ...audioInventoryFixtures, renderCommand }),
   );
@@ -490,22 +499,19 @@ async function runConcurrentScenario({ address, captureCommand, renderCommand })
     stateFile,
   );
 
-  try {
-    await waitFor(
-      () =>
-        jobs.every((job) => job.status === "completed") &&
-        observed.cacheUploads.length === 2 &&
-        observed.healthEvents.filter(
-          (event) => event.type === "agent.recording_job.recorder_cache_deleted",
-        ).length === 2,
-      20_000,
-      () =>
-        `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length}`,
-    );
-  } finally {
-    child.kill();
-    await child.closed;
-  }
+  await waitForDaemon(
+    child,
+    () =>
+      jobs.every((job) => job.status === "completed") &&
+      observed.cacheUploads.length === 2 &&
+      observed.healthEvents.filter(
+        (event) => event.type === "agent.recording_job.recorder_cache_deleted",
+      ).length === 2,
+    20_000,
+    () =>
+      `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length}`,
+    () => daemonScenarioDiagnostics(observed, healthLogFile),
+  );
   const healthLogEvents = await readJsonLines(healthLogFile);
   const renderedEvents = healthLogEvents.filter(
     (event) => event.type === "agent.recording_job.output_rendered",
@@ -560,22 +566,17 @@ async function runDeferredSweepScenario({ address, captureCommand, renderCommand
     stateFile,
   );
 
-  try {
-    await waitFor(
-      () =>
-        jobs.every((job) => job.status === "completed") &&
-        observed.cacheUploads.length === 2 &&
-        observed.healthEvents.some(
-          (event) => event.type === "agent.recorder_cache.sweep_completed",
-        ),
-      60_000,
-      () =>
-        `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
-    );
-  } finally {
-    child.kill();
-    await child.closed;
-  }
+  await waitForDaemon(
+    child,
+    () =>
+      jobs.every((job) => job.status === "completed") &&
+      observed.cacheUploads.length === 2 &&
+      observed.healthEvents.some((event) => event.type === "agent.recorder_cache.sweep_completed"),
+    60_000,
+    () =>
+      `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    () => daemonScenarioDiagnostics(observed, healthLogFile),
+  );
   const healthLogEvents = await readJsonLines(healthLogFile);
   const sweepEvent = observed.healthEvents.find(
     (event) => event.type === "agent.recorder_cache.sweep_completed",
@@ -643,22 +644,17 @@ async function runMinFreeSweepScenario({ address, captureCommand, fakeDfPath, re
     ["--system-health-df-command", fakeDfCommandPath(fakeDfPath)],
   );
 
-  try {
-    await waitFor(
-      () =>
-        jobs.every((job) => job.status === "completed") &&
-        observed.cacheUploads.length === 2 &&
-        observed.healthEvents.some(
-          (event) => event.type === "agent.recorder_cache.sweep_completed",
-        ),
-      20_000,
-      () =>
-        `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
-    );
-  } finally {
-    child.kill();
-    await child.closed;
-  }
+  await waitForDaemon(
+    child,
+    () =>
+      jobs.every((job) => job.status === "completed") &&
+      observed.cacheUploads.length === 2 &&
+      observed.healthEvents.some((event) => event.type === "agent.recorder_cache.sweep_completed"),
+    20_000,
+    () =>
+      `jobs=${jobs.map((job) => `${job.id}:${job.status}`).join(",")} uploads=${observed.cacheUploads.length} health=${observed.healthEvents.map((event) => event.type).join(",")}`,
+    () => daemonScenarioDiagnostics(observed, healthLogFile),
+  );
   const sweepEvent = observed.healthEvents.find(
     (event) => event.type === "agent.recorder_cache.sweep_completed",
   );
@@ -828,6 +824,25 @@ async function assertAnyLocalRecorderCacheDeleted(outputFileNames) {
 
 function fakeDfCommandPath(fakeDfPath) {
   return path.join(fakeDfPath, process.platform === "win32" ? "df.cmd" : "df");
+}
+
+// Extra diagnostics folded into a daemon-scenario timeout error: the synced and
+// local health-event streams plus the controller-observed counters, so a flake
+// shows which job stalled and how far it got — not just the unmet predicate.
+async function daemonScenarioDiagnostics(observed, healthLogFile) {
+  const localHealth = await readJsonLines(healthLogFile);
+
+  return (
+    `\n--- synced health events (${observed.healthEvents.length}) ---\n` +
+    `${observed.healthEvents.map((event) => event.type).join(",")}\n` +
+    `--- local health log (${localHealth.length}) ---\n` +
+    `${localHealth.map((event) => event.type).join(",")}\n` +
+    `--- observed ---\n` +
+    `claims=${observed.claims} claimNextReads=${observed.claimNextReads} ` +
+    `uploads=${observed.cacheUploads.length} configReads=${observed.configReads} ` +
+    `heartbeats=${observed.heartbeats} jobStatusReads=${observed.jobStatusReads} ` +
+    `failures=${observed.failures} maxRunningJobs=${observed.maxRunningJobs}`
+  );
 }
 
 function healthScenarioDeps(overrides) {

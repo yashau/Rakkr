@@ -422,6 +422,12 @@ function statusForOidcReason(reason: string) {
     return 401;
   }
 
+  // The federated email is already owned by a different account (e.g. the local
+  // admin) — refuse the login rather than merge identities.
+  if (reason === "oidc_email_conflict") {
+    return 403;
+  }
+
   return 502;
 }
 

@@ -132,6 +132,11 @@ postgres:
     database: rakkr
     username: rakkr
     # No committed default; provide via existingSecret, --set, or values-dev.yaml.
+    # This password is independent of the DATABASE_URL the app secret carries: if
+    # you supply DATABASE_URL via an external/ESO/sealed app secret while keeping
+    # this bundled Postgres, set `existingSecret` (or a matching `password`) so the
+    # two agree — otherwise Postgres boots with an empty password the API can't use.
+    # When you bring your own database, prefer `postgres.enabled: false`.
     password: ""
     existingSecret: ""
     passwordKey: POSTGRES_PASSWORD
@@ -151,7 +156,20 @@ migrations:
 ingress:
   enabled: false
   className: ""
-  annotations: {}
+  # Recorder-agent cache-file uploads (up to RAKKR_RECORDING_CACHE_MAX_BYTES,
+  # 4 GiB default) reach the API through this ingress -> web (nginx) path, so the
+  # ingress-nginx 1 MB default body cap must be lifted or every upload 413s. "0"
+  # defers to the controller's own bounded cap (agent-cache-upload-body.ts). With
+  # the cap lifted, also stream the request body instead of buffering the whole
+  # upload to the ingress pod's disk (proxy-request-buffering off), and raise the
+  # read/send timeouts to comfortably exceed a slow multi-GB upload (3600s,
+  # matching the agent's overall request-timeout default) so a legit slow upload
+  # isn't cut. Override these keys if you run a non-nginx ingress controller.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
   hosts:
     - host: rakkr.local
       paths:
