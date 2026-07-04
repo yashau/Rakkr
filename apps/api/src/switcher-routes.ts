@@ -16,6 +16,7 @@ import type {
   RequirePermission,
 } from "./http-types.js";
 import { switcherSettingsTarget } from "./settings-scope.js";
+import { SwitcherStoreError } from "./switcher-store.js";
 import type { ResolvedSwitcherConnection, SwitcherStore } from "./switcher-store.js";
 import {
   getSwitcherDriver,
@@ -136,7 +137,20 @@ export function registerSwitcherRoutes({
         return c.json({ error: "Invalid switcher", issues: body.error.issues }, 400);
       }
 
-      const created = await switcherStore.create(body.data);
+      let created;
+
+      try {
+        created = await switcherStore.create(body.data);
+      } catch (error) {
+        // A duplicate operator-supplied id is a client error (409). Any other store
+        // error (a genuine DB outage) rethrows to the onError boundary → 503.
+        if (error instanceof SwitcherStoreError) {
+          await recordFailure(c, "settings.switchers.create.failed", error.code, "switcher:manage");
+          return c.json({ error: "Switcher already exists", reason: error.code }, 409);
+        }
+
+        throw error;
+      }
 
       await recordAuditEvent(c, {
         action: "settings.switchers.create.succeeded",

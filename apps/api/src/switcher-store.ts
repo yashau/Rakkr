@@ -16,11 +16,24 @@ import {
   type SwitcherUpdate,
 } from "@rakkr/shared";
 
+import { isPgErrorCode } from "./auth-utils.js";
 import { DatabaseUnavailableError } from "./database-unavailable.js";
 import { decryptSecret, encryptSecret } from "./secret-box.js";
 import type { SwitcherConnection } from "./switchers/index.js";
 
 type SwitcherRow = typeof switchersTable.$inferSelect;
+
+// A client-error the switcher routes map to a 409 (rather than the failover path
+// mislabeling a duplicate-id create as a 503 "database unavailable").
+export class SwitcherStoreError extends Error {
+  constructor(
+    message: string,
+    readonly code: "switcher_exists",
+  ) {
+    super(message);
+    this.name = "SwitcherStoreError";
+  }
+}
 
 // Encrypted control-channel secret material, persisted alongside the config.
 interface StoredSecrets {
@@ -80,6 +93,10 @@ class JsonSwitcherStore implements SwitcherStore {
 
   async create(input: SwitcherCreate) {
     const next = createStored(input);
+
+    if (input.id && this.storedFor(next.switcher.id)) {
+      throw new SwitcherStoreError("Switcher already exists", "switcher_exists");
+    }
 
     this.stored.unshift(next);
     this.persist();
@@ -200,10 +217,27 @@ class PostgresSwitcherStore implements SwitcherStore {
     try {
       const next = createStored(input);
 
+      // An operator-supplied duplicate id is a client error, not a DB outage: reject
+      // it as 409 rather than letting the unique-violation fall through to failover
+      // (which would mislabel it as 503 "database unavailable"). Mirrors room-store.
+      if (input.id && (await this.storedFor(next.switcher.id))) {
+        throw new SwitcherStoreError("Switcher already exists", "switcher_exists");
+      }
+
       await this.db.insert(switchersTable).values(storedToRow(next));
 
       return switcherStatus(next);
     } catch (error) {
+      if (error instanceof SwitcherStoreError) {
+        throw error;
+      }
+
+      // A duplicate id that lost the pre-check race trips the unique constraint
+      // (SQLSTATE 23505) — still a 409, not a DB-outage 503.
+      if (isPgErrorCode(error, "23505")) {
+        throw new SwitcherStoreError("Switcher already exists", "switcher_exists");
+      }
+
       await this.failover("switcher create unavailable; using JSON store", error);
       return this.fallback.create(input);
     }
