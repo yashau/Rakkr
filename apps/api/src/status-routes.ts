@@ -26,6 +26,11 @@ import type { SettingsStore } from "./settings-store.js";
 
 interface StatusRouteDependencies {
   app: Hono<AppBindings>;
+  // Readiness gate for /readyz: resolves true when the controller can serve
+  // traffic (DB reachable, or memory-store mode where there is no DB), false
+  // when a configured database is unreachable. Distinct from /healthz, which is
+  // an unconditional liveness signal.
+  checkDatabaseReady: () => Promise<boolean>;
   currentUser: (c: Context<AppBindings>) => NonNullable<AuthResult["user"]>;
   hasResourceScope: (
     user: NonNullable<AuthResult["user"]>,
@@ -54,6 +59,26 @@ export function registerStatusRoutes(dependencies: StatusRouteDependencies) {
       version: API_VERSION,
     }),
   );
+
+  // Readiness probe target. Unlike /healthz (unconditional liveness), /readyz
+  // reflects whether the controller can actually serve requests: it returns 503
+  // while the backing database is unreachable, so Kubernetes keeps the pod out
+  // of the Service until Postgres is up. Unauthenticated — probes carry no
+  // session.
+  dependencies.app.get("/readyz", async (c) => {
+    const ready = await dependencies.checkDatabaseReady();
+
+    return c.json(
+      {
+        ok: ready,
+        service: "rakkr-api",
+        database: ready ? "ready" : "unreachable",
+        startedAt: dependencies.startedAt.toISOString(),
+        version: API_VERSION,
+      },
+      ready ? 200 : 503,
+    );
+  });
 
   dependencies.app.get(
     "/api/v1/status",

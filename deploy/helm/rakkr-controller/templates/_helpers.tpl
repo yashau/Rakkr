@@ -62,6 +62,20 @@ fast with an actionable message instead of shipping an orphaned database. */}}
 {{- end -}}
 {{- end -}}
 
+{{/* Render-time guard: the opt-in migration Job (migrations.job.enabled) runs as
+a pre-install/pre-upgrade Helm hook, which is applied BEFORE the release's normal
+resources — so the bundled Postgres StatefulSet/Service is not yet up when the
+hook runs and the migration would fail against a non-existent database. The Job
+path is therefore only valid against an external/pre-existing DB. Refuse the
+combo where the Job is enabled while the bundled Postgres is still on; for
+bundled Postgres the default init-container migrate (api.migrateOnStartup) is the
+correct path (it runs after the StatefulSet, inside the pod lifecycle). */}}
+{{- define "rakkr-controller.validateMigrationJob" -}}
+{{- if and .Values.migrations.job.enabled .Values.postgres.enabled -}}
+{{- fail "migrations.job.enabled=true requires postgres.enabled=false: the migration Job is a pre-install/pre-upgrade hook that runs BEFORE the bundled Postgres StatefulSet exists, so it can only target an external/pre-existing database. For the bundled Postgres, use the default init-container migrate (api.migrateOnStartup=true) and leave migrations.job.enabled=false." -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "rakkr-controller.postgresSecretName" -}}
 {{- default (printf "%s-postgres" (include "rakkr-controller.fullname" .)) .Values.postgres.auth.existingSecret -}}
 {{- end -}}

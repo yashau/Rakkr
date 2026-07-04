@@ -73,7 +73,11 @@ export function registerSettingsChannelMapRoutes({
         // A duplicate operator-supplied id is a client conflict (409); any other
         // store error (a genuine DB outage) rethrows to the onError boundary → 503.
         if (error instanceof SettingsStoreError) {
-          await recordSettingsFailure(c, "settings.channel_map_templates.create.failed", error.code);
+          await recordSettingsFailure(
+            c,
+            "settings.channel_map_templates.create.failed",
+            error.code,
+          );
           return c.json({ error: "Channel map template already exists", reason: error.code }, 409);
         }
 

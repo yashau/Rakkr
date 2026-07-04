@@ -719,10 +719,10 @@ test("unrestricted reader who is a DENY subject counts only the events they can 
 
   // Two visible, one DENY-hidden -> data excludes the hidden event, and both the
   // header count and the tiles agree with the scoped visible set.
-  assert.deepEqual(
-    body.data.map((healthEvent) => healthEvent.id).sort(),
-    ["health_visible_a", "health_visible_b"],
-  );
+  assert.deepEqual(body.data.map((healthEvent) => healthEvent.id).sort(), [
+    "health_visible_a",
+    "health_visible_b",
+  ]);
   assert.equal(body.meta.total, 2);
   assert.equal(body.summary.total, 2);
   assert.equal(body.summary.open, 2);

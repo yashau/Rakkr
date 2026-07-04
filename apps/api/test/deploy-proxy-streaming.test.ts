@@ -53,14 +53,20 @@ test("nginx /api location streams the request body to the upstream instead of bu
   );
 
   const readTimeout = /proxy_read_timeout\s+(\S+?);/u.exec(body);
-  assert.ok(readTimeout, "the /api/ location must set proxy_read_timeout for slow streamed uploads");
+  assert.ok(
+    readTimeout,
+    "the /api/ location must set proxy_read_timeout for slow streamed uploads",
+  );
   assert.ok(
     parseNginxDurationSeconds(readTimeout[1]) >= MIN_STREAM_TIMEOUT_SECONDS,
     `proxy_read_timeout (${readTimeout[1]}) must allow a slow multi-GB upload (>= ${MIN_STREAM_TIMEOUT_SECONDS}s)`,
   );
 
   const sendTimeout = /proxy_send_timeout\s+(\S+?);/u.exec(body);
-  assert.ok(sendTimeout, "the /api/ location must set proxy_send_timeout for slow streamed uploads");
+  assert.ok(
+    sendTimeout,
+    "the /api/ location must set proxy_send_timeout for slow streamed uploads",
+  );
   assert.ok(
     parseNginxDurationSeconds(sendTimeout[1]) >= MIN_STREAM_TIMEOUT_SECONDS,
     `proxy_send_timeout (${sendTimeout[1]}) must allow a slow multi-GB upload (>= ${MIN_STREAM_TIMEOUT_SECONDS}s)`,
@@ -73,7 +79,9 @@ test("helm ingress annotates request-buffering off and raised timeouts for strea
     "utf8",
   );
 
-  const buffering = /nginx\.ingress\.kubernetes\.io\/proxy-request-buffering:\s*(\S+)/u.exec(values);
+  const buffering = /nginx\.ingress\.kubernetes\.io\/proxy-request-buffering:\s*(\S+)/u.exec(
+    values,
+  );
   assert.ok(
     buffering,
     "ingress.annotations must set nginx.ingress.kubernetes.io/proxy-request-buffering (else ingress-nginx buffers the whole upload)",
@@ -85,14 +93,20 @@ test("helm ingress annotates request-buffering off and raised timeouts for strea
   );
 
   const readTimeout = /nginx\.ingress\.kubernetes\.io\/proxy-read-timeout:\s*(\S+)/u.exec(values);
-  assert.ok(readTimeout, "ingress.annotations must set nginx.ingress.kubernetes.io/proxy-read-timeout");
+  assert.ok(
+    readTimeout,
+    "ingress.annotations must set nginx.ingress.kubernetes.io/proxy-read-timeout",
+  );
   assert.ok(
     parseNginxDurationSeconds(readTimeout[1]) >= MIN_STREAM_TIMEOUT_SECONDS,
     `ingress proxy-read-timeout (${readTimeout[1]}) must allow a slow multi-GB upload (>= ${MIN_STREAM_TIMEOUT_SECONDS}s)`,
   );
 
   const sendTimeout = /nginx\.ingress\.kubernetes\.io\/proxy-send-timeout:\s*(\S+)/u.exec(values);
-  assert.ok(sendTimeout, "ingress.annotations must set nginx.ingress.kubernetes.io/proxy-send-timeout");
+  assert.ok(
+    sendTimeout,
+    "ingress.annotations must set nginx.ingress.kubernetes.io/proxy-send-timeout",
+  );
   assert.ok(
     parseNginxDurationSeconds(sendTimeout[1]) >= MIN_STREAM_TIMEOUT_SECONDS,
     `ingress proxy-send-timeout (${sendTimeout[1]}) must allow a slow multi-GB upload (>= ${MIN_STREAM_TIMEOUT_SECONDS}s)`,

@@ -333,12 +333,7 @@ test("R28: channel map template create with a duplicate id is a 409 and does not
   const templateId = `channel_map_dup_${randomUUID()}`;
   const original = { ...channelMapInput("Original Template"), id: templateId };
   const impostor = { ...channelMapInput("Impostor Template"), id: templateId };
-  const first = await requestJson(
-    app,
-    "/api/v1/settings/channel-map-templates",
-    "POST",
-    original,
-  );
+  const first = await requestJson(app, "/api/v1/settings/channel-map-templates", "POST", original);
   const conflict = await requestJson(
     app,
     "/api/v1/settings/channel-map-templates",

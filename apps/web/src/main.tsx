@@ -451,7 +451,7 @@ function RouteErrorBoundary({ error, reset }: ErrorComponentProps) {
             use the navigation to move elsewhere, or retry this section.
           </p>
           {detail ? (
-            <p className="font-mono text-xs break-words text-muted-foreground">{detail}</p>
+            <p className="font-mono text-xs wrap-break-word text-muted-foreground">{detail}</p>
           ) : null}
           <Button className="w-fit" onClick={() => reset()} size="sm" variant="outline">
             <RefreshCw className="size-4" />

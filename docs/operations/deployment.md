@@ -279,9 +279,37 @@ migration Job, and — when `postgres.enabled=true` — a Postgres
 StatefulSet/Service/Secret.
 
 Migrations run in an API **init container** by default (`api.migrateOnStartup=true`,
-after a `wait-for-database` probe). For controlled release pipelines, set
-`api.migrateOnStartup=false` and enable the separate Job with
-`migrations.job.enabled=true`. Key values include `api.image`/`web.image`,
-`api.replicaCount`, `api.service.port`, `api.persistence`, `api.env`/`api.secretEnv`,
-`postgres.auth`/`postgres.enabled`, `database.externalUrl`/`existingSecret`, and
-`ingress.*`.
+after a `wait-for-database` probe). For controlled release pipelines against an
+**external / pre-existing database**, enable the separate migration Job with
+`migrations.job.enabled=true`; this also **disables** the API init-container
+migrate (so migrations never run twice), runs its own `wait-for-database` init
+container, and sequences ahead of the API rollout as a
+`pre-install,pre-upgrade` Helm hook. Because that hook runs before the release's
+normal resources, the bundled Postgres StatefulSet is not yet up when it fires —
+so `migrations.job.enabled=true` **requires** `postgres.enabled=false` and the
+chart fails render otherwise. For the bundled Postgres, keep the default
+init-container path (`migrations.job.enabled=false`). Key values include
+`api.image`/`web.image`, `api.replicaCount`, `api.service.port`,
+`api.persistence`, `api.env`/`api.secretEnv`, `postgres.auth`/`postgres.enabled`,
+`database.externalUrl`/`existingSecret`, and `ingress.*`.
+
+### Health probes
+
+The API pod splits its probes by concern. **Liveness** rides `/healthz`, an
+unconditional 200 that only reflects that the process is up — a transient
+database blip must not restart an otherwise-healthy process. **Readiness** rides
+`/readyz`, which returns 503 while Postgres is unreachable and 200 once the
+controller can serve traffic, so Kubernetes keeps the pod out of the Service
+until the database is actually usable. (In memory-store mode — no `DATABASE_URL`
+— `/readyz` is always ready.) The web (nginx) pod's probes both hit an
+nginx-local health location and never proxy to the API.
+
+### Rendering the chart
+
+`mise run helm:check` (part of `mise run check`) renders the chart across every
+`secrets.backend` (`native`/`externalSecrets`/`sealed`) and asserts its
+invariants: the native app Secret carries the full secret key set, the API
+consumes it via `envFrom.secretRef` (no plaintext key material in the pod spec),
+and both render-time `fail` guards (orphaned bundled Postgres; migration Job
+against bundled Postgres) fire for their bad combos. The gate self-skips when
+the `helm` binary is unavailable.

@@ -53,7 +53,11 @@ test(
   () => {
     const { ok, output } = helmTemplate(["postgres.enabled=true"]);
     assert.ok(ok, `bundled-only install must render; got:\n${output}`);
-    assert.match(output, /kind:\s*StatefulSet/u, "bundled install should render the Postgres StatefulSet");
+    assert.match(
+      output,
+      /kind:\s*StatefulSet/u,
+      "bundled install should render the Postgres StatefulSet",
+    );
   },
 );
 

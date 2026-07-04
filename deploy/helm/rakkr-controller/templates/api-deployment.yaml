@@ -62,7 +62,7 @@ spec:
               probe();
           env:
             {{- include "rakkr-controller.databaseEnv" . | nindent 12 }}
-        {{- if .Values.api.migrateOnStartup }}
+        {{- if and .Values.api.migrateOnStartup (not .Values.migrations.job.enabled) }}
         - name: migrate
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
@@ -90,9 +90,13 @@ spec:
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          # Readiness rides /readyz, which returns 503 while Postgres is
+          # unreachable, so the pod stays out of the Service until the DB is
+          # actually usable. Liveness stays on the unconditional /healthz so a
+          # transient DB blip can't crash-loop an otherwise-healthy process.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
