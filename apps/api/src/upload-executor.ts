@@ -37,7 +37,7 @@ interface ProviderUploadResult {
   reason?: string;
 }
 
-interface S3Sender {
+export interface S3Sender {
   send(command: PutObjectCommand): Promise<unknown>;
 }
 

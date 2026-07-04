@@ -144,6 +144,79 @@ test("G57: active items for one destination but different policy/path do not col
   assert.equal(duplicate.id, first.id);
 });
 
+test("R28: re-enqueue after a terminal failure creates a fresh queue item", async () => {
+  const rec = recording("rec_upload_failed_reenqueue");
+  const queued = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-failed-reenqueue",
+    pathOverride: "archive/2026",
+    policyId: "upload-policy-failed-reenqueue",
+    provider: "smb",
+  });
+
+  // Exhaust the attempt budget (maxAttempts=2) so the item is terminally failed.
+  await startUploadQueueItem(queued.id);
+  await failUploadQueueItem(queued.id, "attempt_1");
+  await startUploadQueueItem(queued.id);
+  const failed = await failUploadQueueItem(queued.id, "attempt_2");
+
+  assert.equal(failed?.status, "failed");
+
+  // Re-enqueue the SAME recording+policy+pathOverride. A terminal `failed` item is
+  // not reusable, so a NEW upload item must be created (the old failed row lingers
+  // as a record) rather than silently reusing the stale FAILED one.
+  const reenqueued = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-failed-reenqueue",
+    pathOverride: "archive/2026",
+    policyId: "upload-policy-failed-reenqueue",
+    provider: "smb",
+  });
+
+  assert.notEqual(reenqueued.id, queued.id);
+  assert.equal(reenqueued.status, "queued");
+  assert.equal(
+    (await listUploadQueueItems()).filter((item) => item.recordingId === rec.id).length,
+    2,
+  );
+});
+
+test("R28: an in-flight (queued/retrying) item still dedups a re-enqueue", async () => {
+  const rec = recording("rec_upload_inflight_dedup");
+  const first = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-inflight-dedup",
+    pathOverride: "archive/2026",
+    policyId: "upload-policy-inflight-dedup",
+    provider: "smb",
+  });
+
+  // A `queued` item dedups.
+  const duplicateQueued = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-inflight-dedup",
+    pathOverride: "archive/2026",
+    policyId: "upload-policy-inflight-dedup",
+    provider: "smb",
+  });
+
+  assert.equal(duplicateQueued.id, first.id);
+
+  // A `retrying` (leased/failed-but-retryable) item still dedups.
+  const retrying = await startUploadQueueItem(first.id);
+
+  assert.equal(retrying?.status, "retrying");
+
+  const duplicateRetrying = await enqueueRecordingUpload(rec, {
+    destinationId: "dest-inflight-dedup",
+    pathOverride: "archive/2026",
+    policyId: "upload-policy-inflight-dedup",
+    provider: "smb",
+  });
+
+  assert.equal(duplicateRetrying.id, first.id);
+  assert.equal(
+    (await listUploadQueueItems()).filter((item) => item.recordingId === rec.id).length,
+    1,
+  );
+});
+
 function recording(id = "rec_upload_test"): RecordingSummary {
   return {
     cachePath: `scheduled/${id}.mp3`,

@@ -141,6 +141,59 @@ test("chunk upload without an owning job is rejected instead of persisting an em
   assert.equal(chunks.length, 0);
 });
 
+test("R26: a rendition=raw chunk carrying a chunkTotal does not complete the job or mark cached", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const recorderNode = node();
+  const recordingStore = memoryRecordingStore([recording(recorderNode.id)]);
+  const [sourceRecording] = await recordingStore.list();
+  const job = await createRecordingJob(sourceRecording);
+  await claimRecordingJob(job.id, recorderNode.id);
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore(recorderNode),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore,
+    settingsStore: {} as SettingsStore,
+  });
+
+  // A supplementary raw chunk carrying the total must mirror the whole-recording
+  // path's `!supplementary` gate: it must NOT stamp the total across chunk rows,
+  // mark the recording cached, or complete the capture job. Only the primary
+  // (enhanced) final chunk completes the job.
+  const response = await app.request(
+    `/api/v1/recordings/${sourceRecording.id}/cache-file?chunk=0&chunkTotal=1&rendition=raw`,
+    {
+      body: wavFile([0, 1000, -1000, 500]),
+      headers: {
+        authorization: "Bearer node-token",
+        "content-type": "audio/wav",
+        "x-rakkr-duration-seconds": "2",
+        "x-rakkr-file-name": "chunk-raw.wav",
+        "x-rakkr-recording-job-id": job.id,
+      },
+      method: "PUT",
+    },
+  );
+  const reloadedJob = await recordingJob(job.id);
+  const reloadedRecording = await recordingStore.find(sourceRecording.id);
+  const uploadItems = (await listUploadQueueItems()).filter(
+    (item) => item.recordingId === sourceRecording.id,
+  );
+
+  assert.equal(response.status, 201);
+  // Pre-fix the chunk path completed the job / marked cached on ANY chunkTotal,
+  // regardless of rendition; a supplementary raw chunk must leave the job running
+  // and the recording uncached, and must never fan out an upload.
+  assert.notEqual(reloadedJob?.status, "completed");
+  assert.notEqual(reloadedRecording?.status, "cached");
+  assert.equal(reloadedRecording?.cached ?? false, false);
+  assert.equal(uploadItems.length, 0);
+});
+
 test("G47: cache upload for a terminal-failed job is rejected (no job/recording resurrection)", async () => {
   const app = new Hono<AppBindings>();
   const recorderNode = node();
