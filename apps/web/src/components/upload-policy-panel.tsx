@@ -1,13 +1,13 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadPolicy, UploadPolicyInput, UploadPolicyUpdate } from "@rakkr/shared";
 
+import { Field, Toggle } from "@/components/settings-fields";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -53,8 +53,14 @@ export function UploadPolicyEditor({
   }, [policy]);
 
   return (
-    <div className="grid gap-4">
-      <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid gap-5">
+      {destinations.length === 0 ? (
+        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Add an upload destination first — every policy uploads to a real destination.
+        </p>
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name">
           <Input
             disabled={!canManage}
@@ -79,11 +85,6 @@ export function UploadPolicyEditor({
               ))}
             </SelectContent>
           </Select>
-          {destinations.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Add an upload destination first — every policy uploads to a real destination.
-            </p>
-          ) : null}
         </Field>
         <Field label="Trigger">
           <Select
@@ -116,7 +117,7 @@ export function UploadPolicyEditor({
             value={draft.maxAttempts}
           />
         </Field>
-        <Field label="Subfolder (optional)">
+        <Field className="sm:col-span-2" label="Subfolder (optional)">
           <Input
             disabled={!canManage || !draft.destinationId}
             onChange={(event) =>
@@ -131,42 +132,26 @@ export function UploadPolicyEditor({
         </Field>
       </div>
 
-      <label
-        className="flex h-10 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm"
-        htmlFor={`upload-policy-enabled-${policy.id}`}
-      >
-        <Checkbox
+      <div className="grid gap-2">
+        <Toggle
           checked={draft.enabled}
           disabled={!canManage}
-          id={`upload-policy-enabled-${policy.id}`}
-          onCheckedChange={(value) =>
-            setDraft((current) => ({ ...current, enabled: value === true }))
-          }
+          label="Enabled"
+          onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
         />
-        Enabled
-      </label>
-
-      <label
-        className="flex h-10 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm"
-        htmlFor={`upload-policy-delete-cache-${policy.id}`}
-      >
-        <Checkbox
+        <Toggle
           checked={draft.deleteCacheAfterUpload}
           disabled={!canManage}
-          id={`upload-policy-delete-cache-${policy.id}`}
-          onCheckedChange={(value) =>
-            setDraft((current) => ({
-              ...current,
-              deleteCacheAfterUpload: value === true,
-            }))
+          label="Delete controller cache after confirmed upload"
+          onChange={(deleteCacheAfterUpload) =>
+            setDraft((current) => ({ ...current, deleteCacheAfterUpload }))
           }
         />
-        Delete controller cache after confirmed upload
-      </label>
+      </div>
 
       {mutation.isError ? <p className="text-sm text-destructive">Save failed.</p> : null}
 
-      <div className="flex justify-end">
+      <DialogFooter>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -189,16 +174,7 @@ export function UploadPolicyEditor({
                 : "Select a destination first"}
           </TooltipContent>
         </Tooltip>
-      </div>
-    </div>
-  );
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      {children}
+      </DialogFooter>
     </div>
   );
 }

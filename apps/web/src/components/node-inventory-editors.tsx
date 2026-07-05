@@ -1,4 +1,4 @@
-import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   defaultNodeRecordingCapacity,
@@ -9,6 +9,7 @@ import {
 import { AudioLines, Save, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
+import { Field } from "@/components/settings-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -469,15 +470,6 @@ export function NodeInterfaceEditor({
         <p className="text-sm text-destructive">Interface update failed.</p>
       ) : null}
     </fieldset>
-  );
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      {children}
-    </div>
   );
 }
 

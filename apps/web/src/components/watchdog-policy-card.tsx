@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   defaultScheduledVoiceWatchdogPolicy,
@@ -8,7 +8,9 @@ import {
 import { Gauge, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { Field } from "@/components/settings-fields";
 import { Button } from "@/components/ui/button";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -90,8 +92,8 @@ export function WatchdogPolicyCard({
   }, [calibrationNodeId, nodes]);
 
   return (
-    <div className="grid gap-4">
-      <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid gap-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Name">
           <Input
             disabled={!canManage}
@@ -387,7 +389,7 @@ export function WatchdogPolicyCard({
         </Field>
       </div>
 
-      <div className="mt-4 grid gap-3 rounded-md border border-border bg-muted/20 p-3 md:grid-cols-[1fr_140px_auto] md:items-end">
+      <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:grid-cols-[1fr_140px_auto] sm:items-end">
         <Field label="Calibration Node">
           <Select
             disabled={calibrationAction.disabled}
@@ -443,7 +445,7 @@ export function WatchdogPolicyCard({
         <p className="text-sm text-destructive">Save failed.</p>
       ) : null}
 
-      <div className="flex justify-end">
+      <DialogFooter>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -462,7 +464,7 @@ export function WatchdogPolicyCard({
             {canManage ? "Save watchdog policy" : "Requires settings manage"}
           </TooltipContent>
         </Tooltip>
-      </div>
+      </DialogFooter>
     </div>
   );
 }
@@ -496,15 +498,6 @@ function NumberField({
         value={value}
       />
     </Field>
-  );
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      {children}
-    </label>
   );
 }
 

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   defaultRecordingEnhancement,
@@ -9,10 +9,10 @@ import {
 import { Save, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Field, Toggle } from "@/components/settings-fields";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -62,8 +62,8 @@ export function RecordingProfileSettingsCard({
     }));
 
   return (
-    <div className="grid gap-4">
-      <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid gap-5">
+      <div className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Name">
           <Input
             disabled={!canManage}
@@ -164,15 +164,15 @@ export function RecordingProfileSettingsCard({
         />
       </div>
 
-      <div className="mt-5 border-t border-border pt-4">
-        <div className="mb-3 flex items-center gap-2">
+      <div className="border-t border-border pt-5">
+        <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1">
           <Wand2 className="size-4" />
           <h4 className="text-sm font-semibold">Audio enhancement</h4>
           <span className="text-xs text-muted-foreground">
             Applied to the enhanced rendition; the raw master is kept separately
           </span>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Toggle
             checked={enhancement.denoise.enabled}
             disabled={!canManage}
@@ -301,7 +301,7 @@ export function RecordingProfileSettingsCard({
 
       {mutation.isError ? <p className="text-sm text-destructive">Save failed.</p> : null}
 
-      <div className="flex justify-end">
+      <DialogFooter>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -320,7 +320,7 @@ export function RecordingProfileSettingsCard({
             {canManage ? "Save recording profile" : "Requires settings manage"}
           </TooltipContent>
         </Tooltip>
-      </div>
+      </DialogFooter>
     </div>
   );
 }
@@ -332,36 +332,4 @@ export function defaultRecordingProfileInput(): Omit<RecordingProfile, "id"> {
   const { id: _unusedId, ...rest } = defaultVoiceRecordingProfile;
 
   return { ...rest, name: "New Recording Profile" };
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function Toggle({
-  checked,
-  disabled = false,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex h-10 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm">
-      <Checkbox
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={(value) => onChange(value === true)}
-      />
-      {label}
-    </label>
-  );
 }

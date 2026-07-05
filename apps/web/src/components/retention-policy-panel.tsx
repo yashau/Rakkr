@@ -1,13 +1,13 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 import { toast } from "sonner";
 import type { RetentionPolicy, RetentionPolicyInput, RetentionPolicyUpdate } from "@rakkr/shared";
 
+import { Field, Toggle } from "@/components/settings-fields";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -48,8 +48,8 @@ export function RetentionPolicyEditor({
   }, [policy]);
 
   return (
-    <div className="grid gap-4">
-      <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid gap-5">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name">
           <Input
             disabled={!canManage}
@@ -119,8 +119,8 @@ export function RetentionPolicyEditor({
         />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <BooleanField
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Toggle
           checked={draft.deleteOnlyAfterUploaded}
           disabled={!canManage}
           label="Only after upload"
@@ -128,13 +128,13 @@ export function RetentionPolicyEditor({
             setDraft((current) => ({ ...current, deleteOnlyAfterUploaded }))
           }
         />
-        <BooleanField
+        <Toggle
           checked={draft.preserveTagged}
           disabled={!canManage}
           label="Preserve tagged"
           onChange={(preserveTagged) => setDraft((current) => ({ ...current, preserveTagged }))}
         />
-        <BooleanField
+        <Toggle
           checked={draft.enabled}
           disabled={!canManage}
           label="Enabled"
@@ -144,7 +144,7 @@ export function RetentionPolicyEditor({
 
       {mutation.isError ? <p className="text-sm text-destructive">Save failed.</p> : null}
 
-      <div className="flex justify-end">
+      <DialogFooter>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -163,31 +163,8 @@ export function RetentionPolicyEditor({
             {canManage ? "Save retention policy" : "Requires settings manage"}
           </TooltipContent>
         </Tooltip>
-      </div>
+      </DialogFooter>
     </div>
-  );
-}
-
-function BooleanField({
-  checked,
-  disabled,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  disabled: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex h-10 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm">
-      <Checkbox
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={(value) => onChange(value === true)}
-      />
-      {label}
-    </label>
   );
 }
 
@@ -212,15 +189,6 @@ function NumberField({
         value={value ?? ""}
       />
     </Field>
-  );
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      {children}
-    </div>
   );
 }
 
