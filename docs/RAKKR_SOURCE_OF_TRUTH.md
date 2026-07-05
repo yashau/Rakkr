@@ -1,11 +1,5 @@
 # Rakkr Source Of Truth
 
-![Project](https://img.shields.io/badge/project-Rakkr-2563eb)
-![Status](https://img.shields.io/badge/status-active%20development-f59e0b)
-![Runtime](https://img.shields.io/badge/runtime-Linux%20%2B%20Docker-111827)
-![Agent](https://img.shields.io/badge/agent-Rust-7c2d12)
-![Controller](https://img.shields.io/badge/controller-Hono%20%2B%20React-16a34a)
-
 Rakkr is a centrally managed Linux/Docker audio recorder platform for reliable voice capture across managed recorder nodes.
 
 This document is the **short** source of truth: product intent, non-negotiables, current status, and next work. Granular, machine-checked detail lives in the baseline docs under `docs/internal/baselines/` (each verified by a `scripts/verify-*-baseline.mjs`); deep design notes live in `docs/internal/design/`; operator/architecture docs live under `docs/`. When this document, the code, and a baseline disagree, **the code wins** — fix the docs.
