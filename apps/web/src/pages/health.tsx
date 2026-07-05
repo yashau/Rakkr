@@ -637,7 +637,7 @@ function healthEventColumns({
   if (canManage) {
     columns.push({
       cell: ({ row }) => (
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex justify-end gap-2">
           {healthLifecycleActions(row.original.status).map((action) => (
             <HintButton
               disabled={lifecyclePending}

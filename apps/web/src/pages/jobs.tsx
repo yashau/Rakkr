@@ -634,7 +634,7 @@ function recordingJobColumns({
         const stopAction = recordingJobStopActionState(row.original, canControl);
 
         return (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex justify-end gap-2">
             <Tooltip>
               <TooltipTrigger
                 render={

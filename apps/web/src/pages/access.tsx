@@ -410,7 +410,7 @@ function accessUserColumns({
         const isSelf = user.id === selfId;
 
         return (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex justify-end gap-2">
             <Button onClick={() => onEdit(user)} size="sm" type="button" variant="outline">
               <Pencil className="size-4" />
               Edit access

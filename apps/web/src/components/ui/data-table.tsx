@@ -89,7 +89,10 @@ export function DataTable<TData, TValue>({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className={header.column.columnDef.meta?.headClassName}>
+                <TableHead
+                  key={header.id}
+                  className={cn("whitespace-nowrap", header.column.columnDef.meta?.headClassName)}
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(header.column.columnDef.header, header.getContext())}
@@ -124,7 +127,10 @@ export function DataTable<TData, TValue>({
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className={cell.column.columnDef.meta?.cellClassName}>
+                    <TableCell
+                      key={cell.id}
+                      className={cn("whitespace-nowrap", cell.column.columnDef.meta?.cellClassName)}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

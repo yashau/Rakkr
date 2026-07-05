@@ -228,7 +228,7 @@ function accessGroupColumns({
         const group = row.original;
 
         return (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex justify-end gap-2">
             <Button onClick={() => onEdit(group)} size="sm" type="button" variant="outline">
               <Pencil className="size-4" />
               Edit
