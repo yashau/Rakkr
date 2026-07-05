@@ -46,11 +46,16 @@ queues."*), a policy connects recordings to a destination.
 
 1. Click **New**.
 2. Set:
-   - the **destination** (from step 1) and an optional **subfolder**;
+   - the **destination** (from step 1, **required** — every policy uploads to a
+     real SMB/S3 target) and an optional **subfolder**;
    - the **trigger** — `on_recording_cached` (automatic) or manual;
    - a **retry budget** (max attempts);
    - whether to **delete the controller cache after a confirmed upload**.
 3. Save.
+
+Use **Set default** on a policy to make it the one **pre-selected** for new
+schedules and ad-hoc recordings (it shows a **Default** badge); there is one
+default per type, and leaving it unset means new recordings default to no upload.
 
 Schedules and the ad-hoc start panel carry a **list** of upload policies, so one
 recording can fan out to several destinations as independent queue items —
@@ -75,6 +80,9 @@ caches."*), set cleanup rules. Retention has two sides:
   and free disk.
 
 Cleanup never runs before a confirmed upload.
+
+Use **Set default** on a retention policy to pre-select it for new schedules and
+ad-hoc recordings (it shows a **Default** badge); there is one default per type.
 
 ## See also
 

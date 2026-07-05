@@ -148,8 +148,8 @@ sync. It exports:
   map, and `hasPermission` helpers. See the
   [permissions reference](../reference/permissions.md).
 - **Built-in defaults** used by the fallback/seed layer (default voice profile,
-  stub upload policy, keep-controller-cache retention policy, scheduled-voice
-  watchdog policy).
+  keep-controller-cache retention policy, scheduled-voice watchdog policy, and a
+  test-only stub upload policy that is hidden from the console).
 
 When a database is present, the `permissions`/`roles`/`role_permissions` tables
 persist the same catalog the shared package defines.

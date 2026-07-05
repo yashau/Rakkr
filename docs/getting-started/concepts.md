@@ -129,7 +129,7 @@ correlation IDs, and before/after snapshots where relevant.
 **Cache** — the local copy of a recording on the recorder node and/or the
 controller. Cache retention only runs _after_ a confirmed upload.
 
-**Upload provider / upload queue** — the destinations (`stub`, SMB, S3) and the
+**Upload provider / upload queue** — the destinations (SMB, S3) and the
 retry queue that moves cached recordings to them.
 
 **Node lifecycle action** — an allowlisted remote operation run against a node's

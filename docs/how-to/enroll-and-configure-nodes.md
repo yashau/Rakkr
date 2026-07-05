@@ -14,30 +14,34 @@ and channels, and its live status.
 > **Who can do this:** viewing needs `node:read`; enrolling, configuring, and
 > lifecycle actions need `node:manage`.
 
-## Bring a node online
+### Recommended: low-touch day-0 (from the console)
 
-There are two paths:
+Open **Nodes → Enroll Node** and enter just the node's **identity** (alias,
+hostname, site, room). On save, the dialog mints a single-use **bootstrap token**
+and shows the copy-paste installer one-liner:
 
-### Recommended: low-touch day-0
+```bash
+curl -fsSL https://rakkr.org/agent.sh | sudo sh -s -- \
+  --controller-url https://controller.example:8787 \
+  --bootstrap-token rakkr_bs_… --node-id node_…
+```
 
-Enroll the node, mint one short-lived **bootstrap token**, and let the host
-provision itself — it installs the agent, generates its own SSH identity,
-registers, and receives its controller token, hands-free. Follow
-[Node onboarding](../guides/node-onboarding.md) for the full flow.
+Run it on the fresh Linux host: it installs the latest agent, generates the
+node's own SSH identity, registers, and receives its controller token — hands-free.
+The node then heartbeats and reports its hardware. Until its first contact it
+shows as **provisioning** ("Awaiting first contact") and is kept out of offline
+alerting. See [Node onboarding](../guides/node-onboarding.md) for the full flow.
 
-### By hand
+> **You don't type in hardware.** The agent is the source of truth for hardware:
+> on first startup it reports the real interfaces, and the controller reconciles
+> them — preserving your labels and channel-map assignments, and flagging any
+> removed device as *absent* rather than deleting it.
 
-1. Open **Nodes** and click **Enroll Node**. The **Enroll Recorder Node** dialog
-   creates the node record and a one-time **credential token**.
-2. On the host, start the recorder agent with that token, the node ID, and the
-   controller URL (see the [recorder-agent CLI](../reference/recorder-agent.md)).
-3. The agent heartbeats, reports its hardware, and becomes available for jobs and
-   metering.
+### By hand (advanced)
 
-> **Interfaces are optional at enrollment.** The agent is the source of truth for
-> hardware: on first startup it reports the real interfaces, and the controller
-> reconciles them — preserving your labels and channel-map assignments, and
-> flagging any removed device as *absent* rather than deleting it.
+To provision without the installer, rotate a **controller token** from the node
+card and start the agent yourself with `--controller-url`, `--controller-token`,
+and `--node-id` (see the [recorder-agent CLI](../reference/recorder-agent.md)).
 
 ## Configure a node
 

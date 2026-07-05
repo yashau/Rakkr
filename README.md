@@ -122,11 +122,12 @@ Complete docs live at [docs.rakkr.org](https://docs.rakkr.org/):
 ```text
 apps/api/                 Hono controller API and API tests
 apps/web/                 React/Vite operator console and UI tests
+apps/docs/                Astro/Starlight docs site (renders docs/, served at docs.rakkr.org)
 packages/shared/          Shared TypeScript schemas / contracts
 packages/db/              Drizzle schema, migrations, migration verifier
 crates/recorder-agent/    Rust recorder node agent
-deploy/                   Ansible runner, nginx, Helm chart
-docs/                     Documentation (+ internal verification baselines)
+deploy/                   Ansible runner, bootstrap installer, nginx, Helm chart
+docs/                     Documentation source (+ internal verification baselines)
 fixtures/audio/           Golden speech fixture and metadata
 scripts/                  Gate scripts, smokes, baseline verifiers
 ```

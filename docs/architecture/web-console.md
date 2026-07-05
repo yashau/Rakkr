@@ -17,8 +17,8 @@ control mirrors the same RBAC the API enforces.
 - **React 19 + Vite** with TypeScript.
 - **TanStack Router** for code-defined routing and **TanStack Query** for server
   state (most screens auto-refetch on a short interval).
-- **Tailwind 4** with local shadcn/ui-style primitives (`src/components/ui`) over
-  Radix, `lucide-react` icons, and `sonner` toasts.
+- **Tailwind 4** with local shadcn/ui-style primitives (`src/components/ui`) built
+  on **Base UI** (`@base-ui/react`), `lucide-react` icons, and `sonner` toasts.
 - Shared domain types come from `@rakkr/shared`, so request/response shapes stay
   in sync with the API.
 

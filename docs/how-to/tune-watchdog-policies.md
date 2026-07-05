@@ -31,6 +31,10 @@ thresholds."*).
    - and **loud non-speech audio** (for speech-required policies).
 3. Save.
 
+Use **Set default** on a policy to make it the one **pre-selected** for new
+schedules and ad-hoc recordings (it shows a **Default** badge); there is one
+default per type.
+
 ## Calibrate from real audio
 
 Rather than guessing thresholds, you can **calibrate** a policy from a node's

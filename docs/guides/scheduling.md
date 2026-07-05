@@ -44,6 +44,12 @@ templates, tags, recording profile, capture backend/interface (or node defaults)
 watchdog policy, retention policy, and upload policy. This keeps a room's
 recordings consistent without per-run configuration.
 
+New schedules (and the ad-hoc Start-Recording form) **pre-fill** the recording
+profile, watchdog, retention, and upload policy from whichever the operator has
+marked as **default** in Settings (each list has a "Set default" toggle and a
+"Default" badge). When no default is set, the built-in profile/watchdog/retention
+are used and no upload policy is selected.
+
 Each schedule is bound to a first-class [room](rooms.md), and its assigned
 users/groups auto-populate that room's roster.
 

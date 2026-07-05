@@ -35,6 +35,10 @@ Open **Settings** in the left nav and scroll to **Recording Profiles**
 The built-in default is a voice MP3-VBR profile (~128 kbps). Defaults are
 configuration, never hard-coded — so change them freely.
 
+Use **Set default** on any profile to make it the one **pre-selected** in the
+scheduling and ad-hoc recording forms; it then shows a **Default** badge. There
+is one default per type, so setting a new one clears the previous.
+
 ## Voice enhancement
 
 Each profile also carries a **voice-enhancement chain** that produces an
