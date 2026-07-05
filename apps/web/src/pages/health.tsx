@@ -243,7 +243,7 @@ export function HealthPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           <SummaryTile
             icon={AlertTriangle}
             label="Active Critical"

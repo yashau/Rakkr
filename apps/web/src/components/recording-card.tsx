@@ -361,7 +361,7 @@ export function RecordingCard({
               <>
                 {uploadPolicies.length > 0 ? (
                   <Select onValueChange={setSelectedUploadPolicyId} value={selectedUploadPolicyId}>
-                    <SelectTrigger className="h-9 w-44">
+                    <SelectTrigger className="h-9 w-full sm:w-44">
                       <SelectValue placeholder="Upload policy" />
                     </SelectTrigger>
                     <SelectContent>

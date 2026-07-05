@@ -28,7 +28,9 @@ import { api } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/document-title";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { settingsPagePermissions } from "@/lib/settings-page-helpers";
+import { toneTileClass } from "@/lib/status-colors";
 import { switcherPagePermissions } from "@/lib/switcher-page-helpers";
+import { cn } from "@/lib/utils";
 
 const weekStartDays: WeekStartDay[] = [
   "sunday",
@@ -227,7 +229,12 @@ function SettingsAccessState({ description, title }: { description: string; titl
   return (
     <Card className="rounded-lg p-5 shadow-sm">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+        <div
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-md border",
+            toneTileClass("warning"),
+          )}
+        >
           <ShieldAlert className="size-5" />
         </div>
         <div>
