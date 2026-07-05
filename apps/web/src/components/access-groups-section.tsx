@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { api } from "@/lib/api";
 
 // Group management lives as a section of the Access page. Deleting a group cascades:
@@ -194,8 +195,10 @@ function accessGroupColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium">{row.original.name}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+          <TruncateCell className="max-w-64 font-medium">{row.original.name}</TruncateCell>
+          <TruncateCell className="max-w-64 font-mono text-xs text-muted-foreground">
+            {row.original.id}
+          </TruncateCell>
         </div>
       ),
       header: "Name",
@@ -209,6 +212,7 @@ function accessGroupColumns({
           <span className="text-xs text-muted-foreground">none</span>
         ),
       header: "Description",
+      meta: { truncateClassName: "max-w-80" },
       id: "description",
     },
     {

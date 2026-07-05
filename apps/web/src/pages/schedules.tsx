@@ -24,6 +24,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
@@ -348,16 +349,18 @@ function scheduleColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <Link
-            className="font-medium text-foreground hover:underline"
-            params={{ scheduleId: row.original.id }}
-            to="/schedules/$scheduleId"
-          >
-            {row.original.name}
-          </Link>
-          <div className="text-xs text-muted-foreground">
+          <TruncateCell className="max-w-64">
+            <Link
+              className="font-medium text-foreground hover:underline"
+              params={{ scheduleId: row.original.id }}
+              to="/schedules/$scheduleId"
+            >
+              {row.original.name}
+            </Link>
+          </TruncateCell>
+          <TruncateCell className="max-w-64 text-xs text-muted-foreground">
             {row.original.room} / {row.original.timezone}
-          </div>
+          </TruncateCell>
         </div>
       ),
       header: "Name",
@@ -367,6 +370,7 @@ function scheduleColumns({
       cell: ({ row }) => <span className="text-sm">{nodeLabel(row.original.nodeId, nodes)}</span>,
       header: "Node",
       id: "node",
+      meta: { truncateClassName: "max-w-48" },
     },
     {
       cell: ({ row }) => (
@@ -376,6 +380,7 @@ function scheduleColumns({
       ),
       header: "Recurrence",
       id: "recurrence",
+      meta: { truncateClassName: "max-w-64" },
     },
     {
       cell: ({ row }) => (

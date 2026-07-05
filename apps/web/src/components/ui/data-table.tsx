@@ -20,12 +20,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { cn } from "@/lib/utils";
 
 declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
     cellClassName?: string;
     headClassName?: string;
+    // A `max-w-*` utility sized to the column's likely data. When set, the cell's
+    // content is capped at that width and truncated with an ellipsis plus a hover
+    // tooltip revealing the full value. Leave unset for short columns (badges,
+    // dates, counts), action columns, and multi-line cells that truncate each
+    // line internally with their own TruncateCell.
+    truncateClassName?: string;
   }
 }
 
@@ -126,14 +133,23 @@ export function DataTable<TData, TValue>({
                   data-state={row.getIsSelected() ? "selected" : undefined}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cn("whitespace-nowrap", cell.column.columnDef.meta?.cellClassName)}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const meta = cell.column.columnDef.meta;
+                    const content = flexRender(cell.column.columnDef.cell, cell.getContext());
+
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={cn("whitespace-nowrap", meta?.cellClassName)}
+                      >
+                        {meta?.truncateClassName ? (
+                          <TruncateCell className={meta.truncateClassName}>{content}</TruncateCell>
+                        ) : (
+                          content
+                        )}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
                 {renderExpandedRow && row.getIsExpanded() ? (
                   <TableRow data-expanded="true">

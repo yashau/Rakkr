@@ -50,6 +50,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { toast } from "sonner";
 import { api, type NodeFilters } from "@/lib/api";
 import { formatDateTime, localDateBoundaryIso } from "@/lib/dates";
@@ -393,8 +394,10 @@ function nodeColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium">{row.original.alias}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.hostname}</div>
+          <TruncateCell className="max-w-56 font-medium">{row.original.alias}</TruncateCell>
+          <TruncateCell className="max-w-56 font-mono text-xs text-muted-foreground">
+            {row.original.hostname}
+          </TruncateCell>
         </div>
       ),
       header: "Alias",
@@ -408,6 +411,7 @@ function nodeColumns({
       ),
       header: "Location",
       id: "location",
+      meta: { truncateClassName: "max-w-48" },
     },
     {
       cell: ({ row }) => (
@@ -422,6 +426,7 @@ function nodeColumns({
       cell: ({ row }) => <span className="text-sm">{nodeBackendSummary(row.original)}</span>,
       header: "Backend",
       id: "backend",
+      meta: { truncateClassName: "max-w-48" },
     },
     {
       cell: ({ row }) => (
@@ -437,9 +442,13 @@ function nodeColumns({
     {
       cell: ({ row }) => (
         <div className="text-xs text-muted-foreground">
-          <div className="font-mono">{row.original.ipAddresses.join(", ") || "n/a"}</div>
+          <TruncateCell className="max-w-48 font-mono">
+            {row.original.ipAddresses.join(", ") || "n/a"}
+          </TruncateCell>
           {nodeSerialNumbers(row.original).length > 0 ? (
-            <div className="font-mono">{nodeSerialNumbers(row.original).join(", ")}</div>
+            <TruncateCell className="max-w-48 font-mono">
+              {nodeSerialNumbers(row.original).join(", ")}
+            </TruncateCell>
           ) : null}
         </div>
       ),

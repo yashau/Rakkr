@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { Label } from "@/components/ui/label";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type UserAccessUpdate } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/document-title";
@@ -337,7 +338,7 @@ function accessUserColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium">{row.original.name}</div>
+          <TruncateCell className="max-w-56 font-medium">{row.original.name}</TruncateCell>
           {row.original.id === selfId ? (
             <Badge className="mt-1 bg-transparent" variant="outline">
               you
@@ -354,6 +355,7 @@ function accessUserColumns({
       ),
       header: "Email",
       id: "email",
+      meta: { truncateClassName: "max-w-64" },
     },
     {
       cell: ({ row }) => <Badge variant="secondary">{row.original.provider}</Badge>,
