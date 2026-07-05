@@ -90,6 +90,12 @@ export function SchedulesPage() {
     queryFn: () => api.nodes(nodePickerFilters()),
     queryKey: ["nodes"],
   });
+  const controllerSettingsQuery = useQuery({
+    enabled: actionPermissions.canRead,
+    queryFn: api.controllerSettings,
+    queryKey: ["controller-settings"],
+  });
+  const schedulingDefaults = controllerSettingsQuery.data?.data;
   const nodes = useMemo(() => nodesQuery.data?.data ?? [], [nodesQuery.data?.data]);
   const firstNode = nodes[0];
   const saveScheduleMutation = useMutation({
@@ -287,7 +293,7 @@ export function SchedulesPage() {
 
   function openCreate() {
     setEditingId(undefined);
-    setDraft(defaultDraft(firstNode));
+    setDraft(defaultDraft(firstNode, schedulingDefaults));
     setDialogOpen(true);
   }
 
@@ -300,7 +306,7 @@ export function SchedulesPage() {
   function closeDialog() {
     setDialogOpen(false);
     setEditingId(undefined);
-    setDraft(defaultDraft(firstNode));
+    setDraft(defaultDraft(firstNode, schedulingDefaults));
   }
 
   function submitSchedule() {

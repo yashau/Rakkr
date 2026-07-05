@@ -407,7 +407,9 @@ function nodeColumns({
     {
       cell: ({ row }) => (
         <span className="text-xs whitespace-nowrap text-muted-foreground">
-          {formatDateTime(row.original.lastSeenAt)}
+          {row.original.status === "provisioning"
+            ? "Awaiting first contact"
+            : formatDateTime(row.original.lastSeenAt)}
         </span>
       ),
       header: "Last seen",

@@ -5,7 +5,6 @@ import { DatabaseUnavailableError } from "./database-unavailable.js";
 import {
   defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
-  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
   scheduleRecurrenceSchema,
   scheduleSummarySchema,
@@ -377,9 +376,10 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSummary {
 }
 
 function scheduleUploadPolicyIds(value: unknown) {
-  const ids = stringArray(value);
-
-  return ids.length > 0 ? ids : [defaultStubUploadPolicy.id];
+  // Empty stays empty: a schedule with no upload policy keeps its recording in
+  // the controller cache (per retention). The test-only stub is never injected
+  // here so it cannot surface in the console.
+  return stringArray(value);
 }
 
 function scheduleRecurrence(schedule: ScheduleSummary) {

@@ -314,6 +314,12 @@ export interface NodeEnrollmentResult {
   node: RecorderNode;
 }
 
+export interface NodeBootstrapTokenResult {
+  expiresAt: string;
+  nodeId: string;
+  token: string;
+}
+
 export interface NodeMetadataUpdate {
   alias?: string;
   hostname?: string;
@@ -464,6 +470,14 @@ export const api = {
   enrollNode: (input: NodeEnrollmentInput) =>
     fetchJson<{ data: NodeEnrollmentResult }>("/api/v1/nodes/enroll", {
       body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    }),
+  mintNodeBootstrapToken: (nodeId: string, ttlSeconds?: number) =>
+    fetchJson<{ data: NodeBootstrapTokenResult }>(`/api/v1/nodes/${nodeId}/bootstrap-token`, {
+      body: JSON.stringify(ttlSeconds ? { ttlSeconds } : {}),
       headers: {
         "Content-Type": "application/json",
       },

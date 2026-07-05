@@ -76,5 +76,12 @@ export function registerSettingsControllerRoutes({
 }
 
 function snapshot(settings: ControllerSettings) {
-  return { controllerName: settings.controllerName, weekStartsOn: settings.weekStartsOn };
+  return {
+    controllerName: settings.controllerName,
+    defaultRecordingProfileId: settings.defaultRecordingProfileId,
+    defaultRetentionPolicyId: settings.defaultRetentionPolicyId,
+    defaultUploadPolicyId: settings.defaultUploadPolicyId,
+    defaultWatchdogPolicyId: settings.defaultWatchdogPolicyId,
+    weekStartsOn: settings.weekStartsOn,
+  };
 }

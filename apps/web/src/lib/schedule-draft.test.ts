@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {
+  defaultControllerSettings,
+  defaultKeepControllerCacheRetentionPolicy,
+  defaultScheduledVoiceWatchdogPolicy,
+  defaultVoiceRecordingProfile,
+} from "@rakkr/shared";
 
 import {
   addPauseRangeToDraft,
@@ -8,6 +14,31 @@ import {
   draftToInput,
   scheduleToDraft,
 } from "./schedule-draft";
+
+test("default draft falls back to built-in profile/policies and no upload when unset", () => {
+  const draft = defaultDraft();
+
+  assert.equal(draft.recordingProfileId, defaultVoiceRecordingProfile.id);
+  assert.equal(draft.watchdogPolicyId, defaultScheduledVoiceWatchdogPolicy.id);
+  assert.equal(draft.retentionPolicyId, defaultKeepControllerCacheRetentionPolicy.id);
+  // The test-only stub is never seeded; an unset upload default means no upload.
+  assert.deepEqual(draft.uploadPolicyIds, []);
+});
+
+test("default draft prefers operator-configured scheduling defaults", () => {
+  const draft = defaultDraft(undefined, {
+    ...defaultControllerSettings,
+    defaultRecordingProfileId: "profile_hi_fi",
+    defaultRetentionPolicyId: "retention_30d",
+    defaultUploadPolicyId: "upload_smb_primary",
+    defaultWatchdogPolicyId: "watchdog_strict",
+  });
+
+  assert.equal(draft.recordingProfileId, "profile_hi_fi");
+  assert.equal(draft.watchdogPolicyId, "watchdog_strict");
+  assert.equal(draft.retentionPolicyId, "retention_30d");
+  assert.deepEqual(draft.uploadPolicyIds, ["upload_smb_primary"]);
+});
 
 test("schedule quick phrases produce structured weekly recurrence", () => {
   const draft = defaultDraft();

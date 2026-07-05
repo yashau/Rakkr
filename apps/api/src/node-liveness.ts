@@ -11,6 +11,13 @@ export function deriveNodeStatus(
   now = new Date(),
   offlineAfterSeconds = nodeOfflineAfterSeconds(),
 ): NodeStatus {
+  // A never-provisioned node stays "provisioning" — it has never been online, so
+  // heartbeat-staleness (and offline alerting) does not apply. Its first
+  // heartbeat sets a live status, after which liveness derivation resumes.
+  if (node.status === "provisioning") {
+    return "provisioning";
+  }
+
   return nodeHeartbeatStale(node, now, offlineAfterSeconds) ? "offline" : node.status;
 }
 

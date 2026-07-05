@@ -438,6 +438,31 @@ test("creates and resolves stale node heartbeat health events", async () => {
   assert.equal(resolvedAudits.length, 1);
 });
 
+test("never-provisioned nodes are skipped by the liveness watchdog", async () => {
+  const auditStore = createAuditStore("");
+  const healthEventStore = createHealthEventStore("", []);
+  // Enrolled long ago but never contacted — must not raise an offline alert.
+  const nodes = [node({ lastSeenAt: "2026-06-18T12:00:00.000Z", status: "provisioning" })];
+  const runner = createWatchdogRunner({
+    auditStore,
+    healthEventStore,
+    nodeStore: memoryNodeStore(nodes),
+    recordingStore: memoryRecordingStore([]),
+  });
+
+  const results = await runner.runOnce(new Date("2026-06-18T18:00:00.000Z"));
+  const events = await healthEventStore.list({ nodeId: "node_quality" });
+  const offlineAudits = await auditStore.list({
+    action: "health.watchdog.node_offline.created",
+  });
+
+  const nodeResult = results.find((result) => result.nodeId === "node_quality");
+  assert.equal(nodeResult?.outcome, "skipped");
+  assert.equal(nodeResult?.reason, "node_never_provisioned");
+  assert.equal(events.length, 0);
+  assert.equal(offlineAudits.length, 0);
+});
+
 test("G69: watchdog evaluates operator policies loaded from the settings store", async () => {
   const customPolicy: WatchdogPolicy = { ...watchdogPolicy(), id: "watchdog_policy_custom" };
   const runner = createWatchdogRunner({

@@ -316,6 +316,20 @@
       "when": 1783158169478,
       "tag": "0044_real_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1783256187172,
+      "tag": "0045_breezy_timeslip",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1783257280877,
+      "tag": "0046_brave_firedrake",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,12 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PlusCircle, Save, Sparkles, Trash2 } from "lucide-react";
-import { type AudioInterface, type RecorderNode, type ScheduleDayOfWeek } from "@rakkr/shared";
+import {
+  defaultStubUploadPolicy,
+  type AudioInterface,
+  type RecorderNode,
+  type ScheduleDayOfWeek,
+} from "@rakkr/shared";
 
 import { AssigneeMultiSelect, type AssigneeOption } from "@/components/assignee-multi-select";
 import { ChannelSelectionField } from "@/components/channel-selection-field";
@@ -115,7 +120,10 @@ export function ScheduleFormDialog({
     queryKey: subjectPickerGroupsQueryKey(),
   });
   const retentionPolicies = retentionPoliciesQuery.data?.data ?? [];
-  const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];
+  // The built-in stub is a test-only queue and never appears in the console.
+  const uploadPolicies = (uploadPoliciesQuery.data?.data ?? []).filter(
+    (policy) => policy.id !== defaultStubUploadPolicy.id,
+  );
   const userOptions: AssigneeOption[] = (usersQuery.data?.data ?? []).map((user) => ({
     id: user.id,
     label: user.name,
@@ -351,6 +359,27 @@ export function ScheduleFormDialog({
               </div>
             ) : null}
 
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Assignees</Label>
+              <AssigneeMultiSelect
+                groupOptions={groupOptions}
+                onChange={(next) =>
+                  onDraftChange({
+                    ...draft,
+                    assignedGroupIds: next.groupIds,
+                    assignedUserIds: next.userIds,
+                  })
+                }
+                selectedGroupIds={draft.assignedGroupIds}
+                selectedUserIds={draft.assignedUserIds}
+                userOptions={userOptions}
+              />
+              <p className="text-xs text-muted-foreground">
+                Assigned users and groups get scoped access to this schedule&apos;s room — listen,
+                playback, and operating its recordings — without changing their role.
+              </p>
+            </div>
+
             <div className="flex items-center gap-2 md:col-span-2">
               <Checkbox
                 checked={draft.enabled}
@@ -429,28 +458,6 @@ export function ScheduleFormDialog({
                         />
                       </div>
                     ) : null}
-
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Assignees</Label>
-                      <AssigneeMultiSelect
-                        groupOptions={groupOptions}
-                        onChange={(next) =>
-                          onDraftChange({
-                            ...draft,
-                            assignedGroupIds: next.groupIds,
-                            assignedUserIds: next.userIds,
-                          })
-                        }
-                        selectedGroupIds={draft.assignedGroupIds}
-                        selectedUserIds={draft.assignedUserIds}
-                        userOptions={userOptions}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Assigned users and groups get scoped access to this schedule&apos;s room —
-                        listen, playback, and operating its recordings — without changing their
-                        role.
-                      </p>
-                    </div>
                   </div>
 
                   <div className="grid gap-3">

@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const nodeStatusEnum = pgEnum("node_status", [
+  "provisioning",
   "online",
   "offline",
   "degraded",
@@ -567,6 +568,13 @@ export const recordingProfiles = pgTable("recording_profiles", {
 
 export const controllerSettings = pgTable("controller_settings", {
   controllerName: varchar("controller_name", { length: 160 }).notNull().default("Rakkr Controller"),
+  // Operator-chosen scheduling/ad-hoc defaults; null = no default set (forms
+  // fall back to the built-in profile/policy). Nullable, no FK: a referenced
+  // policy may be deleted, and the forms tolerate a stale id.
+  defaultRecordingProfileId: varchar("default_recording_profile_id", { length: 160 }),
+  defaultRetentionPolicyId: varchar("default_retention_policy_id", { length: 160 }),
+  defaultUploadPolicyId: varchar("default_upload_policy_id", { length: 160 }),
+  defaultWatchdogPolicyId: varchar("default_watchdog_policy_id", { length: 160 }),
   id: varchar("id", { length: 64 }).primaryKey().default("controller"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   weekStartsOn: varchar("week_starts_on", { length: 16 }).notNull().default("monday"),

@@ -18,9 +18,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 
-// Sentinel select value representing the built-in queue-only (no destination) policy.
-const STUB_DESTINATION = "__stub__";
-
 export function UploadPolicyEditor({
   canManage,
   onSaved,
@@ -68,19 +65,13 @@ export function UploadPolicyEditor({
         <Field label="Destination">
           <Select
             disabled={!canManage}
-            onValueChange={(value) =>
-              setDraft((current) => ({
-                ...current,
-                destinationId: value === STUB_DESTINATION ? undefined : value,
-              }))
-            }
-            value={draft.destinationId ?? STUB_DESTINATION}
+            onValueChange={(value) => setDraft((current) => ({ ...current, destinationId: value }))}
+            value={draft.destinationId ?? ""}
           >
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue placeholder="Select a destination" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={STUB_DESTINATION}>Queue only (no upload)</SelectItem>
               {destinations.map((destination) => (
                 <SelectItem key={destination.id} value={destination.id}>
                   {destination.displayName} ({destination.kind.toUpperCase()})
@@ -88,6 +79,11 @@ export function UploadPolicyEditor({
               ))}
             </SelectContent>
           </Select>
+          {destinations.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Add an upload destination first — every policy uploads to a real destination.
+            </p>
+          ) : null}
         </Field>
         <Field label="Trigger">
           <Select
@@ -176,7 +172,7 @@ export function UploadPolicyEditor({
             render={
               <span className="inline-flex">
                 <Button
-                  disabled={mutation.isPending || !canManage}
+                  disabled={mutation.isPending || !canManage || !draft.destinationId}
                   onClick={() => mutation.mutate()}
                 >
                   <Save className="size-4" />
@@ -186,7 +182,11 @@ export function UploadPolicyEditor({
             }
           />
           <TooltipContent>
-            {canManage ? "Save upload policy" : "Requires settings manage"}
+            {!canManage
+              ? "Requires settings manage"
+              : draft.destinationId
+                ? "Save upload policy"
+                : "Select a destination first"}
           </TooltipContent>
         </Tooltip>
       </div>

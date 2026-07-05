@@ -39,7 +39,9 @@ export function nodeInputToRow(input: NodeEnrollmentInput): typeof nodeRows.$inf
       ipAddresses: input.ipAddresses,
     },
     notes: input.notes,
-    status: "offline",
+    // Enrolled but not yet provisioned: excluded from liveness/offline alerting
+    // until the agent's first heartbeat flips it live (see node-liveness).
+    status: "provisioning",
     tags: input.tags,
   };
 }

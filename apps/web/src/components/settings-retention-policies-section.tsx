@@ -10,9 +10,11 @@ import {
   RetentionPolicyEditor,
   defaultRetentionPolicyInput,
 } from "@/components/retention-policy-panel";
+import { DefaultBadge, SetDefaultButton } from "@/components/set-default-control";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import { useSchedulingDefault } from "@/lib/scheduling-defaults";
 import {
   Dialog,
   DialogContent,
@@ -50,8 +52,19 @@ export function SettingsRetentionPoliciesSection({
       setEditing(data);
     },
   });
+  const {
+    defaultId,
+    isPending: isTogglingDefault,
+    toggleDefault,
+  } = useSchedulingDefault("defaultRetentionPolicyId", canRead);
   const policies = policiesQuery.data?.data ?? [];
-  const columns = retentionPolicyColumns({ canManage, onEdit: setEditing });
+  const columns = retentionPolicyColumns({
+    canManage,
+    defaultId,
+    isTogglingDefault,
+    onEdit: setEditing,
+    onToggleDefault: toggleDefault,
+  });
 
   return (
     <div className="grid gap-4">
@@ -114,17 +127,26 @@ export function SettingsRetentionPoliciesSection({
 
 function retentionPolicyColumns({
   canManage,
+  defaultId,
+  isTogglingDefault,
   onEdit,
+  onToggleDefault,
 }: {
   canManage: boolean;
+  defaultId: string | null;
+  isTogglingDefault: boolean;
   onEdit: (policy: RetentionPolicy) => void;
+  onToggleDefault: (id: string) => void;
 }): ColumnDef<RetentionPolicy>[] {
   const columns: ColumnDef<RetentionPolicy>[] = [
     {
       cell: ({ row }) => (
-        <div className="min-w-0">
-          <div className="font-medium text-foreground">{row.original.name}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0">
+            <div className="font-medium text-foreground">{row.original.name}</div>
+            <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+          </div>
+          {row.original.id === defaultId ? <DefaultBadge /> : null}
         </div>
       ),
       header: "Name",
@@ -162,7 +184,13 @@ function retentionPolicyColumns({
 
   columns.push({
     cell: ({ row }) => (
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <SetDefaultButton
+          canManage={canManage}
+          isDefault={row.original.id === defaultId}
+          isPending={isTogglingDefault}
+          onToggle={() => onToggleDefault(row.original.id)}
+        />
         <Button
           disabled={!canManage}
           onClick={() => onEdit(row.original)}

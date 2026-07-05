@@ -23,7 +23,10 @@ all RBAC-gated by `node:read` (view) and `node:manage` (change).
   available, plus per-channel aliases and each channel's owning **room** (assign
   channels to rooms from the node's Configure dialog; a node's channels can be
   split across several rooms, each channel owned by one room).
-- **Status:** `online` / `offline` / `recording` / `degraded` / `alerting`.
+- **Status:** `provisioning` / `online` / `offline` / `recording` / `degraded` /
+  `alerting`. A newly enrolled node stays `provisioning` (shown as "Awaiting
+  first contact") until its first heartbeat — it is **excluded from offline
+  liveness alerting** until then, since it has never been online.
 
 ## Enrolling a node
 
@@ -51,10 +54,11 @@ all agent options.
 ## Heartbeats, liveness, and status
 
 Each heartbeat updates last-seen, status, OS/kernel/runtime, IPs, and audio
-backends. The controller derives **offline** automatically after a missed
-heartbeat threshold (`RAKKR_NODE_OFFLINE_AFTER_SECONDS`, default 120s), and the
-watchdog opens/auto-resolves a central health event when a node goes stale or
-recovers. Node and dashboard UI color-code status and summarize
+backends. A node that has **never** heartbeated stays `provisioning` and is not
+subject to offline derivation. Once it has made contact, the controller derives
+**offline** automatically after a missed heartbeat threshold
+(`RAKKR_NODE_OFFLINE_AFTER_SECONDS`, default 120s), and the watchdog
+opens/auto-resolves a central health event when a node goes stale or recovers. Node and dashboard UI color-code status and summarize
 connectivity/disk/CPU/audio health.
 
 ## Audio inventory

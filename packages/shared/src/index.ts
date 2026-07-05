@@ -32,7 +32,17 @@ export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const audioCaptureBackendSchema = z.enum(["alsa", "jack", "pipewire"]);
 const timeOfDaySchema = z.string().regex(/^\d{2}:\d{2}$/);
 
-export const nodeStatusSchema = z.enum(["online", "offline", "degraded", "recording", "alerting"]);
+// "provisioning" is an enrolled node that has never made contact (no bootstrap,
+// no heartbeat). It is excluded from liveness/offline monitoring until its first
+// heartbeat flips it to a live status — see node-liveness / watchdog-node-liveness.
+export const nodeStatusSchema = z.enum([
+  "provisioning",
+  "online",
+  "offline",
+  "degraded",
+  "recording",
+  "alerting",
+]);
 
 export const healthEventStatusSchema = z.enum(["open", "acknowledged", "suppressed", "resolved"]);
 
@@ -317,11 +327,25 @@ export const weekStartDaySchema = z.enum([
 ]);
 export const controllerSettingsSchema = z.object({
   controllerName: z.string().trim().min(1).max(160),
+  // Operator-chosen defaults that pre-fill the scheduling and ad-hoc recording
+  // forms. `null` means "no default set" (the forms fall back to the built-in
+  // profile/policy). One default per type keeps the "set as default" toggle
+  // single-select without per-policy flags.
+  defaultRecordingProfileId: z.string().trim().min(1).max(160).nullable().default(null),
+  defaultRetentionPolicyId: z.string().trim().min(1).max(160).nullable().default(null),
+  defaultUploadPolicyId: z.string().trim().min(1).max(160).nullable().default(null),
+  defaultWatchdogPolicyId: z.string().trim().min(1).max(160).nullable().default(null),
   weekStartsOn: weekStartDaySchema.default("monday"),
 });
 export const controllerSettingsUpdateSchema = z
   .object({
     controllerName: z.string().trim().min(1).max(160).optional(),
+    // Nullable so an operator can clear a default (send `null`); omitted keeps
+    // the current value.
+    defaultRecordingProfileId: z.string().trim().min(1).max(160).nullable().optional(),
+    defaultRetentionPolicyId: z.string().trim().min(1).max(160).nullable().optional(),
+    defaultUploadPolicyId: z.string().trim().min(1).max(160).nullable().optional(),
+    defaultWatchdogPolicyId: z.string().trim().min(1).max(160).nullable().optional(),
     weekStartsOn: weekStartDaySchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one controller setting is required");
@@ -504,7 +528,7 @@ export const scheduleSummarySchema = z.object({
   tags: z.array(z.string().min(1)),
   timezone: z.string().min(1),
   titleTemplate: z.string().min(1),
-  uploadPolicyIds: z.array(z.string().min(1)).default(["upload-policy-stub"]),
+  uploadPolicyIds: z.array(z.string().min(1)).default([]),
   watchdogPolicyId: z.string().min(1),
 });
 export const scheduleInputSchema = z.object({
@@ -528,7 +552,7 @@ export const scheduleInputSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
   timezone: ianaTimeZoneSchema,
   titleTemplate: z.string().trim().min(1).max(500),
-  uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).default(["upload-policy-stub"]),
+  uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).default([]),
   watchdogPolicyId: z.string().trim().min(1).max(160),
 });
 export const scheduleUpdateSchema = z

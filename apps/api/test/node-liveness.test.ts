@@ -17,6 +17,15 @@ test("stale nodes derive offline status", () => {
   );
 });
 
+test("provisioning nodes never derive offline, however old their enrollment", () => {
+  // A never-provisioned node's lastSeenAt masks to its enrollment time, which
+  // would otherwise look stale; it must stay "provisioning" until first contact.
+  assert.equal(
+    deriveNodeStatus(node({ status: "provisioning" }), new Date("2027-01-01T00:00:00.000Z"), 120),
+    "provisioning",
+  );
+});
+
 test("fresh nodes keep their reported status", () => {
   assert.equal(
     deriveNodeStatus(node({ status: "recording" }), new Date("2026-06-18T12:02:59.000Z"), 180),

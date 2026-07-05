@@ -3,6 +3,8 @@ import test from "node:test";
 import type { Permission } from "@rakkr/shared";
 
 import {
+  AGENT_INSTALL_SCRIPT_URL,
+  buildAgentInstallCommand,
   defaultNodeHealthSuppressedUntil,
   listenMonitorModeLabel,
   listenMonitorPollInterval,
@@ -57,6 +59,41 @@ test("node page action permissions split listen and management actions", () => {
     canListen: false,
     canManage: true,
   });
+});
+
+test("agent install command mirrors the documented day-0 one-liner", () => {
+  const command = buildAgentInstallCommand({
+    bootstrapToken: "rakkr_bs_abc123",
+    controllerUrl: "https://controller.example:8787",
+    nodeId: "node_42",
+    room: "Studio A",
+    site: "HQ",
+  });
+
+  // Pulls the official installer (not a hand-typed inventory) and runs the
+  // single-use token via the documented flags.
+  assert.match(command, /^curl -fsSL https:\/\/rakkr\.org\/agent\.sh \| sudo sh -s --/u);
+  assert.ok(command.includes("--controller-url https://controller.example:8787"));
+  assert.ok(command.includes("--bootstrap-token rakkr_bs_abc123"));
+  assert.ok(command.includes("--node-id node_42"));
+  // Free-text site/room are POSIX single-quoted so spaces survive `sh -s --`.
+  assert.ok(command.includes("--site 'HQ'"));
+  assert.ok(command.includes("--room 'Studio A'"));
+});
+
+test("agent install command escapes embedded quotes in room/site names", () => {
+  const command = buildAgentInstallCommand({
+    bootstrapToken: "rakkr_bs_x",
+    controllerUrl: "https://c",
+    installScriptUrl: AGENT_INSTALL_SCRIPT_URL,
+    nodeId: "node_x",
+    room: "O'Brien Hall",
+    site: "HQ",
+  });
+
+  // A single quote inside the value closes/escapes/reopens the quoted string:
+  // O'Brien -> 'O'\''Brien Hall'
+  assert.ok(command.includes(`--room 'O'\\''Brien Hall'`));
 });
 
 test("node token rotation titles explain permission and persistence state", () => {

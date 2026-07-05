@@ -1,0 +1,1 @@
+ALTER TYPE "public"."node_status" ADD VALUE 'provisioning' BEFORE 'online';
