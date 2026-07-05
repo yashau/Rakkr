@@ -15,6 +15,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import {
   Select,
   SelectContent,
@@ -73,8 +74,10 @@ const auditColumns: ColumnDef<AuditEvent>[] = [
   {
     cell: ({ row }) => (
       <div>
-        <div className="font-medium">{row.original.actor.name}</div>
-        <div className="text-xs text-muted-foreground">{row.original.actor.roles.join(", ")}</div>
+        <TruncateCell className="max-w-48 font-medium">{row.original.actor.name}</TruncateCell>
+        <TruncateCell className="max-w-48 text-xs text-muted-foreground">
+          {row.original.actor.roles.join(", ")}
+        </TruncateCell>
       </div>
     ),
     header: "Actor",
@@ -84,6 +87,7 @@ const auditColumns: ColumnDef<AuditEvent>[] = [
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.action}</span>,
     header: "Action",
     id: "action",
+    meta: { truncateClassName: "max-w-56" },
   },
   {
     cell: ({ row }) => (
@@ -91,14 +95,17 @@ const auditColumns: ColumnDef<AuditEvent>[] = [
     ),
     header: "Permission",
     id: "permission",
+    meta: { truncateClassName: "max-w-48" },
   },
   {
     cell: ({ row }) => (
       <div>
-        <div className="font-medium">
+        <TruncateCell className="max-w-56 font-medium">
           {row.original.target.name ?? row.original.target.id ?? row.original.target.type}
-        </div>
-        <div className="text-xs text-muted-foreground">{row.original.target.type}</div>
+        </TruncateCell>
+        <TruncateCell className="max-w-56 text-xs text-muted-foreground">
+          {row.original.target.type}
+        </TruncateCell>
       </div>
     ),
     header: "Target",
@@ -121,6 +128,7 @@ const auditColumns: ColumnDef<AuditEvent>[] = [
     ),
     header: "Reason",
     id: "reason",
+    meta: { truncateClassName: "max-w-64" },
   },
   {
     cell: ({ row }) => {

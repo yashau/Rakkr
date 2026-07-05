@@ -23,6 +23,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import {
   Select,
   SelectContent,
@@ -242,7 +243,7 @@ export function HealthPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           <SummaryTile
             icon={AlertTriangle}
             label="Active Critical"
@@ -592,8 +593,12 @@ function healthEventColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium">{readableHealthEventType(row.original.type)}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+          <TruncateCell className="max-w-64 font-medium">
+            {readableHealthEventType(row.original.type)}
+          </TruncateCell>
+          <TruncateCell className="max-w-64 font-mono text-xs text-muted-foreground">
+            {row.original.id}
+          </TruncateCell>
         </div>
       ),
       header: "Type",
@@ -631,13 +636,14 @@ function healthEventColumns({
       ),
       header: "Target",
       id: "target",
+      meta: { truncateClassName: "max-w-56" },
     },
   ];
 
   if (canManage) {
     columns.push({
       cell: ({ row }) => (
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex justify-end gap-2">
           {healthLifecycleActions(row.original.status).map((action) => (
             <HintButton
               disabled={lifecyclePending}

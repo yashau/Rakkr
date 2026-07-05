@@ -29,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import {
   Dialog,
   DialogContent,
@@ -615,8 +616,12 @@ function uploadDestinationColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium text-foreground">{row.original.displayName}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+          <TruncateCell className="max-w-64 font-medium text-foreground">
+            {row.original.displayName}
+          </TruncateCell>
+          <TruncateCell className="max-w-64 font-mono text-xs text-muted-foreground">
+            {row.original.id}
+          </TruncateCell>
         </div>
       ),
       header: "Name",
@@ -635,6 +640,7 @@ function uploadDestinationColumns({
       ),
       header: "Target",
       id: "target",
+      meta: { truncateClassName: "max-w-64" },
     },
     {
       cell: ({ row }) => (

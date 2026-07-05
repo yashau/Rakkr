@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/document-title";
@@ -225,13 +226,15 @@ function roomColumns(): ColumnDef<Room>[] {
   return [
     {
       cell: ({ row }) => (
-        <Link
-          className="font-medium text-foreground hover:underline"
-          params={{ roomId: row.original.id }}
-          to="/rooms/$roomId"
-        >
-          {row.original.name}
-        </Link>
+        <TruncateCell className="max-w-72">
+          <Link
+            className="font-medium text-foreground hover:underline"
+            params={{ roomId: row.original.id }}
+            to="/rooms/$roomId"
+          >
+            {row.original.name}
+          </Link>
+        </TruncateCell>
       ),
       header: "Name",
       id: "name",
@@ -240,6 +243,7 @@ function roomColumns(): ColumnDef<Room>[] {
       cell: ({ row }) => <span className="text-sm">{row.original.site}</span>,
       header: "Site",
       id: "site",
+      meta: { truncateClassName: "max-w-48" },
     },
     {
       cell: ({ row }) => (
@@ -247,6 +251,7 @@ function roomColumns(): ColumnDef<Room>[] {
       ),
       header: "Building / Floor",
       id: "building-floor",
+      meta: { truncateClassName: "max-w-56" },
     },
     {
       cell: ({ row }) => (

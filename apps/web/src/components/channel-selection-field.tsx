@@ -18,7 +18,7 @@ const channelModes: { label: string; value: ChannelMode }[] = [
   { label: "Multichannel", value: "multichannel" },
 ];
 
-const modeSelectClassName = "w-44 min-w-0";
+const modeSelectClassName = "w-full min-w-0 sm:w-44";
 
 export interface ChannelSelectionValue {
   channels: number[];

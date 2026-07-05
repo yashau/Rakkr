@@ -27,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import {
   Dialog,
   DialogContent,
@@ -687,10 +688,12 @@ function switcherColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium text-foreground">{row.original.displayName}</div>
-          <div className="font-mono text-xs text-muted-foreground">
+          <TruncateCell className="max-w-64 font-medium text-foreground">
+            {row.original.displayName}
+          </TruncateCell>
+          <TruncateCell className="max-w-64 font-mono text-xs text-muted-foreground">
             {row.original.host}:{row.original.port}
-          </div>
+          </TruncateCell>
         </div>
       ),
       header: "Name",

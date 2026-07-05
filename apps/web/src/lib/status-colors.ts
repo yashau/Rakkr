@@ -1,6 +1,31 @@
 export type StatusTone = "critical" | "healthy" | "info" | "neutral" | "warning";
 
 /**
+ * Standalone text/icon color by status tone (no background or border). Use for
+ * status icons and inline accents instead of hardcoding `text-emerald-600`
+ * ladders, so tones stay consistent with the badge/tile/fill variants.
+ */
+export function toneTextClass(tone: StatusTone): string {
+  if (tone === "critical") {
+    return "text-rose-600 dark:text-rose-400";
+  }
+
+  if (tone === "warning") {
+    return "text-amber-600 dark:text-amber-400";
+  }
+
+  if (tone === "healthy") {
+    return "text-emerald-600 dark:text-emerald-400";
+  }
+
+  if (tone === "info") {
+    return "text-sky-600 dark:text-sky-400";
+  }
+
+  return "text-muted-foreground";
+}
+
+/**
  * Canonical outline-badge color classes by status tone. Centralizes the
  * rose/amber/emerald/sky/slate ladders that were previously re-declared across
  * many components so status colors stay consistent app-wide.

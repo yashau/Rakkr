@@ -14,6 +14,7 @@ import { DefaultBadge, SetDefaultButton } from "@/components/set-default-control
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { useSchedulingDefault } from "@/lib/scheduling-defaults";
 import {
   Dialog,
@@ -143,8 +144,12 @@ function retentionPolicyColumns({
       cell: ({ row }) => (
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0">
-            <div className="font-medium text-foreground">{row.original.name}</div>
-            <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+            <TruncateCell className="max-w-64 font-medium text-foreground">
+              {row.original.name}
+            </TruncateCell>
+            <TruncateCell className="max-w-64 font-mono text-xs text-muted-foreground">
+              {row.original.id}
+            </TruncateCell>
           </div>
           {row.original.id === defaultId ? <DefaultBadge /> : null}
         </div>

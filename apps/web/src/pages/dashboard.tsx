@@ -33,7 +33,8 @@ import { healthEventTargetLabel, readableHealthEventType } from "@/lib/health-pa
 import { recordingJobStatusClass, recordingJobStopActionState } from "@/lib/jobs-page-helpers";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
-import { toneBadgeClass } from "@/lib/status-colors";
+import { toneBadgeClass, toneTextClass } from "@/lib/status-colors";
+import { cn } from "@/lib/utils";
 
 export function DashboardPage() {
   useDocumentTitle("Dashboard");
@@ -127,9 +128,9 @@ export function DashboardPage() {
 
   return (
     <div className="grid gap-5">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard
-          icon={<CheckCircle2 className="size-7 text-emerald-600 dark:text-emerald-400" />}
+          icon={<CheckCircle2 className={cn("size-7", toneTextClass("healthy"))} />}
           label="Online nodes"
           to="/nodes"
           value={`${status?.onlineNodes ?? 0}/${status?.nodeCount ?? 0}`}
@@ -147,7 +148,7 @@ export function DashboardPage() {
           value={String(status?.cachedRecordings ?? 0)}
         />
         <StatCard
-          icon={<AlertTriangle className="size-7 text-amber-600 dark:text-amber-400" />}
+          icon={<AlertTriangle className={cn("size-7", toneTextClass("warning"))} />}
           label="Critical alerts"
           to="/health"
           value={String(status?.criticalAlerts ?? 0)}
@@ -281,7 +282,7 @@ export function DashboardPage() {
                     : "Health events unavailable"}
                 </p>
               </div>
-              <AlertTriangle className="size-5 text-amber-600 dark:text-amber-400" />
+              <AlertTriangle className={cn("size-5", toneTextClass("warning"))} />
             </div>
 
             {!pagePermissions.canReadHealth ? (

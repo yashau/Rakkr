@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DatePicker } from "@/components/ui/date-picker";
+import { TruncateCell } from "@/components/ui/truncate-cell";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -244,7 +245,7 @@ export function JobsPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           <SummaryTile icon={Clock3} label="Active" tone="active" value={summary.active} />
           <SummaryTile icon={ListChecks} label="Queued" tone="neutral" value={summary.queued} />
           <SummaryTile
@@ -580,10 +581,16 @@ function recordingJobColumns({
     {
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium">{recordingJobRelationshipLabel(row.original, lookups)}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+          <TruncateCell className="max-w-72 font-medium">
+            {recordingJobRelationshipLabel(row.original, lookups)}
+          </TruncateCell>
+          <TruncateCell className="max-w-72 font-mono text-xs text-muted-foreground">
+            {row.original.id}
+          </TruncateCell>
           {row.original.failureReason ? (
-            <p className="mt-1 text-sm text-destructive">{row.original.failureReason}</p>
+            <TruncateCell className="mt-1 max-w-72 text-sm text-destructive">
+              {row.original.failureReason}
+            </TruncateCell>
           ) : null}
         </div>
       ),
@@ -634,7 +641,7 @@ function recordingJobColumns({
         const stopAction = recordingJobStopActionState(row.original, canControl);
 
         return (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex justify-end gap-2">
             <Tooltip>
               <TooltipTrigger
                 render={
