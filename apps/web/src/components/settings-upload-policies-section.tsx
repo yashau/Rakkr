@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import type { UploadPolicy } from "@rakkr/shared";
+import { defaultStubUploadPolicy, type UploadPolicy } from "@rakkr/shared";
 import { Pencil, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { HintButton } from "@/components/hint-button";
+import { SetDefaultButton, DefaultBadge } from "@/components/set-default-control";
 import { UploadPolicyEditor, defaultUploadPolicyInput } from "@/components/upload-policy-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import { useSchedulingDefault } from "@/lib/scheduling-defaults";
 import {
   Dialog,
   DialogContent,
@@ -47,8 +49,22 @@ export function SettingsUploadPoliciesSection({
       setEditing(data);
     },
   });
-  const policies = policiesQuery.data?.data ?? [];
-  const columns = uploadPolicyColumns({ canManage, onEdit: setEditing });
+  const {
+    defaultId,
+    isPending: isTogglingDefault,
+    toggleDefault,
+  } = useSchedulingDefault("defaultUploadPolicyId", canRead);
+  // The built-in stub is a test-only queue and never appears in the console.
+  const policies = (policiesQuery.data?.data ?? []).filter(
+    (policy) => policy.id !== defaultStubUploadPolicy.id,
+  );
+  const columns = uploadPolicyColumns({
+    canManage,
+    defaultId,
+    isTogglingDefault,
+    onEdit: setEditing,
+    onToggleDefault: toggleDefault,
+  });
 
   return (
     <div className="grid gap-4">
@@ -111,17 +127,26 @@ export function SettingsUploadPoliciesSection({
 
 function uploadPolicyColumns({
   canManage,
+  defaultId,
+  isTogglingDefault,
   onEdit,
+  onToggleDefault,
 }: {
   canManage: boolean;
+  defaultId: string | null;
+  isTogglingDefault: boolean;
   onEdit: (policy: UploadPolicy) => void;
+  onToggleDefault: (id: string) => void;
 }): ColumnDef<UploadPolicy>[] {
   const columns: ColumnDef<UploadPolicy>[] = [
     {
       cell: ({ row }) => (
-        <div className="min-w-0">
-          <div className="font-medium text-foreground">{row.original.name}</div>
-          <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0">
+            <div className="font-medium text-foreground">{row.original.name}</div>
+            <div className="font-mono text-xs text-muted-foreground">{row.original.id}</div>
+          </div>
+          {row.original.id === defaultId ? <DefaultBadge /> : null}
         </div>
       ),
       header: "Name",
@@ -159,7 +184,13 @@ function uploadPolicyColumns({
 
   columns.push({
     cell: ({ row }) => (
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <SetDefaultButton
+          canManage={canManage}
+          isDefault={row.original.id === defaultId}
+          isPending={isTogglingDefault}
+          onToggle={() => onToggleDefault(row.original.id)}
+        />
         <Button
           disabled={!canManage}
           onClick={() => onEdit(row.original)}

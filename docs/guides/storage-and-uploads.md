@@ -50,7 +50,8 @@ from the destination configuration.
 
 ## Upload policies
 
-A policy selects a **destination** (or the built-in queue-only stub), an optional
+A policy selects a **destination** (a real SMB or S3 target — every policy uploads
+somewhere), an optional
 **subfolder** appended to the destination's path/prefix, the trigger
 (`on_recording_cached` or manual), a retry budget (`maxAttempts`), and whether to
 **delete the controller cache after a confirmed upload**. Schedules and the manual

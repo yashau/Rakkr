@@ -1,10 +1,10 @@
 import {
   defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
-  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
   type AuditEvent,
   type ChannelMode,
+  type ControllerSettings,
   type RecorderNode,
   type ScheduleDayOfWeek,
   type ScheduleInput,
@@ -62,7 +62,11 @@ export const dayOptions: Array<{ id: ScheduleDayOfWeek; label: string }> = [
 ];
 const weekdayDays: ScheduleDayOfWeek[] = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 
-export function defaultDraft(node?: RecorderNode): ScheduleDraft {
+// Operator-configured scheduling defaults (from controller settings) win; when
+// unset each profile/policy falls back to its built-in. Upload has no built-in
+// fallback — an unset upload default means "no upload" (recording stays in the
+// controller cache), so the test-only stub never seeds a real schedule.
+export function defaultDraft(node?: RecorderNode, defaults?: ControllerSettings): ScheduleDraft {
   return {
     assignedGroupIds: [],
     assignedUserIds: [],
@@ -85,8 +89,9 @@ export function defaultDraft(node?: RecorderNode): ScheduleDraft {
     pauseStartDate: "",
     recurrenceMode: "once",
     recurrenceStartAt: "",
-    recordingProfileId: defaultVoiceRecordingProfile.id,
-    retentionPolicyId: defaultKeepControllerCacheRetentionPolicy.id,
+    recordingProfileId: defaults?.defaultRecordingProfileId ?? defaultVoiceRecordingProfile.id,
+    retentionPolicyId:
+      defaults?.defaultRetentionPolicyId ?? defaultKeepControllerCacheRetentionPolicy.id,
     room: node?.location.room ?? "",
     startTime: "09:00",
     startEarlyMinutes: 0,
@@ -94,8 +99,8 @@ export function defaultDraft(node?: RecorderNode): ScheduleDraft {
     tags: "voice, scheduled",
     timezone: fallbackTimezone,
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
-    uploadPolicyIds: [defaultStubUploadPolicy.id],
-    watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
+    uploadPolicyIds: defaults?.defaultUploadPolicyId ? [defaults.defaultUploadPolicyId] : [],
+    watchdogPolicyId: defaults?.defaultWatchdogPolicyId ?? defaultScheduledVoiceWatchdogPolicy.id,
   };
 }
 

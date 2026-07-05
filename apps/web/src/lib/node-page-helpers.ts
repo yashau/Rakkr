@@ -118,6 +118,57 @@ export function nodeFilterChips(filters: NodeFilters): ActiveNodeFilterChip[] {
   });
 }
 
+/**
+ * Official day-0 installer, published at `rakkr.org/agent.sh` and mirrored by
+ * `deploy/bootstrap/agent.sh`. It downloads the latest checksum-verified agent
+ * for the host's architecture and runs `--bootstrap`. See the Node onboarding
+ * guide (`docs/guides/node-onboarding.md`).
+ */
+export const AGENT_INSTALL_SCRIPT_URL = "https://rakkr.org/agent.sh";
+
+export interface AgentInstallCommandInput {
+  bootstrapToken: string;
+  controllerUrl: string;
+  installScriptUrl?: string;
+  nodeId: string;
+  room: string;
+  site: string;
+}
+
+/**
+ * Build the one-liner an operator pastes onto a fresh Linux host to bring a
+ * recorder node online. It pulls the official installer, which fetches the
+ * latest agent and runs the single-use bootstrap token. No interface/hardware
+ * details are entered by hand — the agent reports real hardware on first
+ * contact and the controller reconciles it. Mirrors the documented command in
+ * `docs/guides/node-onboarding.md`.
+ */
+export function buildAgentInstallCommand({
+  bootstrapToken,
+  controllerUrl,
+  installScriptUrl = AGENT_INSTALL_SCRIPT_URL,
+  nodeId,
+  room,
+  site,
+}: AgentInstallCommandInput): string {
+  return [
+    `curl -fsSL ${installScriptUrl} | sudo sh -s --`,
+    `--controller-url ${controllerUrl}`,
+    `--bootstrap-token ${bootstrapToken}`,
+    `--node-id ${nodeId}`,
+    `--site ${shellQuoteArg(site)}`,
+    `--room ${shellQuoteArg(room)}`,
+  ].join(" \\\n  ");
+}
+
+/**
+ * POSIX single-quote a value so free-text site/room names with spaces or shell
+ * metacharacters survive intact through `sh -s --`.
+ */
+function shellQuoteArg(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 export function rotateNodeTokenTitle(canManage: boolean, isPersistedNode: boolean) {
   if (!canManage) {
     return "Requires node manage";

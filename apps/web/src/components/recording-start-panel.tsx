@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AudioLines } from "lucide-react";
-import { useState } from "react";
-import type { AudioInterface, RecorderNode, RecordingProfile, UploadPolicy } from "@rakkr/shared";
+import { useEffect, useRef, useState } from "react";
+import {
+  defaultStubUploadPolicy,
+  type AudioInterface,
+  type RecorderNode,
+  type RecordingProfile,
+  type UploadPolicy,
+} from "@rakkr/shared";
 
 import { ChannelSelectionField } from "@/components/channel-selection-field";
 import { Button } from "@/components/ui/button";
@@ -60,6 +66,11 @@ export function RecordingStartPanel({
     queryFn: api.uploadPolicies,
     queryKey: ["upload-policies"],
   });
+  const controllerSettingsQuery = useQuery({
+    enabled: canReadSettings,
+    queryFn: api.controllerSettings,
+    queryKey: ["controller-settings"],
+  });
   const startMutation = useMutation({
     mutationFn: api.startRecording,
     onError: () =>
@@ -81,11 +92,41 @@ export function RecordingStartPanel({
   });
   const nodes = nodesQuery.data?.data ?? emptyNodes;
   const recordingProfiles = recordingProfilesQuery.data?.data ?? emptyRecordingProfiles;
-  const uploadPolicies = uploadPoliciesQuery.data?.data ?? emptyUploadPolicies;
+  // The built-in stub is a test-only queue and never appears in the console.
+  const uploadPolicies = (uploadPoliciesQuery.data?.data ?? emptyUploadPolicies).filter(
+    (policy) => policy.id !== defaultStubUploadPolicy.id,
+  );
+  const settings = controllerSettingsQuery.data?.data;
+  const defaultProfileId =
+    settings?.defaultRecordingProfileId &&
+    recordingProfiles.some((profile) => profile.id === settings.defaultRecordingProfileId)
+      ? settings.defaultRecordingProfileId
+      : "";
   const fixedNode = nodes.find((node) => node.id === fixedNodeId);
   const selectedNodeId = fixedNode?.id || draft.nodeId || nodes[0]?.id || "";
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
-  const selectedRecordingProfileId = draft.recordingProfileId || recordingProfiles[0]?.id || "";
+  const selectedRecordingProfileId =
+    draft.recordingProfileId || defaultProfileId || recordingProfiles[0]?.id || "";
+
+  // Seed the operator's default upload policy once the settings + policy list
+  // load, without clobbering a selection the operator has already made.
+  const seededUploadDefault = useRef(false);
+  useEffect(() => {
+    if (seededUploadDefault.current || !settings) {
+      return;
+    }
+
+    const defaultUploadId = settings.defaultUploadPolicyId;
+
+    if (defaultUploadId && uploadPolicies.some((policy) => policy.id === defaultUploadId)) {
+      seededUploadDefault.current = true;
+      setDraft((current) =>
+        current.uploadPolicyIds.length > 0
+          ? current
+          : { ...current, uploadPolicyIds: [defaultUploadId] },
+      );
+    }
+  }, [settings, uploadPolicies]);
 
   return (
     <form

@@ -1,7 +1,6 @@
 import {
   defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
-  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
   type MeterFrame,
   type RecorderNode,
@@ -83,7 +82,7 @@ export const schedules: ScheduleSummary[] = [
     tags: ["scheduled", "voice"],
     timezone: "Indian/Maldives",
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
-    uploadPolicyIds: [defaultStubUploadPolicy.id],
+    uploadPolicyIds: [],
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];
@@ -108,7 +107,7 @@ export const recordings: RecordingSummary[] = [
       "Call to order and roll call.",
       "Motion approved for the June finance packet.",
     ],
-    uploadPolicyIds: [defaultStubUploadPolicy.id],
+    uploadPolicyIds: [],
     watchdogPolicyId: defaultScheduledVoiceWatchdogPolicy.id,
   },
 ];

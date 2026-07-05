@@ -23,13 +23,26 @@ all RBAC-gated by `node:read` (view) and `node:manage` (change).
   available, plus per-channel aliases and each channel's owning **room** (assign
   channels to rooms from the node's Configure dialog; a node's channels can be
   split across several rooms, each channel owned by one room).
-- **Status:** `online` / `offline` / `recording` / `degraded` / `alerting`.
+- **Status:** `provisioning` / `online` / `offline` / `recording` / `degraded` /
+  `alerting`. A newly enrolled node stays `provisioning` (shown as "Awaiting
+  first contact") until its first heartbeat — it is **excluded from offline
+  liveness alerting** until then, since it has never been online.
 
 ## Enrolling a node
 
-From **Nodes → Enroll Recorder Node** (`node:manage`), enroll a node to create its
-record and a one-time **credential token**. Configure the agent with that token
-and the node ID, point it at the controller, and start it:
+From **Nodes → Enroll Recorder Node** (`node:manage`), enter just the node's
+**identity** (alias, hostname, site, room) — **interfaces are not entered by
+hand**. On save the dialog mints a single-use **bootstrap token** and shows the
+copy-paste [`rakkr.org/agent.sh`](node-onboarding.md) installer one-liner. Run it
+on the fresh host and the node installs the agent, registers, and provisions
+itself hands-free — see [Node onboarding](node-onboarding.md) for the full flow.
+
+Until its first contact the node stays **provisioning** ("Awaiting first
+contact") and is excluded from offline alerting. Once the agent heartbeats it
+reports its real hardware, goes live, and becomes available for jobs and metering.
+
+To provision without the installer, rotate a **controller token** from the node
+card and start the agent yourself:
 
 ```powershell
 cargo run -p rakkr-recorder-agent -- `
@@ -38,23 +51,17 @@ cargo run -p rakkr-recorder-agent -- `
   --node-id <node-id>
 ```
 
-The agent then heartbeats, reports inventory, and becomes available for jobs and
-metering. Rotate the token any time from the node card; rotation revokes the old
-credential. See the [recorder agent reference](../reference/recorder-agent.md) for
-all agent options.
-
-> **Low-touch day-0?** For a brand-new host, prefer [Node onboarding](node-onboarding.md):
-> mint a single bootstrap token and the node provisions itself (generates its own
-> SSH key, registers, and receives its controller token). **Interfaces are
-> optional at enrollment** — the agent reports the real hardware on first startup.
+See the [recorder agent reference](../reference/recorder-agent.md) for all agent
+options.
 
 ## Heartbeats, liveness, and status
 
 Each heartbeat updates last-seen, status, OS/kernel/runtime, IPs, and audio
-backends. The controller derives **offline** automatically after a missed
-heartbeat threshold (`RAKKR_NODE_OFFLINE_AFTER_SECONDS`, default 120s), and the
-watchdog opens/auto-resolves a central health event when a node goes stale or
-recovers. Node and dashboard UI color-code status and summarize
+backends. A node that has **never** heartbeated stays `provisioning` and is not
+subject to offline derivation. Once it has made contact, the controller derives
+**offline** automatically after a missed heartbeat threshold
+(`RAKKR_NODE_OFFLINE_AFTER_SECONDS`, default 120s), and the watchdog
+opens/auto-resolves a central health event when a node goes stale or recovers. Node and dashboard UI color-code status and summarize
 connectivity/disk/CPU/audio health.
 
 ## Audio inventory

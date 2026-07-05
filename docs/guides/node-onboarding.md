@@ -221,7 +221,9 @@ secret defaults. See [Deployment → Secrets backend](../operations/deployment.m
 
 After bootstrap completes:
 
-- The node appears **online** on the Nodes page within a heartbeat interval.
+- The node leaves **provisioning** ("Awaiting first contact") and appears
+  **online** on the Nodes page within a heartbeat interval. Before first contact
+  it is a `provisioning` node, excluded from offline alerting.
 - Its **interfaces** reflect the real hardware (the reconcile ran on startup),
   not the enrollment placeholder.
 - The audit log shows `nodes.bootstrap.completed` then `nodes.heartbeat.*`.

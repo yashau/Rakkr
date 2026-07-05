@@ -7,6 +7,11 @@ export function nodeStatusBadgeClass(status: NodeStatus | undefined) {
     return toneBadgeClass("healthy");
   }
 
+  // Enrolled but awaiting first contact — informational, not an alarm.
+  if (status === "provisioning") {
+    return toneBadgeClass("info");
+  }
+
   if (status === "recording") {
     return toneBadgeClass("info");
   }

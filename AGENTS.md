@@ -29,7 +29,8 @@ Runtime/tool versions should follow the checked config files, especially
 - Package manager: `pnpm`
 - API: Node.js, Hono, Zod, `@hono/node-server`
 - Web: React, Vite, TanStack Router, TanStack Query, Tailwind 4, shadcn/ui-style
-  local components, lucide-react icons
+  local components on Base UI (`@base-ui/react`), lucide-react icons
+- Docs site: Astro + Starlight in `apps/docs` (renders repo-root `docs/`)
 - Shared contracts: TypeScript schemas in `packages/shared`
 - Database: Postgres, Drizzle ORM and Drizzle Kit in `packages/db`
 - Recorder agent: Rust workspace crate at `crates/recorder-agent`
@@ -47,14 +48,17 @@ Runtime/tool versions should follow the checked config files, especially
 ```text
 apps/api/                 Hono controller API and API tests
 apps/web/                 React/Vite operator console and UI helper tests
+apps/docs/                Astro/Starlight docs site (renders docs/, served at docs.rakkr.org)
 packages/shared/          Shared TypeScript schemas/contracts
 packages/db/              Drizzle schema, migrations, migration verifier
 crates/recorder-agent/    Rust recorder node agent
 deploy/ansible/           Optional Ansible lifecycle runner, playbooks, role
+deploy/bootstrap/         Day-0 one-liner installer (agent.sh) + cloud-init
+deploy/nginx/             nginx config for the web container
+deploy/helm/              Helm chart (rakkr-controller)
 docs/                     Human documentation; source of truth; internal baselines
 fixtures/audio/           Golden speech fixture and metadata
 scripts/                  Gate scripts, smoke tests, baseline verifiers
-deploy/                   nginx config and Helm chart
 ```
 
 Important docs:

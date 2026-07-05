@@ -2,7 +2,7 @@ import { type ReactNode, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import type { RecorderNode } from "@rakkr/shared";
-import { PlusCircle, Save, Settings2 } from "lucide-react";
+import { CheckCircle2, Copy, PlusCircle, Save, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { NodeChannelRoomEditor } from "@/components/channel-room-assignment-editor";
@@ -11,6 +11,13 @@ import {
   NodeIdentityEditor,
   NodeInterfaceEditor,
 } from "@/components/node-inventory-editors";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,83 +37,111 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api, type NodeEnrollmentInput, type NodeEnrollmentResult } from "@/lib/api";
+import { api, type NodeBootstrapTokenResult, type NodeEnrollmentInput } from "@/lib/api";
+import { formatDateTime } from "@/lib/dates";
+import { buildAgentInstallCommand } from "@/lib/node-page-helpers";
 
 interface EnrollmentForm {
-  agentVersion: string;
   alias: string;
-  backend: NodeEnrollmentInput["interfaces"][number]["backend"];
   building: string;
-  channelCount: string;
   floor: string;
-  hardwarePath: string;
   hostname: string;
-  interfaceAlias: string;
-  ipAddresses: string;
   notes: string;
   room: string;
-  sampleRates: string;
-  serialNumber: string;
   site: string;
-  systemName: string;
   tags: string;
 }
 
 const emptyEnrollmentForm: EnrollmentForm = {
-  agentVersion: "0.1.0",
   alias: "",
-  backend: "unknown",
   building: "",
-  channelCount: "0",
   floor: "",
-  hardwarePath: "",
   hostname: "",
-  interfaceAlias: "",
-  ipAddresses: "",
   notes: "",
   room: "",
-  sampleRates: "",
-  serialNumber: "",
   site: "",
-  systemName: "",
   tags: "",
 };
 
+interface EnrolledNode {
+  alias: string;
+  id: string;
+  room: string;
+  site: string;
+}
+
+function defaultControllerUrl() {
+  // The browser origin is the best default for the address the node reaches the
+  // controller at (web + API share an origin behind the reverse proxy). The
+  // operator can edit it when the node connects via a different hostname.
+  return typeof window === "undefined" ? "" : window.location.origin;
+}
+
 /**
- * Enrollment is relocated from the inline page form into a shadcn Dialog. The
- * mutation continues to invalidate the `["nodes"]` query so the data table picks
- * up the new node, and the one-time token is surfaced inside the dialog so the
- * operator can copy it before closing.
+ * Enroll follows the documented low-touch day-0 flow (see
+ * `docs/guides/node-onboarding.md`): the operator enters only node identity, the
+ * dialog enrolls the node and mints a single-use bootstrap token, then hands
+ * back the copy-paste installer one-liner. The agent reports its real audio
+ * hardware on first contact — no hand-typed interfaces, channels, or sample
+ * rates. The `["nodes"]` query is invalidated so the table shows the new node.
  */
 export function EnrollNodeDialog() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [credential, setCredential] = useState<NodeEnrollmentResult | undefined>();
+  const [step, setStep] = useState<"details" | "provision">("details");
+  const [enrolled, setEnrolled] = useState<EnrolledNode | undefined>();
+  const [bootstrap, setBootstrap] = useState<NodeBootstrapTokenResult | undefined>();
+  const [controllerUrl, setControllerUrl] = useState(defaultControllerUrl);
   const form = useForm<EnrollmentForm>({ defaultValues: emptyEnrollmentForm });
-  const enrollMutation = useMutation({
-    mutationFn: api.enrollNode,
+
+  const provisionMutation = useMutation({
+    mutationFn: async (values: EnrollmentForm) => {
+      const { data: enrollment } = await api.enrollNode(enrollmentInput(values));
+      const { data: token } = await api.mintNodeBootstrapToken(enrollment.node.id);
+      return { node: enrollment.node, token };
+    },
     onError: () =>
       toast.error("Enroll failed", {
         description: "The recorder node could not be enrolled.",
       }),
-    onSuccess: ({ data }) => {
-      setCredential(data);
-      form.reset(emptyEnrollmentForm);
+    onSuccess: ({ node, token }) => {
+      setEnrolled({
+        alias: node.alias,
+        id: node.id,
+        room: node.location.room,
+        site: node.location.site,
+      });
+      setBootstrap(token);
+      setStep("provision");
       toast.success("Node enrolled", {
-        description: "Copy the one-time token before closing this dialog.",
+        description: "Copy the install command onto the new host.",
       });
       void queryClient.invalidateQueries({ queryKey: ["nodes"] });
       void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
     },
   });
+
+  function resetFlow() {
+    form.reset(emptyEnrollmentForm);
+    setStep("details");
+    setEnrolled(undefined);
+    setBootstrap(undefined);
+    setControllerUrl(defaultControllerUrl());
+    provisionMutation.reset();
+  }
+
+  const installCommand =
+    enrolled && bootstrap
+      ? buildAgentInstallCommand({
+          bootstrapToken: bootstrap.token,
+          controllerUrl,
+          nodeId: enrolled.id,
+          room: enrolled.room,
+          site: enrolled.site,
+        })
+      : "";
 
   return (
     <Dialog
@@ -114,8 +149,7 @@ export function EnrollNodeDialog() {
         setOpen(next);
 
         if (!next) {
-          setCredential(undefined);
-          form.reset(emptyEnrollmentForm);
+          resetFlow();
         }
       }}
       open={open}
@@ -128,133 +162,156 @@ export function EnrollNodeDialog() {
           </Button>
         }
       />
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Enroll Recorder Node</DialogTitle>
-          <DialogDescription>Create a persisted node and one-time token.</DialogDescription>
+          <DialogDescription>
+            {step === "details"
+              ? "Enter the node's identity. The agent reports its audio hardware on first contact — no manual interface setup."
+              : "Run this on the new Linux host to bring the node online."}
+          </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form
-            className="grid gap-4"
-            onSubmit={form.handleSubmit((values) => enrollMutation.mutate(enrollmentInput(values)))}
-          >
-            <div className="grid gap-3 md:grid-cols-3">
-              <TextField control={form.control} label="Alias" name="alias" required />
-              <TextField control={form.control} label="Hostname" name="hostname" required />
-              <TextField
-                control={form.control}
-                label="Agent Version"
-                name="agentVersion"
-                required
+
+        {step === "details" ? (
+          <Form {...form}>
+            <form
+              className="grid gap-4"
+              id="enroll-node-form"
+              onSubmit={form.handleSubmit((values) => provisionMutation.mutate(values))}
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                <TextField control={form.control} label="Alias" name="alias" required />
+                <TextField control={form.control} label="Hostname" name="hostname" required />
+                <TextField control={form.control} label="Site" name="site" required />
+                <TextField control={form.control} label="Room" name="room" required />
+              </div>
+
+              <Accordion>
+                <AccordionItem className="border-none" value="optional">
+                  <AccordionTrigger className="py-2">Optional details</AccordionTrigger>
+                  <AccordionContent className="grid gap-3 md:grid-cols-2">
+                    <TextField control={form.control} label="Building" name="building" />
+                    <TextField control={form.control} label="Floor" name="floor" />
+                    <TextField
+                      control={form.control}
+                      label="Tags"
+                      name="tags"
+                      placeholder="voice, room-a"
+                    />
+                    <FormField
+                      control={form.control}
+                      name="notes"
+                      render={({ field }) => (
+                        <FormItem className="md:col-span-2">
+                          <FormLabel>Notes</FormLabel>
+                          <FormControl>
+                            <Textarea {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              {provisionMutation.isError ? (
+                <p className="text-sm text-destructive">Node enrollment failed.</p>
+              ) : null}
+            </form>
+          </Form>
+        ) : (
+          <div className="grid gap-4">
+            <Alert>
+              <CheckCircle2 className="size-4" />
+              <AlertTitle>{enrolled?.alias} enrolled</AlertTitle>
+              <AlertDescription>
+                The installer downloads the latest recorder agent, registers it with this single-use
+                token, and reports the node&apos;s audio hardware automatically.
+              </AlertDescription>
+            </Alert>
+
+            <div className="grid gap-2">
+              <Label htmlFor="enroll-controller-url">Controller URL</Label>
+              <Input
+                id="enroll-controller-url"
+                onChange={(event) => setControllerUrl(event.target.value)}
+                placeholder="https://controller.example:8787"
+                value={controllerUrl}
               />
-              <TextField control={form.control} label="Site" name="site" required />
-              <TextField control={form.control} label="Building" name="building" />
-              <TextField control={form.control} label="Floor" name="floor" />
-              <TextField control={form.control} label="Room" name="room" required />
-              <TextField
-                control={form.control}
-                label="IP Addresses"
-                name="ipAddresses"
-                placeholder="10.0.0.25, 10.0.0.26"
-              />
-              <TextField
-                control={form.control}
-                label="Interface"
-                name="interfaceAlias"
-                placeholder="USB Audio"
-              />
-              <FormField
-                control={form.control}
-                name="backend"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Backend</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="unknown">unknown</SelectItem>
-                        <SelectItem value="alsa">alsa</SelectItem>
-                        <SelectItem value="jack">jack</SelectItem>
-                        <SelectItem value="pipewire">pipewire</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <TextField
-                control={form.control}
-                label="Channels"
-                min={0}
-                name="channelCount"
-                type="number"
-              />
-              <TextField
-                control={form.control}
-                label="System Name"
-                name="systemName"
-                placeholder="Behringer X32 Rack USB"
-              />
-              <TextField
-                control={form.control}
-                label="Hardware Path"
-                name="hardwarePath"
-                placeholder="/proc/asound/card1/pcm0c"
-              />
-              <TextField control={form.control} label="Serial Number" name="serialNumber" />
-              <TextField
-                control={form.control}
-                label="Sample Rates"
-                name="sampleRates"
-                placeholder="48000, 44100"
-              />
-              <TextField
-                control={form.control}
-                label="Tags"
-                name="tags"
-                placeholder="voice, room-a"
-              />
+              <p className="text-xs text-muted-foreground">
+                The address the node reaches the controller at. Edit it if the node connects via a
+                different hostname.
+              </p>
             </div>
 
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notes</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Install command</Label>
+                <Button
+                  onClick={() => copyToClipboard(installCommand, "Install command copied")}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <Copy className="size-4" />
+                  Copy
+                </Button>
+              </div>
+              <pre className="overflow-x-auto rounded-md border bg-muted px-3 py-2 font-mono text-xs text-foreground">
+                {installCommand}
+              </pre>
+            </div>
 
-            {credential ? (
-              <FormItem>
-                <FormLabel>One-Time Node Token</FormLabel>
-                <Textarea readOnly value={credential.credential.token} />
-              </FormItem>
-            ) : null}
-            {enrollMutation.isError ? (
-              <p className="text-sm text-destructive">Node enrollment failed.</p>
-            ) : null}
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="enroll-bootstrap-token">Bootstrap token</Label>
+                <Button
+                  onClick={() => copyToClipboard(bootstrap?.token ?? "", "Token copied")}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <Copy className="size-4" />
+                  Copy
+                </Button>
+              </div>
+              <Input
+                className="font-mono text-xs"
+                id="enroll-bootstrap-token"
+                readOnly
+                value={bootstrap?.token ?? ""}
+              />
+              <p className="text-xs text-muted-foreground">
+                Single-use and shown once
+                {bootstrap ? ` — expires ${formatDateTime(bootstrap.expiresAt)}` : ""}.
+              </p>
+            </div>
+          </div>
+        )}
 
-            <DialogFooter>
+        <DialogFooter>
+          {step === "details" ? (
+            <>
               <Button onClick={() => setOpen(false)} type="button" variant="outline">
-                Close
+                Cancel
               </Button>
-              <Button disabled={enrollMutation.isPending} type="submit">
+              <Button disabled={provisionMutation.isPending} form="enroll-node-form" type="submit">
                 <PlusCircle className="size-4" />
-                Enroll
+                {provisionMutation.isPending ? "Enrolling…" : "Enroll & get install command"}
               </Button>
-            </DialogFooter>
-          </form>
-        </Form>
+            </>
+          ) : (
+            <>
+              <Button onClick={resetFlow} type="button" variant="outline">
+                Enroll another
+              </Button>
+              <Button onClick={() => setOpen(false)} type="button">
+                Done
+              </Button>
+            </>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -316,22 +373,31 @@ export function NodeConfigureDialog({
   );
 }
 
+async function copyToClipboard(value: string, message: string) {
+  if (!value) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success(message);
+  } catch {
+    toast.error("Copy failed", { description: "Copy the text manually." });
+  }
+}
+
 function TextField({
   control,
   label,
-  min,
   name,
   placeholder,
   required,
-  type,
 }: {
   control: ReturnType<typeof useForm<EnrollmentForm>>["control"];
   label: string;
-  min?: number;
   name: keyof EnrollmentForm;
   placeholder?: string;
   required?: boolean;
-  type?: "number" | "text";
 }): ReactNode {
   return (
     <FormField
@@ -341,13 +407,7 @@ function TextField({
         <FormItem>
           <FormLabel>{label}</FormLabel>
           <FormControl>
-            <Input
-              {...field}
-              min={min}
-              placeholder={placeholder}
-              required={required}
-              type={type ?? "text"}
-            />
+            <Input {...field} placeholder={placeholder} required={required} />
           </FormControl>
           <FormMessage />
         </FormItem>
@@ -357,30 +417,15 @@ function TextField({
 }
 
 function enrollmentInput(form: EnrollmentForm): NodeEnrollmentInput {
-  const channelCount = Number(form.channelCount);
-  const systemName = form.systemName.trim();
-  const interfaceAlias = form.interfaceAlias.trim();
-  const hasInterface = systemName || interfaceAlias || channelCount > 0;
-
   return {
-    agentVersion: form.agentVersion.trim(),
+    // The agent reports its real version on first heartbeat; a placeholder is
+    // fine until then.
+    agentVersion: "unknown",
     alias: form.alias.trim(),
     hostname: form.hostname.trim(),
-    interfaces: hasInterface
-      ? [
-          {
-            alias: interfaceAlias || systemName || "Audio Interface",
-            backend: form.backend,
-            channelCount: Number.isFinite(channelCount) ? Math.max(0, channelCount) : 0,
-            channels: [],
-            hardwarePath: form.hardwarePath.trim() || undefined,
-            sampleRates: parseNumbers(form.sampleRates),
-            serialNumber: form.serialNumber.trim() || undefined,
-            systemName: systemName || interfaceAlias || "Unknown Audio Interface",
-          },
-        ]
-      : [],
-    ipAddresses: parseList(form.ipAddresses),
+    // Interfaces reconcile from the agent's first-contact inventory report.
+    interfaces: [],
+    ipAddresses: [],
     location: {
       building: form.building.trim() || undefined,
       floor: form.floor.trim() || undefined,
@@ -397,10 +442,4 @@ function parseList(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function parseNumbers(value: string) {
-  return parseList(value)
-    .map(Number)
-    .filter((item) => Number.isInteger(item) && item > 0);
 }

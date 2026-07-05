@@ -32,6 +32,14 @@ export async function reconcileNodeLivenessEvents({
   const results: NodeLivenessResult[] = [];
 
   for (const node of nodes) {
+    // A never-provisioned node has never been online, so "went offline" cannot
+    // apply — skip it entirely (no offline alert) until its first heartbeat
+    // flips it to a live status.
+    if (node.status === "provisioning") {
+      results.push({ nodeId: node.id, outcome: "skipped", reason: "node_never_provisioned" });
+      continue;
+    }
+
     const existing = await activeNodeOfflineEvent(healthEventStore, node.id);
 
     if (nodeHeartbeatStale(node, now)) {

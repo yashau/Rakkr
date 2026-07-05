@@ -65,10 +65,7 @@ class PostgresControllerSettingsStore implements ControllerSettingsStore {
         .limit(1);
 
       return row
-        ? controllerSettingsSchema.parse({
-            controllerName: row.controllerName,
-            weekStartsOn: row.weekStartsOn,
-          })
+        ? controllerSettingsSchema.parse(settingsFromRow(row))
         : { ...defaultControllerSettings };
     } catch (error) {
       this.failover("controller settings lookup unavailable; using JSON store", error);
@@ -95,27 +92,15 @@ class PostgresControllerSettingsStore implements ControllerSettingsStore {
           .where(eq(controllerSettingsTable.id, controllerSettingsId))
           .limit(1);
         const current = row
-          ? controllerSettingsSchema.parse({
-              controllerName: row.controllerName,
-              weekStartsOn: row.weekStartsOn,
-            })
+          ? controllerSettingsSchema.parse(settingsFromRow(row))
           : { ...defaultControllerSettings };
         const merged = mergeControllerSettings(current, update);
 
         await tx
           .insert(controllerSettingsTable)
-          .values({
-            controllerName: merged.controllerName,
-            id: controllerSettingsId,
-            updatedAt: new Date(),
-            weekStartsOn: merged.weekStartsOn,
-          })
+          .values({ ...settingsToRow(merged), id: controllerSettingsId, updatedAt: new Date() })
           .onConflictDoUpdate({
-            set: {
-              controllerName: merged.controllerName,
-              updatedAt: new Date(),
-              weekStartsOn: merged.weekStartsOn,
-            },
+            set: { ...settingsToRow(merged), updatedAt: new Date() },
             target: controllerSettingsTable.id,
           });
 
@@ -136,10 +121,49 @@ function mergeControllerSettings(
   current: ControllerSettings,
   update: ControllerSettingsUpdate,
 ): ControllerSettings {
+  // `keep` distinguishes an omitted field (keep current) from an explicit
+  // `null` (clear the default) — a plain `??` would treat a clearing `null` as
+  // "use current" and make defaults impossible to unset.
+  const keep = <T>(next: T | undefined, previous: T): T => (next === undefined ? previous : next);
+
   return controllerSettingsSchema.parse({
     controllerName: update.controllerName ?? current.controllerName,
+    defaultRecordingProfileId: keep(
+      update.defaultRecordingProfileId,
+      current.defaultRecordingProfileId,
+    ),
+    defaultRetentionPolicyId: keep(
+      update.defaultRetentionPolicyId,
+      current.defaultRetentionPolicyId,
+    ),
+    defaultUploadPolicyId: keep(update.defaultUploadPolicyId, current.defaultUploadPolicyId),
+    defaultWatchdogPolicyId: keep(update.defaultWatchdogPolicyId, current.defaultWatchdogPolicyId),
     weekStartsOn: update.weekStartsOn ?? current.weekStartsOn,
   });
+}
+
+type ControllerSettingsRow = typeof controllerSettingsTable.$inferSelect;
+
+function settingsFromRow(row: ControllerSettingsRow) {
+  return {
+    controllerName: row.controllerName,
+    defaultRecordingProfileId: row.defaultRecordingProfileId,
+    defaultRetentionPolicyId: row.defaultRetentionPolicyId,
+    defaultUploadPolicyId: row.defaultUploadPolicyId,
+    defaultWatchdogPolicyId: row.defaultWatchdogPolicyId,
+    weekStartsOn: row.weekStartsOn,
+  };
+}
+
+function settingsToRow(settings: ControllerSettings) {
+  return {
+    controllerName: settings.controllerName,
+    defaultRecordingProfileId: settings.defaultRecordingProfileId,
+    defaultRetentionPolicyId: settings.defaultRetentionPolicyId,
+    defaultUploadPolicyId: settings.defaultUploadPolicyId,
+    defaultWatchdogPolicyId: settings.defaultWatchdogPolicyId,
+    weekStartsOn: settings.weekStartsOn,
+  };
 }
 
 function loadControllerSettings(): ControllerSettings {
