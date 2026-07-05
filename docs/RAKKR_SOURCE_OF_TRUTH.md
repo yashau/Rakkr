@@ -60,9 +60,9 @@ This document is the **short** source of truth: product intent, non-negotiables,
 | RBAC/Audit | ✅ | Default-deny permissions, resource policies, UI mirroring, checked baseline matrix |
 | Controller API | ✅ | Audited route families across auth/OIDC, audit, nodes/inventory/meters, recordings, recording-jobs, schedules, settings, health, uploads, status, and metrics — each with permission checks, scoped visibility, action summaries, and denied-attempt coverage (`CONTROLLER_API` route-family baseline) |
 | Controller UI | 🟨 | Dashboard (selectable meter source, incidents, quick-record), access, audit, nodes, capacity, recordings, jobs, schedules (list + drag-to-reschedule calendar), rooms, settings, central health workbench, and quality timelines — all permission-aware with server-backed filters/exports, plus system/light/dark theming |
-| Node lifecycle | 🚧 | Optional Dockerized Ansible runner: SSH package install/update, recorder binary deployment, systemd management, CA-trust rotation, smoke checks, distro vars, idempotent + serial rollout, controller-triggered node-card actions |
+| Node lifecycle | ✅ | Optional Dockerized Ansible runner: SSH package install/update, recorder binary deployment, systemd management, CA-trust rotation, smoke checks, distro vars, idempotent + serial rollout, controller-triggered node-card actions; nodes report their agent version on heartbeat and the console flags "update available" from the newest GitHub release, offering a version-pinned `update_binary`; checked baseline |
 | Recorder agent | 🟨 | Inventory probes, S16/S32 meters, capacity polling, bounded concurrent jobs, capture guards with structured evidence, profile/channel-map rendering, in-process enhancement, controller-terminal job handoff, recorder-cache sweeps, and rich meter/system/job health events |
-| Test rig | 🟨 | Debian rig + X32 X-USB stable-name ALSA capture; loopback + X32/PCH hardware job and meter/health smokes pass with fake-controller sync; long real-room validation remains |
+| Test rig | ✅ | Debian rig + X32 X-USB stable-name ALSA capture; loopback + X32/PCH hardware job and meter/health smokes pass with fake-controller sync; X32/PCH hardware validated (long-duration real-room soak is tracked under Health watchdog) |
 | Generic devices | 🟨 | Checked generic-device baseline: pinned ALSA probes, controller-managed defaults, ad-hoc/schedule backend+interface selection, PipeWire/JACK presets, loopback + generic/X32/PCH hardware jobs; broader physical-device coverage remains |
 | Settings/templates | ✅ | Profiles (incl. enhancement chain), watchdog policies, channel maps + staged rollout, retention, multi-policy assignment; checked baseline |
 | Scheduler | ✅ | Human-friendly recurrence, buffers, exceptions, run-now, chunked recording, backend/interface/channel selection with channel-conflict defer; checked baseline |
@@ -202,7 +202,7 @@ Store timestamps as UTC ISO 8601; API timestamps are ISO 8601 strings; display i
 | Milestone | Goal | Status |
 | --------- | ---- | ------ |
 | 0. Foundation | Monorepo, Docker, API/UI shells, shared types | ✅ |
-| 1. Test rig visibility | Agent identity, meters, loopback validation, node UI | 🟨 |
+| 1. Test rig visibility | Agent identity, meters, loopback validation, node UI | ✅ |
 | 2. First reliable recording | Start/stop, cache, metadata, playback, download, health | ✅ |
 | 3. Scheduling | Human scheduler, metadata ownership, execution events | ✅ |
 | 4. Watchdog reliability | Scheduled health alerts, timelines, metrics | 🚧 |
@@ -211,8 +211,8 @@ Store timestamps as UTC ISO 8601; API timestamps are ISO 8601 strings; display i
 
 ## Shipped & Next
 
-- **Shipped (through 2026-06):** The focus-queue's items 1–345 are essentially all complete (one X32 hardware-validation item, #51, is ⏸️ paused on hardware) — the granular history lives in git and the checked baseline docs. Highlights: full RBAC/audit + Azure AD OIDC, scheduler, recording library, controller-side multi-destination SMB/S3 uploads with fan-out, in-process voice enhancement (DeepFilterNet3/RNNoise), transport security + mTLS scaffold, observability (metrics/alerts/dashboard), node onboarding + encrypted SSH credential store + day-0 bootstrap, and the generic-device/X32/PCH validation lanes.
-- **Now (🚧):** Node lifecycle (Ansible runner provisioning/updates) and Health Watchdog signal-quality hardening toward MVP promotion.
+- **Shipped (through 2026-07):** The focus-queue's items 1–345 are complete, including X32 hardware validation — the granular history lives in git and the checked baseline docs. Highlights: full RBAC/audit + Azure AD OIDC, scheduler, recording library, controller-side multi-destination SMB/S3 uploads with fan-out, in-process voice enhancement (DeepFilterNet3/RNNoise), transport security + mTLS scaffold, observability (metrics/alerts/dashboard), node onboarding + encrypted SSH credential store + day-0 bootstrap, audio-matrix switcher routing, node lifecycle (Ansible runner provisioning/updates + GitHub-release update-available detection; checked baseline), and the generic-device/X32/PCH validation lanes.
+- **Now (🚧):** Health Watchdog signal-quality hardening toward MVP promotion.
 - **Next:** Long-duration real-room watchdog validation; broader physical-device coverage; a checked enhancement baseline; deferred integrations (Iroh remote mode, AI quality second opinion).
 
 ## Open Questions
@@ -225,4 +225,4 @@ Store timestamps as UTC ISO 8601; API timestamps are ISO 8601 strings; display i
 | Node local log store | JSONL and SQLite health-event stores now; long-term compaction policy can wait |
 | Metrics internals | Prometheus endpoint now; OTel-friendly structure later |
 
-Last updated: `2026-07-03`
+Last updated: `2026-07-05`

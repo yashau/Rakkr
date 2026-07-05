@@ -28,5 +28,7 @@ the source so documentation can't silently drift.
 | [GENERIC_DEVICE_BASELINE](GENERIC_DEVICE_BASELINE.md)                     | `devices:check-generic`           | [Nodes & inventory](../../guides/nodes-and-inventory.md)                                          |
 | [HEALTH_WATCHDOG_BASELINE](HEALTH_WATCHDOG_BASELINE.md)                   | `health:check-watchdog`           | [Health watchdog](../../guides/health-watchdog.md)                                                |
 | [STORAGE_UPLOAD_BASELINE](STORAGE_UPLOAD_BASELINE.md)                     | `storage:check`                   | [Storage & uploads](../../guides/storage-and-uploads.md)                                          |
+| [SWITCHER_ROUTING_BASELINE](SWITCHER_ROUTING_BASELINE.md)                 | `switcher:check`                  | [Switcher routing](../../guides/switcher-routing.md)                                              |
+| [NODE_LIFECYCLE_BASELINE](NODE_LIFECYCLE_BASELINE.md)                     | `nodes:check-lifecycle`           | [Node lifecycle](../../guides/node-lifecycle.md)                                                  |
 | [OPERATIONS_BASELINE](OPERATIONS_BASELINE.md)                             | `operations:check`                | [Recording](../../guides/recording.md) · [Storage & uploads](../../guides/storage-and-uploads.md) |
 | [DATE_TIME_BASELINE](DATE_TIME_BASELINE.md)                               | `time:check`                      | —                                                                                                 |

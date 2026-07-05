@@ -13,6 +13,7 @@ import { recordingEnhancementSchema } from "./enhancement.js";
 import { recordingChunkSchema } from "./recording-chunks.js";
 import { accessGroupIdSchema, accessGroupSchema } from "./access-groups.js";
 export * from "./access-groups.js";
+export * from "./agent-version.js";
 export * from "./base.js";
 export * from "./channels.js";
 export * from "./enhancement.js";

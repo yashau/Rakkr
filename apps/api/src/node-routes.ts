@@ -10,6 +10,7 @@ import {
   type RecorderNode,
 } from "@rakkr/shared";
 
+import { registerAgentReleaseRoutes } from "./agent-release-routes.js";
 import type { AuthResult } from "./auth-service.js";
 import { buildMeterFrame, demoMetersEnabled } from "./demo-data.js";
 import type {
@@ -191,6 +192,10 @@ export function registerNodeRoutes({
     recordAuditEvent,
     requirePermission,
     scopedNodes,
+  });
+  registerAgentReleaseRoutes({
+    app,
+    requirePermission,
   });
   registerNodeSshCredentialRoutes({
     app,

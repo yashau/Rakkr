@@ -1,4 +1,5 @@
 import type {
+  AgentReleaseResponse,
   AuditEvent,
   AuditOutcome,
   AccessPolicy,
@@ -353,6 +354,7 @@ export interface NodeInterfaceMetadataUpdate {
 
 export const api = {
   ...accessGroupsApi,
+  agentRelease: () => fetchJson<AgentReleaseResponse>("/api/v1/nodes/agent-release"),
   rooms: () => fetchJson<{ data: Room[] }>("/api/v1/rooms"),
   room: (roomId: string) => fetchJson<{ data: Room }>(`/api/v1/rooms/${roomId}`),
   roomOverview: (roomId: string) =>
