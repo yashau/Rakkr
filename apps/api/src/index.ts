@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Context, MiddlewareHandler } from "hono";
 import { registerAgentMonitorRoutes } from "./agent-monitor-routes.js";
 import { registerAgentRoutes } from "./agent-routes.js";
+import { agentReleaseService } from "./agent-release-service.js";
 import { createApiRunners, startApiRunners } from "./api-runners.js";
 import {
   type AuditEvent,
@@ -899,6 +900,10 @@ if (process.env.RAKKR_API_NO_LISTEN !== "1") {
     uploadRunner,
     watchdogRunner,
   });
+
+  // Warm the recorder-agent release cache so the "update available" badge can
+  // hydrate on the first nodes-page load instead of after the first poll.
+  void agentReleaseService().warm();
 
   // Seed the demo node as a real enrolled (persisted) row so it is editable in
   // the console; idempotent and skipped when demo data is disabled.

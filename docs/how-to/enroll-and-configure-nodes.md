@@ -79,9 +79,14 @@ allowlisted host operations over SSH:
 | `rotate_trust`         | Refresh the controller CA in the host trust store.     |
 | `smoke_check`          | Run a quick inventory check and report the output.     |
 
+Each node also reports its running agent version, which shows on the node card.
+When the controller finds a newer recorder-agent release on GitHub, the card
+shows an **Update available** badge and an **Update to `‹version›`** button that
+runs `update_binary` pinned to that release.
+
 Every run is audited with its run ID, exit code, target host, and output. This
-subsystem is optional and still maturing — if you don't need remote host
-management, run agents by hand. See [Node lifecycle](../guides/node-lifecycle.md).
+subsystem is optional — if you don't need remote host management, run agents by
+hand. See [Node lifecycle](../guides/node-lifecycle.md).
 
 ## See also
 

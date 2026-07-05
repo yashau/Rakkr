@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import type { HealthEvent, RecorderNode } from "@rakkr/shared";
+import {
+  isAgentUpdateAvailable,
+  type AgentRelease,
+  type HealthEvent,
+  type RecorderNode,
+} from "@rakkr/shared";
 import {
   Activity,
   AudioLines,
@@ -62,6 +67,7 @@ import {
   type NodeHealthLifecycleAction,
 } from "@/lib/node-page-helpers";
 import { nodeStatusBadgeClass } from "@/lib/node-status";
+import { toneBadgeClass } from "@/lib/status-colors";
 import { downloadBlob } from "@/lib/recording-page-helpers";
 import { defaultPageSize } from "@/lib/server-pagination";
 import { useServerPagination } from "@/lib/use-server-pagination";
@@ -122,6 +128,18 @@ export function NodesPage() {
     queryKey: ["node-health-events"],
     refetchInterval: 5000,
   });
+  // Non-blocking: the controller resolves the latest recorder-agent release from
+  // GitHub in the background, so this hydrates the "update available" badge after
+  // the nodes table has already rendered. Releases are infrequent and the
+  // controller caches the result, so this polls gently.
+  const agentReleaseQuery = useQuery({
+    enabled: actionPermissions.canRead,
+    queryFn: api.agentRelease,
+    queryKey: ["agent-release", "latest"],
+    refetchInterval: 5 * 60_000,
+    staleTime: 5 * 60_000,
+  });
+  const latestRelease = agentReleaseQuery.data?.data ?? null;
   const listenMutation = useMutation({
     mutationFn: async (node: { alias: string; id: string }) => {
       const session = await api.startListen(node.id);
@@ -296,6 +314,7 @@ export function NodesPage() {
               canManage={actionPermissions.canManage}
               canReadMeters={actionPermissions.canRead}
               healthEvents={healthEvents.filter((event) => event.nodeId === node.id)}
+              latestRelease={latestRelease}
               listenPending={listenMutation.isPending}
               node={node}
               onAcknowledgeHealth={(eventId, action) =>
@@ -448,6 +467,7 @@ function NodeDetailRow({
   canReadMeters,
   healthEvents,
   healthPending,
+  latestRelease,
   listenPending,
   node,
   onAcknowledgeHealth,
@@ -461,6 +481,7 @@ function NodeDetailRow({
   canReadMeters: boolean;
   healthEvents: HealthEvent[];
   healthPending: boolean;
+  latestRelease: AgentRelease | null;
   listenPending: boolean;
   node: RecorderNode;
   onAcknowledgeHealth: (eventId: string, action: NodeHealthLifecycleAction) => void;
@@ -476,14 +497,21 @@ function NodeDetailRow({
     refetchInterval: 1000,
   });
   const meterLevels = meterQuery.data?.data.levels ?? [];
+  const updateAvailable = isAgentUpdateAvailable(node.agentVersion, latestRelease?.version);
 
   return (
     <div className="grid gap-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-2 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Cpu className="size-4" />
             Agent {node.agentVersion} / seen {formatDateTime(node.lastSeenAt)}
+            {updateAvailable && latestRelease ? (
+              <Badge className={toneBadgeClass("warning")} variant="outline">
+                <Download className="size-3" />
+                Update available: {latestRelease.version}
+              </Badge>
+            ) : null}
           </div>
           {node.runtime ? (
             <div className="flex items-center gap-2">
@@ -521,7 +549,7 @@ function NodeDetailRow({
               <TooltipContent>{rotateNodeTokenTitle(canManage, isUuid(node.id))}</TooltipContent>
             </Tooltip>
           ) : null}
-          <NodeLifecycleMenu canManage={canManage} node={node} />
+          <NodeLifecycleMenu canManage={canManage} latestRelease={latestRelease} node={node} />
         </div>
       </div>
 

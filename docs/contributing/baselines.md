@@ -49,6 +49,8 @@ claim hardware validation that isn't done.
 | `GENERIC_DEVICE_BASELINE.md`             | `mise run devices:check-generic`           |
 | `HEALTH_WATCHDOG_BASELINE.md`            | `mise run health:check-watchdog`           |
 | `STORAGE_UPLOAD_BASELINE.md`             | `mise run storage:check`                   |
+| `SWITCHER_ROUTING_BASELINE.md`           | `mise run switcher:check`                  |
+| `NODE_LIFECYCLE_BASELINE.md`             | `mise run nodes:check-lifecycle`           |
 | `OPERATIONS_BASELINE.md`                 | `mise run operations:check`                |
 | `DATE_TIME_BASELINE.md`                  | `mise run time:check`                      |
 

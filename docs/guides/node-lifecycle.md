@@ -12,7 +12,9 @@ dependencies, deploying the agent binary, managing the systemd service, rotating
 CA trust, and running smoke checks — over SSH, driven from the operator console.
 The controller records RBAC/audit context; **Ansible owns the host work.**
 
-> This subsystem is optional and currently a scaffold under active development. If
+> This subsystem is optional and baseline-checked (`mise run nodes:check-lifecycle`).
+> The controller/runner/role software path is validated end to end against the
+> disposable Compose rig; physical-fleet SSH targets are operator-configured. If
 > you don't need remote host management, you can run agents entirely by hand.
 
 ## Architecture
@@ -79,11 +81,39 @@ the release `.sha256`, and installs it — so nodes need outbound access to GitH
 | `RAKKR_ANSIBLE_GITHUB_TOKEN` | Optional token for private repos or higher GitHub API rate limits.                         |
 
 Without a pinned version the role resolves the newest release; the console's
-**Update Binary** action does this. To deploy a specific build, forward
+**Update Binary (latest)** action does this. To deploy a specific build, forward
 `agentVersion` (a full release tag such as `agent-v2026.06.28-1`) through the
-lifecycle API. Releases are built by the `Release recorder agent` workflow — see
+lifecycle API — which is exactly what the **Update to …** button does (see
+below). Releases are built by the `Release recorder agent` workflow — see
 [Releases & versioning](../operations/releases.md) and the
 [recorder-agent versioning notes](https://github.com/yashau/Rakkr/blob/main/crates/recorder-agent/README.md).
+
+## Update-available indicator
+
+Each node reports its running `agentVersion` on every heartbeat, and the
+controller resolves the newest published recorder-agent release from GitHub. When
+a node is behind, its card shows an **Update available: `‹version›`** badge and an
+**Update to `‹version›`** button that runs `update_binary` pinned to that exact
+release tag.
+
+The release lookup is served by `GET /api/v1/nodes/agent-release` (`node:read`).
+It is **non-blocking**: the controller caches the result and refreshes it in the
+background (stale-while-revalidate), so the nodes table renders immediately and
+the badge hydrates once the release resolves — a GitHub outage never stalls the
+page, it just hides the badge. The controller lists releases and picks the newest
+`agent-v…` tag itself (GitHub's "latest release" can point at a docs or
+controller release, since all components share one repo).
+
+| Variable                   | Purpose                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `RAKKR_AGENT_RELEASE_REPO` | `owner/repo` the controller checks for releases (defaults to `yashau/Rakkr`).  |
+| `RAKKR_GITHUB_TOKEN`       | Optional token for higher GitHub API rate limits / private repos.              |
+| `RAKKR_AGENT_RELEASE_TTL_MS` | Cache lifetime before a background refresh (default 30 min).                 |
+
+Nodes reporting a dev/unstamped version (`0.0.0-dev`) never show an update
+prompt. This controller-side check is independent of the runner's own
+`RAKKR_ANSIBLE_AGENT_REPO`/`RAKKR_ANSIBLE_GITHUB_TOKEN`, which govern where the
+node downloads the binary from at deploy time.
 
 ## Security model
 

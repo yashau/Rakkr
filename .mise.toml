@@ -51,6 +51,7 @@ depends = [
   "health:check-watchdog",
   "storage:check",
   "switcher:check",
+  "nodes:check-lifecycle",
   "operations:check",
   "time:check",
   "helm:check",
@@ -135,6 +136,10 @@ run = "node scripts/verify-storage-upload-baseline.mjs"
 [tasks."switcher:check"]
 description = "Validate audio matrix switcher routing baseline documentation"
 run = "node scripts/verify-switcher-routing-baseline.mjs"
+
+[tasks."nodes:check-lifecycle"]
+description = "Validate node lifecycle baseline documentation"
+run = "node scripts/verify-node-lifecycle-baseline.mjs"
 
 [tasks."operations:check"]
 description = "Validate operations baseline documentation"
