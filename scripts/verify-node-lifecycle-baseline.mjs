@@ -6,11 +6,15 @@ const sourceFiles = [
   "packages/shared/src/index.ts",
   "apps/api/src/node-lifecycle.ts",
   "apps/api/src/node-lifecycle-routes.ts",
+  "apps/api/src/node-liveness.ts",
+  "apps/api/src/watchdog-node-liveness.ts",
   "apps/api/src/agent-release-service.ts",
   "apps/api/src/agent-release-routes.ts",
   "apps/api/src/node-routes.ts",
   "apps/api/test/node-lifecycle.test.ts",
   "apps/api/test/node-lifecycle-routes.test.ts",
+  "apps/api/test/node-liveness.test.ts",
+  "apps/api/test/watchdog-runner.test.ts",
   "apps/api/test/agent-release-service.test.ts",
   "apps/api/test/agent-release-routes.test.ts",
   "apps/api/test/agent-version.test.ts",
@@ -43,6 +47,11 @@ const baselinePhrases = [
   "serial",
   "sha256",
   "never SSHes",
+  "provisioning",
+  "Awaiting first contact",
+  "node_never_provisioned",
+  "isNodeReachable",
+  "rakkr_node_online",
   "mise run nodes:check-lifecycle",
 ];
 const sourceSnippets = [
@@ -76,6 +85,11 @@ const sourceSnippets = [
   "api.agentRelease",
   "Update available",
   "agentReleaseQuery",
+  'if (node.status === "provisioning")',
+  "node_never_provisioned",
+  "reconcileNodeLivenessEvents",
+  "nodeHeartbeatStale",
+  "isNodeReachable",
 ];
 const testSnippets = [
   "node lifecycle route runs allowlisted Ansible action and audits result",
@@ -87,6 +101,9 @@ const testSnippets = [
   "agent-release route returns the cached snapshot and is gated by node:read",
   "isAgentUpdateAvailable only fires for a strictly newer real version",
   "compareAgentVersions orders by date then counter",
+  "never-provisioned nodes are skipped by the liveness watchdog",
+  "provisioning nodes never derive offline, however old their enrollment",
+  "stale nodes derive offline status",
 ];
 const errors = [];
 
