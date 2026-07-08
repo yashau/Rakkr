@@ -1,35 +1,31 @@
 import { serve } from "@hono/node-server";
-import { createDatabase, sql } from "@rakkr/db";
 import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { Context, MiddlewareHandler } from "hono";
 import { registerAgentMonitorRoutes } from "./agent-monitor-routes.js";
 import { registerAgentRoutes } from "./agent-routes.js";
 import { agentReleaseService } from "./agent-release-service.js";
 import { createApiRunners, startApiRunners } from "./api-runners.js";
-import {
-  type AuditEvent,
-  defaultCalendarGrantCapabilities,
-  type Permission,
-  permissionRequiresCapability,
-  type RoomCapability,
-  type ScheduleSummary,
-} from "@rakkr/shared";
+import { defaultCalendarGrantCapabilities, type ScheduleSummary } from "@rakkr/shared";
 import { registerAuditRoutes } from "./audit-routes.js";
 import { createAuditStore } from "./audit-store.js";
 import { registerAuthLifecycleRoutes } from "./auth-lifecycle-routes.js";
 import { registerAuthManagementRoutes } from "./auth-management-routes.js";
 import { clearOidcLoginStateCookie, registerAuthOidcRoutes } from "./auth-oidc-routes.js";
-import { AuthError, LocalAuthService, type AuthResult } from "./auth-service.js";
+import { AuthError, LocalAuthService } from "./auth-service.js";
 import { registerHealthRoutes } from "./health-routes.js";
 import { createHealthEventStore } from "./health-store.js";
-import type { RecordAuditEvent } from "./http-types.js";
+import {
+  createAuthorization,
+  currentAuth,
+  currentUser,
+  requestContext,
+} from "./index-authorization.js";
+import { createReadinessProbe } from "./index-readiness.js";
 import { nodes as seedNodes, recordings, schedules as seedSchedules } from "./demo-data.js";
-import type { AppBindings, AuditTarget } from "./http-types.js";
+import type { AppBindings } from "./http-types.js";
 import { createListenMonitorStore } from "./listen-monitor-store.js";
 import { createListenSessionStore } from "./listen-session-store.js";
 import { createMeterFrameStore } from "./meter-store.js";
@@ -68,42 +64,7 @@ const startedAt = new Date();
 const port = Number(process.env.PORT ?? 8787);
 const webOrigin = process.env.RAKKR_WEB_ORIGIN ?? "http://localhost:5173";
 
-// Readiness backing for /readyz. When DATABASE_URL is set we hold ONE dedicated
-// health client and probe it with a bounded `select 1`; a hung DB must not hang
-// the probe, so the query races a short timeout. When DATABASE_URL is unset
-// (memory-store / test mode) there is no DB to depend on, so the controller is
-// always ready.
-const readinessDatabaseUrl = process.env.DATABASE_URL;
-const readinessDatabase = readinessDatabaseUrl ? createDatabase(readinessDatabaseUrl) : undefined;
-const READINESS_DB_TIMEOUT_MS = 3000;
-
-async function checkDatabaseReady(): Promise<boolean> {
-  if (!readinessDatabase) {
-    return true;
-  }
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    const probe = readinessDatabase.execute(sql`select 1`);
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(
-        () => reject(new Error("database readiness probe timed out")),
-        READINESS_DB_TIMEOUT_MS,
-      );
-    });
-
-    await Promise.race([probe, timeout]);
-
-    return true;
-  } catch {
-    return false;
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
+const { checkDatabaseReady } = createReadinessProbe(process.env.DATABASE_URL);
 
 const auditStore = createAuditStore();
 const authService = new LocalAuthService();
@@ -169,216 +130,6 @@ const loginRequestSchema = z.object({
   password: z.string().min(1),
 });
 
-function requestContext(c: Context<AppBindings>, sessionId?: string) {
-  return {
-    ipAddress: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip"),
-    sessionId: sessionId ?? c.req.header("x-rakkr-session-id"),
-    userAgent: c.req.header("user-agent"),
-  };
-}
-
-const recordAuditEvent: RecordAuditEvent = async (c, input) => {
-  const actor =
-    input.actor ??
-    (input.auth?.user
-      ? {
-          id: input.auth.user.id,
-          name: input.auth.user.name,
-          roles: input.auth.user.roles,
-          type: "user" as const,
-        }
-      : {
-          id: "anonymous",
-          name: "Anonymous",
-          roles: [],
-          type: "user" as const,
-        });
-  const event: AuditEvent = {
-    action: input.action,
-    actor,
-    actorContext: requestContext(c, input.auth?.sessionId),
-    after: input.after,
-    before: input.before,
-    correlationIds: input.correlationIds,
-    createdAt: new Date().toISOString(),
-    details: {
-      method: c.req.method,
-      path: c.req.path,
-      ...input.details,
-    },
-    id: `audit_${randomUUID()}`,
-    outcome: input.outcome,
-    permission: input.permission,
-    reason: input.reason,
-    target: input.target,
-  };
-
-  await auditStore.append(event);
-
-  return event;
-};
-
-function requirePermission(
-  permission: Permission,
-  action: string,
-  target: (c: Context<AppBindings>) => AuditTarget | Promise<AuditTarget> = () => ({
-    type: "controller",
-  }),
-): MiddlewareHandler<AppBindings> {
-  return async (c, next) => {
-    const auth = await authService.authenticate(c.req.header("authorization"));
-    const auditTarget = await target(c);
-    const decision = await permissionDecision(auth.user, permission, auditTarget);
-    const reason = decision.allowed
-      ? undefined
-      : authorizationReason({
-          authenticated: Boolean(auth.user),
-          hasPermission: decision.hasPermission,
-          hasScope: decision.scope.allowed,
-          scopeReason: decision.scope.reason,
-        });
-
-    await recordAuditEvent(c, {
-      action,
-      auth,
-      details: {
-        grantedViaRoomCapability: decision.grantedViaRoomCapability,
-        requiredPermission: permission,
-        resourceScope: auditTarget,
-        resourceScopeDecision: decision.scope.reason,
-        roomCapability: decision.requiredCapability,
-        roles: auth.user?.roles ?? [],
-      },
-      outcome: decision.allowed ? "allowed" : "denied",
-      permission,
-      reason,
-      target: auditTarget,
-    });
-
-    if (!decision.allowed) {
-      return c.json(
-        {
-          error: auth.user ? "Forbidden" : "Unauthorized",
-          permission,
-        },
-        auth.user ? 403 : 401,
-      );
-    }
-
-    c.set("auth", auth);
-    await next();
-  };
-}
-
-// The role-scope OR room-capability allow decision shared by requirePermission and
-// the fine-grained per-room checks in recording/schedule handlers. A room roster
-// (a manual grant or a calendar meeting-assignment) grants a per-action capability
-// over its room even without the role permission — but never past an explicit deny.
-// Exported for test coverage of the access-policy-DENY-beats-roster-grant
-// precedence (the `scope.reason !== "access_policy_denied"` guard below).
-export async function permissionDecision(
-  user: AuthResult["user"],
-  permission: Permission,
-  target: AuditTarget,
-) {
-  const hasPermission = user?.permissions.includes(permission) ?? false;
-  const scope = user
-    ? await resourceScopeDecision(user, target)
-    : { allowed: false, reason: "unauthenticated" as const };
-  let allowed = hasPermission && scope.allowed;
-  let grantedViaRoomCapability = false;
-  const requiredCapability = permissionRequiresCapability(permission);
-
-  if (!allowed && user && scope.reason !== "access_policy_denied" && requiredCapability) {
-    grantedViaRoomCapability = await roomCapabilityAuthorizes(user, requiredCapability, target);
-    allowed = grantedViaRoomCapability;
-  }
-
-  return { allowed, grantedViaRoomCapability, hasPermission, requiredCapability, scope };
-}
-
-// Whether a user is authorized for a permission against a target, reusing the same
-// logic as requirePermission without auditing or an HTTP response. Used for the
-// fine-grained per-room check once a request's room is resolved from its channels.
-async function authorizeTargetForUser(
-  user: AuthResult["user"],
-  permission: Permission,
-  target: AuditTarget,
-) {
-  return (await permissionDecision(user, permission, target)).allowed;
-}
-
-function authorizationReason(input: {
-  authenticated: boolean;
-  hasPermission: boolean;
-  hasScope: boolean;
-  scopeReason?: string;
-}) {
-  if (!input.authenticated) {
-    return "unauthenticated";
-  }
-
-  if (!input.hasPermission) {
-    return "missing_permission";
-  }
-
-  if (!input.hasScope) {
-    return input.scopeReason ?? "missing_resource_scope";
-  }
-
-  return undefined;
-}
-
-async function hasResourceScope(user: AuthResult["user"], target: AuditTarget) {
-  return (await resourceScopeDecision(user, target)).allowed;
-}
-
-async function resourceScopeDecision(user: AuthResult["user"], target: AuditTarget) {
-  if (!user || !target.id) {
-    return {
-      allowed: Boolean(user),
-      reason: user ? undefined : "unauthenticated",
-    };
-  }
-
-  const targets = await resourceScopeTargets(target);
-  const policyDecision = await authService.accessPolicyDecision(user, targets);
-
-  if (policyDecision?.effect === "deny") {
-    return {
-      allowed: false,
-      reason: "access_policy_denied",
-    };
-  }
-
-  if (user.roles.includes("owner") || user.roles.includes("admin")) {
-    return {
-      allowed: true,
-      reason: undefined,
-    };
-  }
-
-  if (policyDecision?.effect === "allow") {
-    return {
-      allowed: true,
-      reason: undefined,
-    };
-  }
-
-  const allowedByGrant = targets.some((candidate) =>
-    user.resourceGrants.some(
-      (grant) =>
-        (grant.resourceType === candidate.type || grant.resourceType === "*") &&
-        (grant.resourceId === candidate.id || grant.resourceId === "*"),
-    ),
-  );
-
-  return {
-    allowed: allowedByGrant,
-    reason: allowedByGrant ? undefined : "missing_resource_scope",
-  };
-}
-
 const resourceScopeTargets = createResourceScopeTargets({
   healthEventStore,
   nodeStore,
@@ -386,78 +137,27 @@ const resourceScopeTargets = createResourceScopeTargets({
   scheduleStore,
 });
 
-function rosterSubject(user: NonNullable<AuthResult["user"]>) {
-  return { groupIds: user.groups.map((group) => group.id), userId: user.id };
-}
-
-// Room ids a target resolves into (via the shared hierarchy expansion).
-function roomIdsFromTargets(targets: AuditTarget[]) {
-  const roomIds: string[] = [];
-
-  for (const target of targets) {
-    if (target.type === "room" && target.id) {
-      roomIds.push(target.id);
-    }
-  }
-
-  return roomIds;
-}
-
-// The set of room ids the user holds any capability in (direct or via a group).
-async function rosterRoomIds(user: NonNullable<AuthResult["user"]>) {
-  return new Set((await roomRosterStore.roomsForSubject(rosterSubject(user))).keys());
-}
-
-// True when the user holds `capability` in a room that `target` resolves into,
-// via the room roster (a manual grant or a calendar meeting-assignment). Reuses
-// the same hierarchy expansion as role scoping, so a room grant covers that
-// room's nodes, interfaces, channels, schedules, and recordings.
-async function roomCapabilityAuthorizes(
-  user: NonNullable<AuthResult["user"]>,
-  capability: RoomCapability,
-  target: AuditTarget,
-) {
-  if (!target.id) {
-    return false;
-  }
-
-  const roomIds = roomIdsFromTargets(await resourceScopeTargets(target));
-
-  if (roomIds.length === 0) {
-    return false;
-  }
-
-  const subject = rosterSubject(user);
-
-  for (const roomId of roomIds) {
-    const capabilities = await roomRosterStore.effectiveCapabilities(subject, roomId);
-
-    if (capabilities.has(capability)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function currentAuth(c: Context<AppBindings>) {
-  return c.get("auth");
-}
-
-function currentUser(c: Context<AppBindings>) {
-  const user = currentAuth(c).user;
-
-  if (!user) {
-    throw new Error("Authenticated route reached without a user");
-  }
-
-  return user;
-}
+const authorization = createAuthorization({
+  auditStore,
+  authService,
+  resourceScopeTargets,
+  roomRosterStore,
+});
+// Re-exported for test coverage of the access-policy-DENY-beats-roster-grant
+// precedence; see createAuthorization in index-authorization.ts.
+export const permissionDecision = authorization.permissionDecision;
+const {
+  authorizeTargetForUser,
+  hasResourceScope,
+  recordAuditEvent,
+  requirePermission,
+  rosterRoomIds,
+} = authorization;
 
 // Per-user resource visibility + meter/monitor access decisions. Extracted to a
 // sibling factory to keep this composition root within the LOC budget; the
-// factory only builds closures over the roster/scope helpers above, so wiring it
-// here preserves behavior and the startup order of side effects exactly.
+// factory only builds closures over the authorization + roster/scope helpers, so
+// wiring it here preserves behavior and the startup order of side effects exactly.
 const {
   canServeWholeNodeMonitor,
   filterMeterFrameForUser,
