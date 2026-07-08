@@ -46,6 +46,7 @@ import {
   recurrenceSummary,
   scheduleToDraft,
   type ScheduleDraft,
+  type SchedulingDefaultAvailability,
 } from "@/lib/schedule-draft";
 import { defaultPageSize } from "@/lib/server-pagination";
 import { useServerPagination } from "@/lib/use-server-pagination";
@@ -293,9 +294,27 @@ export function SchedulesPage() {
     </div>
   );
 
+  // Validate operator defaults against the schedule dialog's cached profile/
+  // policy lists so a since-deleted default is not prefilled (audit S3). A cold
+  // cache (lists not yet loaded) yields `undefined`, which trusts the default.
+  function schedulingAvailability(): SchedulingDefaultAvailability {
+    const cachedIds = (key: string) => {
+      const cached = queryClient.getQueryData<{ data: Array<{ id: string }> }>([key]);
+
+      return cached ? cached.data.map((item) => item.id) : undefined;
+    };
+
+    return {
+      recordingProfileIds: cachedIds("recording-profiles"),
+      retentionPolicyIds: cachedIds("retention-policies"),
+      uploadPolicyIds: cachedIds("upload-policies"),
+      watchdogPolicyIds: cachedIds("watchdog-policies"),
+    };
+  }
+
   function openCreate() {
     setEditingId(undefined);
-    setDraft(defaultDraft(firstNode, schedulingDefaults));
+    setDraft(defaultDraft(firstNode, schedulingDefaults, schedulingAvailability()));
     setDialogOpen(true);
   }
 
@@ -308,7 +327,7 @@ export function SchedulesPage() {
   function closeDialog() {
     setDialogOpen(false);
     setEditingId(undefined);
-    setDraft(defaultDraft(firstNode, schedulingDefaults));
+    setDraft(defaultDraft(firstNode, schedulingDefaults, schedulingAvailability()));
   }
 
   function submitSchedule() {

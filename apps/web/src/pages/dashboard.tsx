@@ -33,7 +33,7 @@ import { formatDateTime } from "@/lib/dates";
 import { healthEventTargetLabel, readableHealthEventType } from "@/lib/health-page-helpers";
 import { recordingJobStatusClass, recordingJobStopActionState } from "@/lib/jobs-page-helpers";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
-import { nodeStatusBadgeClass } from "@/lib/node-status";
+import { nodeStatusBadgeClass, nodeStatusLabel } from "@/lib/node-status";
 import { toneBadgeClass, toneTextClass } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 
@@ -189,7 +189,7 @@ export function DashboardPage() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium">{node.alias}</span>
                     <Badge className={nodeStatusBadgeClass(node.status)} variant="outline">
-                      {node.status}
+                      {nodeStatusLabel(node.status)}
                     </Badge>
                   </div>
                   <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">

@@ -67,7 +67,7 @@ import {
   type NodeFilterKey,
   type NodeHealthLifecycleAction,
 } from "@/lib/node-page-helpers";
-import { nodeStatusBadgeClass } from "@/lib/node-status";
+import { nodeStatusBadgeClass, nodeStatusLabel } from "@/lib/node-status";
 import { toneBadgeClass } from "@/lib/status-colors";
 import { downloadBlob } from "@/lib/recording-page-helpers";
 import { defaultPageSize } from "@/lib/server-pagination";
@@ -358,7 +358,7 @@ function nodeColumns({
   onToggleSelected,
   selectedNodeIds,
 }: NodeColumnOptions): ColumnDef<RecorderNode>[] {
-  return [
+  const columns: ColumnDef<RecorderNode>[] = [
     {
       cell: ({ row }) => (
         <Checkbox
@@ -417,7 +417,7 @@ function nodeColumns({
     {
       cell: ({ row }) => (
         <Badge className={nodeStatusBadgeClass(row.original.status)} variant="outline">
-          {row.original.status}
+          {nodeStatusLabel(row.original.status)}
         </Badge>
       ),
       header: "Status",
@@ -456,18 +456,25 @@ function nodeColumns({
       header: "IPs / serial",
       id: "network",
     },
-    {
-      cell: ({ row }) =>
-        canManage ? (
-          <div className="flex justify-end">
-            <NodeConfigureDialog canManage={canManage} node={row.original} />
-          </div>
-        ) : null,
+  ];
+
+  // Only add the Actions column for managers; a read-only operator otherwise
+  // gets an always-empty column with a dangling "Actions" header (audit
+  // W3-EMPTY-CARD-FOOTER), mirroring the conditional-column pattern elsewhere.
+  if (canManage) {
+    columns.push({
+      cell: ({ row }) => (
+        <div className="flex justify-end">
+          <NodeConfigureDialog canManage={canManage} node={row.original} />
+        </div>
+      ),
       header: "Actions",
       id: "actions",
       meta: { cellClassName: "text-right", headClassName: "text-right" },
-    },
-  ];
+    });
+  }
+
+  return columns;
 }
 
 function NodeDetailRow({

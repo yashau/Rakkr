@@ -9,7 +9,7 @@ import {
 import { Save, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, Toggle } from "@/components/settings-fields";
+import { Field, NumberField, Toggle } from "@/components/settings-fields";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -92,17 +92,13 @@ export function RecordingProfileSettingsCard({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Bitrate">
-          <Input
-            disabled={!canManage}
-            min={1}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, bitrateKbps: Number(event.target.value) }))
-            }
-            type="number"
-            value={draft.bitrateKbps}
-          />
-        </Field>
+        <NumberField
+          disabled={!canManage}
+          label="Bitrate"
+          min={1}
+          onChange={(bitrateKbps) => setDraft((current) => ({ ...current, bitrateKbps }))}
+          value={draft.bitrateKbps}
+        />
         <Field label="Chunk Length (seconds)">
           <Input
             disabled={!canManage}
@@ -217,19 +213,13 @@ export function RecordingProfileSettingsCard({
               updateEnhancement({ highpass: { ...enhancement.highpass, enabled: checked } })
             }
           />
-          <Field label="High-pass Hz">
-            <Input
-              disabled={!canManage || !enhancement.highpass.enabled}
-              min={20}
-              onChange={(event) =>
-                updateEnhancement({
-                  highpass: { ...enhancement.highpass, hz: Number(event.target.value) },
-                })
-              }
-              type="number"
-              value={enhancement.highpass.hz}
-            />
-          </Field>
+          <NumberField
+            disabled={!canManage || !enhancement.highpass.enabled}
+            label="High-pass Hz"
+            min={20}
+            onChange={(hz) => updateEnhancement({ highpass: { ...enhancement.highpass, hz } })}
+            value={enhancement.highpass.hz}
+          />
           <Toggle
             checked={enhancement.lowpass.enabled}
             disabled={!canManage}
@@ -238,19 +228,13 @@ export function RecordingProfileSettingsCard({
               updateEnhancement({ lowpass: { ...enhancement.lowpass, enabled: checked } })
             }
           />
-          <Field label="Low-pass Hz">
-            <Input
-              disabled={!canManage || !enhancement.lowpass.enabled}
-              min={2000}
-              onChange={(event) =>
-                updateEnhancement({
-                  lowpass: { ...enhancement.lowpass, hz: Number(event.target.value) },
-                })
-              }
-              type="number"
-              value={enhancement.lowpass.hz}
-            />
-          </Field>
+          <NumberField
+            disabled={!canManage || !enhancement.lowpass.enabled}
+            label="Low-pass Hz"
+            min={2000}
+            onChange={(hz) => updateEnhancement({ lowpass: { ...enhancement.lowpass, hz } })}
+            value={enhancement.lowpass.hz}
+          />
           <Toggle
             checked={enhancement.loudnorm.enabled}
             disabled={!canManage}
@@ -259,19 +243,15 @@ export function RecordingProfileSettingsCard({
               updateEnhancement({ loudnorm: { ...enhancement.loudnorm, enabled: checked } })
             }
           />
-          <Field label="Loudness Target (LUFS)">
-            <Input
-              disabled={!canManage || !enhancement.loudnorm.enabled}
-              max={-5}
-              onChange={(event) =>
-                updateEnhancement({
-                  loudnorm: { ...enhancement.loudnorm, targetI: Number(event.target.value) },
-                })
-              }
-              type="number"
-              value={enhancement.loudnorm.targetI}
-            />
-          </Field>
+          <NumberField
+            disabled={!canManage || !enhancement.loudnorm.enabled}
+            label="Loudness Target (LUFS)"
+            max={-5}
+            onChange={(targetI) =>
+              updateEnhancement({ loudnorm: { ...enhancement.loudnorm, targetI } })
+            }
+            value={enhancement.loudnorm.targetI}
+          />
           <Toggle
             checked={enhancement.deesser.enabled}
             disabled={!canManage}

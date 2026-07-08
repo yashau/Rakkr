@@ -68,6 +68,53 @@ test("default draft prefers operator-configured scheduling defaults", () => {
   assert.deepEqual(draft.uploadPolicyIds, ["upload_smb_primary"]);
 });
 
+test("default draft drops operator defaults that no longer exist in the available lists", () => {
+  const settings = {
+    ...defaultControllerSettings,
+    defaultRecordingProfileId: "profile_deleted",
+    defaultRetentionPolicyId: "retention_deleted",
+    defaultUploadPolicyId: "upload_deleted",
+    defaultWatchdogPolicyId: "watchdog_deleted",
+  };
+
+  // The stored defaults point at policies that have since been deleted; with the
+  // available lists known, each falls back to its built-in (upload → no upload)
+  // instead of prefilling a dangling id (audit S3).
+  const draft = defaultDraft(undefined, settings, {
+    recordingProfileIds: ["profile_hi_fi"],
+    retentionPolicyIds: ["retention_30d"],
+    uploadPolicyIds: ["upload_smb_primary"],
+    watchdogPolicyIds: ["watchdog_strict"],
+  });
+
+  assert.equal(draft.recordingProfileId, defaultVoiceRecordingProfile.id);
+  assert.equal(draft.retentionPolicyId, defaultKeepControllerCacheRetentionPolicy.id);
+  assert.equal(draft.watchdogPolicyId, defaultScheduledVoiceWatchdogPolicy.id);
+  assert.deepEqual(draft.uploadPolicyIds, []);
+});
+
+test("default draft keeps operator defaults that exist in the available lists", () => {
+  const settings = {
+    ...defaultControllerSettings,
+    defaultRecordingProfileId: "profile_hi_fi",
+    defaultRetentionPolicyId: "retention_30d",
+    defaultUploadPolicyId: "upload_smb_primary",
+    defaultWatchdogPolicyId: "watchdog_strict",
+  };
+
+  const draft = defaultDraft(undefined, settings, {
+    recordingProfileIds: ["profile_hi_fi"],
+    retentionPolicyIds: ["retention_30d"],
+    uploadPolicyIds: ["upload_smb_primary"],
+    watchdogPolicyIds: ["watchdog_strict"],
+  });
+
+  assert.equal(draft.recordingProfileId, "profile_hi_fi");
+  assert.equal(draft.retentionPolicyId, "retention_30d");
+  assert.equal(draft.watchdogPolicyId, "watchdog_strict");
+  assert.deepEqual(draft.uploadPolicyIds, ["upload_smb_primary"]);
+});
+
 test("schedule quick phrases produce structured weekly recurrence", () => {
   const draft = defaultDraft();
   const updated = applyNaturalLanguageSchedule(draft, "weekdays 9am to 10:30am");

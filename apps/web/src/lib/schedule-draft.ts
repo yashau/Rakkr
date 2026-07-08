@@ -63,11 +63,47 @@ export const dayOptions: Array<{ id: ScheduleDayOfWeek; label: string }> = [
 ];
 const weekdayDays: ScheduleDayOfWeek[] = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 
+// Available profile/policy ids to validate operator defaults against. When a
+// list is omitted (not yet loaded) the corresponding default is trusted as-is;
+// when provided, a default id absent from it is treated as deleted (audit S3).
+export interface SchedulingDefaultAvailability {
+  recordingProfileIds?: readonly string[];
+  retentionPolicyIds?: readonly string[];
+  uploadPolicyIds?: readonly string[];
+  watchdogPolicyIds?: readonly string[];
+}
+
+// Use an operator default id only when it still exists in the available list; a
+// since-deleted default falls back to the built-in so a new draft never prefills
+// a dangling policy id. An omitted list means "unknown", so trust the default.
+function resolveDefaultId(
+  id: string | null | undefined,
+  available: readonly string[] | undefined,
+  fallback: string,
+): string {
+  if (!id || (available && !available.includes(id))) {
+    return fallback;
+  }
+
+  return id;
+}
+
 // Operator-configured scheduling defaults (from controller settings) win; when
 // unset each profile/policy falls back to its built-in. Upload has no built-in
 // fallback — an unset upload default means "no upload" (recording stays in the
 // controller cache), so the test-only stub never seeds a real schedule.
-export function defaultDraft(node?: RecorderNode, defaults?: ControllerSettings): ScheduleDraft {
+export function defaultDraft(
+  node?: RecorderNode,
+  defaults?: ControllerSettings,
+  available?: SchedulingDefaultAvailability,
+): ScheduleDraft {
+  const uploadDefault = defaults?.defaultUploadPolicyId ?? null;
+  const uploadPolicyIds =
+    uploadDefault &&
+    (!available?.uploadPolicyIds || available.uploadPolicyIds.includes(uploadDefault))
+      ? [uploadDefault]
+      : [];
+
   return {
     assignedGroupIds: [],
     assignedUserIds: [],
@@ -90,9 +126,16 @@ export function defaultDraft(node?: RecorderNode, defaults?: ControllerSettings)
     pauseStartDate: "",
     recurrenceMode: "once",
     recurrenceStartAt: "",
-    recordingProfileId: defaults?.defaultRecordingProfileId ?? defaultVoiceRecordingProfile.id,
-    retentionPolicyId:
-      defaults?.defaultRetentionPolicyId ?? defaultKeepControllerCacheRetentionPolicy.id,
+    recordingProfileId: resolveDefaultId(
+      defaults?.defaultRecordingProfileId,
+      available?.recordingProfileIds,
+      defaultVoiceRecordingProfile.id,
+    ),
+    retentionPolicyId: resolveDefaultId(
+      defaults?.defaultRetentionPolicyId,
+      available?.retentionPolicyIds,
+      defaultKeepControllerCacheRetentionPolicy.id,
+    ),
     room: node?.location.room ?? "",
     startTime: "09:00",
     startEarlyMinutes: 0,
@@ -100,8 +143,12 @@ export function defaultDraft(node?: RecorderNode, defaults?: ControllerSettings)
     tags: "voice, scheduled",
     timezone: fallbackTimezone,
     titleTemplate: "{{date}}_{{time}}_{{schedule.name}}_{{node.alias}}",
-    uploadPolicyIds: defaults?.defaultUploadPolicyId ? [defaults.defaultUploadPolicyId] : [],
-    watchdogPolicyId: defaults?.defaultWatchdogPolicyId ?? defaultScheduledVoiceWatchdogPolicy.id,
+    uploadPolicyIds,
+    watchdogPolicyId: resolveDefaultId(
+      defaults?.defaultWatchdogPolicyId,
+      available?.watchdogPolicyIds,
+      defaultScheduledVoiceWatchdogPolicy.id,
+    ),
   };
 }
 

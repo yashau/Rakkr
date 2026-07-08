@@ -36,7 +36,7 @@ import { toast } from "sonner";
 import { api, apiErrorStatus } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
 import { useDocumentTitle } from "@/lib/document-title";
-import { nodeStatusBadgeClass } from "@/lib/node-status";
+import { nodeStatusBadgeClass, nodeStatusLabel } from "@/lib/node-status";
 import {
   roomDraftFromRoom,
   roomDraftToUpdate,
@@ -226,7 +226,7 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
                 <span className="min-w-0 flex-1 truncate font-medium">{node.alias}</span>
                 <span className="truncate text-xs text-muted-foreground">{node.hostname}</span>
                 <Badge className={nodeStatusBadgeClass(node.status)} variant="outline">
-                  {node.status}
+                  {nodeStatusLabel(node.status)}
                 </Badge>
               </div>
             ))}

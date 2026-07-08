@@ -82,6 +82,17 @@ export function ScheduleFormDialog({
   // visible without hunting.
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const selectedNode = nodes.find((node) => node.id === draft.nodeId);
+  // Keep a stale node/interface selection visible (like the profile/policy
+  // selects): if the draft pins a node or interface that is not in the current
+  // list (deleted, out of scope, or renamed away), the controlled Select would
+  // otherwise show its placeholder and read as unselected while the draft still
+  // holds — and silently re-saves — the id (audit R9-NODEIFACE-SELECT).
+  const nodeMissing = Boolean(draft.nodeId) && !selectedNode;
+  const interfaceMissing =
+    Boolean(draft.captureInterfaceId) &&
+    !selectedNode?.interfaces.some(
+      (audioInterface) => audioInterface.id === draft.captureInterfaceId,
+    );
   const recordingProfilesQuery = useQuery({
     enabled: open,
     queryFn: api.recordingProfiles,
@@ -233,6 +244,9 @@ export function ScheduleFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">Select a recorder</SelectItem>
+                  {nodeMissing ? (
+                    <SelectItem value={draft.nodeId}>{draft.nodeId} (unavailable)</SelectItem>
+                  ) : null}
                   {nodes.map((node) => (
                     <SelectItem key={node.id} value={node.id}>
                       {node.alias} / {node.location.room}
@@ -594,6 +608,11 @@ export function ScheduleFormDialog({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__all__">Node default</SelectItem>
+                          {interfaceMissing ? (
+                            <SelectItem value={draft.captureInterfaceId}>
+                              {draft.captureInterfaceId} (unavailable)
+                            </SelectItem>
+                          ) : null}
                           {selectedNode?.interfaces.map((audioInterface) => (
                             <SelectItem key={audioInterface.id} value={audioInterface.id}>
                               {audioInterfaceLabel(audioInterface)}

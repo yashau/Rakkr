@@ -35,7 +35,10 @@ export function TruncateCell({ children, className }: { children: ReactNode; cla
     observer.observe(el);
 
     return () => observer.disconnect();
-  });
+    // Re-measure (and re-subscribe) when the cell content changes; width changes
+    // are handled by the ResizeObserver. Without this dep the observer was torn
+    // down and rebuilt on every render (audit W2-OBSERVER-DEP).
+  }, [children]);
 
   const line = (
     <div ref={ref} className={cn("truncate", className)}>

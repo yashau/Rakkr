@@ -73,12 +73,26 @@ test("agent install command mirrors the documented day-0 one-liner", () => {
   // Pulls the official installer (not a hand-typed inventory) and runs the
   // single-use token via the documented flags.
   assert.match(command, /^curl -fsSL https:\/\/rakkr\.org\/agent\.sh \| sudo sh -s --/u);
-  assert.ok(command.includes("--controller-url https://controller.example:8787"));
-  assert.ok(command.includes("--bootstrap-token rakkr_bs_abc123"));
-  assert.ok(command.includes("--node-id node_42"));
-  // Free-text site/room are POSIX single-quoted so spaces survive `sh -s --`.
+  // Every interpolated value is POSIX single-quoted so spaces/metacharacters
+  // survive `sh -s --`.
+  assert.ok(command.includes("--controller-url 'https://controller.example:8787'"));
+  assert.ok(command.includes("--bootstrap-token 'rakkr_bs_abc123'"));
+  assert.ok(command.includes("--node-id 'node_42'"));
   assert.ok(command.includes("--site 'HQ'"));
   assert.ok(command.includes("--room 'Studio A'"));
+});
+
+test("agent install command quotes a controller URL with shell metacharacters", () => {
+  const command = buildAgentInstallCommand({
+    bootstrapToken: "rakkr_bs_x",
+    // A hostile/mistaken controller URL must not break out of the pasted line.
+    controllerUrl: "https://c; rm -rf /",
+    nodeId: "node_x",
+    room: "HQ",
+    site: "HQ",
+  });
+
+  assert.ok(command.includes("--controller-url 'https://c; rm -rf /'"));
 });
 
 test("agent install command escapes embedded quotes in room/site names", () => {
