@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawnDaemonAgent } from "./agent-fake-controller-smoke-agent.mjs";
 import {
   writeDeviceAssertCaptureCommand,
+  writeFakeRuntimeDiskRecoveryCaptureCommand,
   writeRenumberedAudioInventoryFixtures,
 } from "./agent-fake-controller-smoke-support.mjs";
 import { fileExists, invariant, readJsonLines, waitFor } from "./agent-fake-controller-smoke-utils.mjs";
@@ -143,7 +144,6 @@ export async function runDiskPreflightRecoveryScenario({
 export async function runRuntimeDiskRecoveryScenario({
   address,
   agentContext,
-  captureCommand,
   createJob,
   createObserved,
   nodeId: _nodeId,
@@ -151,6 +151,11 @@ export async function runRuntimeDiskRecoveryScenario({
   setActiveScenario,
   smokeRoot,
 }) {
+  // Use a longer-lived capture so the recording-job disk monitor reliably polls
+  // df while the capture is still in flight (the default 750 ms capture can be
+  // spawned and exit inside one 1 s poll interval on a slow runner, so the
+  // runtime disk-exhaustion window is never observed — see the capture command).
+  const captureCommand = await writeFakeRuntimeDiskRecoveryCaptureCommand(smokeRoot);
   const stateFile = path.join(smokeRoot, "runtime-disk-recovery-agent-state.json");
   const healthLogFile = path.join(smokeRoot, "runtime-disk-recovery-health-events.jsonl");
   const manifestFile = path.join(smokeRoot, "runtime-disk-recovery-manifest.json");
