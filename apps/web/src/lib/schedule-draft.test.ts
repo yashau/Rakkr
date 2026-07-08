@@ -163,6 +163,17 @@ test("scheduleToDraft drops a legacy stub upload policy so it is not silently re
   assert.deepEqual(draft.uploadPolicyIds, ["up_real"]);
 });
 
+test("draftToInput dedups uploadPolicyIds so a recording fans out once per destination", () => {
+  const input = draftToInput({
+    ...defaultDraft(),
+    name: "Dedup Capture",
+    nodeId: "node_dedup",
+    uploadPolicyIds: ["up_a", "up_a", "up_b", "up_b"],
+  });
+
+  assert.deepEqual(input.uploadPolicyIds, ["up_a", "up_b"]);
+});
+
 test("schedule draft pins a sorted channel selection only with an interface", () => {
   const withInterface = draftToInput({
     ...defaultDraft(),

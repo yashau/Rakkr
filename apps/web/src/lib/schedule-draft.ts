@@ -162,7 +162,7 @@ export function draftToInput(draft: ScheduleDraft): ScheduleInput {
     tags: uniqueTags(draft.tags),
     timezone: draft.timezone,
     titleTemplate: draft.titleTemplate,
-    uploadPolicyIds: draft.uploadPolicyIds,
+    uploadPolicyIds: [...new Set(draft.uploadPolicyIds)],
     watchdogPolicyId: draft.watchdogPolicyId,
   };
 }

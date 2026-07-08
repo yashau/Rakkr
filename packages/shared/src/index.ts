@@ -565,7 +565,9 @@ export const scheduleInputSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
   timezone: ianaTimeZoneSchema,
   titleTemplate: z.string().trim().min(1).max(500),
-  uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).default([]),
+  // Capped + deduped on write: each recording fans out to one upload queue item
+  // per id, so an uncapped list multiplies queue work per recording (audit R3-4).
+  uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).max(32).default([]),
   watchdogPolicyId: z.string().trim().min(1).max(160),
 });
 export const scheduleUpdateSchema = z
@@ -589,7 +591,7 @@ export const scheduleUpdateSchema = z
     tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
     timezone: ianaTimeZoneSchema.optional(),
     titleTemplate: z.string().trim().min(1).max(500).optional(),
-    uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).optional(),
+    uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).max(32).optional(),
     watchdogPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one schedule field is required");
