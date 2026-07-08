@@ -34,7 +34,7 @@ Status: MVP baseline checked.
 | Recurrence engine                                                   | `apps/api/test/schedule-engine.test.ts`                                                                              |
 | Due-run, backend/interface selection, and schedule-owned recordings | `apps/api/test/schedule-runner.test.ts`, `apps/api/test/schedule-routes.test.ts`                                     |
 | Retention assignment                                                | `packages/db/drizzle/0021_true_midnight.sql`, `apps/api/src/schedule-store.ts`, `apps/web/src/lib/schedule-draft.ts` |
-| Route RBAC and operator controls                                    | `apps/api/test/schedule-routes.test.ts`                                                                              |
+| Route RBAC and operator controls                                    | `apps/api/test/schedule-routes.test.ts`, `apps/api/test/schedule-routes-lifecycle.test.ts`                          |
 | Calendar occurrences and occurrence moves                           | `apps/api/test/schedule-engine.test.ts`, `apps/api/test/schedule-occurrence-routes.test.ts`                          |
 | Assignment payload and calendar occurrences                         | `apps/api/test/schedule-occurrence-routes.test.ts`                                                                   |
 | UI permissions                                                      | `apps/web/src/lib/schedule-page-helpers.test.ts`                                                                     |

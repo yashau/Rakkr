@@ -19,6 +19,9 @@ Status: MVP baseline checked.
 | Check                                                                    | Evidence                                              |
 | ------------------------------------------------------------------------ | ----------------------------------------------------- |
 | Listing, facets, filters, sorting, pagination, bulk organization, delete | `apps/api/test/recording-routes.test.ts`              |
+| Bulk metadata organization                                               | `apps/api/test/recording-routes-metadata.test.ts`     |
+| Bulk and single recording delete                                         | `apps/api/test/recording-routes-delete.test.ts`       |
+| Ad-hoc recording lifecycle                                               | `apps/api/test/agent-routes-recording-lifecycle.test.ts` |
 | Route RBAC                                                               | `apps/api/test/recording-route-permissions.test.ts`   |
 | Cache checksum and waveform preview                                      | `apps/api/test/recording-cache.test.ts`               |
 | CSV manifest export                                                      | `apps/api/test/recording-export-routes.test.ts`       |

@@ -4,6 +4,7 @@ const baselineFile = "docs/internal/baselines/SCHEDULER_BASELINE.md";
 const sourceFiles = [
   "packages/shared/src/index.ts",
   "packages/db/src/schema.ts",
+  "packages/db/src/schema/schedules.ts",
   "packages/db/drizzle/0021_true_midnight.sql",
   "apps/api/src/schedule-engine.ts",
   "apps/api/src/schedule-routes.ts",
@@ -15,6 +16,7 @@ const sourceFiles = [
   "apps/api/test/schedule-engine.test.ts",
   "apps/api/test/schedule-runner.test.ts",
   "apps/api/test/schedule-routes.test.ts",
+  "apps/api/test/schedule-routes-lifecycle.test.ts",
   "apps/api/test/schedule-occurrence-routes.test.ts",
   "apps/web/src/lib/schedule-page-helpers.test.ts",
   "apps/web/src/lib/schedule-detail-page-helpers.test.ts",

@@ -67,6 +67,11 @@ const sourceFiles = [
   "scripts/agent-fake-controller-smoke-recovery.mjs",
   "scripts/agent-fake-controller-smoke-support.mjs",
   "scripts/agent-fake-controller-smoke.mjs",
+  "scripts/agent-fake-controller-smoke-recovery-disk.mjs",
+  "crates/recorder-agent/src/inventory/alsa.rs",
+  "apps/api/test/agent-routes-recording-lifecycle.test.ts",
+  "apps/api/test/recording-job-export-read.test.ts",
+  "apps/api/test/recording-job-export-lifecycle.test.ts",
 ];
 const baselinePhrases = [
   "MVP baseline checked",

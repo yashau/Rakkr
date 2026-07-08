@@ -25,6 +25,9 @@ const sourceFiles = [
   "apps/api/test/agent-routes.test.ts",
   "apps/api/test/schedule-runner.test.ts",
   "apps/web/src/lib/recording-page-helpers.test.ts",
+  "apps/api/test/recording-routes-metadata.test.ts",
+  "apps/api/test/recording-routes-delete.test.ts",
+  "apps/api/test/agent-routes-recording-lifecycle.test.ts",
 ];
 const baselinePhrases = [
   "RBAC-gated",
