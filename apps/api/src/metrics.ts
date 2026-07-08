@@ -1,11 +1,12 @@
-import type {
-  AuditEvent,
-  HealthEvent,
-  MeterFrame,
-  RecorderNode,
-  RecordingJob,
-  RecordingSummary,
-  UploadQueueItem,
+import {
+  isNodeReachable,
+  type AuditEvent,
+  type HealthEvent,
+  type MeterFrame,
+  type RecorderNode,
+  type RecordingJob,
+  type RecordingSummary,
+  type UploadQueueItem,
 } from "@rakkr/shared";
 
 import { nodeOfflineEventType, scheduledLowSignalEventType } from "./watchdog-runner.js";
@@ -45,7 +46,7 @@ export function renderPrometheusMetrics(input: PrometheusMetricsInput) {
   pushHelp(lines, "rakkr_node_online", "Whether a recorder node is reachable.");
   pushType(lines, "rakkr_node_online", "gauge");
   for (const node of input.nodes) {
-    pushMetric(lines, "rakkr_node_online", nodeLabels(node), node.status === "offline" ? 0 : 1);
+    pushMetric(lines, "rakkr_node_online", nodeLabels(node), isNodeReachable(node.status) ? 1 : 0);
   }
 
   pushHelp(lines, "rakkr_recording_active", "Active recording jobs by recorder node.");

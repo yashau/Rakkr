@@ -45,6 +45,18 @@ export const nodeStatusSchema = z.enum([
   "alerting",
 ]);
 
+// A node is "reachable" (in contact and reporting) when its status is online,
+// recording, degraded, or alerting. "offline" (heartbeat gone stale) and
+// "provisioning" (enrolled but never contacted) are NOT reachable. Shared by the
+// /metrics `rakkr_node_online` gauge and the dashboard active-node count so the
+// two cannot diverge on how a never-contacted provisioning node is treated
+// (a naive `status !== "offline"` counts provisioning as online — see audit N1/N2).
+export function isNodeReachable(status: NodeStatus): boolean {
+  return (
+    status === "online" || status === "recording" || status === "degraded" || status === "alerting"
+  );
+}
+
 export const healthEventStatusSchema = z.enum(["open", "acknowledged", "suppressed", "resolved"]);
 
 export const recordingSourceSchema = z.enum(["ad_hoc", "schedule"]);

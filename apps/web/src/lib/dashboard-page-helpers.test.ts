@@ -7,8 +7,27 @@ import {
   dashboardActiveHealthEvents,
   dashboardIncidentActions,
   dashboardPagePermissions,
+  dashboardReportingNodes,
   dashboardSelectedNodeId,
 } from "./dashboard-page-helpers";
+
+test("dashboard reporting nodes exclude never-contacted provisioning and offline nodes", () => {
+  const nodes = [
+    { id: "n_prov", status: "provisioning" as const },
+    { id: "n_online", status: "online" as const },
+    { id: "n_recording", status: "recording" as const },
+    { id: "n_degraded", status: "degraded" as const },
+    { id: "n_alerting", status: "alerting" as const },
+    { id: "n_offline", status: "offline" as const },
+  ];
+
+  // A provisioning node has never reported; it (and offline) must not count as
+  // "reporting". A naive `status !== "offline"` filter wrongly keeps provisioning.
+  assert.deepEqual(
+    dashboardReportingNodes(nodes).map((node) => node.id),
+    ["n_online", "n_recording", "n_degraded", "n_alerting"],
+  );
+});
 
 test("dashboard page reads and meters require node read permission", () => {
   assert.deepEqual(dashboardPagePermissions(undefined), {

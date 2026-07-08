@@ -26,6 +26,7 @@ import {
   dashboardActiveHealthEvents,
   dashboardIncidentActions,
   dashboardPagePermissions,
+  dashboardReportingNodes,
   type DashboardIncidentAction,
 } from "@/lib/dashboard-page-helpers";
 import { formatDateTime } from "@/lib/dates";
@@ -107,7 +108,7 @@ export function DashboardPage() {
 
   const status = statusQuery.data;
   const nodes = nodesQuery.data?.data ?? [];
-  const activeNodes = nodes.filter((node) => node.status !== "offline");
+  const activeNodes = dashboardReportingNodes(nodes);
   const activeHealthEvents = dashboardActiveHealthEvents(healthEventsQuery.data?.data ?? []);
   const activeRecordingJobs = dashboardActiveRecordingJobs(recordingJobsQuery.data?.data ?? []);
   const nodeAlias = (nodeId: string) => nodes.find((node) => node.id === nodeId)?.alias ?? nodeId;
