@@ -43,7 +43,18 @@ export const nodeHeartbeatSchema = z
   .object({
     agentVersion: z.string().trim().min(1).max(80),
     hostname: z.string().trim().min(1).max(255),
-    ipAddresses: z.array(z.string().trim().min(1).max(120)).max(16).default([]),
+    // A heartbeat is liveness-critical, so an over-cap ipAddresses list must not
+    // fail the whole heartbeat closed and strand the node as "offline". A
+    // multi-homed host's `hostname -I` can exceed 16 (IPv6 SLAAC/privacy addresses
+    // + Docker/libvirt/VLAN bridges); truncate to the documented cap and accept
+    // (the kept 16 are the primary addresses) rather than 400 every heartbeat
+    // forever and desync the node (audit R7-IPCAP).
+    ipAddresses: z
+      .preprocess(
+        (value) => (Array.isArray(value) ? value.slice(0, 16) : value),
+        z.array(z.string().trim().min(1).max(120)).max(16),
+      )
+      .default([]),
     runtime: nodeRuntimeSchema.optional(),
     status: nodeStatusSchema.default("online"),
   })

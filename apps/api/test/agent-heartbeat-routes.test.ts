@@ -68,6 +68,40 @@ test("agent heartbeat audits changed and unchanged successes", async () => {
   assert.ok(audits.every((event) => event.permission === "node:control"));
 });
 
+test("agent heartbeat truncates an over-cap ipAddresses list instead of failing closed", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const routeNode = node();
+  const nodeStore = memoryNodeStore([routeNode]);
+  const manyIps = Array.from({ length: 20 }, (_, index) => `10.9.0.${index + 1}`);
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore(),
+    settingsStore: {} as SettingsStore,
+  });
+
+  const response = await postHeartbeat(app, routeNode.id, {
+    agentVersion: "0.2.0",
+    hostname: "multi-homed-node",
+    ipAddresses: manyIps,
+    status: "online",
+  });
+  const body = (await response.json()) as { data: RecorderNode };
+
+  // A multi-homed host's `hostname -I` can exceed 16 addresses; the heartbeat is
+  // liveness-critical, so it must be accepted (not 400'd every tick, which would
+  // freeze lastSeenAt and flip the live node offline). The list is truncated to
+  // the documented cap (audit R7-IPCAP).
+  assert.equal(response.status, 202);
+  assert.equal(body.data.ipAddresses.length, 16);
+  assert.deepEqual(body.data.ipAddresses, manyIps.slice(0, 16));
+});
+
 function postHeartbeat(app: Hono<AppBindings>, nodeId: string, heartbeat: NodeHeartbeatInput) {
   return app.request(`/api/v1/nodes/${nodeId}/heartbeat`, {
     body: JSON.stringify(heartbeat),
