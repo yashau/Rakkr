@@ -11,6 +11,7 @@ import {
 } from "@rakkr/shared";
 
 import { registerAgentReleaseRoutes } from "./agent-release-routes.js";
+import type { AgentReleaseService } from "./agent-release-service.js";
 import type { AuthResult } from "./auth-service.js";
 import { buildMeterFrame, demoMetersEnabled } from "./demo-data.js";
 import type {
@@ -36,6 +37,7 @@ import type { NodeStore } from "./node-store.js";
 import { NodeStoreError } from "./node-store.js";
 
 interface NodeRouteDependencies {
+  agentReleaseService?: AgentReleaseService;
   app: Hono<AppBindings>;
   bootstrapStore: NodeBootstrapStore;
   currentAuth: (c: Context<AppBindings>) => AuthResult;
@@ -151,6 +153,7 @@ const nodeInterfaceUpdateSchema = z
   .refine(hasNodeUpdate, "At least one interface field is required");
 
 export function registerNodeRoutes({
+  agentReleaseService: releaseService,
   app,
   bootstrapStore,
   canServeWholeNodeMonitor = async () => true,
@@ -167,6 +170,18 @@ export function registerNodeRoutes({
   scopedNodes,
   sshCredentialStore,
 }: NodeRouteDependencies) {
+  // Register the static `/api/v1/nodes/agent-release` route BEFORE any
+  // `/api/v1/nodes/:nodeId` route. The node route set mixes a static child
+  // (`/export`) with a param child (`:nodeId`) at the same trie position, which
+  // Hono's RegExpRouter cannot represent, so the whole app falls back to the
+  // registration-order-sensitive TrieRouter. A static route registered AFTER
+  // `:nodeId` loses the match and gets swallowed by the detail handler (→ 404).
+  // Keeping this first mirrors how `/export` avoids the collision.
+  registerAgentReleaseRoutes({
+    agentReleaseService: releaseService,
+    app,
+    requirePermission,
+  });
   registerNodeInventoryRoutes({
     app,
     currentAuth,
@@ -192,10 +207,6 @@ export function registerNodeRoutes({
     recordAuditEvent,
     requirePermission,
     scopedNodes,
-  });
-  registerAgentReleaseRoutes({
-    app,
-    requirePermission,
   });
   registerNodeSshCredentialRoutes({
     app,
