@@ -74,6 +74,27 @@ rejected at every layer:
   `apps/api/src/agent-release-service.ts`, `apps/api/src/agent-release-routes.ts`,
   `apps/web/src/pages/nodes.tsx`, `apps/web/src/components/node-lifecycle-menu.tsx`.
 
+## Provisioning And Offline Liveness
+
+- A newly enrolled node starts **provisioning** ("Awaiting first contact"): it has
+  never sent a heartbeat, so heartbeat-staleness cannot apply. It is **excluded
+  from offline alerting** — `reconcileNodeLivenessEvents` skips it with reason
+  `node_never_provisioned`, and `deriveNodeStatus` keeps it `provisioning` — until
+  its first heartbeat flips it to a live status.
+- For every non-provisioning node, `deriveNodeStatus`/`nodeHeartbeatStale` returns
+  **offline** when the heartbeat is stale: strictly `ageSeconds >
+  offlineAfterSeconds` (`RAKKR_NODE_OFFLINE_AFTER_SECONDS`, default 120; a zero
+  threshold disables derivation). The watchdog opens exactly one critical
+  `watchdog.node_offline` health event per node (deduped against an already-open
+  event, filtered by type) and auto-resolves it on recovery.
+- "Reachable" for the `/metrics` `rakkr_node_online` gauge and the dashboard's
+  active-node count is the shared `isNodeReachable` predicate (online / recording /
+  degraded / alerting). A never-contacted **provisioning** node and an **offline**
+  node are both *not* reachable, so neither inflates the "reporting" count.
+- Evidence: `apps/api/src/node-liveness.ts`,
+  `apps/api/src/watchdog-node-liveness.ts`, `packages/shared/src/index.ts`
+  (`isNodeReachable`).
+
 ## Binary Deployment
 
 - `update_binary` deploys from a published GitHub release by default: each target

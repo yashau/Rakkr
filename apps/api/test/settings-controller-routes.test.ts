@@ -60,6 +60,53 @@ test("controller settings read and update persist and audit", async () => {
   assert.ok(failures.some((event) => event.action === "settings.controller.update.failed"));
 });
 
+test("controller settings merge keeps unrelated defaults and clears one only on explicit null", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer(["settings:read", "settings:manage"]);
+  const controllerSettingsStore = createControllerSettingsStore();
+
+  registerSettingsControllerRoutes({
+    app,
+    controllerSettingsStore,
+    currentAuth: () => ({ user: currentUser }),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: allowPermission(),
+  });
+
+  // Two defaults set in separate single-field PATCHes (the shape the console's
+  // per-policy "set default" toggle actually sends): each must persist and not
+  // clobber the other.
+  await requestJson(app, "/api/v1/settings/controller", "PATCH", {
+    defaultRecordingProfileId: "profile_hifi",
+  });
+  await requestJson(app, "/api/v1/settings/controller", "PATCH", {
+    defaultWatchdogPolicyId: "wd_strict",
+  });
+  const afterSet = await readControllerSettings(app);
+
+  // A PATCH of an unrelated field must leave both defaults untouched (keep,
+  // not reset to the schema default).
+  await requestJson(app, "/api/v1/settings/controller", "PATCH", { controllerName: "Keep Test" });
+  const afterName = await readControllerSettings(app);
+
+  // Explicit null clears exactly that default; an omitted field is preserved.
+  // A `?? current` merge would treat the clearing null as "keep" and this would
+  // regress silently — this is the case the `keep` helper exists for.
+  await requestJson(app, "/api/v1/settings/controller", "PATCH", {
+    defaultRecordingProfileId: null,
+  });
+  const afterClear = await readControllerSettings(app);
+
+  assert.equal(afterSet.defaultRecordingProfileId, "profile_hifi");
+  assert.equal(afterSet.defaultWatchdogPolicyId, "wd_strict");
+  assert.equal(afterName.controllerName, "Keep Test");
+  assert.equal(afterName.defaultRecordingProfileId, "profile_hifi");
+  assert.equal(afterName.defaultWatchdogPolicyId, "wd_strict");
+  assert.equal(afterClear.defaultRecordingProfileId, null);
+  assert.equal(afterClear.defaultWatchdogPolicyId, "wd_strict");
+});
+
 test("controller settings deny without settings read and manage", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");
@@ -105,6 +152,21 @@ function requestJson(
 async function jsonData(app: Hono<AppBindings>, routePath: string) {
   const response = await app.request(routePath);
   const body = (await response.json()) as { data: { controllerName: string } };
+
+  assert.equal(response.status, 200);
+
+  return body.data;
+}
+
+async function readControllerSettings(app: Hono<AppBindings>) {
+  const response = await app.request("/api/v1/settings/controller");
+  const body = (await response.json()) as {
+    data: {
+      controllerName: string;
+      defaultRecordingProfileId: string | null;
+      defaultWatchdogPolicyId: string | null;
+    };
+  };
 
   assert.equal(response.status, 200);
 

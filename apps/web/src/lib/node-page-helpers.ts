@@ -151,11 +151,15 @@ export function buildAgentInstallCommand({
   room,
   site,
 }: AgentInstallCommandInput): string {
+  // POSIX single-quote every interpolated value (not just free-text site/room):
+  // a controller URL with a shell metacharacter (`&`, `;`, `$`, a space) would
+  // otherwise break the pasted one-liner or inject into the operator's shell
+  // (audit R6-INSTALL-URL-QUOTE).
   return [
     `curl -fsSL ${installScriptUrl} | sudo sh -s --`,
-    `--controller-url ${controllerUrl}`,
-    `--bootstrap-token ${bootstrapToken}`,
-    `--node-id ${nodeId}`,
+    `--controller-url ${shellQuoteArg(controllerUrl)}`,
+    `--bootstrap-token ${shellQuoteArg(bootstrapToken)}`,
+    `--node-id ${shellQuoteArg(nodeId)}`,
     `--site ${shellQuoteArg(site)}`,
     `--room ${shellQuoteArg(room)}`,
   ].join(" \\\n  ");

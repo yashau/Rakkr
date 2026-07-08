@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { numericInputCommit } from "@/lib/settings-updates";
 
 export function RetentionPolicyEditor({
   canManage,
@@ -220,6 +221,9 @@ export function defaultRetentionPolicyInput(): RetentionPolicyInput {
   };
 }
 
-function optionalNumber(value: string) {
-  return value.trim() ? Number(value) : null;
+function optionalNumber(value: string): number | null {
+  // Empty clears the limit (null); an invalid/non-decimal entry commits null
+  // rather than NaN (Number("abc")/Number("0x1f") would otherwise slip through)
+  // (audit H4-3).
+  return numericInputCommit(value) ?? null;
 }

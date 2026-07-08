@@ -8,7 +8,7 @@ import {
 import { Gauge, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field } from "@/components/settings-fields";
+import { Field, NumberField } from "@/components/settings-fields";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { watchdogCalibrationActionState } from "@/lib/settings-page-helpers";
-import { watchdogPolicyUpdate } from "@/lib/settings-updates";
+import { watchdogPolicyUpdate, withWatchdogDisplayDefaults } from "@/lib/settings-updates";
 
 export function WatchdogPolicyCard({
   canManage,
@@ -38,7 +38,7 @@ export function WatchdogPolicyCard({
   policy: WatchdogPolicy;
 }) {
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState(policy);
+  const [draft, setDraft] = useState(() => withWatchdogDisplayDefaults(policy));
   const [calibrationNodeId, setCalibrationNodeId] = useState(nodes[0]?.id ?? "");
   const [signalMarginDb, setSignalMarginDb] = useState(8);
   const calibrationAction = watchdogCalibrationActionState({
@@ -53,7 +53,7 @@ export function WatchdogPolicyCard({
         description: "The watchdog policy could not be saved.",
       }),
     onSuccess: ({ data }) => {
-      setDraft(data);
+      setDraft(withWatchdogDisplayDefaults(data));
       toast.success("Watchdog policy saved");
       void queryClient.invalidateQueries({ queryKey: ["watchdog-policies"] });
       void queryClient.invalidateQueries({ queryKey: ["status"] });
@@ -73,7 +73,7 @@ export function WatchdogPolicyCard({
       }),
     onSuccess: ({ data }) => {
       if (data.policy) {
-        setDraft(data.policy);
+        setDraft(withWatchdogDisplayDefaults(data.policy));
       }
 
       void queryClient.invalidateQueries({ queryKey: ["watchdog-policies"] });
@@ -82,7 +82,7 @@ export function WatchdogPolicyCard({
   });
 
   useEffect(() => {
-    setDraft(policy);
+    setDraft(withWatchdogDisplayDefaults(policy));
   }, [policy]);
 
   useEffect(() => {
@@ -466,38 +466,6 @@ export function WatchdogPolicyCard({
         </Tooltip>
       </DialogFooter>
     </div>
-  );
-}
-
-function NumberField({
-  disabled,
-  label,
-  max,
-  min,
-  onChange,
-  step,
-  value,
-}: {
-  disabled: boolean;
-  label: string;
-  max?: number;
-  min: number;
-  onChange: (value: number) => void;
-  step?: number;
-  value: number;
-}) {
-  return (
-    <Field label={label}>
-      <Input
-        disabled={disabled}
-        max={max}
-        min={min}
-        onChange={(event) => onChange(Number(event.target.value))}
-        step={step}
-        type="number"
-        value={value}
-      />
-    </Field>
   );
 }
 

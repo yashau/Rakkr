@@ -480,6 +480,18 @@ export function registerAgentRoutes({
 
   app.get("/api/v1/recording-jobs/:jobId", async (c, next) => {
     const jobId = c.req.param("jobId");
+
+    // `/api/v1/recording-jobs/export` is a static operator route that collides
+    // with this `:jobId` param route under Hono's TrieRouter (the app falls back
+    // to TrieRouter because of the nodes static+param collision — see audit G1).
+    // This node-auth handler is registered first, so without this guard it would
+    // answer `/export` with a node-credential 401 instead of the operator export
+    // handler. A real job id is never the literal "export", so defer it downstream.
+    if (jobId === "export") {
+      await next();
+      return c.res;
+    }
+
     const token = bearerToken(c.req.header("authorization"));
 
     if (!token)

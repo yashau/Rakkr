@@ -39,7 +39,12 @@ import {
   recorderInterfaceToRow,
   recorderNodeToRow,
 } from "./node-store-mappers.js";
-import { updatedNode, updatedNodeHeartbeat, updatedNodeInterface } from "./node-store-updates.js";
+import {
+  heartbeatStatus,
+  updatedNode,
+  updatedNodeHeartbeat,
+  updatedNodeInterface,
+} from "./node-store-updates.js";
 
 export interface NodeEnrollmentInput {
   agentVersion: string;
@@ -448,7 +453,7 @@ class PostgresNodeStore implements NodeStore {
           lastSeenAt: new Date(),
           metadata: nodeMetadata(row.metadata, nodeRuntimeFromInput(input.runtime, row.metadata)),
           network: { ipAddresses: input.ipAddresses },
-          status: input.status,
+          status: heartbeatStatus(input.status),
           updatedAt: new Date(),
         })
         .where(eq(nodeRows.id, nodeId));

@@ -28,7 +28,12 @@ import {
 import { cn } from "@/lib/utils";
 import { nodePickerFilters } from "@/lib/node-page-helpers";
 import { schedulePageActionPermissions } from "@/lib/schedule-page-helpers";
-import { defaultDraft, draftToInput, type ScheduleDraft } from "@/lib/schedule-draft";
+import {
+  defaultDraft,
+  draftToInput,
+  type ScheduleDraft,
+  type SchedulingDefaultAvailability,
+} from "@/lib/schedule-draft";
 
 const maxVisibleChips = 3;
 
@@ -279,11 +284,31 @@ export function SchedulesCalendarPage() {
 
   function openCreate(cell: CalendarDayCell) {
     setDraft({
-      ...defaultDraft(firstNode),
+      // Prefill the operator's configured scheduling defaults, mirroring the
+      // schedules list page — the calendar create path previously dropped the
+      // second arg and always fell back to the built-ins (audit S1). Validate
+      // them against the dialog's cached lists so a deleted default is not
+      // prefilled (audit S3); a cold cache trusts the default.
+      ...defaultDraft(firstNode, controllerSettingsQuery.data?.data, schedulingAvailability()),
       recurrenceMode: "once",
       recurrenceStartAt: `${cell.iso}T09:00`,
     });
     setCreateDialogOpen(true);
+  }
+
+  function schedulingAvailability(): SchedulingDefaultAvailability {
+    const cachedIds = (key: string) => {
+      const cached = queryClient.getQueryData<{ data: Array<{ id: string }> }>([key]);
+
+      return cached ? cached.data.map((item) => item.id) : undefined;
+    };
+
+    return {
+      recordingProfileIds: cachedIds("recording-profiles"),
+      retentionPolicyIds: cachedIds("retention-policies"),
+      uploadPolicyIds: cachedIds("upload-policies"),
+      watchdogPolicyIds: cachedIds("watchdog-policies"),
+    };
   }
 
   function closeCreate() {

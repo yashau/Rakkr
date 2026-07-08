@@ -17,6 +17,29 @@ export function currentPageFromOffset(offset: number, limit: number): number {
   return Math.floor(Math.max(offset, 0) / limit) + 1;
 }
 
+/**
+ * Clamp an offset back onto the last non-empty page when the total shrinks below
+ * it — e.g. the rows on the last page are deleted (bulk delete / retention sweep /
+ * single delete). Without this, a server-paginated list strands the user on an
+ * empty page past the end with only "Previous" to escape. Returns 0 for an empty
+ * list or a non-positive offset; leaves a still-valid offset untouched.
+ */
+export function clampedOffset(offset: number, limit: number, total: number): number {
+  if (offset <= 0 || limit <= 0) {
+    return Math.max(offset, 0);
+  }
+
+  if (total <= 0) {
+    return 0;
+  }
+
+  if (offset < total) {
+    return offset;
+  }
+
+  return Math.max(Math.ceil(total / limit) - 1, 0) * limit;
+}
+
 export interface PaginationSummary {
   from: number;
   to: number;

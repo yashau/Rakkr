@@ -4,6 +4,7 @@ import {
   defaultControllerSettings,
   defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
+  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
 } from "@rakkr/shared";
 
@@ -13,7 +14,34 @@ import {
   defaultDraft,
   draftToInput,
   scheduleToDraft,
+  withSelectedOption,
 } from "./schedule-draft";
+
+test("withSelectedOption keeps a current-but-absent selection visible", () => {
+  const items = [
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ];
+
+  // A selection present in the list is shown once (not duplicated).
+  assert.deepEqual(withSelectedOption(items, "ret_30d"), [
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ]);
+  // A stale/deleted selection is prepended so a controlled Select shows it
+  // instead of falling back to the placeholder (which reads as "unselected"
+  // while the draft silently keeps and re-saves the id).
+  assert.deepEqual(withSelectedOption(items, "ret_deleted"), [
+    { id: "ret_deleted", name: "ret_deleted" },
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ]);
+  // No current selection → no synthetic option.
+  assert.deepEqual(withSelectedOption(items, ""), [
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ]);
+});
 
 test("default draft falls back to built-in profile/policies and no upload when unset", () => {
   const draft = defaultDraft();
@@ -37,6 +65,53 @@ test("default draft prefers operator-configured scheduling defaults", () => {
   assert.equal(draft.recordingProfileId, "profile_hi_fi");
   assert.equal(draft.watchdogPolicyId, "watchdog_strict");
   assert.equal(draft.retentionPolicyId, "retention_30d");
+  assert.deepEqual(draft.uploadPolicyIds, ["upload_smb_primary"]);
+});
+
+test("default draft drops operator defaults that no longer exist in the available lists", () => {
+  const settings = {
+    ...defaultControllerSettings,
+    defaultRecordingProfileId: "profile_deleted",
+    defaultRetentionPolicyId: "retention_deleted",
+    defaultUploadPolicyId: "upload_deleted",
+    defaultWatchdogPolicyId: "watchdog_deleted",
+  };
+
+  // The stored defaults point at policies that have since been deleted; with the
+  // available lists known, each falls back to its built-in (upload → no upload)
+  // instead of prefilling a dangling id (audit S3).
+  const draft = defaultDraft(undefined, settings, {
+    recordingProfileIds: ["profile_hi_fi"],
+    retentionPolicyIds: ["retention_30d"],
+    uploadPolicyIds: ["upload_smb_primary"],
+    watchdogPolicyIds: ["watchdog_strict"],
+  });
+
+  assert.equal(draft.recordingProfileId, defaultVoiceRecordingProfile.id);
+  assert.equal(draft.retentionPolicyId, defaultKeepControllerCacheRetentionPolicy.id);
+  assert.equal(draft.watchdogPolicyId, defaultScheduledVoiceWatchdogPolicy.id);
+  assert.deepEqual(draft.uploadPolicyIds, []);
+});
+
+test("default draft keeps operator defaults that exist in the available lists", () => {
+  const settings = {
+    ...defaultControllerSettings,
+    defaultRecordingProfileId: "profile_hi_fi",
+    defaultRetentionPolicyId: "retention_30d",
+    defaultUploadPolicyId: "upload_smb_primary",
+    defaultWatchdogPolicyId: "watchdog_strict",
+  };
+
+  const draft = defaultDraft(undefined, settings, {
+    recordingProfileIds: ["profile_hi_fi"],
+    retentionPolicyIds: ["retention_30d"],
+    uploadPolicyIds: ["upload_smb_primary"],
+    watchdogPolicyIds: ["watchdog_strict"],
+  });
+
+  assert.equal(draft.recordingProfileId, "profile_hi_fi");
+  assert.equal(draft.retentionPolicyId, "retention_30d");
+  assert.equal(draft.watchdogPolicyId, "watchdog_strict");
   assert.deepEqual(draft.uploadPolicyIds, ["upload_smb_primary"]);
 });
 
@@ -134,6 +209,43 @@ test("schedule backend draft round trips pinned and default values", () => {
   assert.equal(draft.captureInterfaceId, "iface_pipewire");
   assert.deepEqual(draft.captureChannels, [1, 2]);
   assert.equal(draft.channelMode, "stereo");
+});
+
+test("scheduleToDraft drops a legacy stub upload policy so it is not silently re-saved", () => {
+  const legacy = draftToInput({
+    ...defaultDraft(),
+    name: "Legacy Council Capture",
+    nodeId: "node_legacy",
+    room: "Council Chamber",
+  });
+  const draft = scheduleToDraft({
+    ...legacy,
+    // draftToInput yields nullable capture fields (ScheduleInput); a
+    // ScheduleSummary uses undefined for "unset".
+    captureBackend: undefined,
+    captureChannelSelection: undefined,
+    captureInterfaceId: undefined,
+    channelMode: undefined,
+    id: "sched_legacy_stub",
+    nextRunAt: "2026-06-18T09:00:00.000Z",
+    recurrence: { mode: "manual" },
+    tags: [],
+    // A schedule persisted before the stub-removal still carries the stub id.
+    uploadPolicyIds: [defaultStubUploadPolicy.id, "up_real"],
+  });
+
+  assert.deepEqual(draft.uploadPolicyIds, ["up_real"]);
+});
+
+test("draftToInput dedups uploadPolicyIds so a recording fans out once per destination", () => {
+  const input = draftToInput({
+    ...defaultDraft(),
+    name: "Dedup Capture",
+    nodeId: "node_dedup",
+    uploadPolicyIds: ["up_a", "up_a", "up_b", "up_b"],
+  });
+
+  assert.deepEqual(input.uploadPolicyIds, ["up_a", "up_b"]);
 });
 
 test("schedule draft pins a sorted channel selection only with an interface", () => {

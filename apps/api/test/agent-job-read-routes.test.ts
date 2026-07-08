@@ -26,6 +26,33 @@ test.after(async () => {
   await rm(routeRoot, { force: true, recursive: true });
 });
 
+test("agent recording-job :jobId read defers the reserved /export segment to the operator route", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+
+  registerAgentRoutes({
+    app,
+    healthEventStore: createHealthEventStore("", []),
+    meterFrameStore: memoryMeterFrameStore(),
+    nodeStore: memoryNodeStore([node()]),
+    recordAuditEvent: recordAuditEvent(auditStore),
+    recordingStore: memoryRecordingStore([]),
+    settingsStore: {} as SettingsStore,
+  });
+  // Operator export route registered AFTER the agent :jobId route, exactly as in
+  // index.ts (registerAgentRoutes runs before registerRecordingRoutes). Under
+  // TrieRouter the earlier `:jobId` handler would otherwise swallow `/export`.
+  app.get("/api/v1/recording-jobs/export", (c) => c.json({ handler: "operator-export" }));
+
+  const response = await app.request("/api/v1/recording-jobs/export");
+  const body = (await response.json()) as { error?: string; handler?: string };
+
+  // Before the guard, the node-auth handler answered /export with a
+  // node-credential 401 and the operator export handler was never reached.
+  assert.equal(response.status, 200);
+  assert.equal(body.handler, "operator-export");
+});
+
 test("agent recording-job polling and reads audit successes", async () => {
   const app = new Hono<AppBindings>();
   const auditStore = createAuditStore("");

@@ -4,7 +4,7 @@ import { Save } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadPolicy, UploadPolicyInput, UploadPolicyUpdate } from "@rakkr/shared";
 
-import { Field, Toggle } from "@/components/settings-fields";
+import { Field, NumberField, Toggle } from "@/components/settings-fields";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -106,17 +106,13 @@ export function UploadPolicyEditor({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Attempts">
-          <Input
-            disabled={!canManage}
-            min={1}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, maxAttempts: Number(event.target.value) }))
-            }
-            type="number"
-            value={draft.maxAttempts}
-          />
-        </Field>
+        <NumberField
+          disabled={!canManage}
+          label="Attempts"
+          min={1}
+          onChange={(maxAttempts) => setDraft((current) => ({ ...current, maxAttempts }))}
+          value={draft.maxAttempts}
+        />
         <Field className="sm:col-span-2" label="Subfolder (optional)">
           <Input
             disabled={!canManage || !draft.destinationId}
@@ -191,9 +187,10 @@ function policyUpdate(policy: UploadPolicy): UploadPolicyUpdate {
   };
 }
 
-export function defaultUploadPolicyInput(): UploadPolicyInput {
+export function defaultUploadPolicyInput(destinationId: string): UploadPolicyInput {
   return {
     deleteCacheAfterUpload: false,
+    destinationId,
     enabled: true,
     maxAttempts: 5,
     name: "New Upload Policy",

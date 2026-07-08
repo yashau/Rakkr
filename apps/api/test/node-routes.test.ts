@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { Hono } from "hono";
 import type { AuditEvent, CurrentUser, MeterFrame, Permission, RecorderNode } from "@rakkr/shared";
+import type { AgentReleaseService } from "../src/agent-release-service.js";
 import type { AuthResult } from "../src/auth-service.js";
 import type {
   AppBindings,
@@ -10,8 +11,7 @@ import type {
   RecordAuditEvent,
   RequirePermission,
 } from "../src/http-types.js";
-import type { MeterFrameStore } from "../src/meter-store.js";
-import type { NodeInterfaceUpdateInput, NodeStore, NodeUpdateInput } from "../src/node-store.js";
+import { memoryMeterFrameStore, memoryNodeStore, wavChunk } from "./node-routes-helpers.js";
 
 const { createAuditStore } = await import("../src/audit-store.js");
 const { createListenMonitorStore } = await import("../src/listen-monitor-store.js");
@@ -97,6 +97,41 @@ test("node routes deny users without required permissions", async () => {
   ]);
   assert.ok(deniedEvents.every((event) => event.reason === "missing_permission"));
   assert.ok(deniedEvents.every((event) => event.actor.id === deniedUser.id));
+});
+
+test("GET /api/v1/nodes/agent-release resolves to the release route, not the :nodeId detail handler", async () => {
+  const auditStore = createAuditStore("");
+  const snapshot = {
+    checkedAt: "2026-07-01T00:00:00.000Z",
+    data: {
+      publishedAt: "2026-06-28T00:00:00.000Z",
+      tag: "agent-v2026.06.28-1",
+      url: "https://github.com/yashau/Rakkr/releases/tag/agent-v2026.06.28-1",
+      version: "2026.06.28-1",
+    },
+  };
+  const app = nodeApp({
+    agentReleaseService: { snapshot: () => snapshot, warm: async () => {} },
+    auditStore,
+    frames: [],
+    nodes: [node()],
+    permissionCalls: [],
+  });
+
+  const response = await app.request("/api/v1/nodes/agent-release");
+  const body = (await response.json()) as {
+    checkedAt?: string;
+    data?: { version?: string };
+    error?: string;
+  };
+
+  // Before the fix, the static /agent-release path is shadowed by GET
+  // /api/v1/nodes/:nodeId (registered earlier), so it resolves to the detail
+  // handler with nodeId="agent-release" and returns 404 "Node not found" — the
+  // whole update-available feature is silently dead in production.
+  assert.equal(response.status, 200);
+  assert.equal(body.error, undefined);
+  assert.equal(body.data?.version, "2026.06.28-1");
 });
 
 test("listen start returns a monitor stream URL and audits access", async () => {
@@ -662,6 +697,7 @@ interface PermissionCall {
 }
 
 function nodeApp({
+  agentReleaseService,
   auditStore,
   canServeWholeNodeMonitor,
   currentUser = user(),
@@ -673,6 +709,7 @@ function nodeApp({
   permissionMiddleware,
   scopedNodeIds,
 }: {
+  agentReleaseService?: AgentReleaseService;
   auditStore: ReturnType<typeof createAuditStore>;
   canServeWholeNodeMonitor?: (user: CurrentUser, node: RecorderNode) => Promise<boolean>;
   currentUser?: CurrentUser;
@@ -687,6 +724,7 @@ function nodeApp({
   const app = new Hono<AppBindings>();
 
   registerNodeRoutes({
+    agentReleaseService,
     app,
     canServeWholeNodeMonitor,
     currentAuth: () => auth(currentUser),
@@ -774,120 +812,6 @@ function recordAuditEvent(auditStore: ReturnType<typeof createAuditStore>): Reco
   };
 }
 
-function memoryMeterFrameStore(frames: MeterFrame[]): MeterFrameStore {
-  return {
-    async history(nodeId, limit = frames.length) {
-      return frames.filter((frame) => frame.nodeId === nodeId).slice(0, limit);
-    },
-    async latest(nodeId) {
-      return frames.find((frame) => frame.nodeId === nodeId);
-    },
-    async save(frame) {
-      frames.unshift(frame);
-
-      return {
-        frame,
-        receivedAt: new Date().toISOString(),
-      };
-    },
-  };
-}
-
-function memoryNodeStore(nodes: RecorderNode[]): NodeStore {
-  return {
-    async authenticateCredential() {
-      return undefined;
-    },
-    async enroll() {
-      throw new Error("not implemented");
-    },
-    async find(nodeId) {
-      return nodes.find((candidate) => candidate.id === nodeId);
-    },
-    async heartbeat() {
-      throw new Error("not implemented");
-    },
-    async list() {
-      return nodes;
-    },
-    async rotateCredential() {
-      throw new Error("not implemented");
-    },
-    async updateInterface(nodeId: string, interfaceId: string, input: NodeInterfaceUpdateInput) {
-      const index = nodes.findIndex((candidate) => candidate.id === nodeId);
-
-      if (index < 0) {
-        return undefined;
-      }
-
-      const interfaceIndex = nodes[index].interfaces.findIndex(
-        (candidate) => candidate.id === interfaceId,
-      );
-
-      if (interfaceIndex < 0) {
-        return undefined;
-      }
-
-      const audioInterface = nodes[index].interfaces[interfaceIndex];
-      const channelAliases = new Map(
-        (input.channels ?? []).map((channel) => [channel.index, channel.alias]),
-      );
-      const interfaces = [...nodes[index].interfaces];
-
-      interfaces[interfaceIndex] = {
-        ...audioInterface,
-        alias: input.alias ?? audioInterface.alias,
-        channels: audioInterface.channels.map((channel) => ({
-          ...channel,
-          alias: channelAliases.get(channel.index) ?? channel.alias,
-        })),
-        hardwarePath:
-          input.hardwarePath === undefined
-            ? audioInterface.hardwarePath
-            : (input.hardwarePath ?? undefined),
-        sampleRates: input.sampleRates ?? audioInterface.sampleRates,
-        serialNumber:
-          input.serialNumber === undefined
-            ? audioInterface.serialNumber
-            : (input.serialNumber ?? undefined),
-        systemName: input.systemName ?? audioInterface.systemName,
-        systemRef: input.systemRef ?? audioInterface.systemRef,
-      };
-      nodes[index] = {
-        ...nodes[index],
-        interfaces,
-      };
-
-      return nodes[index];
-    },
-    async update(nodeId, input: NodeUpdateInput) {
-      const index = nodes.findIndex((candidate) => candidate.id === nodeId);
-
-      if (index < 0) {
-        return undefined;
-      }
-
-      nodes[index] = {
-        ...nodes[index],
-        alias: input.alias ?? nodes[index].alias,
-        hostname: input.hostname ?? nodes[index].hostname,
-        ipAddresses: input.ipAddresses ?? nodes[index].ipAddresses,
-        location: {
-          ...nodes[index].location,
-          ...input.location,
-        },
-        notes: input.notes === undefined ? nodes[index].notes : (input.notes ?? undefined),
-        audioDefaults:
-          input.audioDefaults === undefined ? nodes[index].audioDefaults : input.audioDefaults,
-        recordingCapacity: input.recordingCapacity ?? nodes[index].recordingCapacity,
-        tags: input.tags ?? nodes[index].tags,
-      };
-
-      return nodes[index];
-    },
-  };
-}
-
 function auth(currentUser = user()): AuthResult {
   return { user: currentUser };
 }
@@ -963,26 +887,4 @@ function meterFrame(nodeId = node().id): MeterFrame {
     ],
     nodeId,
   };
-}
-
-function wavChunk() {
-  const bytes = Buffer.alloc(48);
-
-  bytes.write("RIFF", 0);
-  bytes.writeUInt32LE(40, 4);
-  bytes.write("WAVE", 8);
-  bytes.write("fmt ", 12);
-  bytes.writeUInt32LE(16, 16);
-  bytes.writeUInt16LE(1, 20);
-  bytes.writeUInt16LE(1, 22);
-  bytes.writeUInt32LE(16_000, 24);
-  bytes.writeUInt32LE(32_000, 28);
-  bytes.writeUInt16LE(2, 32);
-  bytes.writeUInt16LE(16, 34);
-  bytes.write("data", 36);
-  bytes.writeUInt32LE(4, 40);
-  bytes.writeInt16LE(100, 44);
-  bytes.writeInt16LE(-100, 46);
-
-  return bytes;
 }

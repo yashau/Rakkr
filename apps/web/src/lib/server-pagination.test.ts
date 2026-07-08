@@ -2,11 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  clampedOffset,
   currentPageFromOffset,
   offsetForPage,
   paginationSummary,
   shallowFiltersEqual,
 } from "./server-pagination";
+
+test("clampedOffset pulls a stranded offset back to the last non-empty page", () => {
+  // Still-valid offsets are left alone.
+  assert.equal(clampedOffset(50, 50, 60), 50); // page 2 of 60 has 10 rows
+  assert.equal(clampedOffset(0, 50, 0), 0);
+  assert.equal(clampedOffset(0, 50, 120), 0);
+  // Total shrank to exactly one page → the empty page 2 clamps to page 1.
+  assert.equal(clampedOffset(50, 50, 50), 0);
+  assert.equal(clampedOffset(50, 50, 40), 0);
+  // Total shrank but multiple pages remain → clamp to the new last page.
+  assert.equal(clampedOffset(100, 50, 90), 50);
+  // Defensive: negative offset / zero limit.
+  assert.equal(clampedOffset(-10, 50, 100), 0);
+  assert.equal(clampedOffset(50, 0, 100), 50);
+});
 
 test("offsetForPage and currentPageFromOffset round-trip", () => {
   assert.equal(offsetForPage(1, 25), 0);

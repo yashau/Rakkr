@@ -571,6 +571,13 @@ test("settings manage routes update operational templates and audit snapshots", 
   const primaryTemplateId = `channel_map_ops_${randomUUID()}`;
   const rollbackTemplateId = `channel_map_rollback_${randomUUID()}`;
   const uploadPolicyId = `upload-policy-ops-${randomUUID()}`;
+  const uploadDestination = await uploadDestinationStore.create({
+    displayName: "Operations Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "ops.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
 
   registerSettingsRoutes({
     app,
@@ -616,6 +623,7 @@ test("settings manage routes update operational templates and audit snapshots", 
     },
   );
   const uploadCreateResponse = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    destinationId: uploadDestination.id,
     enabled: true,
     id: uploadPolicyId,
     maxAttempts: 4,

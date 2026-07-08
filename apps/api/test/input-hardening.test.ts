@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ianaTimeZoneSchema, isoDateTimeSchema, meterFrameSchema } from "@rakkr/shared";
+import {
+  ianaTimeZoneSchema,
+  isoDateTimeSchema,
+  meterFrameSchema,
+  scheduleInputSchema,
+} from "@rakkr/shared";
 import { nodeHealthEventSchema } from "../src/agent-route-helpers.js";
 import { hashPassword, verifyPassword } from "../src/password.js";
 
@@ -22,6 +27,25 @@ test("meterFrameSchema caps the levels array (watchdog Math.max spread guard)", 
   // RangeError. 512 is well past any real interface's channel count.
   assert.equal(meterFrameSchema.safeParse(frame(512)).success, true);
   assert.equal(meterFrameSchema.safeParse(frame(513)).success, false);
+});
+
+test("scheduleInputSchema caps uploadPolicyIds so one recording cannot fan out unbounded", () => {
+  const base = {
+    folderTemplate: "recordings/{room}",
+    name: "Council Capture",
+    nodeId: "node_1",
+    recordingProfileId: "profile_voice",
+    room: "Council Room",
+    timezone: "UTC",
+    titleTemplate: "{room}",
+    watchdogPolicyId: "watchdog_default",
+  };
+  const ids = (count: number) => Array.from({ length: count }, (_unused, index) => `up_${index}`);
+
+  // 32 destinations is already generous for one recording; 33 is rejected so a
+  // hostile/mistaken payload cannot multiply upload queue work per recording.
+  assert.equal(scheduleInputSchema.safeParse({ ...base, uploadPolicyIds: ids(32) }).success, true);
+  assert.equal(scheduleInputSchema.safeParse({ ...base, uploadPolicyIds: ids(33) }).success, false);
 });
 
 test("ianaTimeZoneSchema rejects zones that would throw in Intl.DateTimeFormat", () => {

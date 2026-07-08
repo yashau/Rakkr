@@ -26,7 +26,10 @@ interface NodeActionState {
 }
 
 const monitorChunkMaxAgeMs = 5000;
-const unavailableNodeStatuses = new Set<RecorderNode["status"]>(["offline"]);
+// A provisioning node has never sent a heartbeat, so listen/meters/start are as
+// unavailable as an offline node — but the reason differs (it is not "offline",
+// it has never been online), so callers get an accurate label (audit H1-3).
+const unavailableNodeStatuses = new Set<RecorderNode["status"]>(["offline", "provisioning"]);
 
 export function registerNodeActionRoutes({
   app,
@@ -103,6 +106,7 @@ function nodeActions(
 ) {
   const basePath = `/api/v1/nodes/${node.id}`;
   const nodeAvailable = !unavailableNodeStatuses.has(node.status);
+  const unavailableReason = node.status === "provisioning" ? "node_provisioning" : "node_offline";
 
   return {
     detail: actionState({
@@ -132,7 +136,7 @@ function nodeActions(
       permission: "listen:monitor",
       permissions,
       ready: nodeAvailable && readiness.listen,
-      reason: nodeAvailable ? "monitor_source_unavailable" : "node_offline",
+      reason: nodeAvailable ? "monitor_source_unavailable" : unavailableReason,
     }),
     meters: actionState({
       href: `${basePath}/meters`,
@@ -140,7 +144,7 @@ function nodeActions(
       permission: "node:read",
       permissions,
       ready: nodeAvailable && readiness.meters,
-      reason: nodeAvailable ? "meter_frame_not_found" : "node_offline",
+      reason: nodeAvailable ? "meter_frame_not_found" : unavailableReason,
     }),
     rotateCredential: actionState({
       href: `${basePath}/credentials/rotate`,
@@ -156,7 +160,7 @@ function nodeActions(
       permission: "recording:create",
       permissions,
       ready: nodeAvailable,
-      reason: "node_offline",
+      reason: unavailableReason,
     }),
   };
 }

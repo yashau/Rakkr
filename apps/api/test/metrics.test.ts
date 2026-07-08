@@ -179,6 +179,34 @@ test("neutralizes a carriage return in a label value so the scrape stays parseab
   assert.match(output, /alias="Rack\\rA"/);
 });
 
+test("reports a never-contacted provisioning node as not reachable (online=0)", () => {
+  // A `provisioning` node has never made contact, so `rakkr_node_online`
+  // ("Whether a recorder node is reachable") must be 0 — a naive
+  // `status !== "offline"` wrongly reports it as 1, inflating the reachable
+  // count on the Grafana single-stat and masking the RakkrNodeOffline alert.
+  const output = renderPrometheusMetrics({
+    auditEvents: [],
+    healthEvents: [],
+    listenMonitorChunks: [],
+    meterFrames: [],
+    nodes: [
+      { ...node(), id: "node_provisioning", status: "provisioning" },
+      { ...node(), id: "node_live", status: "recording" },
+      { ...node(), id: "node_dead", status: "offline" },
+    ],
+    observedAt: new Date("2026-06-18T12:16:00.000Z"),
+    recordingCacheBytes: {},
+    recordingJobs: [],
+    recordings: [],
+    startedAt: new Date("2026-06-18T12:00:00.000Z"),
+    uploadQueueItems: [],
+  });
+
+  assert.match(output, /rakkr_node_online\{[^}]*node_id="node_provisioning"[^}]*\} 0/);
+  assert.match(output, /rakkr_node_online\{[^}]*node_id="node_live"[^}]*\} 1/);
+  assert.match(output, /rakkr_node_online\{[^}]*node_id="node_dead"[^}]*\} 0/);
+});
+
 function auditEvent(
   action: string,
   outcome: AuditEvent["outcome"],

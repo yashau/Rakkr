@@ -94,5 +94,12 @@ export function toneFillClass(tone: StatusTone): string {
     return "border-emerald-200 dark:border-emerald-900 bg-emerald-500/70 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200";
   }
 
-  return "border-sky-200 dark:border-sky-900 bg-sky-400/75 dark:bg-sky-950/50 text-sky-800 dark:text-sky-200";
+  if (tone === "info") {
+    return "border-sky-200 dark:border-sky-900 bg-sky-400/75 dark:bg-sky-950/50 text-sky-800 dark:text-sky-200";
+  }
+
+  // Neutral: muted fill matching the other tone variants. Previously neutral
+  // fell through to the sky "info" fill, mislabeling neutral segments as info
+  // (audit R3-2).
+  return "border-border bg-muted text-muted-foreground";
 }

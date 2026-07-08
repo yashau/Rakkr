@@ -102,10 +102,17 @@ export function EnrollNodeDialog() {
       const { data: token } = await api.mintNodeBootstrapToken(enrollment.node.id);
       return { node: enrollment.node, token };
     },
-    onError: () =>
+    onError: () => {
       toast.error("Enroll failed", {
         description: "The recorder node could not be enrolled.",
-      }),
+      });
+      // Enrollment is two calls (enroll node, then mint bootstrap token). If the
+      // node was created but the token mint failed, it exists server-side —
+      // refresh the table so it is visible and the operator does not re-enroll a
+      // duplicate (audit R6-ENROLL-DUP).
+      void queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-events"] });
+    },
     onSuccess: ({ node, token }) => {
       setEnrolled({
         alias: node.alias,

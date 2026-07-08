@@ -103,6 +103,30 @@ test("node action summary explains permission and lifecycle blockers", async () 
   assert.equal(body.data.actions.meters.reason, "node_offline");
 });
 
+test("node action summary marks a provisioning node unavailable with an accurate reason", async () => {
+  // A provisioning node has never sent a heartbeat, so it cannot record/listen/
+  // meter — but the reason must say "provisioning", not "offline" (it has never
+  // been online), so operators are not misled into troubleshooting a downed node.
+  const recorder = nodeWithInterface({ id: "node_provisioning", status: "provisioning" });
+  const app = nodeActionsApp({
+    meterFrames: [],
+    nodes: [recorder],
+    permissionCalls: [],
+    user: user(["listen:monitor", "node:read", "recording:create"]),
+  });
+
+  const response = await app.request(`/api/v1/nodes/${recorder.id}/actions`);
+  const body = (await response.json()) as NodeActionsResponse;
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.actions.listen.enabled, false);
+  assert.equal(body.data.actions.listen.reason, "node_provisioning");
+  assert.equal(body.data.actions.meters.enabled, false);
+  assert.equal(body.data.actions.meters.reason, "node_provisioning");
+  assert.equal(body.data.actions.startRecording.enabled, false);
+  assert.equal(body.data.actions.startRecording.reason, "node_provisioning");
+});
+
 test("node action summary separates listen source from meter readiness", async () => {
   const recorder = nodeWithInterface({ id: "node_chunk_only" });
   const listenMonitorStore = createListenMonitorStore();

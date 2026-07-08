@@ -1,7 +1,9 @@
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { numericInputCommit } from "@/lib/settings-updates";
 import { cn } from "@/lib/utils";
 
 // Canonical labelled form field used across every settings/policy dialog. Keep
@@ -24,6 +26,67 @@ export function Field({
       {children}
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
+  );
+}
+
+// Canonical numeric settings field: a labelled numeric input backed by a local
+// text buffer so the field stays clearable/editable while typing, but an empty
+// or invalid entry never commits a value (Number("") === 0 would silently arm a
+// 0 — e.g. a cleared watchdog threshold or a 0 bitrate). Shared across every
+// policy/profile dialog so numeric-entry behaviour is identical everywhere
+// (audit H4-2/H4-3). Re-sync from `value` only on a genuine external change.
+export function NumberField({
+  disabled = false,
+  hint,
+  label,
+  max,
+  min,
+  onChange,
+  placeholder,
+  step,
+  value,
+}: {
+  disabled?: boolean;
+  hint?: ReactNode;
+  label: string;
+  max?: number;
+  min?: number;
+  onChange: (value: number) => void;
+  placeholder?: string;
+  step?: number;
+  value: number;
+}) {
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    setText((current) => (numericInputCommit(current) === value ? current : String(value)));
+  }, [value]);
+
+  return (
+    <Field hint={hint} label={label}>
+      <Input
+        disabled={disabled}
+        max={max}
+        min={min}
+        onBlur={() =>
+          setText((current) =>
+            numericInputCommit(current) === undefined ? String(value) : current,
+          )
+        }
+        onChange={(event) => {
+          setText(event.target.value);
+          const next = numericInputCommit(event.target.value);
+
+          if (next !== undefined) {
+            onChange(next);
+          }
+        }}
+        placeholder={placeholder}
+        step={step}
+        type="number"
+        value={text}
+      />
+    </Field>
   );
 }
 

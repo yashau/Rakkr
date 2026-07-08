@@ -1,6 +1,20 @@
-import type { CurrentUser, HealthEvent, RecorderNode, RecordingJob } from "@rakkr/shared";
+import {
+  isNodeReachable,
+  type CurrentUser,
+  type HealthEvent,
+  type RecorderNode,
+  type RecordingJob,
+} from "@rakkr/shared";
 
 export type DashboardIncidentAction = "acknowledge" | "resolve";
+
+// Nodes the dashboard counts as "reporting" / lists under Active Nodes. A naive
+// `status !== "offline"` wrongly counts a never-contacted `provisioning` node as
+// online (audit N2); defer to the shared reachability predicate so this matches
+// the /metrics gauge and the node-status badge convention.
+export function dashboardReportingNodes<T extends Pick<RecorderNode, "status">>(nodes: T[]): T[] {
+  return nodes.filter((node) => isNodeReachable(node.status));
+}
 
 export function dashboardPagePermissions(user: CurrentUser | undefined) {
   const permissions = user?.permissions ?? [];

@@ -45,6 +45,18 @@ export const nodeStatusSchema = z.enum([
   "alerting",
 ]);
 
+// A node is "reachable" (in contact and reporting) when its status is online,
+// recording, degraded, or alerting. "offline" (heartbeat gone stale) and
+// "provisioning" (enrolled but never contacted) are NOT reachable. Shared by the
+// /metrics `rakkr_node_online` gauge and the dashboard active-node count so the
+// two cannot diverge on how a never-contacted provisioning node is treated
+// (a naive `status !== "offline"` counts provisioning as online — see audit N1/N2).
+export function isNodeReachable(status: NodeStatus): boolean {
+  return (
+    status === "online" || status === "recording" || status === "degraded" || status === "alerting"
+  );
+}
+
 export const healthEventStatusSchema = z.enum(["open", "acknowledged", "suppressed", "resolved"]);
 
 export const recordingSourceSchema = z.enum(["ad_hoc", "schedule"]);
@@ -553,7 +565,9 @@ export const scheduleInputSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(80)).max(64).default([]),
   timezone: ianaTimeZoneSchema,
   titleTemplate: z.string().trim().min(1).max(500),
-  uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).default([]),
+  // Capped + deduped on write: each recording fans out to one upload queue item
+  // per id, so an uncapped list multiplies queue work per recording (audit R3-4).
+  uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).max(32).default([]),
   watchdogPolicyId: z.string().trim().min(1).max(160),
 });
 export const scheduleUpdateSchema = z
@@ -577,7 +591,7 @@ export const scheduleUpdateSchema = z
     tags: z.array(z.string().trim().min(1).max(80)).max(64).optional(),
     timezone: ianaTimeZoneSchema.optional(),
     titleTemplate: z.string().trim().min(1).max(500).optional(),
-    uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).optional(),
+    uploadPolicyIds: z.array(z.string().trim().min(1).max(160)).max(32).optional(),
     watchdogPolicyId: z.string().trim().min(1).max(160).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one schedule field is required");
@@ -798,6 +812,9 @@ export const uploadPolicySchema = z.object({
 });
 export const uploadPolicyInputSchema = z.object({
   deleteCacheAfterUpload: z.boolean().default(false),
+  // Optional in the shared shape (the store is an internal seeding primitive),
+  // but the operator create route requires it — every policy must target a real
+  // destination or its recordings reconcile to `partial` (audit H3-3).
   destinationId: z.string().trim().min(1).max(160).optional(),
   enabled: z.boolean().default(true),
   id: z.string().trim().min(1).max(160).optional(),

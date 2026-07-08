@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { ControllerSettings } from "@rakkr/shared";
 
 import { api } from "@/lib/api";
 
@@ -45,15 +44,5 @@ export function useSchedulingDefault(field: SchedulingDefaultField, enabled = tr
     // Toggle semantics: setting a policy that is already the default clears it.
     toggleDefault: (policyId: string) =>
       mutation.mutate(query.data?.data[field] === policyId ? null : policyId),
-  };
-}
-
-/** The four scheduling defaults, resolved from controller settings for prefill. */
-export function schedulingDefaultsFrom(settings: ControllerSettings | undefined) {
-  return {
-    recordingProfileId: settings?.defaultRecordingProfileId ?? null,
-    retentionPolicyId: settings?.defaultRetentionPolicyId ?? null,
-    uploadPolicyId: settings?.defaultUploadPolicyId ?? null,
-    watchdogPolicyId: settings?.defaultWatchdogPolicyId ?? null,
   };
 }

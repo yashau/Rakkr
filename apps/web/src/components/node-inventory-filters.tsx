@@ -11,7 +11,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const nodeStatuses: NodeStatus[] = ["online", "recording", "degraded", "alerting", "offline"];
+// Every node status is filterable, including `provisioning` (enrolled but never
+// contacted) so operators can review the just-onboarded cohort (audit H1-2).
+export const nodeStatuses: NodeStatus[] = [
+  "provisioning",
+  "online",
+  "recording",
+  "degraded",
+  "alerting",
+  "offline",
+];
 const audioBackendFilters = ["alsa", "jack", "pipewire", "unknown"] as const;
 
 export type AudioBackendFilter = (typeof audioBackendFilters)[number];
