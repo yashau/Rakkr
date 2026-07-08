@@ -10,6 +10,7 @@ import type {
   UploadQueueItem,
   UploadQueueStatus,
 } from "@rakkr/shared";
+import { defaultStubUploadPolicy } from "@rakkr/shared";
 
 import type {
   RecordingFileBlob,
@@ -169,6 +170,15 @@ export const recordingSortOrders: Array<{ label: string; value: RecordingSortOrd
   { label: "Descending", value: "desc" },
   { label: "Ascending", value: "asc" },
 ];
+
+// The built-in stub upload policy is a test-only discard queue that the
+// controller always injects into the policy list. It must never be an
+// operator-selectable upload target in the console (audit H3-1); filter it from
+// action dropdowns. The full list is still used to *label* any legacy recording
+// that references it.
+export function selectableUploadPolicies<T extends { id: string }>(policies: T[]): T[] {
+  return policies.filter((policy) => policy.id !== defaultStubUploadPolicy.id);
+}
 
 export function transcriptSnippetsFromText(value: string) {
   const seen = new Set<string>();

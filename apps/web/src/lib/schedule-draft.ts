@@ -1,6 +1,7 @@
 import {
   defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
+  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
   type AuditEvent,
   type ChannelMode,
@@ -124,7 +125,11 @@ export function scheduleToDraft(schedule: ScheduleSummary): ScheduleDraft {
     tags: schedule.tags.join(", "),
     timezone: schedule.timezone,
     titleTemplate: schedule.titleTemplate,
-    uploadPolicyIds: schedule.uploadPolicyIds,
+    // Drop the test-only stub from a legacy schedule persisted with it: the form's
+    // policy toggles filter the stub out, so a retained stub id would be invisible
+    // yet silently re-saved on every edit (audit H3-2). Loading it out resolves the
+    // schedule to "no upload", matching the stub-removal intent.
+    uploadPolicyIds: schedule.uploadPolicyIds.filter((id) => id !== defaultStubUploadPolicy.id),
     watchdogPolicyId: schedule.watchdogPolicyId,
   };
 

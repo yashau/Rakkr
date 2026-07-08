@@ -4,6 +4,7 @@ import {
   defaultControllerSettings,
   defaultKeepControllerCacheRetentionPolicy,
   defaultScheduledVoiceWatchdogPolicy,
+  defaultStubUploadPolicy,
   defaultVoiceRecordingProfile,
 } from "@rakkr/shared";
 
@@ -134,6 +135,32 @@ test("schedule backend draft round trips pinned and default values", () => {
   assert.equal(draft.captureInterfaceId, "iface_pipewire");
   assert.deepEqual(draft.captureChannels, [1, 2]);
   assert.equal(draft.channelMode, "stereo");
+});
+
+test("scheduleToDraft drops a legacy stub upload policy so it is not silently re-saved", () => {
+  const legacy = draftToInput({
+    ...defaultDraft(),
+    name: "Legacy Council Capture",
+    nodeId: "node_legacy",
+    room: "Council Chamber",
+  });
+  const draft = scheduleToDraft({
+    ...legacy,
+    // draftToInput yields nullable capture fields (ScheduleInput); a
+    // ScheduleSummary uses undefined for "unset".
+    captureBackend: undefined,
+    captureChannelSelection: undefined,
+    captureInterfaceId: undefined,
+    channelMode: undefined,
+    id: "sched_legacy_stub",
+    nextRunAt: "2026-06-18T09:00:00.000Z",
+    recurrence: { mode: "manual" },
+    tags: [],
+    // A schedule persisted before the stub-removal still carries the stub id.
+    uploadPolicyIds: [defaultStubUploadPolicy.id, "up_real"],
+  });
+
+  assert.deepEqual(draft.uploadPolicyIds, ["up_real"]);
 });
 
 test("schedule draft pins a sorted channel selection only with an interface", () => {

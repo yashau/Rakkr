@@ -9,6 +9,7 @@ import type {
   ScheduleSummary,
   UploadPolicy,
 } from "@rakkr/shared";
+import { defaultStubUploadPolicy } from "@rakkr/shared";
 
 import {
   auditedUploadActionQueryKeys,
@@ -23,6 +24,7 @@ import {
   recordingFileActionState,
   recordingPagePermissions,
   recordingRelationshipBadges,
+  selectableUploadPolicies,
   transcriptSnippetsFromText,
   transcriptSnippetsToText,
   uploadQueueStatusSummary,
@@ -31,6 +33,19 @@ import {
   waveformBarHeightPercent,
   waveformPreviewSummary,
 } from "./recording-page-helpers";
+
+test("selectableUploadPolicies drops the test-only stub upload policy", () => {
+  const policies = [
+    { id: defaultStubUploadPolicy.id, name: "Stub Upload Queue" },
+    { id: "up_smb", name: "SMB Archive" },
+    { id: "up_s3", name: "S3 Cold Storage" },
+  ];
+
+  assert.deepEqual(
+    selectableUploadPolicies(policies).map((policy) => policy.id),
+    ["up_smb", "up_s3"],
+  );
+});
 
 test("G77: recording card cross-reference fetches beyond the default page", () => {
   // Jobs and upload-queue items are fetched globally and grouped onto each

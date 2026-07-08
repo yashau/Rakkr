@@ -59,6 +59,7 @@ import {
   recordingSortOrders,
   recordingStatuses,
   selectClassName,
+  selectableUploadPolicies,
   uploadQueueStatusSummary,
 } from "@/lib/recording-page-helpers";
 import { useRecordingPlaybackMutation } from "@/lib/recording-playback";
@@ -94,6 +95,7 @@ export function RecordingsPage() {
     queryFn: () => api.recordings(pagination.query),
     queryKey: ["recordings", pagination.query],
   });
+  pagination.clampToTotal(recordingsQuery.data?.meta?.total);
   const recordingFacetsQuery = useQuery({
     enabled: pagePermissions.canReadRecordings,
     queryFn: api.recordingFacets,
@@ -369,6 +371,9 @@ export function RecordingsPage() {
   const recordingProfiles = recordingProfilesQuery.data?.data ?? [];
   const schedules = schedulesQuery.data?.data ?? [];
   const uploadPolicies = uploadPoliciesQuery.data?.data ?? [];
+  // Operator-selectable upload targets exclude the test-only stub (audit H3-1);
+  // `uploadPolicies` stays full for labeling any recording that references it.
+  const assignableUploadPolicies = selectableUploadPolicies(uploadPolicies);
   // Free-text search is inline in the toolbar; the slide-out chips/count cover
   // the remaining filters.
   const advancedFilterChips = recordingFilterChips(recordingFilters).filter(
@@ -758,7 +763,7 @@ export function RecordingsPage() {
               selectedCount={selectedRecordingIds.length}
               uploadDisabled={bulkEnqueueUploadMutation.isPending}
               uploadEligibleCount={selectedCachedRecordingIds.length}
-              uploadPolicies={uploadPolicies}
+              uploadPolicies={assignableUploadPolicies}
               visibleCount={recordings.length}
             />
           ) : null}
@@ -812,7 +817,7 @@ export function RecordingsPage() {
                 selected={selectedRecordingIdSet.has(recording.id)}
                 stopPending={stopMutation.isPending}
                 uploadItems={uploadItemsByRecording.get(recording.id) ?? []}
-                uploadPolicies={uploadPolicies}
+                uploadPolicies={assignableUploadPolicies}
                 uploadPending={enqueueUploadMutation.isPending}
               />
             );
