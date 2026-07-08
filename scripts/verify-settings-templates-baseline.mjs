@@ -64,6 +64,10 @@ const sourceFiles = [
   "crates/recorder-agent/src/system_health.rs",
   "scripts/agent-fake-controller-smoke.mjs",
   "scripts/agent-fake-controller-smoke-support.mjs",
+  "packages/shared/src/channel-maps.ts",
+  "packages/shared/src/recordings.ts",
+  "packages/db/src/schema/schedules.ts",
+  "apps/api/test/settings-routes-mutations.test.ts",
 ];
 const baselinePhrases = [
   "checked baseline",

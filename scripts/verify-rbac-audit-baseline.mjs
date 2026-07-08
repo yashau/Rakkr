@@ -2,7 +2,9 @@ import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const baselineFile = "docs/internal/baselines/RBAC_AUDIT_BASELINE.md";
-const sharedFile = "packages/shared/src/index.ts";
+// The permission catalog moved out of index.ts into its own domain module when
+// the shared barrel was split; extract it from there.
+const sharedFile = "packages/shared/src/rbac.ts";
 const apiSourceDirectory = "apps/api/src";
 const requiredPhrases = [
   "Default deny",

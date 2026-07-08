@@ -28,14 +28,14 @@ Status: MVP baseline checked.
 | Check                                                                                        | Evidence                                                                                     |
 | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Stub, SMB, S3, checksum, retry budget, in-flight lease recovery                              | `apps/api/test/upload-executor.test.ts`                                                      |
-| Runner audit, run-now, cache retention, partial fan-out reconciliation                       | `apps/api/test/upload-runner.test.ts`                                                        |
+| Runner audit, run-now, cache retention, partial fan-out reconciliation                       | `apps/api/test/upload-runner.test.ts`, `apps/api/test/upload-runner-routes.test.ts`          |
 | Destination readiness and CRUD                                                               | `apps/api/test/upload-destinations.test.ts`                                                  |
 | Policy templates and auto-queue input                                                        | `apps/api/test/upload-policies.test.ts`                                                      |
 | Queue retries, duplicate completed-upload attach idempotency, and retrying-item lease expiry | `apps/api/test/upload-queue.test.ts`, `apps/api/test/agent-cache-idempotency-routes.test.ts` |
 | Recording queue routes and scoped filters                                                    | `apps/api/test/recording-upload-queue-routes.test.ts`                                        |
 | Settings route RBAC                                                                          | `apps/api/test/settings-routes.test.ts`                                                      |
 | Upload metrics                                                                               | `apps/api/test/metrics.test.ts`                                                              |
-| Agent cache auto-queue lifecycle                                                             | `apps/api/test/agent-routes.test.ts`                                                         |
+| Agent cache auto-queue lifecycle                                                             | `apps/api/test/agent-routes.test.ts`, `apps/api/test/agent-routes-recording-lifecycle.test.ts` |
 | Upload runner UI RBAC                                                                        | `apps/web/src/lib/upload-runner-panel-helpers.test.ts`                                       |
 
 `mise run storage:check` validates this baseline, and `mise run check` runs it.

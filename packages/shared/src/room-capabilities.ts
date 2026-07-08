@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { Permission } from "./index.js";
+import type { Permission } from "./rbac.js";
 
 // The independently-grantable per-action room capabilities. A room roster entry
 // carries any subset of these; effective access is the union across a subject's

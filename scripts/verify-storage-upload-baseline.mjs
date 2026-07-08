@@ -27,6 +27,7 @@ const sourceFiles = [
   "apps/web/src/lib/upload-runner-panel-helpers.ts",
   "apps/api/test/upload-executor.test.ts",
   "apps/api/test/upload-runner.test.ts",
+  "apps/api/test/upload-runner-routes.test.ts",
   "apps/api/test/upload-destinations.test.ts",
   "apps/api/test/upload-policies.test.ts",
   "apps/api/test/upload-queue.test.ts",
@@ -35,6 +36,7 @@ const sourceFiles = [
   "apps/api/test/settings-routes.test.ts",
   "apps/api/test/metrics.test.ts",
   "apps/api/test/agent-routes.test.ts",
+  "apps/api/test/agent-routes-recording-lifecycle.test.ts",
   "apps/web/src/lib/upload-runner-panel-helpers.test.ts",
 ];
 const baselinePhrases = [

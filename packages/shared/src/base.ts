@@ -43,3 +43,14 @@ export const uploadQueueStatusSchema = z.enum([
   "succeeded",
   "cancelled",
 ]);
+
+// ISO 8601 calendar date with no time component (e.g. schedule exception dates).
+export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+// 24-hour wall-clock time "HH:MM" used by recurring schedule windows.
+export const timeOfDaySchema = z.string().regex(/^\d{2}:\d{2}$/);
+// Linux audio capture backend selected per node, schedule, or job.
+export const audioCaptureBackendSchema = z.enum(["alsa", "jack", "pipewire"]);
+
+export type HealthSeverity = z.infer<typeof healthSeveritySchema>;
+export type UploadProvider = z.infer<typeof uploadProviderSchema>;
+export type UploadQueueStatus = z.infer<typeof uploadQueueStatusSchema>;

@@ -181,6 +181,15 @@ export async function writeFakeCaptureCommand(directory) {
   return writeFakeCaptureCommandScript(directory, "fake-capture", false);
 }
 
+// A capture that lingers well past one job-poll cycle so the recording-job disk
+// monitor reliably polls df at least once while the capture is still in flight.
+// The default 750 ms capture can, on a slow runner, be spawned and exit inside a
+// single 1 s poll interval — the monitor then never observes the runtime
+// disk-exhaustion window and the runtime-recovery path silently does not fire.
+export async function writeFakeRuntimeDiskRecoveryCaptureCommand(directory) {
+  return writeFakeCaptureCommandScript(directory, "fake-runtime-disk-capture", false, 3500);
+}
+
 export async function writeDeviceAssertCaptureCommand(directory, expectedDevice) {
   const captureScript = path.join(directory, "fake-device-assert-capture.mjs");
   await writeFile(
@@ -608,7 +617,12 @@ process.exit(1);
   return meterScript;
 }
 
-async function writeFakeCaptureCommandScript(directory, commandName, requireTemplateOutputFlag) {
+async function writeFakeCaptureCommandScript(
+  directory,
+  commandName,
+  requireTemplateOutputFlag,
+  lingerMs = 750,
+) {
   const captureScript = path.join(directory, `${commandName}.mjs`);
   await writeFile(
     captureScript,
@@ -632,7 +646,7 @@ if (${JSON.stringify(requireTemplateOutputFlag)} && outputFlagIndex < 0) {
 
 mkdirSync(path.dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, wavFile(channels, [0, 12000, -12000, 6000, -6000, 3000]));
-await new Promise((resolve) => setTimeout(resolve, 750));
+await new Promise((resolve) => setTimeout(resolve, ${lingerMs}));
 
 function optionNumber(flags, fallback) {
   for (const flag of flags) {

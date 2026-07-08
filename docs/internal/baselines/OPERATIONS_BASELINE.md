@@ -16,17 +16,17 @@ Status: MVP baseline checked.
 
 | Check                                                   | Evidence                                                                                        |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Recording organization, facets, bulk metadata, delete   | `apps/api/test/recording-routes.test.ts`                                                        |
+| Recording organization, facets, bulk metadata, delete   | `apps/api/test/recording-routes.test.ts`, `apps/api/test/recording-routes-metadata.test.ts`     |
 | Recording manifest CSV export                           | `apps/api/test/recording-export-routes.test.ts`                                                 |
 | Recording metadata notes                                | `apps/api/test/recording-metadata-routes.test.ts`                                               |
 | Recording UI organization helpers                       | `apps/web/src/lib/recording-page-helpers.test.ts`                                               |
-| Settings template reads, writes, RBAC, succeeded audits | `apps/api/test/settings-routes.test.ts`                                                         |
+| Settings template reads, writes, RBAC, succeeded audits | `apps/api/test/settings-routes.test.ts`, `apps/api/test/settings-routes-mutations.test.ts`      |
 | Settings page RBAC helpers                              | `apps/web/src/lib/settings-page-helpers.test.ts`                                                |
 | Audit filtering and CSV export                          | `apps/api/test/audit-routes.test.ts`                                                            |
 | Audit page RBAC helpers                                 | `apps/web/src/lib/audit-page-helpers.test.ts`                                                   |
 | Upload destination readiness                            | `apps/api/test/upload-destinations.test.ts`                                                     |
 | Upload policy templates                                 | `apps/api/test/upload-policies.test.ts`                                                         |
-| Upload runner and queue operations                      | `apps/api/test/upload-runner.test.ts` and `apps/api/test/recording-upload-queue-routes.test.ts` |
+| Upload runner and queue operations                      | `apps/api/test/upload-runner.test.ts`, `apps/api/test/upload-runner-routes.test.ts`, and `apps/api/test/recording-upload-queue-routes.test.ts` |
 | Upload runner UI RBAC                                   | `apps/web/src/lib/upload-runner-panel-helpers.test.ts`                                          |
 
 `mise run operations:check` validates this baseline, and `mise run check` runs it.

@@ -4,6 +4,7 @@ const baselineFile = "docs/internal/baselines/NODE_LIFECYCLE_BASELINE.md";
 const sourceFiles = [
   "packages/shared/src/agent-version.ts",
   "packages/shared/src/index.ts",
+  "packages/shared/src/nodes.ts",
   "apps/api/src/node-lifecycle.ts",
   "apps/api/src/node-lifecycle-routes.ts",
   "apps/api/src/node-liveness.ts",

@@ -33,6 +33,8 @@ const sourceFiles = [
   "crates/recorder-agent/src/meter_command.rs",
   "crates/recorder-agent/src/node_config.rs",
   "crates/recorder-agent/src/inventory.rs",
+  "crates/recorder-agent/src/inventory/alsa.rs",
+  "crates/recorder-agent/src/inventory/runtime.rs",
   "crates/recorder-agent/src/telemetry.rs",
   "crates/recorder-agent/src/telemetry/correlation.rs",
   "crates/recorder-agent/src/channel_map.rs",
