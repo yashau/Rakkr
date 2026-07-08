@@ -14,7 +14,34 @@ import {
   defaultDraft,
   draftToInput,
   scheduleToDraft,
+  withSelectedOption,
 } from "./schedule-draft";
+
+test("withSelectedOption keeps a current-but-absent selection visible", () => {
+  const items = [
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ];
+
+  // A selection present in the list is shown once (not duplicated).
+  assert.deepEqual(withSelectedOption(items, "ret_30d"), [
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ]);
+  // A stale/deleted selection is prepended so a controlled Select shows it
+  // instead of falling back to the placeholder (which reads as "unselected"
+  // while the draft silently keeps and re-saves the id).
+  assert.deepEqual(withSelectedOption(items, "ret_deleted"), [
+    { id: "ret_deleted", name: "ret_deleted" },
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ]);
+  // No current selection → no synthetic option.
+  assert.deepEqual(withSelectedOption(items, ""), [
+    { id: "ret_keep", name: "Keep cache" },
+    { id: "ret_30d", name: "30 days" },
+  ]);
+});
 
 test("default draft falls back to built-in profile/policies and no upload when unset", () => {
   const draft = defaultDraft();

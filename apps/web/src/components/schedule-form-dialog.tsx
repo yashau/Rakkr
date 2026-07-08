@@ -49,6 +49,7 @@ import {
   applyNaturalLanguageSchedule,
   dayOptions,
   removeExceptionFromDraft,
+  withSelectedOption,
   type ScheduleDraft,
 } from "@/lib/schedule-draft";
 
@@ -119,7 +120,14 @@ export function ScheduleFormDialog({
     queryFn: () => api.accessGroups(subjectPickerFilters()),
     queryKey: subjectPickerGroupsQueryKey(),
   });
-  const retentionPolicies = retentionPoliciesQuery.data?.data ?? [];
+  // Keep the current retention selection visible even if it's a stale/deleted id
+  // (mirrors recording-profile + watchdog); otherwise the controlled Select falls
+  // back to its placeholder and reads as unselected while the draft still holds it
+  // (audit R8-RETENTION-SELECT).
+  const retentionPolicies = withSelectedOption(
+    retentionPoliciesQuery.data?.data ?? [],
+    draft.retentionPolicyId,
+  );
   // The built-in stub is a test-only queue and never appears in the console.
   const uploadPolicies = (uploadPoliciesQuery.data?.data ?? []).filter(
     (policy) => policy.id !== defaultStubUploadPolicy.id,
@@ -706,20 +714,4 @@ export function ScheduleFormDialog({
 
 function audioInterfaceLabel(audioInterface: AudioInterface) {
   return `${audioInterface.alias} / ${audioInterface.systemName} / ${audioInterface.backend}`;
-}
-
-// Render the fetched profiles/policies as dropdown options, but keep the
-// schedule's current selection visible even if it is missing from the list
-// (e.g. a renamed template, or settings:read is unavailable to this operator).
-function withSelectedOption<Item extends { id: string; name: string }>(
-  items: Item[],
-  selectedId: string,
-) {
-  const options = items.map((item) => ({ id: item.id, name: item.name }));
-
-  if (selectedId && !options.some((option) => option.id === selectedId)) {
-    return [{ id: selectedId, name: selectedId }, ...options];
-  }
-
-  return options;
 }

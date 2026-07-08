@@ -533,3 +533,22 @@ function exceptionLabel(exception: NonNullable<ScheduleRecurrence["exceptions"]>
 
   return `Pause ${exception.startDate}-${exception.endDate}`;
 }
+
+// Render the fetched profiles/policies as dropdown options, but keep the
+// schedule's current selection visible even if it is missing from the list (a
+// renamed/deleted template, a stale controller-settings default, or `settings:read`
+// unavailable to this operator). Without this, a controlled `<Select>` bound to an
+// absent id falls back to its placeholder — reading as "unselected" while the draft
+// silently still holds and re-saves the id (audit R8-RETENTION-SELECT).
+export function withSelectedOption<Item extends { id: string; name: string }>(
+  items: Item[],
+  selectedId: string,
+): { id: string; name: string }[] {
+  const options = items.map((item) => ({ id: item.id, name: item.name }));
+
+  if (selectedId && !options.some((option) => option.id === selectedId)) {
+    return [{ id: selectedId, name: selectedId }, ...options];
+  }
+
+  return options;
+}
