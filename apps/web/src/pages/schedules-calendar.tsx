@@ -279,7 +279,10 @@ export function SchedulesCalendarPage() {
 
   function openCreate(cell: CalendarDayCell) {
     setDraft({
-      ...defaultDraft(firstNode),
+      // Prefill the operator's configured scheduling defaults, mirroring the
+      // schedules list page — the calendar create path previously dropped the
+      // second arg and always fell back to the built-ins (audit S1).
+      ...defaultDraft(firstNode, controllerSettingsQuery.data?.data),
       recurrenceMode: "once",
       recurrenceStartAt: `${cell.iso}T09:00`,
     });
