@@ -186,6 +186,7 @@ export function AuditPage() {
 
   const events = auditQuery.data?.data ?? [];
   const meta = auditQuery.data?.meta;
+  pagination.clampToTotal(meta?.total);
   const activeFilterChips = auditFilterChips(filters);
   const updateDraft = (key: keyof AuditFilterDraft, value: string) =>
     setDraft((current) => ({

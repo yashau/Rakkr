@@ -99,6 +99,7 @@ export function JobsPage() {
     queryKey: ["recording-jobs", "workbench", pagination.query],
     refetchInterval: 5000,
   });
+  pagination.clampToTotal(jobsQuery.data?.meta?.total);
   const nodesQuery = useQuery({
     enabled: permissions.canReadNodes,
     queryFn: () => api.nodes(nodePickerFilters()),

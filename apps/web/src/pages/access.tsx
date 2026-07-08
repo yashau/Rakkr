@@ -58,6 +58,7 @@ export function AccessPage() {
     queryFn: () => api.accessUsers(pagination.query),
     queryKey: ["access-users", pagination.query],
   });
+  pagination.clampToTotal(usersQuery.data?.meta?.total);
   const groupsQuery = useQuery({
     enabled: permissions.canRead,
     queryFn: () => api.accessGroups({ limit: 200 }),

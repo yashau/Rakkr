@@ -123,6 +123,7 @@ export function NodesPage() {
     queryKey: ["nodes", pagination.query],
     refetchInterval: 5000,
   });
+  pagination.clampToTotal(nodesQuery.data?.meta?.total);
   const healthEventsQuery = useQuery({
     enabled: actionPermissions.canReadHealth,
     queryFn: () => api.healthEvents({ limit: 500 }),

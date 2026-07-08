@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import {
+  clampedOffset,
   currentPageFromOffset,
   defaultPageSize,
   defaultPageSizes,
@@ -24,6 +25,13 @@ export interface ServerPagination<F extends object> {
   nextPage: () => void;
   previousPage: () => void;
   resetToFirstPage: () => void;
+  /**
+   * Re-clamp the window onto the last non-empty page when the server's reported
+   * total shrinks below the current offset (rows on the last page were deleted).
+   * Call during render with the latest `meta.total`; a no-op when the offset is
+   * still valid or the total is unknown.
+   */
+  clampToTotal: (total: number | undefined) => void;
 }
 
 /**
@@ -57,6 +65,19 @@ export function useServerPagination<F extends object>(
   }
 
   return {
+    clampToTotal: (total: number | undefined) => {
+      if (total === undefined) {
+        return;
+      }
+
+      // Adjust state during render (same React pattern as the filter reset
+      // above): a shrunk total pulls a stranded offset back onto the last page.
+      const clamped = clampedOffset(offset, pageSize, total);
+
+      if (clamped !== offset) {
+        setOffset(clamped);
+      }
+    },
     limit: pageSize,
     nextPage: () => setOffset((current) => current + pageSize),
     offset,

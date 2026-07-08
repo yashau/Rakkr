@@ -86,6 +86,7 @@ export function SchedulesPage() {
     queryFn: () => api.schedules(pagination.query),
     queryKey: ["schedules", pagination.query],
   });
+  pagination.clampToTotal(schedulesQuery.data?.meta?.total);
   const nodesQuery = useQuery({
     enabled: actionPermissions.canReadNodes,
     queryFn: () => api.nodes(nodePickerFilters()),
