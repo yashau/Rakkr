@@ -257,6 +257,55 @@ test("H3-3: upload policy create without a destination is rejected", async () =>
   assert.equal(response.status, 400);
 });
 
+test("H3-3: upload policy update cannot clear an existing destination", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer();
+  const uploadDestinationStore = createUploadDestinationStore();
+  const destination = await uploadDestinationStore.create({
+    displayName: "Update Test Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "upd.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async () => true,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, () => true),
+    settingsStore: createSettingsStore(),
+    uploadDestinationStore,
+  });
+
+  const policyId = `upload_policy_update_${randomUUID()}`;
+  const created = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    destinationId: destination.id,
+    enabled: true,
+    id: policyId,
+    maxAttempts: 3,
+    name: "Update Target",
+    trigger: "manual",
+  });
+  // The update schema keeps destinationId non-nullable `.min(1)`, so an empty
+  // value is rejected and an omitted one is preserved — an existing policy can
+  // never be made destination-less on the update path (audit H3-3 coverage).
+  const cleared = await requestJson(app, `/api/v1/settings/upload-policies/${policyId}`, "PATCH", {
+    destinationId: "",
+  });
+  const renamed = await requestJson(app, `/api/v1/settings/upload-policies/${policyId}`, "PATCH", {
+    name: "Renamed",
+  });
+  const stored = await findUploadPolicy(policyId);
+
+  assert.equal(created.status, 201);
+  assert.equal(cleared.status, 400);
+  assert.equal(renamed.status, 200);
+  assert.equal(stored?.destinationId, destination.id);
+});
+
 function requestJson(
   app: Hono<AppBindings>,
   url: string,
