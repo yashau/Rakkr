@@ -62,7 +62,9 @@ export function buildSchedule(input: ScheduleInput): ScheduleSummary {
     tags: uniqueTags(input.tags),
     timezone: input.timezone,
     titleTemplate: input.titleTemplate,
-    uploadPolicyIds: input.uploadPolicyIds,
+    // Dedup server-side (the client also dedups) so the server is authoritative:
+    // each id fans a recording out to its own upload queue item (audit R4-1).
+    uploadPolicyIds: [...new Set(input.uploadPolicyIds)],
     watchdogPolicyId: input.watchdogPolicyId,
   };
 }
@@ -103,6 +105,10 @@ export function sanitizeScheduleUpdate(
 
   if (input.tags) {
     updates.tags = uniqueTags(input.tags);
+  }
+
+  if (input.uploadPolicyIds) {
+    updates.uploadPolicyIds = [...new Set(input.uploadPolicyIds)];
   }
 
   return updates;

@@ -40,31 +40,38 @@ export async function reconcileNodeLivenessEvents({
       continue;
     }
 
-    const existing = await activeNodeOfflineEvent(healthEventStore, node.id);
+    // Isolate each node's reconcile: a store failure (or health-event write
+    // error) for one node must not abort the sweep and leave every later node
+    // unreconciled — skip the failing one and keep going (audit R4-2).
+    try {
+      const existing = await activeNodeOfflineEvent(healthEventStore, node.id);
 
-    if (nodeHeartbeatStale(node, now)) {
-      results.push(
-        await writeNodeOfflineEvent({
-          auditStore,
-          existing,
-          healthEventStore,
-          node,
-          now,
-        }),
-      );
-      continue;
-    }
+      if (nodeHeartbeatStale(node, now)) {
+        results.push(
+          await writeNodeOfflineEvent({
+            auditStore,
+            existing,
+            healthEventStore,
+            node,
+            now,
+          }),
+        );
+        continue;
+      }
 
-    if (existing) {
-      results.push(
-        await resolveNodeOfflineEvent({
-          auditStore,
-          existing,
-          healthEventStore,
-          node,
-          now,
-        }),
-      );
+      if (existing) {
+        results.push(
+          await resolveNodeOfflineEvent({
+            auditStore,
+            existing,
+            healthEventStore,
+            node,
+            now,
+          }),
+        );
+      }
+    } catch {
+      results.push({ nodeId: node.id, outcome: "skipped", reason: "reconcile_failed" });
     }
   }
 
