@@ -51,6 +51,18 @@ export function registerSettingsUploadPolicyRoutes({
         return c.json({ error: "Invalid upload policy", issues: body.error.issues }, 400);
       }
 
+      // Every operator-created policy must target a real destination; a
+      // destination-less policy silently reconciles its recordings to `partial`
+      // (audit H3-3). The store stays lenient for seeds/tests, so enforce here.
+      if (!body.data.destinationId) {
+        await recordSettingsFailure(
+          c,
+          "settings.upload_policies.create.failed",
+          "destination_required",
+        );
+        return c.json({ error: "An upload policy must target a destination" }, 400);
+      }
+
       const destinationDenied = await destinationReferenceFailure(
         c,
         body.data.destinationId,

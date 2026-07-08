@@ -810,6 +810,9 @@ export const uploadPolicySchema = z.object({
 });
 export const uploadPolicyInputSchema = z.object({
   deleteCacheAfterUpload: z.boolean().default(false),
+  // Optional in the shared shape (the store is an internal seeding primitive),
+  // but the operator create route requires it — every policy must target a real
+  // destination or its recordings reconcile to `partial` (audit H3-3).
   destinationId: z.string().trim().min(1).max(160).optional(),
   enabled: z.boolean().default(true),
   id: z.string().trim().min(1).max(160).optional(),

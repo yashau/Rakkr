@@ -191,9 +191,10 @@ function policyUpdate(policy: UploadPolicy): UploadPolicyUpdate {
   };
 }
 
-export function defaultUploadPolicyInput(): UploadPolicyInput {
+export function defaultUploadPolicyInput(destinationId: string): UploadPolicyInput {
   return {
     deleteCacheAfterUpload: false,
+    destinationId,
     enabled: true,
     maxAttempts: 5,
     name: "New Upload Policy",

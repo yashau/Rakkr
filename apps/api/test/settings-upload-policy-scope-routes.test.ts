@@ -43,6 +43,7 @@ test("upload policy routes honor resource-scope denies", async () => {
   const auditStore = createAuditStore("");
   const currentUser = viewer();
   const hiddenPolicy = await createUploadPolicy({
+    destinationId: "dest_hidden",
     enabled: true,
     maxAttempts: 3,
     name: `Hidden Upload Policy ${randomUUID()}`,
@@ -180,6 +181,15 @@ test("R28: upload policy create with a duplicate id is a 409 and does not overwr
   const auditStore = createAuditStore("");
   const currentUser = viewer();
 
+  const uploadDestinationStore = createUploadDestinationStore();
+  const destination = await uploadDestinationStore.create({
+    displayName: "Duplicate Test Destination",
+    enabled: true,
+    kind: "smb",
+    smb: { server: "dup.lan", share: "recordings", username: "svc" },
+    smbPassword: "s3cr3t",
+  });
+
   registerSettingsRoutes({
     app,
     currentAuth: () => ({ user: currentUser }),
@@ -187,11 +197,12 @@ test("R28: upload policy create with a duplicate id is a 409 and does not overwr
     recordAuditEvent: recordAuditEvent(auditStore),
     requirePermission: denyResourceScope(auditStore, currentUser, () => true),
     settingsStore: createSettingsStore(),
-    uploadDestinationStore: createUploadDestinationStore(),
+    uploadDestinationStore,
   });
 
   const policyId = `upload_policy_dup_${randomUUID()}`;
   const first = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    destinationId: destination.id,
     enabled: true,
     id: policyId,
     maxAttempts: 3,
@@ -199,6 +210,7 @@ test("R28: upload policy create with a duplicate id is a 409 and does not overwr
     trigger: "manual",
   });
   const conflict = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    destinationId: destination.id,
     enabled: true,
     id: policyId,
     maxAttempts: 9,
@@ -216,6 +228,33 @@ test("R28: upload policy create with a duplicate id is a 409 and does not overwr
   assert.equal(stored?.name, "Original Policy");
   assert.equal(stored?.maxAttempts, 3);
   assert.equal(failed.at(-1)?.reason, "upload_policy_exists");
+});
+
+test("H3-3: upload policy create without a destination is rejected", async () => {
+  const app = new Hono<AppBindings>();
+  const auditStore = createAuditStore("");
+  const currentUser = viewer();
+
+  registerSettingsRoutes({
+    app,
+    currentAuth: () => ({ user: currentUser }),
+    hasResourceScope: async () => true,
+    recordAuditEvent: recordAuditEvent(auditStore),
+    requirePermission: denyResourceScope(auditStore, currentUser, () => true),
+    settingsStore: createSettingsStore(),
+    uploadDestinationStore: createUploadDestinationStore(),
+  });
+
+  // Every upload policy must target a real destination; a destination-less
+  // create would otherwise reconcile its recordings to `partial` (audit H3-3).
+  const response = await requestJson(app, "/api/v1/settings/upload-policies", "POST", {
+    enabled: true,
+    maxAttempts: 3,
+    name: "Destination-less Policy",
+    trigger: "manual",
+  });
+
+  assert.equal(response.status, 400);
 });
 
 function requestJson(

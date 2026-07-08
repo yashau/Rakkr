@@ -38,8 +38,19 @@ export function SettingsUploadPoliciesSection({
     queryFn: api.uploadPolicies,
     queryKey: ["upload-policies"],
   });
+  const destinationsQuery = useQuery({
+    enabled: canRead,
+    queryFn: api.uploadDestinations,
+    queryKey: ["upload-destinations"],
+  });
+  // Every policy must target a real destination (audit H3-3): seed a new policy
+  // with the first configured destination, and don't offer "New" until one
+  // exists (the create schema now rejects a destination-less policy).
+  const destinations = destinationsQuery.data?.data ?? [];
+  const firstDestinationId = destinations[0]?.id;
   const createMutation = useMutation({
-    mutationFn: () => api.createUploadPolicy(defaultUploadPolicyInput()),
+    mutationFn: (destinationId: string) =>
+      api.createUploadPolicy(defaultUploadPolicyInput(destinationId)),
     onError: () =>
       toast.error("Create failed", {
         description: "The upload policy could not be created.",
@@ -81,9 +92,15 @@ export function SettingsUploadPoliciesSection({
             {policies.length} policies
           </Badge>
           <HintButton
-            disabled={createMutation.isPending || !canManage}
-            hint={canManage ? "Create upload policy" : "Requires settings manage"}
-            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !canManage || !firstDestinationId}
+            hint={
+              !canManage
+                ? "Requires settings manage"
+                : firstDestinationId
+                  ? "Create upload policy"
+                  : "Add an upload destination first"
+            }
+            onClick={() => firstDestinationId && createMutation.mutate(firstDestinationId)}
             variant="outline"
           >
             <PlusCircle className="size-4" />
