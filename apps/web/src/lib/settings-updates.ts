@@ -5,6 +5,22 @@ import type {
   WatchdogPolicyUpdate,
 } from "@rakkr/shared";
 
+// The value a numeric <input> change should COMMIT to a draft, or `undefined` to
+// leave the committed value unchanged. Returning undefined for an empty/invalid
+// field is what stops `Number("") === 0` from silently committing a 0 — e.g. a
+// watchdog `thresholdDbfs`/score threshold cleared to `0` passes server
+// validation and arms an always-fire alert (audit H4-2). Callers keep a local
+// text buffer so the field stays clearable while typing.
+export function numericInputCommit(raw: string): number | undefined {
+  if (raw.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = Number(raw);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function recordingProfileUpdate(profile: RecordingProfile): RecordingProfileUpdate {
   return {
     bitrateKbps: profile.bitrateKbps,

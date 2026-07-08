@@ -22,7 +22,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { watchdogCalibrationActionState } from "@/lib/settings-page-helpers";
-import { watchdogPolicyUpdate } from "@/lib/settings-updates";
+import { numericInputCommit, watchdogPolicyUpdate } from "@/lib/settings-updates";
 
 export function WatchdogPolicyCard({
   canManage,
@@ -486,16 +486,39 @@ function NumberField({
   step?: number;
   value: number;
 }) {
+  // Local text buffer so the field stays clearable/editable, while an empty or
+  // invalid entry never commits a 0 to the draft (audit H4-2): a cleared watchdog
+  // threshold (e.g. thresholdDbfs / a score threshold) would otherwise persist 0
+  // — a value the server accepts — and arm an always-fire alert. Re-sync from
+  // `value` only on a genuine external change (not while typing "0.").
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    setText((current) => (numericInputCommit(current) === value ? current : String(value)));
+  }, [value]);
+
   return (
     <Field label={label}>
       <Input
         disabled={disabled}
         max={max}
         min={min}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onBlur={() =>
+          setText((current) =>
+            numericInputCommit(current) === undefined ? String(value) : current,
+          )
+        }
+        onChange={(event) => {
+          setText(event.target.value);
+          const next = numericInputCommit(event.target.value);
+
+          if (next !== undefined) {
+            onChange(next);
+          }
+        }}
         step={step}
         type="number"
-        value={value}
+        value={text}
       />
     </Field>
   );

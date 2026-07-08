@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { WatchdogPolicy } from "@rakkr/shared";
 
-import { watchdogPolicyUpdate } from "./settings-updates";
+import { numericInputCommit, watchdogPolicyUpdate } from "./settings-updates";
+
+test("numericInputCommit never coerces an empty/invalid numeric field to 0", () => {
+  // The bug: a cleared watchdog threshold field yields Number("") === 0, which
+  // the server accepts (dbfsSchema allows 0, score thresholds allow 0) and arms
+  // an always-fire alert. An empty/invalid entry must NOT commit a value.
+  assert.equal(numericInputCommit(""), undefined);
+  assert.equal(numericInputCommit("   "), undefined);
+  assert.equal(numericInputCommit("abc"), undefined);
+  // A deliberately-typed number (including 0) still commits.
+  assert.equal(numericInputCommit("0"), 0);
+  assert.equal(numericInputCommit("-18.5"), -18.5);
+  assert.equal(numericInputCommit("0.97"), 0.97);
+  assert.equal(numericInputCommit("120"), 120);
+});
 
 test("watchdog policy update preserves quality and flatline fields", () => {
   assert.deepEqual(watchdogPolicyUpdate(watchdogPolicy()), {
