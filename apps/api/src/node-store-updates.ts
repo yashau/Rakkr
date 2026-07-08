@@ -1,4 +1,4 @@
-import type { AudioInterface, RecorderNode } from "@rakkr/shared";
+import type { AudioInterface, NodeStatus, RecorderNode } from "@rakkr/shared";
 
 import { nonEmptyAudioDefaults } from "./node-metadata.js";
 import type {
@@ -11,6 +11,16 @@ import type {
 // paths. Extracted from node-store.ts to keep it under the LOC budget; the type
 // imports above are erased, so the store <-> updates edge is not a runtime cycle.
 
+// A heartbeat proves the node is in contact right now, so it must never leave
+// the node looking never-contacted (`provisioning`) or stale (`offline`) — the
+// controller owns the lifecycle state machine, so a first heartbeat promotes a
+// provisioning node to live, and a node (or a stale/rolled-back agent) cannot
+// self-report itself back out of offline detection (audit N4). Other live
+// statuses the agent may report (recording/degraded/alerting) pass through.
+export function heartbeatStatus(status: NodeStatus): NodeStatus {
+  return status === "provisioning" || status === "offline" ? "online" : status;
+}
+
 export function updatedNodeHeartbeat(node: RecorderNode, input: NodeHeartbeatInput): RecorderNode {
   return {
     ...node,
@@ -19,7 +29,7 @@ export function updatedNodeHeartbeat(node: RecorderNode, input: NodeHeartbeatInp
     ipAddresses: input.ipAddresses,
     lastSeenAt: new Date().toISOString(),
     runtime: input.runtime ?? node.runtime,
-    status: input.status,
+    status: heartbeatStatus(input.status),
   };
 }
 
