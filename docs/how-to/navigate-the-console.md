@@ -69,9 +69,10 @@ The left nav only shows pages you're allowed to see, always in this order:
 
 Rakkr colour-codes status everywhere. The recurring vocabularies:
 
-- **Node status** — `online` / `recording` (green, healthy), `degraded` /
-  `alerting` (amber, needs attention), `offline` (grey/red). A node goes
-  **offline** automatically after it misses heartbeats.
+- **Node status** — `provisioning` (awaiting first contact), `online` /
+  `recording` (green, healthy), `degraded` / `alerting` (amber, needs attention),
+  `offline` (grey/red). A node goes **offline** automatically after it misses
+  heartbeats.
 - **Recording / job status** — `queued`, `running`, `stop_requested`,
   `completed`, `failed`, `cancelled`.
 - **Health severity** — `info` (blue), `warning` (amber), `critical` (red).

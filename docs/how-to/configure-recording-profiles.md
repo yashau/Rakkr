@@ -27,10 +27,9 @@ Open **Settings** in the left nav and scroll to **Recording Profiles**
    - **Bitrate** and **VBR** (for MP3).
    - **Channel mode**.
    - Optional **silence handling**.
-   - **Maximum track length** — used to auto-split long scheduled captures into
+   - **Chunk Length (seconds)** — used to auto-split long scheduled captures into
      chunks.
-3. Toggle **Enabled** so it's available to operators.
-4. Save.
+3. Save.
 
 The built-in default is a voice MP3-VBR profile (~128 kbps). Defaults are
 configuration, never hard-coded — so change them freely.
@@ -42,15 +41,16 @@ is one default per type, so setting a new one clears the previous.
 ## Voice enhancement
 
 Each profile also carries a **voice-enhancement chain** that produces an
-**enhanced** rendition alongside the always-preserved **raw** master. The stages,
-applied in order, are each independently toggleable:
+**enhanced** rendition alongside the always-preserved **raw** master. The chain
+applies **denoise first**, then the ffmpeg voice filters; every stage is
+independently toggleable:
 
-1. **High-pass** (default on, 80 Hz) — remove rumble/HVAC/handling.
-2. **Denoise** (default on) — DeepFilterNet3 or RNNoise.
-3. **De-esser** (default off) — tame sibilance.
-4. **Compressor** (default off) — even out speakers at different distances.
-5. **Loudness normalization** (default on, EBU R128) — consistent levels.
-6. **Low-pass** (default off) — high-frequency roll-off.
+1. **Denoise** (default on) — DeepFilterNet3 or RNNoise.
+2. **High-pass** (default on, 80 Hz) — remove rumble/HVAC/handling.
+3. **Low-pass** (default off) — high-frequency roll-off.
+4. **De-esser** (default off) — tame sibilance.
+5. **Compressor** (default off) — even out speakers at different distances.
+6. **Loudness normalization** (default on, EBU R128) — consistent levels.
 7. **Noise gate** (default off).
 
 `keepRaw` (default on) controls whether the raw master is uploaded alongside the

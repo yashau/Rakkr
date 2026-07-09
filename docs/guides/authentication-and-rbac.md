@@ -61,7 +61,9 @@ access policies   ─┘
 
 1. **Roles → permissions.** Each role maps to a fixed permission set (defined in
    `@rakkr/shared`). `owner` has everything; `admin` has everything except
-   `system:admin`; `operator`, `viewer`, and `auditor` are progressively narrower.
+   `system:admin`; `operator`, `viewer`, and `auditor` are each narrower in scope
+   (note `auditor` is audit-focused — it holds `audit:read`, which `viewer` lacks —
+   rather than a strict subset of `viewer`).
    See the [permissions reference](../reference/permissions.md).
 2. **Resource scope.** Having a permission isn't enough — the actor must be in
    scope for the target. `owner`/`admin` bypass scope; everyone else needs a

@@ -47,8 +47,8 @@ record the whole interface.
 Because you can pick channels, **several recordings can run on the same
 interface at once**, each on its own channels — for example sixteen independent
 stereo recordings on a 32-channel interface. If you pick channels another
-recording is already using, Rakkr refuses with **"channels busy"**; recordings on
-non-overlapping channels run simultaneously.
+recording is already using, Rakkr refuses with **"Requested channels are already
+in use"**; recordings on non-overlapping channels run simultaneously.
 
 ## Stop a recording
 

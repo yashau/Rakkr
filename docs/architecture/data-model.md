@@ -35,7 +35,8 @@ The Drizzle client (`packages/db/src/client.ts`) opens a small `postgres.js` poo
 
 ## Tables
 
-The schema (`packages/db/src/schema.ts`) defines 37 tables plus Postgres enums
+The schema — assembled in `packages/db/src/schema.ts` from per-subsystem modules
+under `packages/db/src/schema/` — defines 37 tables plus Postgres enums
 (`node_status`, `health_severity`, `recording_status`, `recording_job_status`,
 `recording_chunk_status`, `recording_source`, `audit_outcome`,
 `access_policy_effect`, `access_policy_subject_type`, `room_roster_subject_type`,
@@ -116,8 +117,8 @@ The schema (`packages/db/src/schema.ts`) defines 37 tables plus Postgres enums
 ## Migrations
 
 Migration SQL lives in `packages/db/drizzle/*.sql` with snapshots under
-`drizzle/meta/`; **migrations are committed alongside schema changes** (~40 to
-date, highest `0039`). The workflow:
+`drizzle/meta/`; **migrations are committed alongside schema changes** (~47 to
+date, highest `0046`). The workflow:
 
 ```powershell
 mise run db:generate   # drizzle-kit generate — emit SQL from schema.ts
@@ -131,9 +132,9 @@ is part of the full `mise run check` gate and requires a working Postgres.
 
 ## Shared contracts
 
-`@rakkr/shared` (`packages/shared/src/index.ts`) is a single Zod-based module
-that both API and console import, keeping entity and request/response shapes in
-sync. It exports:
+`@rakkr/shared` is a set of Zod-based domain modules re-exported from
+`packages/shared/src/index.ts`, which both API and console import, keeping entity
+and request/response shapes in sync. It exports:
 
 - **Domain schemas + inferred types** for nearly every model (nodes, interfaces,
   meter frames, recordings, jobs, profiles, schedules, health/audit events,

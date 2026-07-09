@@ -28,6 +28,7 @@ Without a mode flag, the agent runs as a long-lived daemon.
 | `--capture-recording-id`          | `RAKKR_CAPTURE_RECORDING_ID`          | One-shot capture → render → upload for a recording ID.     |
 | `--attach-cache-file`             | `RAKKR_ATTACH_CACHE_FILE`             | Upload an existing local file as a recording's cache.      |
 | `--bootstrap`                     | `RAKKR_BOOTSTRAP`                     | Day-0: generate SSH keypair, hand the private key to the controller (bootstrap token), write the returned controller token, then exit. |
+| `--version`                       | _(CLI only)_                          | Print the calendar agent version and exit.                 |
 
 ### Bootstrap mode
 
@@ -72,6 +73,7 @@ Used at first boot (usually by `deploy/bootstrap/agent.sh`); see
 | `RAKKR_CAPTURE_SAMPLE_RATE`          | `48000`          | Sample rate (Hz).                                                                                       |
 | `RAKKR_CAPTURE_CHANNELS`             | `2`              | Channel count.                                                                                          |
 | `RAKKR_CAPTURE_SECONDS`              | `60`             | Duration for one-shot/local capture mode.                                                               |
+| `RAKKR_CAPTURE_CHUNK_SECONDS`        | — (unset / `0`)  | Default chunk length (`--capture-chunk-seconds`) for chunked recordings when a job carries no `chunkSeconds`. Unset/`0` keeps the single-file capture path. |
 | `RAKKR_CAPTURE_ARGS_TEMPLATE`        | —                | Override capture args (placeholders; see below).                                                        |
 | `RAKKR_CHANNEL_RENDER_COMMAND`       | `ffmpeg`         | Tool used to render channel maps / re-encode.                                                           |
 | `RAKKR_CAPTURE_MIN_OUTPUT_BYTES`     | `128`            | Minimum acceptable output size (smaller = "too small" failure).                                         |

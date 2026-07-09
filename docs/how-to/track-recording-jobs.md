@@ -20,8 +20,9 @@ or has failed.
 2. The **status tiles** summarize active / queued / completed / failed jobs.
 3. **Filter** by status, capture backend, node, interface, and created date to
    focus on what matters.
-4. Each job row shows its capture settings, lease, heartbeats, and — if it
-   failed — the **failure reason**.
+4. Each job row shows its capture settings, a claimed-by/lease badge, a
+   created / started / completed timeline, and — if it failed — the **failure
+   reason**.
 
 ## Retry or stop a job
 
@@ -36,13 +37,17 @@ or has failed.
 A job moves through these states:
 
 1. **queued** — created, waiting for a node.
-2. **claimed** — a node has leased it.
-3. **running** — capturing, heartbeating to the controller.
+2. **running** — a node has leased it (its **claimed-by** badge shows which) and
+   is capturing, heartbeating to the controller.
+3. **stop_requested** — a stop was requested while it was running; the node is
+   wrapping up.
 4. **completed** / **failed** / **cancelled** — terminal.
 
-A controller safety net automatically fails orphaned "running" jobs whose lease
-expired, so a crashed agent never leaves a recording stranded. The full sequence
-is in the [Recording guide](../guides/recording.md#the-job-lifecycle).
+**claimed** is not a status — it's a lease phase, tracked via the job's
+`claimedBy` field as a job starts running. A controller safety net automatically
+fails orphaned "running" jobs whose lease expired, so a crashed agent never leaves
+a recording stranded. The full sequence is in the
+[Recording guide](../guides/recording.md#the-job-lifecycle).
 
 ## See also
 

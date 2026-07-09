@@ -37,13 +37,14 @@ The enhancement chain lives on the **recording profile** (the preset/template), 
 it is RBAC-gated and audited like any other settings change. Every stage is
 independently toggleable with configurable parameters, applied in this order:
 
-1. **High-pass** — remove rumble / HVAC / handling (default on, 80 Hz).
-2. **Denoise** — DeepFilterNet3 or RNNoise (default on, DeepFilterNet3).
-3. **De-esser** — tame sibilance (default off).
-4. **Compressor** — even out speakers at different mic distances (default off).
-5. **Loudness normalization** — EBU R128, so every recording sits at a consistent
+1. **Denoise** — DeepFilterNet3 or RNNoise, applied in-process before any ffmpeg
+   filter (default on, DeepFilterNet3).
+2. **High-pass** — remove rumble / HVAC / handling (default on, 80 Hz).
+3. **Low-pass** — optional high-frequency roll-off (default off).
+4. **De-esser** — tame sibilance (default off).
+5. **Compressor** — even out speakers at different mic distances (default off).
+6. **Loudness normalization** — EBU R128, so every recording sits at a consistent
    level (default on, −16 LUFS / −1.5 dBTP / 11 LRA).
-6. **Low-pass** — optional high-frequency roll-off (default off).
 7. **Noise gate** — optional, threshold in dB (default off).
 
 `keepRaw` (default on) controls whether the raw master is uploaded alongside the

@@ -8,8 +8,8 @@ sidebar:
 # Configure channel maps
 
 A **channel map** is a reusable template that decides how a device's capture
-channels become the outputs of a recording — mono, stereo, grouped, or a
-mono-to-stereo mix. Maps let you apply the same routing to many nodes at once
+channels become the outputs of a recording — Mono, Stereo, Mono To Stereo Mix,
+or Multichannel. Maps let you apply the same routing to many nodes at once
 instead of configuring each recording by hand.
 
 > **Who can do this:** viewing needs `settings:read`; creating and editing need
@@ -22,17 +22,23 @@ routing."*).
 
 ## Create or edit a channel map
 
-1. Click **New** (or the pencil on an existing map).
-2. Choose the **node and interface** it targets.
-3. Define how each capture channel maps to an output (the output mode — mono,
-   stereo pair, grouped, or mono-to-stereo).
-4. Save.
+1. Click **New** (or the pencil on an existing map). A channel map is a
+   **target-agnostic template** — it defines routing, not which hardware it runs
+   on.
+2. Set the template's **Name**, **Mode**, and **Tags**, then define each
+   **per-channel entry** — how each capture channel maps to an output. The
+   **Mode** is one of **Mono**, **Stereo**, **Mono To Stereo Mix**, or
+   **Multichannel**.
+3. **Promote** the revision (**Promote Rev N**) to save it; use **Reset** to
+   discard unsaved changes.
 
 ## Assign, stage, and roll back
 
 Channel maps are built for fleet management:
 
-- **Bulk-assign** a map to many node/interface targets at once.
+- Bind a map to hardware with **Assign Target** (a single node or interface) or
+  **Bulk Targets** (many at once) — a target can be a whole node or a specific
+  interface.
 - Changes are **staged behind an explicit apply step**, so nothing changes on the
   hardware until you apply it.
 - Maps are **versioned** and can be **rolled back** if an apply causes trouble.

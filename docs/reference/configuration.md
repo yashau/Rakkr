@@ -23,9 +23,11 @@ separately in the [recorder agent CLI reference](recorder-agent.md).
 | `DATABASE_URL`              | —                       | Postgres connection string. Unset → fallback stores.                      |
 | `RAKKR_WEB_ORIGIN`          | `http://localhost:5173` | Allowed CORS / web origin.                                                |
 | `RAKKR_RECORDING_CACHE_DIR` | `data/recordings`       | Root directory for cached recording files.                                |
+| `RAKKR_RECORDING_CACHE_MAX_BYTES` | `4294967296`      | Max size of a single agent cache-file upload (4 GiB).                     |
 | `RAKKR_API_VERSION`         | `0.0.0-dev`             | Controller version reported by `/healthz` and status routes (stamped at image build).        |
 | `RAKKR_API_NO_LISTEN`       | —                       | `1` skips binding a port (used by tests).                                 |
 | `RAKKR_LISTEN_SESSION_TTL_SECONDS` | `300`           | Live-listen session TTL before eviction.                                  |
+| `RAKKR_AUTH_FALLBACK_GRACE_MS` | `900000`            | How long the auth memory-fallback keeps honoring login-time permissions after the DB becomes unavailable (15 min). |
 | `RAKKR_SEED_DEMO_DATA`      | enabled                 | Set `0` to disable demo data seeding.                                     |
 | `RAKKR_DEMO_METERS`         | disabled                | `1` lets meter endpoints emit synthetic frames when no agent frame is stored (demonstration / screenshots / tests only). Off by default — real usage never fabricates meters; an absent feed reads as empty. |
 | `RAKKR_DEMO_METER_DBFS`     | —                       | dBFS value for the synthetic demo meter data; only applies when `RAKKR_DEMO_METERS=1`.    |
@@ -56,6 +58,7 @@ All disabled unless `RAKKR_OIDC_ENABLED` is truthy (`1`/`on`/`true`/`yes`).
 | `RAKKR_OIDC_CLIENT_SECRET`   | —                      | OIDC client secret.                                                 |
 | `RAKKR_OIDC_REDIRECT_URI`    | —                      | Callback URI (must match the IdP app registration).                 |
 | `RAKKR_OIDC_SCOPES`          | `openid profile email` | Requested scopes.                                                   |
+| `RAKKR_OIDC_ALLOW_INSECURE_ISSUER` | —                | Dev/test only: permit HTTP OIDC discovery for a **loopback** issuer. |
 
 ## TLS / transport
 
@@ -99,6 +102,19 @@ The runner side of the fetch (set on the **runner**, not the controller):
 `RAKKR_RUNNER_CONTROLLER_URL`, `RAKKR_RUNNER_TOKEN`, `RAKKR_RUNNER_CONTROLLER_CA`
 (self-signed CA bundle), `RAKKR_RUNNER_ALLOW_INSECURE` (`1` skips TLS verify;
 dev only), `RAKKR_RUNNER_CONTROLLER_TIMEOUT_SECONDS` (default `20`).
+
+## Recorder-agent update check
+
+The controller polls GitHub releases so the nodes page can flag out-of-date
+recorder agents. See [Node lifecycle](../guides/node-lifecycle.md).
+
+| Variable                         | Default                  | Purpose                                              |
+| -------------------------------- | ------------------------ | ---------------------------------------------------- |
+| `RAKKR_AGENT_RELEASE_REPO`       | `yashau/Rakkr`           | GitHub repo polled for the latest `agent-v…` release. |
+| `RAKKR_GITHUB_TOKEN`             | —                        | Optional token to raise the GitHub API rate limit.   |
+| `RAKKR_GITHUB_API_URL`           | `https://api.github.com` | GitHub API base URL.                                 |
+| `RAKKR_AGENT_RELEASE_TTL_MS`     | `1800000`                | Cache TTL for the release lookup (30 min).           |
+| `RAKKR_AGENT_RELEASE_TIMEOUT_MS` | `10000`                  | Per-request timeout for the release lookup.          |
 
 ## JSON fallback store paths
 

@@ -21,7 +21,7 @@ flowchart TB
   subgraph controller["Controller"]
     api["Controller API (Hono)"]
     db[("Postgres + Drizzle\n(JSON fallback)")]
-    runners["Background runners\nschedule · watchdog · upload · retention · job-lease"]
+    runners["Background runners\nschedule · watchdog · upload · retention · job-lease · switcher-routing"]
     api <--> db
     api --- runners
   end

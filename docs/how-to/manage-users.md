@@ -15,7 +15,7 @@ hold.
 ## Add a user
 
 1. Open **Access** in the left nav.
-2. In the **Users** section, click **New user**.
+2. In the **Users** section, click **Add user**.
 3. Set the **name**, **email**, an initial **password**, and one or more
    **roles**.
 4. Click **Create**.
@@ -39,7 +39,7 @@ bypass scope. See the [permissions reference](../reference/permissions.md).
 
 For any user row:
 
-- **Edit** — change name, roles, and enabled state.
+- **Edit access** — change roles, group memberships, and resource scopes.
 - **Reset password** — set a new password.
 - **Enable / disable** — the toggle.
 - **Delete** — remove the account.

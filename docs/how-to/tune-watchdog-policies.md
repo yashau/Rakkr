@@ -27,8 +27,7 @@ thresholds."*).
    - **clipping**,
    - **digital flatline** (stuck samples),
    - **high channel correlation** (a sign of a mis-wired/duplicated channel),
-   - **high broadband-noise / noise / hum / static likelihood**,
-   - and **loud non-speech audio** (for speech-required policies).
+   - and **high broadband-noise / noise / hum / static likelihood**.
 3. Save.
 
 Use **Set default** on a policy to make it the one **pre-selected** for new
