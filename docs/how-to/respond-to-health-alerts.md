@@ -35,14 +35,15 @@ caught while you can still fix it.
    it's attached to.
 2. **Filter** by status, severity, type, node, schedule, recording, and
    opened/resolved date ranges.
-3. Expand an event for its detail and timeline, then act:
+3. Act on an event with the always-visible inline buttons in its **Actions**
+   column:
 
-   | Action          | Use it when…                                                    |
-   | --------------- | --------------------------------------------------------------- |
-   | **Acknowledge** | You've seen it and are working on it.                            |
-   | **Suppress**    | It's expected (e.g. known maintenance) — mute it for a while.    |
-   | **Resolve**     | It's handled / recovered.                                        |
-   | **Reopen**      | It came back or was resolved prematurely.                       |
+   | Action      | Use it when…                                                          |
+   | ----------- | --------------------------------------------------------------------- |
+   | **Ack**     | You've seen it and are working on it.                                 |
+   | **Mute 1h** | It's expected (e.g. known maintenance) — a fixed one-hour suppression. |
+   | **Resolve** | It's handled / recovered.                                             |
+   | **Reopen**  | It came back or was resolved prematurely.                             |
 
 4. You can act on many events at once (bulk), and **export** the filtered or
    selected events as CSV.

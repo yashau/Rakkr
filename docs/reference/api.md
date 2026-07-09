@@ -68,8 +68,10 @@ Conventions:
 | `GET /nodes` · `GET\|POST /nodes/export`                                        | `node:read`      | List / export inventory (scoped).    |
 | `GET /nodes/:id` · `/:id/actions`                                               | `node:read`      | Detail / action summaries.           |
 | `GET /nodes/:id/meters` · `GET /meter-events`                                   | `node:read`      | Meter snapshot / SSE stream.         |
+| `GET /nodes/agent-release`                                                       | `node:read`      | Latest agent release (update check). |
 | `POST /nodes/enroll`                                                            | `node:manage`    | Enroll node (returns credential).    |
 | `PATCH /nodes/:id` · `/:id/interfaces/:iid`                                     | `node:manage`    | Update node / interface.             |
+| `PUT /nodes/:id/channel-rooms`                                                  | `node:manage`    | Assign node channels to rooms.       |
 | `POST /nodes/:id/credentials/rotate`                                            | `node:manage`    | Rotate node controller token.        |
 | `GET /nodes/:id/ssh-credential` · `POST /:id/ssh-credential/rotate`             | `node:manage`    | Read public SSH key / rotate keypair (private key never returned). |
 | `POST /nodes/:id/bootstrap-token`                                               | `node:manage`    | Mint a single-use, short-TTL day-0 bootstrap token. |
@@ -85,11 +87,12 @@ Conventions:
 | `GET /nodes/:id/channel-map-assignments`          | `node:control`                       | Assigned channel maps.                    |
 | `POST /nodes/:id/heartbeat`                       | `node:control`                       | Node heartbeat.                           |
 | `POST /nodes/:id/inventory`                       | `node:control`                       | Reconcile interfaces from discovered inventory (startup). |
-| `POST /nodes/:id/meter-frame`                     | —                                    | Push a meter frame.                       |
+| `POST /nodes/:id/meter-frame`                     | `node:control`                       | Push a meter frame.                       |
 | `POST /nodes/:id/listen/chunk`                    | `node:control`                       | Ingest live-listen audio (`?rendition`).  |
 | `POST /nodes/:id/health-events`                   | `health:acknowledge`                 | Sync a health event.                      |
 | `GET /nodes/:id/recording-jobs/next`              | `recording:control`                  | Poll the next queued job (peek, no lease). |
 | `POST /nodes/:id/recording-jobs/claim-next`       | `recording:control`                  | Atomically claim the next queued job.     |
+| `POST /nodes/:id/recording-jobs/claim-next-group` | `recording:control`                  | Claim the next queued job + its capture-group siblings (one shared capture). |
 | `POST /recording-jobs/:jid/claim`                 | `recording:control`                  | Claim a specific queued job by id.        |
 | `POST /recording-jobs/:jid/heartbeat`             | `recording:control`                  | Job heartbeat.                            |
 | `GET /recording-jobs/:jid`                        | `recording:control`/`recording:read` | Read job (dual-mode auth).                |
@@ -163,11 +166,12 @@ reads under `settings:read`. Mutations require `settings:manage`.
 
 | Family                                      | Read            | Manage                                                                           |
 | ------------------------------------------- | --------------- | -------------------------------------------------------------------------------- |
-| Recording profiles                          | `settings:read` | `PATCH /settings/recording-profiles/:id`                                         |
-| Watchdog policies                           | `settings:read` | `PATCH /settings/watchdog-policies/:id` (+ calibrate)                            |
+| Recording profiles                          | `settings:read` | `POST` / `PATCH /settings/recording-profiles/:id`                                |
+| Watchdog policies                           | `settings:read` | `POST` / `PATCH /settings/watchdog-policies/:id` (+ calibrate)                   |
 | Upload destinations / policies              | `settings:read` | `PATCH`/`POST` destinations & policies                                           |
 | Channel-map templates / assignments / plans | `settings:read` | create/update templates; `PUT` assignments (+ bulk, rollback); stage/apply plans |
 | Retention policies                          | `settings:read` | `POST` / `PATCH /settings/retention-policies/:id`                                |
+| Controller                                  | `settings:read` | `PATCH /settings/controller` (weekStartsOn + scheduling defaults)                |
 
 ## Switchers — `/api/v1/settings/switchers`
 
@@ -199,3 +203,4 @@ reads under `settings:read`. Mutations require `settings:manage`.
 | `GET /api/v1/status` | `node:read`    | Aggregated scoped status (nodes, recordings, health, uptime). |
 | `GET /metrics`       | `metrics:read` | Prometheus exposition (root path).                            |
 | `GET /healthz`       | —              | Liveness.                                                     |
+| `GET /readyz`        | —              | Readiness (`503` while the database is unreachable).          |

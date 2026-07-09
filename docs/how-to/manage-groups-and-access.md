@@ -19,7 +19,7 @@ An **access group** is a named set of users you can assign in one shot to
 schedules, room rosters, and access policies.
 
 1. Open **Access** and find the **Groups** section.
-2. Click **New group** and give it a **name** and optional **description**.
+2. Click **Add group** and give it a **name** and optional **description**.
 3. Use **Members** to add or remove users.
 4. **Delete** a group to remove it everywhere it was used.
 

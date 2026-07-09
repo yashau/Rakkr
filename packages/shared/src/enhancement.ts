@@ -6,9 +6,10 @@ export const enhancementDenoiseEngineSchema = z.enum(["rnnoise", "deepfilternet3
 
 // Voice-enhancement chain stored on a recording profile (the preset/template).
 // Every stage is independently toggleable with configurable parameters; the agent
-// applies enabled stages in a fixed order (highpass -> denoise -> deesser ->
-// compressor -> loudnorm -> gate) to produce the enhanced rendition, always
-// alongside the untouched raw audio when keepRaw is set.
+// applies the enabled stages in a fixed order — denoise runs first in-process,
+// then the ffmpeg voice chain (highpass -> lowpass -> deesser -> compressor ->
+// loudnorm -> gate) — to produce the enhanced rendition, always alongside the
+// untouched raw audio when keepRaw is set.
 export const recordingEnhancementSchema = z.object({
   keepRaw: z.boolean().default(true),
   denoise: z

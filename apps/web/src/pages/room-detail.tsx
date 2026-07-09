@@ -80,7 +80,8 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
     onError: (error) => {
       if (apiErrorStatus(error) === 409) {
         toast.error("Room in use", {
-          description: "This room still has nodes assigned and cannot be deleted.",
+          description:
+            "This room is still referenced by one or more schedules and cannot be deleted.",
         });
         return;
       }
@@ -188,7 +189,7 @@ export function RoomDetailPage({ roomId }: { roomId: string }) {
             </Button>
             <ConfirmButton
               confirmLabel="Delete"
-              description={`This permanently deletes the room "${room.name}". Rooms with assigned nodes cannot be deleted.`}
+              description={`This permanently deletes the room "${room.name}". Rooms still referenced by a schedule cannot be deleted.`}
               disabled={deleteRoomMutation.isPending}
               onConfirm={() => deleteRoomMutation.mutate()}
               title={`Delete room "${room.name}"?`}

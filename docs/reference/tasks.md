@@ -29,11 +29,17 @@ commands. Run a task with `mise run <name>`.
 | `mise run check`     | The full repository gate (see below).      |
 | `mise run build`     | Build TS packages/apps and the Rust agent. |
 | `mise run check:loc` | Enforce the 1000-LOC-per-file budget.      |
+| `mise run helm:check` | Render the controller Helm chart across secret backends and assert its invariants. |
 
-`mise run check` is intentionally broad. It runs the baseline doc verifiers,
-Drizzle migration replay, TypeScript checks, Node tests, oxlint, oxfmt check, the
-fake-controller agent smoke, and the Rust suite (cargo check, rustfmt, clippy,
-Miri). It needs a working Docker/Postgres for the DB verifier.
+`mise run check` is intentionally broad. It runs the baseline doc verifiers, the
+Helm chart render, Drizzle migration replay, TypeScript checks, Node tests
+(including the DB-backed suite), oxlint, oxfmt check, the fake-controller agent
+smoke, and the Rust suite (cargo check, rustfmt, clippy, Miri). It needs a
+working Docker/Postgres for the DB verifier and DB-backed tests.
+
+Cut a release with `mise run release <agent|docs|controller>`, which pushes a
+calendar-versioned tag that triggers that component's release workflow — see
+[Releases](../operations/releases.md).
 
 ## Targeted Node / TypeScript
 
@@ -41,6 +47,7 @@ Miri). It needs a working Docker/Postgres for the DB verifier.
 | -------------------------------------------- | --------------------------- |
 | `mise run node:check`                        | TypeScript type-check.      |
 | `mise run node:test`                         | Node test suites.           |
+| `mise run node:test-db`                      | DB-backed Node tests against a throwaway Postgres. |
 | `mise run node:lint`                         | oxlint.                     |
 | `mise run node:format` / `node:format-check` | oxfmt write / check.        |
 | `mise run node:build`                        | Build TS packages and apps. |
@@ -81,6 +88,7 @@ Each checks a [baseline doc](../contributing/baselines.md) against the source:
 | `mise run health:check-watchdog`                                                                            | Health watchdog          |
 | `mise run storage:check`                                                                                    | Storage upload           |
 | `mise run operations:check`                                                                                 | Operations               |
+| `mise run nodes:check-lifecycle`                                                                            | Node lifecycle           |
 | `mise run time:check`                                                                                       | Date / time              |
 | `mise run ops:check-alerts` / `ops:check-prometheus` / `ops:check-grafana` / `ops:check-observability-docs` | Observability artifacts  |
 

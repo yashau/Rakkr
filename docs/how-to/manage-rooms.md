@@ -53,7 +53,7 @@ point at — so getting rooms right is the foundation for who can reach what.
 ## What's on the room detail page
 
 - The editable **identity** (name, site, building, floor, description, notes).
-- The room's **node/channel inventory**.
+- The room's **node inventory**.
 - Its **upcoming scheduled occurrences** — with who booked each.
 - Its **recent recordings**.
 - Its **access roster** — edited here; see

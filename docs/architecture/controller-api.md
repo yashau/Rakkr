@@ -58,7 +58,9 @@ issued at enrollment / rotation and stored only as hashes.
 ## The RBAC + audit route pattern
 
 Every user-facing route follows the same shape, enforced by the
-`requirePermission(permission, action, targetFn)` middleware in `index.ts`:
+`requirePermission(permission, action, targetFn)` middleware — created by
+`createAuthorization(...)` in `apps/api/src/index-authorization.ts` and wired into
+the `index.ts` composition root:
 
 ```text
 requirePermission → authenticate → resolve audit target
@@ -136,8 +138,11 @@ Tuning knobs (intervals, batch sizes, leases, enable flags) are in the
 
 ## Error shapes
 
-There is no global error middleware; routes return JSON inline with conventional
-status codes:
+A global `app.onError` handler (`apps/api/src/index.ts`) catches uncaught errors,
+mapping `DatabaseUnavailableError` → 503
+`{ error: "Service temporarily unavailable", reason: "database_unavailable" }` and
+everything else → 500 `{ error: "Internal server error" }`. Routes still return
+most status codes inline with conventional shapes:
 
 | Status | Shape                                   | When                                     |
 | ------ | --------------------------------------- | ---------------------------------------- |

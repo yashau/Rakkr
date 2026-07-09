@@ -49,9 +49,11 @@ Per-channel audio quality, derived from the latest meter frame (labelled by
 | `rakkr_input_static_score`               | Static-likelihood score.                           |
 | `rakkr_input_estimated_snr_db`           | Estimated signal-to-noise ratio (dB).              |
 | `rakkr_input_intelligibility_score`      | First-pass voice intelligibility score.            |
-| `rakkr_input_channel_correlation_score`  | Strongest same-interface channel correlation score. |
+| `rakkr_input_channel_correlation_score`  | Strongest same-interface channel correlation score (also carries `peer_channel` + `phase` labels). |
 
 ## Live listen monitor
+
+Labelled by `node_id`/`interface_id`/`channel` plus a `source` label.
 
 | Metric                                        | Meaning                                |
 | --------------------------------------------- | -------------------------------------- |

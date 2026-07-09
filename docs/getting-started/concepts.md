@@ -24,7 +24,9 @@ source of truth for room identity.
 **Node** — a Linux machine running the recorder agent. Identified by a stable ID
 and described by alias, site/building/floor/room, hostname and IPs, agent
 version, OS/kernel, audio backends, tags, notes, and a live status
-(`online` / `offline` / `recording` / `degraded` / `alerting`). Nodes derive
+(`provisioning` / `online` / `offline` / `recording` / `degraded` / `alerting`).
+`provisioning` is the initial pre-contact status of an enrolled node that has
+never made contact, and is excluded from offline/liveness derivation. Nodes derive
 `offline` automatically after a missed-heartbeat threshold.
 
 **Audio interface** — a capture device on a node (e.g. an ALSA card). Carries a
@@ -61,8 +63,9 @@ recurrence (`manual`, `once`, `daily`, `weekly`, `monthly`, `always_on`), an
 explicit timezone, start-early/stop-late buffers, and exceptions (skip a date or
 pause a range).
 Schedules _own_ the metadata of the recordings they create (name, folder, tags,
-profile, watchdog policy, retention, upload policy). No cron syntax is ever
-exposed.
+profile, watchdog policy, retention, upload policies). A schedule carries a list
+`uploadPolicyIds`, fanning one recording out to several destinations. No cron
+syntax is ever exposed.
 
 ## Quality and metering
 
@@ -129,8 +132,13 @@ correlation IDs, and before/after snapshots where relevant.
 **Cache** — the local copy of a recording on the recorder node and/or the
 controller. Cache retention only runs _after_ a confirmed upload.
 
-**Upload provider / upload queue** — the destinations (SMB, S3) and the
-retry queue that moves cached recordings to them.
+**Upload destination / upload policy / upload queue** — an **upload destination**
+is a named SMB or S3 target; an **upload policy** selects one destination plus an
+optional subfolder (and its trigger/retry/delete-after-upload behavior). Recordings
+and schedules reference a list of policies, and the retry **upload queue** moves
+each cached recording to every selected destination (one item per policy). The
+legacy `upload_providers` (one row per kind) is a backfill concept superseded by
+destinations.
 
 **Node lifecycle action** — an allowlisted remote operation run against a node's
 host over SSH via the Ansible runner: `install_dependencies`, `update_binary`,

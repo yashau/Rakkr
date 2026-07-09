@@ -172,9 +172,14 @@ helm upgrade --install rakkr deploy/helm/rakkr-controller `
 ```
 
 Recorder-agent cache-file uploads reach the API through this ingress -> web
-(nginx) path, so the chart ships a `nginx.ingress.kubernetes.io/proxy-body-size:
-"0"` annotation (and the web image's nginx sets `client_max_body_size 0` on
-`/api/`) to lift the 1 MB default that would otherwise `413` every upload. The
+(nginx) path, so the chart ships four upload-related annotations —
+`nginx.ingress.kubernetes.io/proxy-body-size: "0"`,
+`nginx.ingress.kubernetes.io/proxy-request-buffering: "off"`,
+`nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"`, and
+`nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"` — (and the web image's
+nginx sets `client_max_body_size 0` on `/api/`) to lift the 1 MB default that would
+otherwise `413` every upload, stream rather than buffer the body, and give slow
+multi-GB uploads room not to time out. The
 controller enforces the authoritative cap via `RAKKR_RECORDING_CACHE_MAX_BYTES`
 (4 GiB default). Override `ingress.annotations` if you run a non-nginx ingress
 controller.

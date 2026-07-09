@@ -16,7 +16,7 @@ there is no cron syntax anywhere.**
 
 ## Create a schedule
 
-1. Open **Schedules** in the left nav and click **New**.
+1. Open **Schedules** in the left nav and click **Add schedule**.
 2. Choose a **recurrence** mode:
 
    | Mode         | Meaning                                         |

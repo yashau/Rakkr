@@ -23,7 +23,8 @@ and shows the copy-paste installer one-liner:
 ```bash
 curl -fsSL https://rakkr.org/agent.sh | sudo sh -s -- \
   --controller-url https://controller.example:8787 \
-  --bootstrap-token rakkr_bs_… --node-id node_…
+  --bootstrap-token rakkr_bs_… --node-id node_… \
+  --site … --room …
 ```
 
 Run it on the fresh Linux host: it installs the latest agent, generates the
