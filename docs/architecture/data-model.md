@@ -123,12 +123,15 @@ date, highest `0046`). The workflow:
 ```powershell
 mise run db:generate   # drizzle-kit generate — emit SQL from schema.ts
 mise run db:migrate    # drizzle-kit migrate  — apply to DATABASE_URL
-mise run db:verify     # replay all migrations against a throwaway database, then drop it
+mise run db:verify     # replay all migrations against an in-process PGlite database
 ```
 
 Rules: edit `schema.ts` first, generate, review the emitted SQL + snapshot, run
 `db:verify`, and commit the generated files with the schema change. `db:verify`
-is part of the full `mise run check` gate and requires a working Postgres.
+is part of the full `mise run check` gate and replays the migrations against an
+in-process PGlite (WASM Postgres) database, so it needs no Docker/Postgres server.
+Real-server migration application still runs in CI: the `node:test-db` concurrency
+harness applies the same migrations against a throwaway Postgres before its tests.
 
 ## Shared contracts
 

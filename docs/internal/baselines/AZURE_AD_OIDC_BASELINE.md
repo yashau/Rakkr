@@ -101,10 +101,14 @@ synced (Graph resolution is out of scope).
   at the local fake provider; it can never relax transport security for a remote
   issuer.
 - Group-collision and weird-claim coverage lives in
-  `apps/api/test/oidc-groups-collision.test.ts`. The in-memory cases run in the
-  default suite; the persistence-level cases (group id collision, no-rename on
-  login) run in CI via the `node:test-db` task, which provisions a throwaway
-  Postgres database (like `db:verify`) and is part of `mise run check`.
+  `apps/api/test/oidc-groups-collision.test.ts`. The in-memory cases and the
+  persistence-level cases (group id collision, no-rename on login) both run in the
+  default `node:test` suite: the persistence cases use an in-process PGlite (WASM
+  Postgres) database via `createPgliteDatabase()`, so they need no server. The
+  concurrent first-login/email-conflict race in
+  `apps/api/test/oidc-race-conflict.test.ts` needs real concurrent connections, so
+  it runs via the `node:test-db` task against a throwaway Postgres — part of
+  `mise run check`.
 
 ## Checked By
 

@@ -102,7 +102,7 @@ Edit `packages/db/src/schema.ts` first, then:
 ```powershell
 mise run db:generate    # emit migration SQL
 mise run db:migrate     # apply locally
-mise run db:verify      # replay against a throwaway database
+mise run db:verify      # replay against in-process PGlite (no Docker)
 ```
 
 Review and commit the generated SQL and metadata with the schema change. See the

@@ -47,7 +47,7 @@ calendar-versioned tag that triggers that component's release workflow — see
 | -------------------------------------------- | --------------------------- |
 | `mise run node:check`                        | TypeScript type-check.      |
 | `mise run node:test`                         | Node test suites.           |
-| `mise run node:test-db`                      | DB-backed Node tests against a throwaway Postgres. |
+| `mise run node:test-db`                      | Concurrency/race DB tests against a throwaway Postgres (real connections). |
 | `mise run node:lint`                         | oxlint.                     |
 | `mise run node:format` / `node:format-check` | oxfmt write / check.        |
 | `mise run node:build`                        | Build TS packages and apps. |
@@ -68,7 +68,7 @@ calendar-versioned tag that triggers that component's release workflow — see
 | ---------------------- | --------------------------------------------------- |
 | `mise run db:generate` | Generate Drizzle migration SQL from the schema.     |
 | `mise run db:migrate`  | Apply migrations to `DATABASE_URL`.                 |
-| `mise run db:verify`   | Replay all migrations against a throwaway database. |
+| `mise run db:verify`   | Replay all migrations against an in-process PGlite database (no Docker). |
 
 ## Baseline verifiers
 

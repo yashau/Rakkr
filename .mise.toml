@@ -197,7 +197,7 @@ description = "Apply Drizzle migrations to the configured Postgres database"
 run = "pnpm --filter @rakkr/db db:migrate"
 
 [tasks."db:verify"]
-description = "Replay Drizzle migrations against a fresh throwaway Postgres database"
+description = "Replay Drizzle migrations against an in-process PGlite database (no Docker)"
 run = "pnpm --filter @rakkr/db db:verify"
 
 [tasks.release]

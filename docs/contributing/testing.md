@@ -18,13 +18,36 @@ pnpm --filter @rakkr/api test       # controller API
 pnpm --filter @rakkr/web test       # web console helpers/components
 pnpm --filter @rakkr/shared check   # shared contracts type-check
 pnpm --filter @rakkr/db check       # db package type-check
+mise run node:test-db               # concurrency/race DB tests (needs Postgres)
 ```
 
 The API test runner sets `RAKKR_API_NO_LISTEN=1` and, by default, **removes
-`DATABASE_URL`** so tests run against the in-memory/JSON fallback stores. Set
-`RAKKR_API_TEST_DATABASE_URL` to exercise the Postgres path. This is why the
-controller is designed to work without a database — see the
+`DATABASE_URL`** so tests run against the in-memory/JSON fallback stores. This is
+why the controller is designed to work without a database — see the
 [data model](../architecture/data-model.md).
+
+### Database-backed tests
+
+DB tests come in two flavours, chosen by what they need to exercise:
+
+- **Persistence / round-trip** tests (real SQL semantics: constraints, bigint
+  widths, JSONB, transactions, per-column persistence) run against an **in-process
+  PGlite** (WASM Postgres) database, so they need **no running server** and are
+  part of the default `node:test` suite. A test calls `createPgliteDatabase()`
+  from `@rakkr/db`, which spins up a fresh instance, applies the Drizzle
+  migrations, and hands back a `pglite://…` url that `createDatabase` (and thus
+  every store and `LocalAuthService`) resolves to that instance. Set
+  `DATABASE_URL` to the url (or pass it directly), and close the handle in an
+  `after`/`finally`.
+- **Concurrency / race** tests (row-lock and atomic compare-and-set contention —
+  double-claim, last-writer-wins, FK races) need **genuinely concurrent Postgres
+  connections**. PGlite is single-connection and serializes transactions, so it
+  cannot reproduce them — a race test on PGlite would pass even with the
+  production lock removed, giving false confidence. These keep the
+  `RAKKR_API_TEST_DATABASE_URL` skip guard and run via `mise run node:test-db`,
+  which provisions a throwaway Postgres, migrates it, runs the tagged files
+  (listed in `packages/db/scripts/run-db-integration-tests.mjs`), and drops it.
+  Set `RAKKR_API_TEST_DATABASE_URL` to point at a reachable Postgres.
 
 Rust tests, Clippy, and Miri run via:
 
