@@ -1,52 +1,25 @@
-import { randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import path from "node:path";
-import postgres from "postgres";
+import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
 
-const DEFAULT_DATABASE_URL = "postgres://rakkr:rakkr@127.0.0.1:5432/rakkr";
-
-const baseUrl = new URL(process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
-const probeDatabase = `rakkr_drizzle_verify_${randomUUID().replaceAll("-", "_")}`;
-const adminUrl = new URL(baseUrl);
-adminUrl.pathname = "/postgres";
-
-const admin = postgres(adminUrl.toString(), { max: 1 });
-
-function quoteIdentifier(identifier) {
-  return `"${identifier.replaceAll('"', '""')}"`;
-}
-
-function runMigration(probeUrl) {
-  const pnpmEntrypoint = process.env.npm_execpath;
-  const hasNodeEntrypoint =
-    pnpmEntrypoint &&
-    path.isAbsolute(pnpmEntrypoint) &&
-    [".cjs", ".js", ".mjs"].includes(path.extname(pnpmEntrypoint));
-  const command = hasNodeEntrypoint ? process.execPath : "pnpm";
-  const args = hasNodeEntrypoint ? [pnpmEntrypoint, "db:migrate"] : ["db:migrate"];
-  const result = spawnSync(command, args, {
-    env: { ...process.env, DATABASE_URL: probeUrl.toString() },
-    stdio: "inherit",
-  });
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    throw new Error(`Drizzle migration replay failed with exit code ${result.status ?? 1}`);
-  }
-}
+// Replays the full Drizzle migration set against an in-process PGlite (WASM
+// Postgres) database. This validates that the committed migrations apply cleanly
+// from an empty schema with no Docker/Postgres server — so it runs on any dev
+// machine and in CI without provisioning.
+//
+// Note: PGlite is a real Postgres build, so migration DDL fidelity is high, but it
+// is NOT the exact server version production runs. The concurrency harness
+// (scripts/run-db-integration-tests.mjs) still applies these same migrations
+// against a real Postgres via drizzle-kit before its tests, so real-server
+// migration application stays covered in CI.
+const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
+const client = new PGlite();
+const db = drizzle(client);
 
 try {
-  await admin.unsafe(`CREATE DATABASE ${quoteIdentifier(probeDatabase)}`);
-
-  const probeUrl = new URL(baseUrl);
-  probeUrl.pathname = `/${probeDatabase}`;
-
-  runMigration(probeUrl);
-  console.log(`Verified Drizzle migrations against ${probeDatabase}.`);
+  await migrate(db, { migrationsFolder });
+  console.log("Verified Drizzle migrations against in-process PGlite.");
 } finally {
-  await admin.unsafe(`DROP DATABASE IF EXISTS ${quoteIdentifier(probeDatabase)} WITH (FORCE)`);
-  await admin.end();
+  await client.close();
 }

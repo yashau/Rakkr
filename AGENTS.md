@@ -104,7 +104,8 @@ barrel; tables live in per-subsystem modules under `packages/db/src/schema/`.
 - Edit the matching table module under `packages/db/src/schema/` first
   (re-exported by `schema.ts`; `drizzle.config.ts` reads `schema.ts`).
 - `mise run db:generate`, review the SQL/metadata under `packages/db/drizzle`,
-  then `mise run db:verify` (replays migrations against a throwaway Postgres).
+  then `mise run db:verify` (replays migrations against an in-process PGlite
+  database — no Docker/Postgres server needed).
 - Commit generated migration files with the schema change.
 
 ## Gates And Checks
@@ -135,6 +136,7 @@ pnpm --filter @rakkr/api test      # sets RAKKR_API_NO_LISTEN=1; drops DATABASE_
 pnpm --filter @rakkr/web test
 pnpm --filter @rakkr/shared check
 pnpm --filter @rakkr/db check
+mise run node:test-db              # concurrency/race tests; needs real Postgres
 mise run agent:fake-controller-smoke
 ```
 
@@ -142,6 +144,19 @@ API/web tests are discovered by glob (`test/**/*.test.ts`); co-locate shared
 setup/helpers in non-`.test.ts` modules so the runner ignores them. Recorder
 quick checks: `cargo run -p rakkr-recorder-agent -- --print-inventory` (or
 `--print-meter-frame`).
+
+DB tests split by what they exercise. **Persistence/round-trip** tests run against
+an in-process PGlite (WASM Postgres) via `createPgliteDatabase()` from `@rakkr/db`
+(`packages/db/src/client.ts`), so they need no server and run in the default
+`node:test` suite — call it at the top, set `DATABASE_URL` to the returned
+`pglite://…` url (or pass the url straight to `createDatabase`/`LocalAuthService`),
+and close the handle in an `after`/`finally`. **Concurrency/race** tests (row-lock
+and atomic compare-and-set contention) need genuinely concurrent Postgres
+connections, which single-connection PGlite cannot model — those keep the
+`RAKKR_API_TEST_DATABASE_URL` skip guard and run via `mise run node:test-db`
+against a throwaway Postgres (listed in `run-db-integration-tests.mjs`). Do **not**
+move a race test onto PGlite: it would pass vacuously (PGlite serializes
+transactions) and mask a removed lock.
 
 Ansible lifecycle smoke: `docker compose up -d --build ansible-runner
 recorder-test-rig` then `mise run ansible:runner-smoke` (deploys the disposable

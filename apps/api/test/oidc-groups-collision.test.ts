@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createPgliteDatabase } from "@rakkr/db";
 import { accessGroupSlug, type AzureAdOidcClaims } from "@rakkr/shared";
 
 const { LocalAuthService } = await import("../src/auth-service.js");
 const { normalizeAzureAdOidcUser } = await import("../src/oidc-sync.js");
-
-// The persistence-level collision check runs only when a Postgres test DB is
-// provided (repo convention); otherwise it skips and opens no pool. In DB mode,
-// run with `--test-force-exit` — the db client pool has no exposed close, so the
-// process would otherwise idle until the runner's exit timeout.
-const dbUrl = process.env.RAKKR_API_TEST_DATABASE_URL;
 
 // Lets a test hand the normalizer deliberately malformed claim shapes that the
 // static AzureAdOidcClaims type would reject.
@@ -128,44 +123,41 @@ test("syncs a display-name group claim onto the operator slug through the servic
   );
 });
 
-test(
-  "resolves an OIDC claim to an operator group without renaming it",
-  { skip: dbUrl ? false : "requires RAKKR_API_TEST_DATABASE_URL" },
-  async () => {
-    const authService = new LocalAuthService(dbUrl);
+test("resolves an OIDC claim to an operator group without renaming it", async () => {
+  // Real Postgres SQL semantics via an in-process PGlite (WASM Postgres)
+  // database — no running server required. Scoped to this test so the fast
+  // in-memory normalizer cases above stay server-free.
+  const pglite = await createPgliteDatabase("oidc-groups-collision");
+  const authService = new LocalAuthService(pglite.url);
 
-    await authService.groups.deleteGroup("room-council").catch(() => undefined);
-    await authService.groups.deleteGroup("room council").catch(() => undefined);
+  try {
+    const created = await authService.groups.createGroup({
+      description: undefined,
+      memberIds: [],
+      name: "Room Council",
+    });
 
-    try {
-      const created = await authService.groups.createGroup({
-        description: undefined,
-        memberIds: [],
-        name: "Room Council",
-      });
+    assert.equal(created.id, "room-council");
 
-      assert.equal(created.id, "room-council");
+    // A login whose claim differs only in casing/spacing must join the existing
+    // group (Fix A: shared slug) and must not clobber its curated name (Fix B)
+    // nor spawn a divergent "room council" twin.
+    const user = await authService.syncAzureAdOidcUser({
+      claims: {
+        email: "db-collision@example.com",
+        groups: ["room council"],
+        sub: "subject-db-collision",
+      },
+    });
+    const groups = await authService.groups.localGroups();
+    const matching = groups.filter((group) => group.id === "room-council");
+    const detail = await authService.groups.group("room-council");
 
-      // A login whose claim differs only in casing/spacing must join the existing
-      // group (Fix A: shared slug) and must not clobber its curated name (Fix B)
-      // nor spawn a divergent "room council" twin.
-      const user = await authService.syncAzureAdOidcUser({
-        claims: {
-          email: "db-collision@example.com",
-          groups: ["room council"],
-          sub: "subject-db-collision",
-        },
-      });
-      const groups = await authService.groups.localGroups();
-      const matching = groups.filter((group) => group.id === "room-council");
-      const detail = await authService.groups.group("room-council");
-
-      assert.equal(matching.length, 1);
-      assert.equal(matching[0]?.name, "Room Council");
-      assert.ok(!groups.some((group) => group.id === "room council"));
-      assert.ok(detail?.members.some((member) => member.id === user.id));
-    } finally {
-      await authService.groups.deleteGroup("room-council").catch(() => undefined);
-    }
-  },
-);
+    assert.equal(matching.length, 1);
+    assert.equal(matching[0]?.name, "Room Council");
+    assert.ok(!groups.some((group) => group.id === "room council"));
+    assert.ok(detail?.members.some((member) => member.id === user.id));
+  } finally {
+    await pglite.close();
+  }
+});

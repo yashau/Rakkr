@@ -3,23 +3,30 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import postgres from "postgres";
 
-// DB-backed Node tests that need a real Postgres (skipped by the default
-// in-memory suite). This provisions an isolated throwaway database on the
-// configured server — same contract as db:verify: a Postgres must be reachable at
-// DATABASE_URL — migrates it, runs the tagged test files against it with
-// --test-force-exit (the api db client pool has no exposed close), then drops it.
-// Add DB-gated test files here so they run as part of `mise run check`.
+// Concurrency/race Node tests that need GENUINELY concurrent Postgres connections
+// (real parallel backends contending on FOR UPDATE row locks / atomic
+// compare-and-set). These CANNOT run on the in-process PGlite used by the default
+// suite: PGlite is single-connection and serializes transactions, so a race test
+// would pass vacuously — even with the production lock removed — giving false
+// confidence. They therefore keep a real Postgres.
+//
+// This provisions an isolated throwaway database on the configured server — same
+// contract as db:verify: a Postgres must be reachable at DATABASE_URL — migrates
+// it, runs the tagged test files against it with --test-force-exit (the api db
+// client pool has no exposed close), then drops it. Add concurrency/race test
+// files here so they run as part of `mise run check`.
+//
+// Persistence/round-trip DB tests do NOT belong here — they run against PGlite in
+// the default suite via createPgliteDatabase() (see packages/db/src/client.ts).
 const dbBackedApiTests = [
-  "test/oidc-groups-collision.test.ts",
-  "test/auth-login-constraint.test.ts",
   "test/node-ssh-credential-rotation-atomic.test.ts",
   "test/node-credential-rotation-atomic.test.ts",
   "test/node-metadata-write-race.test.ts",
-  "test/recording-chunk-size-bigint.test.ts",
+  "test/recording-job-claim-atomic.test.ts",
+  "test/oidc-race-conflict.test.ts",
   "test/upload-queue-write-race.test.ts",
   "test/controller-settings-write-race.test.ts",
   "test/room-delete-fk-race.test.ts",
-  "test/node-channel-room-pg.test.ts",
 ];
 
 const DEFAULT_DATABASE_URL = "postgres://rakkr:rakkr@127.0.0.1:5432/rakkr";
