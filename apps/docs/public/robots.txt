@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://docs.rakkr.org/sitemap-index.xml
+
+# Machine-readable documentation: https://docs.rakkr.org/llms.txt
