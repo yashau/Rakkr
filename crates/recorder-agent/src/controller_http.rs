@@ -99,6 +99,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn builds_default_controller_http_client() {
         controller_http_client_with_ca(None).expect("default client should build");
     }
