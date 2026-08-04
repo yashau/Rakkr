@@ -71,14 +71,14 @@ docker compose down --volumes
 
 ## The images
 
-**`Dockerfile.api`** — multi-stage on `node:26-alpine` (pnpm 11.9.0): install deps,
+**`Dockerfile.api`** — multi-stage on `node:26-alpine` (pnpm 11.20.0): install deps,
 build `@rakkr/shared` + `@rakkr/db` + `@rakkr/api`, then a runtime stage that
 installs `ffmpeg`, copies the build plus the committed `packages/db/drizzle`
 migrations, runs as non-root, exposes `8787`, and starts the API. Because it
 includes migration tooling, the same image runs migrations.
 
 **`Dockerfile.web`** — multi-stage build of `@rakkr/shared` + `@rakkr/web` (Vite),
-then an `nginx:1.29-alpine` runtime that serves the SPA and env-substitutes
+then an `nginx:1.31-alpine` runtime that serves the SPA and env-substitutes
 `deploy/nginx/default.conf.template`. That template serves the SPA with
 `try_files … /index.html` and reverse-proxies `/api/`, `/healthz`, and `/metrics`
 to `${RAKKR_API_UPSTREAM}` (default `http://controller-api:8787`).

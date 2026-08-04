@@ -1,8 +1,8 @@
 ---
 - name: Load distro-specific lifecycle defaults
   ansible.builtin.include_vars:
-    file: "{{ ansible_os_family }}.yml"
-  when: ansible_os_family in ["Debian", "RedHat"]
+    file: "{{ ansible_facts['os_family'] }}.yml"
+  when: ansible_facts["os_family"] in ["Debian", "RedHat"]
 
 - name: Fail unsupported lifecycle actions
   ansible.builtin.fail:
@@ -101,7 +101,7 @@
     - Reload systemd
     - Restart recorder agent
   when:
-    - ansible_service_mgr == "systemd"
+    - ansible_facts["service_mgr"] == "systemd"
     - rakkr_lifecycle_action in ["install_dependencies", "update_binary"]
 
 - name: Install controller CA bundle
@@ -123,7 +123,7 @@
     name: "{{ rakkr_agent_service_name }}"
     state: restarted
   when:
-    - ansible_service_mgr == "systemd"
+    - ansible_facts["service_mgr"] == "systemd"
     - rakkr_lifecycle_action == "restart_service"
 
 - name: Run recorder node smoke check

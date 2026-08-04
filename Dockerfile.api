@@ -2,7 +2,7 @@ FROM node:26-alpine AS deps
 
 WORKDIR /app
 
-RUN npm install -g pnpm@11.9.0
+RUN npm install -g pnpm@11.20.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
