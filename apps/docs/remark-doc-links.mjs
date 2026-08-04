@@ -12,11 +12,11 @@ const DOCS_ROOT = path.resolve(import.meta.dirname, "../../docs");
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const GITHUB_BASE = "https://github.com/yashau/Rakkr";
 
-function isExcluded(relFromDocs) {
+export function isExcluded(relFromDocs) {
   return relFromDocs === "RAKKR_SOURCE_OF_TRUTH.md" || relFromDocs.startsWith("internal/");
 }
 
-function toSlug(relFromDocs) {
+export function toSlug(relFromDocs) {
   const noExt = relFromDocs.replace(/\.(md|mdx)$/i, "");
   const normalized = noExt.replace(/(^|\/)readme$/i, "$1index");
   const trimmed = normalized.replace(/\/index$/i, "");

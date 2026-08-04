@@ -13,6 +13,10 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
+    // Invoke the Worker only for canonical page URLs. This enables
+    // `Accept: text/markdown` negotiation without putting hashed CSS, JS, image,
+    // sitemap, robots, or llms.txt asset requests on the Worker invocation path.
+    "run_worker_first": ["/", "/*/"],
   },
   // Overridden at deploy time with the release version: `wrangler deploy --var
   // RAKKR_DOCS_VERSION:<YYYY.MM.DD-N> --var RAKKR_DOCS_COMMIT:<sha>`.

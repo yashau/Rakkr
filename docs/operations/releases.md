@@ -75,6 +75,30 @@ Worker as a variable and is verifiable at `https://docs.rakkr.org/version.json`.
 There is no GitHub release — Cloudflare stores the deployment. Requires the
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets.
 
+The docs build also publishes machine-readable discovery artifacts:
+
+- `/llms.txt` points agents to complete and abridged Markdown documentation sets;
+- `/llms-full.txt` and `/llms-small.txt` are generated from the same public
+  Starlight content collection as the HTML site;
+- each public page has a source-aligned Markdown asset at its trailing
+  `/index.md` path;
+- `/robots.txt` allows crawling and advertises `/sitemap-index.xml`;
+- Starlight generates `/sitemap-index.xml` and its sitemap shard from the public
+  routes.
+
+The docs Worker implements the **Markdown for Agents** content-negotiation
+contract directly, so it also works on Cloudflare's Free plan: a request with
+`Accept: text/markdown` returns the matching page's generated Markdown with
+`Content-Type: text/markdown`, `Vary: Accept`, and the site's content-use signal.
+Static scripts, styles, images, sitemaps, and discovery files remain on
+Cloudflare's asset-first path. Verify both discovery paths after a docs release:
+
+```powershell
+Invoke-WebRequest https://docs.rakkr.org/llms.txt
+Invoke-WebRequest https://docs.rakkr.org/getting-started/introduction/ `
+  -Headers @{ Accept = "text/markdown" }
+```
+
 ### Controller (`controller-v*`)
 
 `release-controller.yml` builds and pushes versioned images to GHCR:

@@ -2,6 +2,7 @@
 import { defineConfig } from "astro/config";
 import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
+import starlightLlmsTxt from "starlight-llms-txt";
 import remarkDocLinks from "./remark-doc-links.mjs";
 import remarkMermaid from "./remark-mermaid.mjs";
 
@@ -72,6 +73,24 @@ export default defineConfig({
       },
       // Collapse the now-empty Starlight title panel left by the PageTitle override.
       customCss: ["./src/styles/docs.css"],
+      plugins: [
+        starlightLlmsTxt({
+          projectName: "Rakkr",
+          description:
+            "Documentation for Rakkr, a local-only, centrally managed Linux audio recording platform for reliable room recording.",
+          details:
+            "Use the public documentation sets below for installation, operation, architecture, and development guidance. Internal status ledgers and verification baselines are intentionally excluded.",
+          promote: ["index*", "getting-started/**", "how-to/**"],
+          demote: ["contributing/**"],
+          optionalLinks: [
+            {
+              label: "Rakkr source repository",
+              url: "https://github.com/yashau/Rakkr",
+              description: "source code, issue tracking, and release history",
+            },
+          ],
+        }),
+      ],
       social: [
         {
           icon: "github",
