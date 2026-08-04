@@ -16,12 +16,12 @@ const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const chartDir = path.join(repoRoot, "deploy/helm/rakkr-controller");
 const devValues = path.join(chartDir, "values-dev.yaml");
 
-// Render the chart via the mise-provided helm 3.16.3. Returns combined
+// Render the chart via the mise-provided helm 3.21.3. Returns combined
 // stdout/stderr and the exit status so tests can assert on failure text.
 function helmTemplate(extraSets: string[]): { ok: boolean; output: string } {
   const args = [
     "x",
-    "helm@3.16.3",
+    "helm@3.21.3",
     "--",
     "helm",
     "template",
@@ -38,7 +38,7 @@ function helmTemplate(extraSets: string[]): { ok: boolean; output: string } {
 }
 
 const helmAvailable = (() => {
-  const probe = spawnSync("mise", ["x", "helm@3.16.3", "--", "helm", "version"], {
+  const probe = spawnSync("mise", ["x", "helm@3.21.3", "--", "helm", "version"], {
     cwd: repoRoot,
     encoding: "utf8",
     shell: true,
@@ -49,7 +49,7 @@ const helmAvailable = (() => {
 
 test(
   "bundled-Postgres install renders cleanly (postgres.enabled=true, no external DB)",
-  { skip: helmAvailable ? false : "helm 3.16.3 unavailable" },
+  { skip: helmAvailable ? false : "helm 3.21.3 unavailable" },
   () => {
     const { ok, output } = helmTemplate(["postgres.enabled=true"]);
     assert.ok(ok, `bundled-only install must render; got:\n${output}`);
@@ -63,7 +63,7 @@ test(
 
 test(
   "external DB with bundled Postgres disabled renders cleanly",
-  { skip: helmAvailable ? false : "helm 3.16.3 unavailable" },
+  { skip: helmAvailable ? false : "helm 3.21.3 unavailable" },
   () => {
     const { ok, output } = helmTemplate([
       "postgres.enabled=false",
@@ -80,7 +80,7 @@ test(
 
 test(
   "external URL + enabled bundled Postgres FAILS render (orphaned Postgres guard)",
-  { skip: helmAvailable ? false : "helm 3.16.3 unavailable" },
+  { skip: helmAvailable ? false : "helm 3.21.3 unavailable" },
   () => {
     const { ok, output } = helmTemplate([
       "postgres.enabled=true",
@@ -97,7 +97,7 @@ test(
 
 test(
   "external existingSecret + enabled bundled Postgres FAILS render (orphaned Postgres guard)",
-  { skip: helmAvailable ? false : "helm 3.16.3 unavailable" },
+  { skip: helmAvailable ? false : "helm 3.21.3 unavailable" },
   () => {
     const { ok, output } = helmTemplate([
       "postgres.enabled=true",

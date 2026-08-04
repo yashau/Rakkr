@@ -14,11 +14,11 @@
   block:
     - name: Resolve recorder-agent target triple
       ansible.builtin.set_fact:
-        rakkr_agent_target: "{{ rakkr_agent_target_map[ansible_architecture] | default('') }}"
+        rakkr_agent_target: "{{ rakkr_agent_target_map[ansible_facts['architecture']] | default('') }}"
 
     - name: Fail on unsupported recorder-agent architecture
       ansible.builtin.fail:
-        msg: "Unsupported recorder-agent architecture: {{ ansible_architecture }}"
+        msg: "Unsupported recorder-agent architecture: {{ ansible_facts['architecture'] }}"
       when: rakkr_agent_target | length == 0
 
     - name: Resolve the latest recorder-agent release tag

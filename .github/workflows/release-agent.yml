@@ -23,7 +23,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Resolve agent version and tag
         id: version
@@ -38,7 +38,7 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
-      - uses: jdx/mise-action@v4.2.0
+      - uses: jdx/mise-action@v4.2.4
         with:
           cache: true
           install: true
@@ -48,7 +48,7 @@ jobs:
           python3 -m pip install --user --break-system-packages \
             "cargo-zigbuild==0.23.0" "ziglang>=0.14,<0.15"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          mise x rust@1.96.0 -- rustup target add \
+          mise x rust@1.97.1 -- rustup target add \
             x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
       - name: Build static binaries
@@ -56,7 +56,7 @@ jobs:
           RAKKR_AGENT_VERSION: ${{ steps.version.outputs.version }}
         run: |
           for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
-            mise x rust@1.96.0 -- cargo zigbuild \
+            mise x rust@1.97.1 -- cargo zigbuild \
               --release --locked -p rakkr-recorder-agent --target "$target"
           done
 

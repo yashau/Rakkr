@@ -13,20 +13,20 @@
     "test": "node ../../scripts/run-api-tests.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1075.0",
-    "@hono/node-server": "^2.0.6",
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "@hono/node-server": "^2.0.12",
     "@rakkr/db": "workspace:*",
     "@rakkr/shared": "workspace:*",
     "dotenv": "^17.4.2",
-    "hono": "^4.12.27",
+    "hono": "^4.12.34",
     "openid-client": "^6.8.4",
     "smb3-client": "^0.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.1.2",
     "oauth2-mock-server": "^9.1.0",
-    "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "tsx": "^4.23.5",
+    "typescript": "^7.0.2"
   }
 }

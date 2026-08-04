@@ -1,10 +1,10 @@
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 WORKDIR /opt/rakkr
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssh-client sshpass \
-  && pip install --no-cache-dir ansible-core==2.19.4 \
+  && pip install --no-cache-dir ansible-core==2.21.2 \
   && mkdir -p /opt/rakkr-artifacts /root/.ssh \
   && rm -rf /var/lib/apt/lists/*
 

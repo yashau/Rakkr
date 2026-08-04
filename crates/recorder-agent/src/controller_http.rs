@@ -1,9 +1,12 @@
 use std::path::Path;
+use std::sync::Once;
 use std::time::Duration;
 
 use anyhow::{Context, bail};
 
 use crate::config::AgentConfig;
+
+static RUSTLS_PROVIDER: Once = Once::new();
 
 pub fn controller_http_client(config: &AgentConfig) -> anyhow::Result<reqwest::Client> {
     controller_http_client_with_ca(config.controller_ca_cert_path.as_deref())
@@ -59,6 +62,10 @@ fn build_controller_http_client(
     read_timeout: Duration,
     request_timeout: Duration,
 ) -> anyhow::Result<reqwest::Client> {
+    RUSTLS_PROVIDER.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+
     let mut builder = reqwest::Client::builder()
         .connect_timeout(connect_timeout)
         .read_timeout(read_timeout)

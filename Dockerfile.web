@@ -2,7 +2,7 @@ FROM node:26-alpine AS deps
 
 WORKDIR /app
 
-RUN npm install -g pnpm@11.9.0
+RUN npm install -g pnpm@11.20.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/web/package.json apps/web/package.json
@@ -23,7 +23,7 @@ COPY packages/shared packages/shared
 
 RUN pnpm -r --filter @rakkr/shared --filter @rakkr/web build
 
-FROM nginx:1.29-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 
 ENV RAKKR_API_UPSTREAM=http://controller-api:8787
 

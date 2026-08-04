@@ -6,23 +6,26 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-anyhow = "1.0"
-clap = { version = "4.5", features = ["derive", "env"] }
+anyhow = "1.0.104"
+clap = { version = "4.6.5", features = ["derive", "env"] }
 # In-process voice enhancement. DeepFilterNet v0.5.6 (git tag) embeds the
 # DeepFilterNet3 model via `default-model` and runs pure-Rust tract inference;
 # its lockfile pins tract `^0.19` so cargo resolves the tested 0.19.16. RNNoise
 # comes from nnnoiseless. See enhance.rs.
 deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", tag = "v0.5.6", default-features = false, features = ["tract", "default-model"] }
-hostname = "0.4"
-hound = "3.5"
-ndarray = "0.15"
-nnnoiseless = "0.5"
-reqwest = { version = "0.12", default-features = false, features = ["http2", "json", "rustls-tls"] }
+hostname = "0.4.2"
+hound = "3.5.1"
+# Keep this aligned with DeepFilterNet's public array types. The current
+# DeepFilterNet v0.5.6 release still uses ndarray 0.15.
+ndarray = "0.15.6"
+nnnoiseless = "0.5.2"
+reqwest = { version = "0.13.4", default-features = false, features = ["http2", "json", "rustls-no-provider"] }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 shlex = "2.0.1"
-time = { version = "0.3", features = ["formatting", "parsing"] }
-tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "signal", "time"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+time = { version = "0.3.55", features = ["formatting", "parsing"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }

@@ -54,7 +54,7 @@ export function QualityTimeline({
                 <div
                   aria-label={`${segment.event.severity} ${segment.event.type}`}
                   className={cn(
-                    "absolute top-0 bottom-0 min-w-1 border-x border-white/60",
+                    "absolute inset-y-0 min-w-1 border-x border-white/60",
                     timelineSegmentClass(segment.event),
                   )}
                   style={{

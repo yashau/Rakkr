@@ -23,7 +23,7 @@ const devValues = path.join(chartDir, "values-dev.yaml");
 function helmTemplate(extraSets: string[]): { ok: boolean; output: string } {
   const args = [
     "x",
-    "helm@3.16.3",
+    "helm@3.21.3",
     "--",
     "helm",
     "template",
@@ -40,7 +40,7 @@ function helmTemplate(extraSets: string[]): { ok: boolean; output: string } {
 }
 
 const helmAvailable = (() => {
-  const probe = spawnSync("mise", ["x", "helm@3.16.3", "--", "helm", "version"], {
+  const probe = spawnSync("mise", ["x", "helm@3.21.3", "--", "helm", "version"], {
     cwd: repoRoot,
     encoding: "utf8",
     shell: true,
@@ -63,7 +63,7 @@ function renderedDoc(output: string, kind: string, contains: string): string | n
 
 test(
   "job enabled + external DB: Job renders with hook + wait-for-database, API has no migrate initContainer",
-  { skip: helmAvailable ? false : "helm 3.16.3 unavailable" },
+  { skip: helmAvailable ? false : "helm 3.21.3 unavailable" },
   () => {
     const { ok, output } = helmTemplate([
       "migrations.job.enabled=true",
@@ -115,7 +115,7 @@ test(
 
 test(
   "job enabled + bundled Postgres FAILS render (migration-job-requires-external guard)",
-  { skip: helmAvailable ? false : "helm 3.16.3 unavailable" },
+  { skip: helmAvailable ? false : "helm 3.21.3 unavailable" },
   () => {
     const { ok, output } = helmTemplate(["migrations.job.enabled=true"]);
     assert.equal(ok, false, `job + bundled Postgres must fail render; got:\n${output}`);
@@ -129,7 +129,7 @@ test(
 
 test(
   "default (job disabled, bundled Postgres): API init-container migrate still renders",
-  { skip: helmAvailable ? false : "helm 3.16.3 unavailable" },
+  { skip: helmAvailable ? false : "helm 3.21.3 unavailable" },
   () => {
     const { ok, output } = helmTemplate([]);
     assert.ok(ok, `default install must render; got:\n${output}`);
